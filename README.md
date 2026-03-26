@@ -6,6 +6,8 @@ It is intended to act as the main index and portfolio hub for featured GitHub Pa
 
 This version removes remaining placeholder-style copy, keeps the brighter premium visual system, and treats the homepage as a finished portfolio hub rather than a draft index.
 
+It also includes an inline SVG hero mark intended to function as a reusable portfolio identity mark for systems, platforms, infrastructure, and architecture-driven work.
+
 ## Files
 
 - `index.html` - homepage structure, copy, SEO metadata, structured data, and project links
@@ -61,7 +63,7 @@ Inline HTML comments mark the featured project URLs for easier editing.
 
 ### Editing the third featured card later
 
-The third featured card is now an intentional forthcoming item rather than a generic placeholder.
+The third featured card currently features `SRMIC`.
 
 To replace it with another real project later:
 
@@ -81,7 +83,6 @@ LinkedIn was intentionally removed from the site.
 The contact section is intentionally minimal and now contains:
 
 - GitHub
-- `[professional email]`
 
 Edit this block in `index.html`:
 
@@ -89,18 +90,73 @@ Edit this block in `index.html`:
 <section class="section" id="contact">
 ```
 
-To replace the email placeholder, change:
+If you want to add a public email later, place it alongside the GitHub button in the existing `.contact-links` row and keep the section minimal so it stays credible and finished.
+
+## Hero identity mark
+
+The hero-side visual is an inline SVG inside the existing hero panel in `index.html`.
+
+Look for:
 
 ```html
-<span class="button button-static">[professional email]</span>
+<div class="hero-mark-block">
+  <svg class="hero-mark" ...>
 ```
 
-to either:
+### How it is structured
 
-- a real visible email string, or
-- a `mailto:` link styled like the other buttons
+The SVG is built from a small set of grouped geometry:
 
-Keep the section minimal so it stays credible and finished.
+- `mark-base`
+  outer and inner surfaces that frame the emblem
+- `mark-grid`
+  light guide lines that suggest layered system structure
+- `mark-spine`
+  the central control spine
+- `mark-routes`
+  left and right routed paths suggesting flow and interconnect
+- `mark-clusters`
+  surrounding modular shells
+- `mark-nodes`
+  emphasized execution or memory points
+
+It is intended to read as a systems-oriented identity mark rather than a literal logo or product icon.
+
+### How to tweak colors
+
+Most of the SVG styling is controlled from `styles.css` through these classes:
+
+- `.mark-surface-*`
+- `.mark-module-*`
+- `.mark-route-*`
+- `.mark-node-*`
+- `.hero-mark-label`
+
+The palette is intentionally restrained: blue-gray neutrals, a muted cyan/teal accent, and soft structural outlines.
+
+### How to resize or reposition it
+
+The SVG sits inside `.hero-mark-block` and scales with:
+
+- `.hero-mark`
+- `.hero-panel`
+- `.hero-grid`
+
+To make it larger or smaller:
+
+- adjust the padding on `.hero-mark-block`
+- adjust the width behavior on `.hero-mark`
+- adjust the hero column balance in `.hero-grid`
+
+### How to swap it out later
+
+If you want to replace the mark later:
+
+1. Keep the same `<div class="hero-mark-block">` wrapper.
+2. Replace only the inline `<svg>` block.
+3. Reuse the same outer container and caption classes if you want the existing spacing and styling to remain intact.
+
+The mark is intended to function as the visual identity anchor for the portfolio, especially in the hero and any future reduced-size reuse.
 
 ## Add more featured work
 
