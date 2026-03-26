@@ -4,6 +4,8 @@ This directory contains the static root GitHub Pages site for `https://manishkla
 
 It is intended to act as the main index and portfolio hub for featured GitHub Pages microsites, selected repositories, and broader technical work across systems architecture, AI infrastructure, patents, runtime systems, and platform engineering.
 
+This version removes remaining placeholder-style copy, keeps the brighter premium visual system, and treats the homepage as a finished portfolio hub rather than a draft index.
+
 ## Files
 
 - `index.html` - homepage structure, copy, SEO metadata, structured data, and project links
@@ -57,9 +59,29 @@ To update them, edit the cards inside:
 
 Inline HTML comments mark the featured project URLs for easier editing.
 
+### Editing the third featured card later
+
+The third featured card is intentionally used for `SRMIC` rather than a generic placeholder.
+
+To replace it with another real project later:
+
+1. Edit the third `.featured-card` inside `#featured` in `index.html`.
+2. Update:
+   - category line
+   - title
+   - thesis
+   - supporting paragraphs
+   - button labels and URLs
+3. Keep the copy specific and publication-quality so the section never falls back into vague placeholder language.
+
 ## Replace contact content
 
-The contact section is intentionally minimal and currently contains only GitHub.
+LinkedIn was intentionally removed from the site.
+
+The contact section is intentionally minimal and now contains:
+
+- GitHub
+- `[professional email]`
 
 Edit this block in `index.html`:
 
@@ -67,7 +89,18 @@ Edit this block in `index.html`:
 <section class="section" id="contact">
 ```
 
-If you want to change the public contact surface later, update the button and supporting copy there.
+To replace the email placeholder, change:
+
+```html
+<span class="button button-static">[professional email]</span>
+```
+
+to either:
+
+- a real visible email string, or
+- a `mailto:` link styled like the other buttons
+
+Keep the section minimal so it stays credible and finished.
 
 ## Add more featured work
 
@@ -84,6 +117,8 @@ To add another featured card:
 3. If you want a larger card, add the `featured-card-wide` class.
 
 The grid is already set up to support more featured cards cleanly.
+
+When adding future work, prefer real thematic or project-specific framing. Avoid vague labels such as "slot", "placeholder", or "update later", since they quickly make the homepage feel unfinished.
 
 ## Change the brighter color theme
 
