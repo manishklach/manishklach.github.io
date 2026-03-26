@@ -4,9 +4,16 @@ This directory contains the static root GitHub Pages site for `https://manishkla
 
 It is intended to act as the main index and portfolio hub for featured GitHub Pages microsites, selected repositories, and broader technical work across systems architecture, AI infrastructure, patents, runtime systems, and platform engineering.
 
-This version removes remaining placeholder-style copy, keeps the brighter premium visual system, and treats the homepage as a finished portfolio hub rather than a draft index.
+This version keeps the brighter premium visual system and treats the homepage as a finished portfolio hub rather than a draft index.
 
 It also includes an inline SVG hero mark intended to function as a reusable portfolio identity mark for systems, platforms, infrastructure, and architecture-driven work.
+
+The top of the page is built around:
+
+- a split hero with the portfolio identity mark
+- a compact featured-systems strip beneath the hero
+- three flagship featured-work cards
+- four tighter secondary repository-theme cards
 
 ## Files
 
@@ -50,8 +57,8 @@ Each featured card contains:
 - category
 - thesis
 - supporting copy
-- `View Site` link
-- `View Repository` link
+- CTA links
+- compact visual area for a project-specific badge or mini-graphic
 
 To update them, edit the cards inside:
 
@@ -61,28 +68,21 @@ To update them, edit the cards inside:
 
 Inline HTML comments mark the featured project URLs for easier editing.
 
-### Editing the third featured card later
+### Current featured cards
 
-The third featured card currently features `SRMIC`.
+The featured row currently presents:
 
-To replace it with another real project later:
+1. `Deterministic Gather Patent`
+2. `MHC Atlas OS`
+3. `SRMIC`
 
-1. Edit the third `.featured-card` inside `#featured` in `index.html`.
-2. Update:
-   - category line
-   - title
-   - thesis
-   - supporting paragraphs
-   - button labels and URLs
-3. Keep the copy specific and publication-quality so the section never falls back into vague placeholder language.
+If you replace any of them later, keep the copy concise and project-specific and preserve the same flagship-card structure.
 
 ## Replace contact content
 
 LinkedIn was intentionally removed from the site.
 
-The contact section is intentionally minimal and now contains:
-
-- GitHub
+The contact section is intentionally minimal and currently contains GitHub only.
 
 Edit this block in `index.html`:
 
@@ -158,6 +158,24 @@ If you want to replace the mark later:
 
 The mark is intended to function as the visual identity anchor for the portfolio, especially in the hero and any future reduced-size reuse.
 
+## Featured systems strip
+
+Directly beneath the hero is a compact featured-systems strip.
+
+Look for:
+
+```html
+<div class="featured-strip">
+```
+
+Each `.strip-item` is a small curated entry point for top work. These are meant to behave like a premium portfolio rail rather than generic chips.
+
+To edit the strip:
+
+1. Update the four `.strip-item` links in `index.html`.
+2. Keep labels short and curated.
+3. Avoid adding too many items or the strip will lose its selective feel.
+
 ## Add more featured work
 
 To add another featured card:
@@ -170,8 +188,6 @@ To add another featured card:
    - supporting paragraph(s)
    - site URL
    - repository URL
-3. If you want a larger card, add the `featured-card-wide` class.
-
 The grid is already set up to support more featured cards cleanly.
 
 When adding future work, prefer real thematic or project-specific framing. Avoid vague labels such as "slot", "placeholder", or "update later", since they quickly make the homepage feel unfinished.
