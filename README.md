@@ -61,7 +61,7 @@ Inline HTML comments mark the featured project URLs for easier editing.
 
 ### Editing the third featured card later
 
-The third featured card is intentionally used for `SRMIC` rather than a generic placeholder.
+The third featured card is now an intentional forthcoming item rather than a generic placeholder.
 
 To replace it with another real project later:
 
