@@ -6,6 +6,10 @@ const navMenu = document.querySelector(".nav-menu");
 const navLinks = document.querySelectorAll(".nav-menu a");
 const sections = document.querySelectorAll("main section[id]");
 const revealItems = document.querySelectorAll(".reveal");
+const heroCarouselTrack = document.querySelector(".hero-carousel-track");
+const heroSlides = document.querySelectorAll(".hero-slide");
+const heroDots = document.querySelectorAll(".carousel-dot");
+const heroCarouselButtons = document.querySelectorAll(".carousel-button");
 
 function updateHeaderState() {
   if (!header) return;
@@ -78,4 +82,40 @@ if (revealItems.length && !window.matchMedia("(prefers-reduced-motion: reduce)")
   revealItems.forEach((item) => revealObserver.observe(item));
 } else {
   revealItems.forEach((item) => item.classList.add("is-visible"));
+}
+
+if (heroCarouselTrack && heroSlides.length && heroDots.length) {
+  let activeSlide = 0;
+
+  function renderCarousel(index) {
+    activeSlide = (index + heroSlides.length) % heroSlides.length;
+    heroCarouselTrack.style.transform = `translateX(-${activeSlide * 100}%)`;
+
+    heroSlides.forEach((slide, slideIndex) => {
+      const isActive = slideIndex === activeSlide;
+      slide.classList.toggle("is-active", isActive);
+      slide.setAttribute("aria-hidden", String(!isActive));
+    });
+
+    heroDots.forEach((dot, dotIndex) => {
+      const isActive = dotIndex === activeSlide;
+      dot.classList.toggle("is-active", isActive);
+      dot.setAttribute("aria-selected", String(isActive));
+    });
+  }
+
+  heroDots.forEach((dot) => {
+    dot.addEventListener("click", () => {
+      renderCarousel(Number(dot.dataset.carouselIndex));
+    });
+  });
+
+  heroCarouselButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const direction = button.dataset.carouselDir === "next" ? 1 : -1;
+      renderCarousel(activeSlide + direction);
+    });
+  });
+
+  renderCarousel(0);
 }
