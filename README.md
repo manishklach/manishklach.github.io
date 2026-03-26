@@ -11,21 +11,19 @@ It is intended to act as the main index and portfolio hub for featured GitHub Pa
 - `script.js` - sticky navigation, section highlighting, mobile nav toggle, and subtle reveal-on-scroll
 - `.nojekyll` - disables Jekyll processing so GitHub Pages serves the site as plain static files
 
-## Repository naming
+## This is the root GitHub Pages site
 
-For a root GitHub Pages site, the repository should be named exactly:
+For a root user site, the repository should be named exactly:
 
 ```text
 manishklach.github.io
 ```
 
-GitHub uses that repo name to serve the account root site at:
+GitHub uses that repository name to serve the account root site at:
 
 ```text
 https://manishklach.github.io/
 ```
-
-If the repository name differs, GitHub will not publish it as the account root site.
 
 ## Deploy on GitHub Pages
 
@@ -38,9 +36,9 @@ If the repository name differs, GitHub will not publish it as the account root s
    - `Folder: / (root)`
 5. Save and wait for the Pages deployment to complete.
 
-## Featured project cards
+## Edit featured project cards
 
-The most important section is `#featured` in `index.html`.
+The primary section is `#featured` in `index.html`.
 
 Each featured card contains:
 
@@ -51,19 +49,27 @@ Each featured card contains:
 - `View Site` link
 - `View Repository` link
 
-### Where to edit featured cards
-
-Open `index.html` and look for:
+To update them, edit the cards inside:
 
 ```html
 <section class="section" id="featured">
 ```
 
-Update the URLs, copy, and categories directly there.
+Inline HTML comments mark the featured project URLs for easier editing.
 
-Inline HTML comments mark the featured site URLs so they are easy to find later.
+## Replace contact content
 
-## Adding a new featured project
+The contact section is intentionally minimal and currently contains only GitHub.
+
+Edit this block in `index.html`:
+
+```html
+<section class="section" id="contact">
+```
+
+If you want to change the public contact surface later, update the button and supporting copy there.
+
+## Add more featured work
 
 To add another featured card:
 
@@ -75,27 +81,35 @@ To add another featured card:
    - supporting paragraph(s)
    - site URL
    - repository URL
-3. If you want the card to span wider on desktop, add the `featured-card-wide` class.
+3. If you want a larger card, add the `featured-card-wide` class.
 
-The CSS grid is already set up to support additional featured cards cleanly.
+The grid is already set up to support more featured cards cleanly.
 
-## SEO metadata
+## Change the brighter color theme
 
-The site includes:
+The site now uses a brighter light-mode design system.
 
-- title
-- meta description
-- canonical URL
-- robots
-- author
-- theme-color
-- Open Graph tags
-- Twitter tags
-- JSON-LD structured data
+Theme tokens live at the top of `styles.css` in `:root`.
 
-### Where to change SEO metadata
+Key variables include:
 
-Edit the `<head>` section in `index.html`:
+- `--bg`
+- `--bg-soft`
+- `--bg-panel`
+- `--text`
+- `--text-muted`
+- `--accent`
+- `--accent-strong`
+- `--shadow-lg`
+- `--border`
+
+That is the main place to adjust the overall visual direction.
+
+## Edit SEO metadata
+
+SEO and social metadata live in the `<head>` of `index.html`.
+
+Edit:
 
 - `<title>`
 - `<meta name="description">`
@@ -119,25 +133,15 @@ Future assets can be placed here:
 ### Recommended usage
 
 - `og-image.png`
-  Social sharing preview image.
+  Social sharing preview image
 - `favicon.png`
-  Browser tab icon.
+  Browser icon
 - `headshot.png`
-  Optional personal portrait if the hero is later expanded.
+  Optional portrait if the hero is expanded later
 - `project-thumbs/`
-  Thumbnail images for featured work cards.
+  Thumbnail images for featured work cards
 - `diagrams/`
-  Supplemental diagrams for future sections.
-
-## Link editing
-
-The current homepage links to:
-
-- Deterministic Gather patent microsite
-- MHC Atlas OS
-- GitHub profile
-
-If site URLs change later, update the anchor tags in `index.html`.
+  Supplemental diagrams for future sections
 
 ## Why `.nojekyll` is included
 
