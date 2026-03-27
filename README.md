@@ -12,7 +12,7 @@ The top of the page is built around:
 
 - a split hero with the portfolio identity mark
 - a compact featured-systems strip beneath the hero
-- three flagship featured-work cards
+- four flagship featured-work cards
 - four tighter secondary repository-theme cards
 
 ## Files
@@ -75,6 +75,7 @@ The featured row currently presents:
 1. `Deterministic Gather Patent`
 2. `MHC Atlas OS`
 3. `SRMIC`
+4. `PMPP CUDA Study`
 
 If you replace any of them later, keep the copy concise and project-specific and preserve the same flagship-card structure.
 
