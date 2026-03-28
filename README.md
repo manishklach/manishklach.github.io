@@ -13,6 +13,7 @@ The top of the page is built around:
 - a split hero with the portfolio identity mark
 - a compact featured-systems strip beneath the hero
 - four flagship featured-work cards
+- a dedicated patent microsites section for invention-led launch pages
 - four tighter secondary repository-theme cards
 
 ## Files
