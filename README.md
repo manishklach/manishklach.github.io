@@ -72,7 +72,7 @@ Inline HTML comments mark the featured project URLs for easier editing.
 
 The featured row currently presents:
 
-1. `Deterministic Gather Patent`
+1. `Predictive Weight Orchestration`
 2. `MHC Atlas OS`
 3. `SRMIC`
 4. `PMPP CUDA Study`
