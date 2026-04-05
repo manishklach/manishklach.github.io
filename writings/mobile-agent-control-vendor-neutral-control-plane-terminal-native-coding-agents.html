@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mobile Agent Control — A Vendor-Neutral Control Plane for Terminal-Native Coding Agents</title>
+  <meta name="description" content="A detailed technical blog post on Mobile Agent Control: Android operator console, FastAPI supervisor, runtime adapters, websocket telemetry, and the path from Tailscale-connected machines to a cloud control plane." />
+  <meta name="keywords" content="mobile agent control, terminal-native coding agents, vendor-neutral control plane, FastAPI supervisor, websocket telemetry, Android operator console, local coding agents, agent runtime orchestration" />
+  <meta name="author" content="Manish KL" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/mobile-agent-control-vendor-neutral-control-plane-terminal-native-coding-agents.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Mobile Agent Control — A Vendor-Neutral Control Plane for Terminal-Native Coding Agents" />
+  <meta property="og:description" content="A detailed technical blog post on Mobile Agent Control: Android operator console, FastAPI supervisor, runtime adapters, websocket telemetry, and the path from Tailscale-connected machines to a cloud control plane." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/mobile-agent-control-vendor-neutral-control-plane-terminal-native-coding-agents.html" />
+  <meta property="og:site_name" content="Manish KL" />
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <meta property="og:image:alt" content="Preview image for the Mobile Agent Control technical essay." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Mobile Agent Control — A Vendor-Neutral Control Plane for Terminal-Native Coding Agents" />
+  <meta name="twitter:description" content="A detailed technical blog post on Mobile Agent Control: Android operator console, FastAPI supervisor, runtime adapters, websocket telemetry, and the path from Tailscale-connected machines to a cloud control plane." />
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <meta name="twitter:image:alt" content="Preview image for the Mobile Agent Control technical essay." />
+  <meta name="twitter:site" content="@manishkl_" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Mobile Agent Control — A Vendor-Neutral Control Plane for Terminal-Native Coding Agents",
+    "description": "A detailed technical blog post on Mobile Agent Control: Android operator console, FastAPI supervisor, runtime adapters, websocket telemetry, and the path from Tailscale-connected machines to a cloud control plane.",
+    "author": {
+      "@type": "Person",
+      "name": "Manish KL",
+      "url": "https://manishklach.github.io/"
+    },
+    "publisher": {
+      "@type": "Person",
+      "name": "Manish KL"
+    },
+    "datePublished": "2026-04-05",
+    "dateModified": "2026-04-05",
+    "mainEntityOfPage": "https://manishklach.github.io/writings/mobile-agent-control-vendor-neutral-control-plane-terminal-native-coding-agents.html",
+    "url": "https://manishklach.github.io/writings/mobile-agent-control-vendor-neutral-control-plane-terminal-native-coding-agents.html",
+    "image": "https://manishklach.github.io/assets/og-image.png"
+  }
+  </script>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --bg2: #111831;
+      --panel: rgba(255,255,255,0.06);
+      --panel-2: rgba(255,255,255,0.08);
+      --text: #e9eefc;
+      --muted: #a7b3d1;
+      --line: rgba(255,255,255,0.12);
+      --accent: #7dd3fc;
+      --accent2: #a78bfa;
+      --good: #86efac;
+      --warn: #fcd34d;
+      --code: #09101d;
+      --shadow: 0 20px 60px rgba(0,0,0,0.35);
+      --radius: 22px;
+      --max: 1160px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(125,211,252,.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(167,139,250,.16), transparent 26%),
+        linear-gradient(180deg, var(--bg), #090d18 60%, #070a13);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { width: min(var(--max), calc(100% - 32px)); margin: 0 auto; }
+    .nav {
+      position: sticky; top: 0; z-index: 20;
+      backdrop-filter: blur(14px);
+      background: rgba(7,10,19,0.72);
+      border-bottom: 1px solid var(--line);
+    }
+    .nav-inner {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 14px 0;
+    }
+    .brand { font-weight: 800; letter-spacing: .02em; }
+    .brand a { color: var(--text); text-decoration: none; }
+    .nav-links { display: flex; gap: 18px; flex-wrap: wrap; }
+    .nav-links a { color: var(--muted); font-size: 14px; }
+    .hero { padding: 72px 0 34px; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 8px 14px; border-radius: 999px;
+      background: rgba(125,211,252,.10); border: 1px solid rgba(125,211,252,.22);
+      color: #d6f4ff; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+    }
+    h1 {
+      font-size: clamp(38px, 6vw, 68px);
+      line-height: 1.02; margin: 18px 0 18px; letter-spacing: -0.04em;
+      max-width: 1000px;
+    }
+    .hero p.lead {
+      font-size: clamp(18px, 2.2vw, 22px);
+      color: var(--muted); max-width: 920px; margin: 0 0 26px;
+    }
+    .cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 12px 18px; border-radius: 14px; font-weight: 700;
+      border: 1px solid var(--line); background: var(--panel);
+      box-shadow: var(--shadow); color: var(--text);
+    }
+    .btn.primary {
+      background: linear-gradient(135deg, rgba(125,211,252,.24), rgba(167,139,250,.18));
+      border-color: rgba(125,211,252,.28);
+    }
+    .hero-grid, .grid-2, .grid-3, .grid-4 { display: grid; gap: 20px; }
+    .hero-grid { grid-template-columns: 1.2fr .9fr; align-items: start; margin-top: 34px; }
+    .grid-2 { grid-template-columns: repeat(2, 1fr); }
+    .grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .grid-4 { grid-template-columns: repeat(4, 1fr); }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.035));
+      border: 1px solid var(--line); border-radius: var(--radius); padding: 22px;
+      box-shadow: var(--shadow);
+    }
+    .stat { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .stat strong { display: block; color: var(--text); font-size: 28px; letter-spacing: -0.03em; margin-top: 8px; text-transform: none; }
+    section { padding: 24px 0; }
+    h2 { font-size: clamp(28px, 3vw, 40px); line-height: 1.1; margin: 0 0 12px; letter-spacing: -0.03em; }
+    h3 { font-size: 22px; margin: 0 0 8px; letter-spacing: -0.02em; }
+    p { margin: 0 0 16px; }
+    .muted { color: var(--muted); }
+    .kicker { color: var(--accent); text-transform: uppercase; letter-spacing: .1em; font-size: 12px; font-weight: 800; margin-bottom: 12px; }
+    .diagram {
+      display: grid; gap: 14px; padding: 22px;
+      background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.035));
+      border: 1px solid var(--line); border-radius: 24px;
+    }
+    .diagram-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .node {
+      border-radius: 18px; padding: 16px; min-height: 112px;
+      border: 1px solid rgba(255,255,255,.12); background: rgba(8,12,24,.72);
+    }
+    .node small { display: block; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
+    .arrow { text-align: center; color: var(--muted); font-weight: 800; letter-spacing: .16em; }
+    ul.clean { margin: 0; padding-left: 18px; }
+    ul.clean li { margin: 0 0 10px; }
+    .code {
+      background: var(--code); border: 1px solid var(--line); border-radius: 18px;
+      padding: 18px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px; line-height: 1.7; color: #d6e6ff;
+      white-space: pre-wrap;
+    }
+    .quote {
+      border-left: 3px solid var(--accent);
+      padding: 6px 0 6px 16px; color: #dce9ff; font-size: 18px;
+    }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%; border-collapse: collapse; min-width: 780px;
+      background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
+    }
+    th, td { padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: #d9e7ff; background: rgba(255,255,255,.04); }
+    td { color: var(--muted); }
+    tr:last-child td { border-bottom: 0; }
+    .pill {
+      display: inline-block; padding: 6px 10px; border-radius: 999px;
+      background: rgba(134,239,172,.1); border: 1px solid rgba(134,239,172,.22); color: #dffce9; font-size: 12px; font-weight: 700;
+    }
+    .footer {
+      padding: 38px 0 70px; color: var(--muted); font-size: 14px;
+    }
+    @media (max-width: 980px) {
+      .hero-grid, .grid-2, .grid-3, .grid-4, .diagram-row { grid-template-columns: 1fr; }
+      .nav-inner { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="nav">
+    <div class="wrap nav-inner">
+      <div class="brand"><a href="../index.html">Home</a></div>
+      <div class="nav-links">
+        <a href="../writings.html">Back to Writings</a>
+        <a href="#problem">Problem</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#runtime">Runtime Adapters</a>
+        <a href="#api">API</a>
+        <a href="#roadmap">Roadmap</a>
+      </div>
+    </div>
+  </div>
+
+  <header class="hero wrap">
+    <div class="eyebrow">Detailed Technical Write-up</div>
+    <h1>A vendor-neutral mobile control plane for terminal-native coding agents</h1>
+    <p class="lead">Mobile Agent Control tackles a very specific systems problem: once coding agents become terminal-native, multi-runtime, and machine-local, someone still needs a safe way to launch them, monitor them, steer them, and audit them from anywhere. This repository turns that operational gap into a concrete product architecture.</p>
+    <div class="cta-row">
+      <a class="btn primary" href="https://github.com/manishklach/mobile-agent-control">Open repository</a>
+      <a class="btn" href="#architecture">Jump to architecture</a>
+    </div>
+
+    <div class="hero-grid">
+      <div class="diagram">
+        <div class="kicker">System view</div>
+        <div class="diagram-row">
+          <div class="node"><small>Client Layer</small><strong>Android operator console</strong><br/>Mobile-first control surface for launch, monitoring, prompts, stop/restart, and cross-machine views.</div>
+          <div class="node"><small>Browser Layer</small><strong>Responsive web console</strong><br/>A companion /admin interface for desktop and mobile web workflows.</div>
+          <div class="node"><small>Control Core</small><strong>FastAPI machine supervisor</strong><br/>Local lifecycle control, queueing, telemetry, audit, auth, and websocket state streaming.</div>
+          <div class="node"><small>Execution Layer</small><strong>Vendor-neutral runtime adapters</strong><br/>Gemini, Codex, Hermes, and future runtimes behind one adapter contract.</div>
+        </div>
+        <div class="arrow">MOBILE / WEB → SUPERVISOR → SAFE LAUNCH PROFILES → TERMINAL RUNTIMES</div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card stat">Default example runtime<strong>Gemini CLI</strong></div>
+        <div class="card stat">Transport for pre-release<strong>Tailscale</strong></div>
+        <div class="card stat">Live coordination<strong>WebSockets</strong></div>
+        <div class="card stat">Persisted state<strong>SQLite</strong></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="problem">
+      <div class="kicker">Why this matters</div>
+      <h2>The real problem is not agent intelligence. It is agent operations.</h2>
+      <p>There is now a growing class of coding systems that are no longer just browser tabs. They run through CLIs, require machine-local authentication, inspect real repositories, talk to local MCP servers, and often depend on shell-visible execution environments. That makes them powerful, but it also creates a management problem: how do you safely operate those runtimes across multiple machines without collapsing into ad hoc SSH sessions, arbitrary shell access, and inconsistent local setups?</p>
+      <p>Mobile Agent Control answers that with a clean systems split. The phone is not a shell. The phone is a control plane. The machine-side supervisor owns execution, local state, health visibility, and policy enforcement. Runtimes remain swappable. The result is a design that feels closer to infrastructure orchestration than to a thin remote-terminal wrapper.</p>
+      <div class="quote">The strongest idea in the repo is architectural: the control surface stays vendor-neutral even while the execution path remains deeply aware of runtime-specific behavior.</div>
+    </section>
+
+    <section>
+      <div class="grid-3">
+        <div class="card">
+          <h3>1. Mobile-first operating model</h3>
+          <p class="muted">The Android app is not treated as an afterthought. It is the primary operator console, with cross-machine running-agent visibility, machine cards, warning counts, last heartbeat, worker usage, and offline state.</p>
+        </div>
+        <div class="card">
+          <h3>2. Supervisor-owned execution</h3>
+          <p class="muted">The FastAPI service is the real control core. It persists state, owns live coordination, mediates auth, emits websocket events, and decides what can and cannot be launched.</p>
+        </div>
+        <div class="card">
+          <h3>3. Runtime abstraction without pretending runtimes are identical</h3>
+          <p class="muted">Gemini, Codex, Hermes, and future runtimes sit behind one contract, but their auth checks, CLI discovery, WSL handling, command surfaces, and launch semantics remain adapter-specific.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <div class="kicker">Architecture deep dive</div>
+      <h2>A layered control-plane architecture instead of a remote shell hack</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Layer</th><th>Responsibility</th><th>Why it matters</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Android operator console</td><td>Launch agents, inspect machine health, track running agents, view logs and status, issue prompts or restart/stop actions.</td><td>Turns local agent execution into something operable from anywhere, without granting the phone arbitrary shell power.</td></tr>
+            <tr><td>Responsive web /admin console</td><td>Provides an alternate operator interface optimized for desktop and mobile browsers.</td><td>Useful for debugging, demos, and mixed-device workflows.</td></tr>
+            <tr><td>FastAPI supervisor</td><td>Owns auth, audit, lifecycle management, state transitions, queueing, websocket emissions, and machine-local execution orchestration.</td><td>This is the trust boundary and enforcement plane.</td></tr>
+            <tr><td>CLI runtime executor</td><td>Launches only approved launch profiles and delegates runtime behavior to adapters.</td><td>Prevents the architecture from devolving into “send arbitrary commands over the network.”</td></tr>
+            <tr><td>Adapter layer</td><td>Implements runtime-specific capabilities for Gemini CLI, Codex CLI, Hermes via WSL, and future integrations.</td><td>Preserves extensibility while keeping the top-level resource model stable.</td></tr>
+            <tr><td>Persistence + eventing</td><td>SQLite stores recent state while in-memory services coordinate live scheduling and websocket streaming.</td><td>Provides operational continuity across restarts without giving up simple runtime responsiveness.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <div class="grid-2">
+        <div class="card">
+          <div class="kicker">Safety model</div>
+          <h3>Safe launch profiles are the key design choice</h3>
+          <p>The most important security-adjacent decision here is that the phone never sends arbitrary shell commands. Instead, the supervisor loads approved launch templates from <code>backend/config/launch_profiles.json</code> and uses those profiles to control what actually executes. That gives the system a constrained action vocabulary instead of unlimited remote command injection.</p>
+          <ul class="clean muted">
+            <li>Bearer-token auth at the application layer</li>
+            <li>Tailscale-only private connectivity for pre-release deployment</li>
+            <li>No public supervisor exposure</li>
+            <li>No hardcoded LAN-only assumptions in product design</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="kicker">State model</div>
+          <h3>Persistent enough to survive restarts, live enough to operate in real time</h3>
+          <p>The state strategy is pragmatic. Recent agents, tasks, audit entries, and supervisor snapshots persist in SQLite, while live scheduling, process coordination, and websocket state updates remain in memory. That split is technically sensible for an MVP because it avoids the complexity of a full distributed state machine while still recovering useful history after restart.</p>
+          <span class="pill">SQLite-backed state + in-memory coordination</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="runtime">
+      <div class="kicker">Runtime design</div>
+      <h2>Vendor-neutral at the control plane, runtime-specific at the execution edge</h2>
+      <p>One of the strongest technical traits of the project is that it does not confuse neutrality with uniformity. The control model is shared: machines, agents, tasks, logs, launch profiles, audit history. But the runtime edge remains intentionally adapter-aware. That is exactly the right design for this category.</p>
+      <div class="grid-4">
+        <div class="card"><h3>GeminiCliAdapter</h3><p class="muted">The flagship default path. Surfaces CLI version/auth status, workspace-scoped slash commands from real <code>.gemini/commands</code> directories, and MCP visibility from Gemini settings.</p></div>
+        <div class="card"><h3>CodexCliAdapter</h3><p class="muted">A parallel real adapter proving that the architecture is not pinned to one vendor. Same control plane, different runtime contract.</p></div>
+        <div class="card"><h3>HermesCliAdapter</h3><p class="muted">A WSL-backed adapter for Windows hosts. This is notable because it acknowledges the messy reality of heterogeneous local environments.</p></div>
+        <div class="card"><h3>CopilotCliAdapter</h3><p class="muted">Registered placeholder for future activation. It signals intended expansion without faking completeness today.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="grid-2">
+        <div>
+          <div class="kicker">Monitoring</div>
+          <h2>Streaming observability is built into the product surface</h2>
+          <p>The websocket event model gives the system live machine and agent awareness. Event payloads can include machine, machine_health, agent, agent_status, job, log, audit, and general message events. On top of that, the UI layers surface warning counts, heartbeat freshness, last log time, elapsed time, and heuristic stuck detection.</p>
+          <p>This matters because many agent systems look usable in a demo but fail operationally the moment long-running or partially stuck jobs appear. The repo explicitly models those failure-adjacent states instead of pretending every agent is always either perfectly healthy or fully dead.</p>
+        </div>
+        <div class="code">Event surface
+
+WS /ws
+
+Possible payload categories:
+- machine
+- machine_health
+- agent
+- agent_status
+- job
+- log
+- audit
+- message
+
+Operational hints exposed in UI:
+- elapsed time
+- last heartbeat
+- last log time
+- recent logs
+- recent events
+- warning/stuck indicators</div>
+      </div>
+    </section>
+
+    <section id="api">
+      <div class="kicker">API surface</div>
+      <h2>A practical supervisor API, not just a demo backend</h2>
+      <p>The route design shows that the repository is thinking in resource-model terms rather than in one-off button handlers. There are endpoints for machine identity and health, runtime adapter introspection, workspaces, agents, events, metrics, logs, audit history, tasks, and websocket streaming. That gives the system room to evolve toward a cloud-brokered control plane later without throwing away the client abstraction.</p>
+      <div class="code">Representative endpoints
+
+GET  /health
+GET  /machines
+GET  /machines/{id}/health
+GET  /agents
+GET  /agents/running
+GET  /agents/{id}
+GET  /agents/{id}/events
+GET  /agents/{id}/metrics
+POST /agents/start
+POST /agents/launch
+POST /agents/{id}/prompt
+POST /agents/{id}/tasks
+POST /agents/{id}/restart
+POST /agents/{id}/stop
+GET  /launch-profiles
+GET  /runtime/adapters
+GET  /runtime/adapters/{adapter_id}
+GET  /runtime/adapters/{adapter_id}/commands
+POST /runtime/adapters/{adapter_id}/commands
+DELETE /runtime/adapters/{adapter_id}/commands/{command_name}
+GET  /workspaces
+GET  /audit
+GET  /tasks
+WS   /ws</div>
+    </section>
+
+    <section>
+      <div class="grid-2">
+        <div class="card">
+          <div class="kicker">Why the repo is interesting</div>
+          <h3>It is quietly building an agent operations layer</h3>
+          <p>Many projects in this area focus on model prompts, sandbox tricks, or front-end wrappers. This one focuses on something more durable: the operational substrate for terminal-native agents. That includes lifecycle management, constrained launch semantics, runtime heterogeneity, workspace discovery, health telemetry, audit trails, and the migration path from direct machine connectivity to a cloud-routed architecture.</p>
+        </div>
+        <div class="card">
+          <div class="kicker">What is still intentionally deferred</div>
+          <h3>The repo is disciplined about scope</h3>
+          <p>Worker scaling and pause/resume semantics are explicitly deferred. That is actually a good sign. The design concentrates first on getting the core control-plane abstractions right, rather than pretending to solve full distributed agent scheduling in v1.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <div class="kicker">Roadmap reading</div>
+      <h2>The path from tailnet-connected MVP to cloud control plane is already visible</h2>
+      <p>The current deployment model uses Tailscale private connectivity between the Android client and each supervisor. But the repository is clear that this is temporary. The longer-term direction is a logical supervisor API behind a cloud control plane, with machine supervisors remaining as local orchestration agents and the mobile client authenticating against a cloud API rather than each machine directly.</p>
+      <div class="diagram">
+        <div class="diagram-row">
+          <div class="node"><small>Today</small><strong>Android → machine supervisors</strong><br/>Private Tailscale addresses, app-level bearer tokens, direct registration per machine.</div>
+          <div class="node"><small>Transition</small><strong>Cloud API introduced</strong><br/>The client targets logical resources instead of machine URLs.</div>
+          <div class="node"><small>Steady state</small><strong>Cloud-brokered control plane</strong><br/>Commands route to local supervisors while resource semantics stay stable.</div>
+          <div class="node"><small>Result</small><strong>Product-grade topology</strong><br/>Mobile UX preserved, security posture improved, multi-machine fleet management simplified.</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="kicker">Closing take</div>
+      <h2>This repo matters because it treats coding agents like infrastructure, not toys</h2>
+      <p>Mobile Agent Control is best understood as an operations architecture for terminal-native agents. Its contribution is not “yet another agent.” Its contribution is the control plane that makes real local runtimes usable across devices and machines. The design choices around supervisor ownership, launch-profile safety, runtime adapters, websocket observability, and cloud migration all point in the same direction: agent systems are becoming operational systems, and operational systems need disciplined control architecture.</p>
+      <p class="muted">If this project keeps expanding, the most compelling future directions will likely be richer fleet policy, stronger authn/authz layering, command governance, multi-tenant routing, and eventually deeper scheduling semantics for longer-running supervised tasks.</p>
+    </section>
+  </main>
+
+  <footer class="wrap footer">
+    <p>Prepared as a styled standalone HTML blog post. Best viewed in a modern browser.</p>
+  </footer>
+</body>
+</html>
