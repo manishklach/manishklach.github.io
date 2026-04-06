@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Deterministic Memory-Orchestrated Inference Using DMA and Bounded On-Chip Buffers</title>
+  <meta name="description" content="A technical deep dive into deterministic memory-orchestrated inference using compiler-scheduled DMA, explicit fences, and bounded on-chip buffers to pull DRAM off the compute critical path." />
+  <meta name="keywords" content="deterministic memory orchestrated inference, DMA scheduled inference, bounded on-chip buffers, compiler scheduled DMA, explicit fences, streaming inference architecture, DRAM off compute critical path" />
+  <meta name="author" content="Manish KL" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/deterministic-memory-orchestrated-inference-dma-bounded-on-chip-buffers.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Deterministic Memory-Orchestrated Inference Using DMA and Bounded On-Chip Buffers" />
+  <meta property="og:description" content="A technical deep dive into deterministic memory-orchestrated inference using compiler-scheduled DMA, explicit fences, and bounded on-chip buffers to pull DRAM off the compute critical path." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/deterministic-memory-orchestrated-inference-dma-bounded-on-chip-buffers.html" />
+  <meta property="og:site_name" content="Manish KL" />
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <meta property="og:image:alt" content="Preview image for the deterministic memory-orchestrated inference essay." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Deterministic Memory-Orchestrated Inference Using DMA and Bounded On-Chip Buffers" />
+  <meta name="twitter:description" content="A technical deep dive into deterministic memory-orchestrated inference using compiler-scheduled DMA, explicit fences, and bounded on-chip buffers to pull DRAM off the compute critical path." />
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <meta name="twitter:image:alt" content="Preview image for the deterministic memory-orchestrated inference essay." />
+  <meta name="twitter:site" content="@manishkl_" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Deterministic Memory-Orchestrated Inference Using DMA and Bounded On-Chip Buffers",
+    "description": "A technical deep dive into deterministic memory-orchestrated inference using compiler-scheduled DMA, explicit fences, and bounded on-chip buffers to pull DRAM off the compute critical path.",
+    "author": {
+      "@type": "Person",
+      "name": "Manish KL",
+      "url": "https://manishklach.github.io/"
+    },
+    "publisher": {
+      "@type": "Person",
+      "name": "Manish KL"
+    },
+    "datePublished": "2026-04-05",
+    "dateModified": "2026-04-05",
+    "mainEntityOfPage": "https://manishklach.github.io/writings/deterministic-memory-orchestrated-inference-dma-bounded-on-chip-buffers.html",
+    "url": "https://manishklach.github.io/writings/deterministic-memory-orchestrated-inference-dma-bounded-on-chip-buffers.html",
+    "image": "https://manishklach.github.io/assets/og-image.png"
+  }
+  </script>
+  <style>
+:root {
+  --bg: #0b1020;
+  --panel: #11182d;
+  --panel-2: #0f1730;
+  --text: #e9eefc;
+  --muted: #aeb8d8;
+  --line: #243150;
+  --accent: #7aa2ff;
+  --accent-2: #8ef0d0;
+  --accent-3: #ffc97a;
+  --max: 1080px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(122,162,255,.14), transparent 28%),
+    radial-gradient(circle at top right, rgba(142,240,208,.08), transparent 24%),
+    linear-gradient(180deg, #0a0f1d 0%, #0b1020 100%);
+  color: var(--text);
+  line-height: 1.65;
+}
+a { color: #a8c1ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.wrap { max-width: var(--max); margin: 0 auto; padding: 28px 22px 80px; }
+.topbar {
+  display:flex; justify-content:space-between; align-items:center; gap:16px;
+  padding: 10px 0 18px; border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.brand { font-size: 13px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+.hero {
+  padding: 34px 0 20px;
+}
+.kicker {
+  display:inline-block; padding:6px 10px; border:1px solid rgba(122,162,255,.28); color:#cdd9ff;
+  border-radius:999px; font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+  background: rgba(122,162,255,.08);
+}
+h1 {
+  font-size: clamp(2rem, 4.3vw, 3.8rem);
+  line-height:1.05; margin:16px 0 14px; max-width: 940px;
+}
+.subtitle {
+  max-width: 900px; color: var(--muted); font-size: 1.08rem; margin: 0 0 18px;
+}
+.meta {
+  display:flex; flex-wrap:wrap; gap:10px 18px; color: var(--muted); font-size: 14px;
+}
+.grid {
+  display:grid; grid-template-columns: 1.2fr .8fr; gap: 22px; margin-top: 26px;
+}
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+.card {
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
+  border:1px solid rgba(255,255,255,.07); border-radius: 20px; padding: 20px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.24);
+}
+.toc h3, .summary h3, .section h2 { margin-top:0; }
+.toc ol { margin: 0; padding-left: 18px; }
+.toc li { margin: 8px 0; color: var(--muted); }
+.section { margin-top: 28px; }
+.section h2 {
+  font-size: clamp(1.3rem, 2.3vw, 2rem); margin-bottom: 12px;
+}
+.section p, .section li { color: #dce5ff; }
+.section ul { padding-left: 20px; }
+.note {
+  border-left: 3px solid var(--accent-2); padding: 12px 14px; background: rgba(142,240,208,.06);
+  border-radius: 10px; color: #dffdf4;
+}
+.diagram {
+  margin: 18px 0; padding: 14px; background: rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.08);
+  border-radius: 18px;
+}
+.diagram svg { width:100%; height:auto; display:block; }
+.figcap { color: var(--muted); font-size: 14px; margin-top: 8px; }
+.codebox {
+  background:#09101d; border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:16px; overflow:auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; color:#d6e3ff;
+}
+.twocol { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+@media (max-width: 780px) { .twocol { grid-template-columns:1fr; } }
+.footer {
+  margin-top: 42px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,.06); color: var(--muted); font-size: 14px;
+}
+.smallcaps { letter-spacing:.08em; text-transform: uppercase; font-size:12px; color:#b9c6eb; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">Home</div>
+      <div><a href="https://manishklach.github.io/writings.html">Back to writings</a></div>
+    </div>
+    <header class="hero">
+      <span class="kicker">Architecture patent explainer</span>
+      <h1>Deterministic Memory-Orchestrated Inference Using DMA and Bounded On-Chip Buffers</h1>
+      <p class="subtitle">A technical deep dive into a compiler-scheduled inference architecture where DMA, explicit fences, and bounded on-chip buffers pull DRAM off the compute critical path.</p>
+      <div class="meta">
+        <span>Technical blog post</span>
+        <span>14 min read</span>
+        <span>Dark HTML standalone</span>
+      </div>
+    </header>
+    
+<div class="grid">
+  <section class="card summary">
+    <h3>Executive summary</h3>
+    <p>This patent argues for a different way to run neural network inference: treat off-chip memory as a deterministic streaming substrate and keep compute fed from bounded on-chip buffers through compiler-generated DMA schedules, explicit fences, and controlled buffer reuse.</p>
+    <p>The core architectural invariant is powerful: compute units should not directly touch DRAM for most of steady-state inference. DRAM traffic is moved off the compute critical path and handled by scheduled DMA transfers hidden behind prefetch and double buffering.</p>
+  </section>
+  <aside class="card toc">
+    <h3>In this post</h3>
+    <ol>
+      <li>The memory-system problem in modern inference</li>
+      <li>The architectural invariant</li>
+      <li>Compiler-generated DMA scheduling</li>
+      <li>Bounded SRAM and buffer reuse</li>
+      <li>Why this could matter for edge and datacenter inference</li>
+    </ol>
+  </aside>
+</div>
+
+<section class="section">
+  <h2>The core idea: make memory movement scheduled and explicit</h2>
+  <p>Most inference platforms pay a hidden tax to memory uncertainty. Caches miss. Prefetchers guess. Page behavior varies. A large model works well until it overflows a comfortable capacity threshold and then stalls become dominant. This patent’s answer is clean: stop relying on speculative behavior and instead let a compiler generate a deterministic schedule for moving tiles into bounded on-chip buffers.</p>
+  <p>That shifts the architecture away from “hope the cache hierarchy behaves” and toward “prove that the required tile is ready before compute starts.”</p>
+  <div class="note">Architectural invariant: during steady-state inference, compute runs on pre-staged data in bounded on-chip buffers, while DRAM access is pushed behind DMA and fence logic.</div>
+</section>
+
+<section class="section">
+  <h2>System architecture</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 980 360" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow3" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#9db9ff"/>
+        </marker>
+      </defs>
+      <rect x="30" y="120" width="200" height="90" rx="18" fill="#17213a" stroke="#7aa2ff"/>
+      <text x="130" y="155" fill="#eef3ff" font-size="24" text-anchor="middle">Pinned DRAM</text>
+      <text x="130" y="183" fill="#c8d3f8" font-size="14" text-anchor="middle">weights / activations / KV blocks</text>
+
+      <rect x="285" y="120" width="185" height="90" rx="18" fill="#132338" stroke="#8ef0d0"/>
+      <text x="377" y="155" fill="#eef3ff" font-size="24" text-anchor="middle">Streaming DMA</text>
+      <text x="377" y="183" fill="#d4fff2" font-size="14" text-anchor="middle">descriptors · channels · fences</text>
+
+      <rect x="525" y="120" width="210" height="90" rx="18" fill="#1b1f36" stroke="#ffc97a"/>
+      <text x="630" y="155" fill="#fff4df" font-size="24" text-anchor="middle">Bounded SRAM</text>
+      <text x="630" y="183" fill="#ffe7b8" font-size="14" text-anchor="middle">ping-pong buffers A / B</text>
+
+      <rect x="790" y="120" width="160" height="90" rx="18" fill="#16203a" stroke="#7aa2ff"/>
+      <text x="870" y="155" fill="#eef3ff" font-size="24" text-anchor="middle">Compute</text>
+      <text x="870" y="183" fill="#d0dcff" font-size="14" text-anchor="middle">CPU / GPU / NPU / ASIC</text>
+
+      <rect x="340" y="265" width="300" height="60" rx="16" fill="#0f1728" stroke="#95a6d8"/>
+      <text x="490" y="302" fill="#eef3ff" font-size="20" text-anchor="middle">Compiler / Runtime Scheduler</text>
+
+      <line x1="230" y1="165" x2="285" y2="165" stroke="#9db9ff" stroke-width="4" marker-end="url(#arrow3)"/>
+      <line x1="470" y1="165" x2="525" y2="165" stroke="#9df5d8" stroke-width="4" marker-end="url(#arrow3)"/>
+      <line x1="735" y1="165" x2="790" y2="165" stroke="#ffce8f" stroke-width="4" marker-end="url(#arrow3)"/>
+      <line x1="490" y1="265" x2="490" y2="210" stroke="#c9d3f5" stroke-width="3" marker-end="url(#arrow3)"/>
+    </svg>
+    <div class="figcap">Figure 1. The patent’s central pipeline: pinned memory, descriptor-driven DMA, bounded on-chip buffers, and a scheduler that decides when data becomes legally consumable.</div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Why bounded on-chip SRAM is the point</h2>
+  <p>The design does not try to fit the whole model on chip. It embraces the opposite strategy: keep on-chip storage bounded and let it scale with tile size and parallelism rather than with total model size. That is a strong silicon argument. If the compiler can prove tile readiness and reuse, you can get deterministic behavior without building huge SRAM structures.</p>
+  <p>This is what gives the patent a useful hardware-software split: the hardware provides DMA, buffers, and fence semantics; the compiler provides the schedule discipline that makes those small buffers sufficient.</p>
+</section>
+
+<section class="section">
+  <h2>Double buffering and fence-gated compute</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 980 270" xmlns="http://www.w3.org/2000/svg">
+      <rect x="60" y="45" width="860" height="170" rx="20" fill="#0e1527" stroke="#2d3c64"/>
+      <text x="80" y="85" fill="#c8d2f3" font-size="20">Time →</text>
+      <text x="95" y="125" fill="#d8e4ff" font-size="20">DMA</text>
+      <text x="85" y="185" fill="#d8e4ff" font-size="20">Compute</text>
+
+      <rect x="190" y="105" width="170" height="34" rx="10" fill="#1a3b63" stroke="#7aa2ff"/>
+      <text x="275" y="127" fill="#eef3ff" font-size="16" text-anchor="middle">Load Tile 0 → A</text>
+      <rect x="380" y="105" width="170" height="34" rx="10" fill="#184d45" stroke="#8ef0d0"/>
+      <text x="465" y="127" fill="#eef3ff" font-size="16" text-anchor="middle">Load Tile 1 → B</text>
+      <rect x="570" y="105" width="170" height="34" rx="10" fill="#1a3b63" stroke="#7aa2ff"/>
+      <text x="655" y="127" fill="#eef3ff" font-size="16" text-anchor="middle">Load Tile 2 → A</text>
+      <rect x="760" y="105" width="120" height="34" rx="10" fill="#184d45" stroke="#8ef0d0"/>
+      <text x="820" y="127" fill="#eef3ff" font-size="16" text-anchor="middle">…</text>
+
+      <rect x="230" y="165" width="170" height="34" rx="10" fill="#3a2745" stroke="#ffc97a"/>
+      <text x="315" y="187" fill="#fff4df" font-size="16" text-anchor="middle">Compute A</text>
+      <rect x="420" y="165" width="170" height="34" rx="10" fill="#3a2745" stroke="#ffc97a"/>
+      <text x="505" y="187" fill="#fff4df" font-size="16" text-anchor="middle">Compute B</text>
+      <rect x="610" y="165" width="170" height="34" rx="10" fill="#3a2745" stroke="#ffc97a"/>
+      <text x="695" y="187" fill="#fff4df" font-size="16" text-anchor="middle">Compute A</text>
+
+      <line x1="275" y1="139" x2="315" y2="165" stroke="#95a6d8" stroke-width="2" stroke-dasharray="5 5"/>
+      <line x1="465" y1="139" x2="505" y2="165" stroke="#95a6d8" stroke-width="2" stroke-dasharray="5 5"/>
+      <line x1="655" y1="139" x2="695" y2="165" stroke="#95a6d8" stroke-width="2" stroke-dasharray="5 5"/>
+    </svg>
+    <div class="figcap">Figure 2. The point of double buffering is not just overlap. It is deterministic legality: compute starts only after the matching buffer-ready event.</div>
+  </div>
+</section>
+
+<section class="section twocol">
+  <div class="card">
+    <h2>Compiler responsibility</h2>
+    <p>The patent’s compiler does real systems work:</p>
+    <ul>
+      <li>graph analysis over a fixed operator order,</li>
+      <li>tensor lifetime and reuse analysis,</li>
+      <li>bounded buffer placement under fixed capacity,</li>
+      <li>DMA descriptor generation,</li>
+      <li>fence insertion and explicit release points,</li>
+      <li>static determinism verification.</li>
+    </ul>
+    <p>That is not a toy “prefetch hint” compiler. It is a full orchestration compiler.</p>
+  </div>
+  <div class="card">
+    <h2>Hardware hooks that make it enabling</h2>
+    <p>The draft goes further than a high-level concept by specifying:</p>
+    <ul>
+      <li>example fixed-width DMA descriptors,</li>
+      <li>hardware semaphores and completion counters,</li>
+      <li>multi-channel DMA to reduce head-of-line blocking,</li>
+      <li>compressed streaming and on-the-fly decompression,</li>
+      <li>multicast DMA for multi-engine fanout,</li>
+      <li>snapshot / resume rules at fence boundaries.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Compiler flow as a first-class diagram</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 980 230" xmlns="http://www.w3.org/2000/svg">
+      <defs><marker id="arrow4" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#9db9ff"/></marker></defs>
+      <rect x="20" y="80" width="140" height="58" rx="14" fill="#17213a" stroke="#7aa2ff"/><text x="90" y="115" fill="#eef3ff" text-anchor="middle" font-size="18">Graph</text>
+      <rect x="182" y="80" width="160" height="58" rx="14" fill="#132338" stroke="#8ef0d0"/><text x="262" y="115" fill="#eef3ff" text-anchor="middle" font-size="18">Lifetime Analysis</text>
+      <rect x="364" y="80" width="150" height="58" rx="14" fill="#1b1f36" stroke="#ffc97a"/><text x="439" y="115" fill="#eef3ff" text-anchor="middle" font-size="18">Placement</text>
+      <rect x="536" y="80" width="180" height="58" rx="14" fill="#16203a" stroke="#7aa2ff"/><text x="626" y="115" fill="#eef3ff" text-anchor="middle" font-size="18">Descriptors + Fences</text>
+      <rect x="738" y="80" width="220" height="58" rx="14" fill="#122032" stroke="#8ef0d0"/><text x="848" y="115" fill="#eef3ff" text-anchor="middle" font-size="18">Static Determinism Check</text>
+      <line x1="160" y1="109" x2="182" y2="109" stroke="#9db9ff" stroke-width="3" marker-end="url(#arrow4)"/>
+      <line x1="342" y1="109" x2="364" y2="109" stroke="#9db9ff" stroke-width="3" marker-end="url(#arrow4)"/>
+      <line x1="514" y1="109" x2="536" y2="109" stroke="#9db9ff" stroke-width="3" marker-end="url(#arrow4)"/>
+      <line x1="716" y1="109" x2="738" y2="109" stroke="#9db9ff" stroke-width="3" marker-end="url(#arrow4)"/>
+    </svg>
+    <div class="figcap">Figure 3. A good way to explain the invention: not memory management as runtime improvisation, but memory management as a verified compile-time plan.</div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Why this matters</h2>
+  <p>There are at least three reasons this direction is attractive. First, it gives more predictable latency, which is crucial for real-time and safety-adjacent deployments. Second, it keeps SRAM requirements bounded instead of letting them balloon with model size. Third, it creates a path to architecture portability because the idea is not tied to one compute ISA. It is a cross-layer scheduling discipline.</p>
+  <p>In plain English: this patent says that instead of designing inference systems around cache luck, we can design them around explicit memory choreography.</p>
+</section>
+
+    <div class="footer">Prepared as a publication-style technical explainer from the uploaded patent drafts. Inline diagrams are original blog visuals generated for exposition.</div>
+  </div>
+</body>
+</html>

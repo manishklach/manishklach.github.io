@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SLA-Constrained Energy-Aware Inference Scheduling on ARM Edge Systems</title>
+  <meta name="description" content="A technical essay on SLA-constrained energy-aware inference scheduling for ARM edge systems, covering latency targets, model variants, DMA policy, memory residency, and accelerator performance-state control." />
+  <meta name="keywords" content="SLA-constrained energy-aware inference scheduling, ARM edge systems, edge AI scheduler, latency SLA inference, DMA policy, memory residency, accelerator performance state, energy-aware inference controller" />
+  <meta name="author" content="Manish KL" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/sla-constrained-energy-aware-inference-scheduling-arm-edge-systems.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="SLA-Constrained Energy-Aware Inference Scheduling on ARM Edge Systems" />
+  <meta property="og:description" content="A technical essay on SLA-constrained energy-aware inference scheduling for ARM edge systems, covering latency targets, model variants, DMA policy, memory residency, and accelerator performance-state control." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/sla-constrained-energy-aware-inference-scheduling-arm-edge-systems.html" />
+  <meta property="og:site_name" content="Manish KL" />
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <meta property="og:image:alt" content="Preview image for the SLA-constrained energy-aware inference scheduling essay." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="SLA-Constrained Energy-Aware Inference Scheduling on ARM Edge Systems" />
+  <meta name="twitter:description" content="A technical essay on SLA-constrained energy-aware inference scheduling for ARM edge systems, covering latency targets, model variants, DMA policy, memory residency, and accelerator performance-state control." />
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <meta name="twitter:image:alt" content="Preview image for the SLA-constrained energy-aware inference scheduling essay." />
+  <meta name="twitter:site" content="@manishkl_" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "SLA-Constrained Energy-Aware Inference Scheduling on ARM Edge Systems",
+    "description": "A technical essay on SLA-constrained energy-aware inference scheduling for ARM edge systems, covering latency targets, model variants, DMA policy, memory residency, and accelerator performance-state control.",
+    "author": {
+      "@type": "Person",
+      "name": "Manish KL",
+      "url": "https://manishklach.github.io/"
+    },
+    "publisher": {
+      "@type": "Person",
+      "name": "Manish KL"
+    },
+    "datePublished": "2026-04-05",
+    "dateModified": "2026-04-05",
+    "mainEntityOfPage": "https://manishklach.github.io/writings/sla-constrained-energy-aware-inference-scheduling-arm-edge-systems.html",
+    "url": "https://manishklach.github.io/writings/sla-constrained-energy-aware-inference-scheduling-arm-edge-systems.html",
+    "image": "https://manishklach.github.io/assets/og-image.png"
+  }
+  </script>
+  <style>
+:root {
+  --bg: #0b1020;
+  --panel: #11182d;
+  --panel-2: #0f1730;
+  --text: #e9eefc;
+  --muted: #aeb8d8;
+  --line: #243150;
+  --accent: #7aa2ff;
+  --accent-2: #8ef0d0;
+  --accent-3: #ffc97a;
+  --max: 1080px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(122,162,255,.14), transparent 28%),
+    radial-gradient(circle at top right, rgba(142,240,208,.08), transparent 24%),
+    linear-gradient(180deg, #0a0f1d 0%, #0b1020 100%);
+  color: var(--text);
+  line-height: 1.65;
+}
+a { color: #a8c1ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.wrap { max-width: var(--max); margin: 0 auto; padding: 28px 22px 80px; }
+.topbar {
+  display:flex; justify-content:space-between; align-items:center; gap:16px;
+  padding: 10px 0 18px; border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.brand { font-size: 13px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+.hero {
+  padding: 34px 0 20px;
+}
+.kicker {
+  display:inline-block; padding:6px 10px; border:1px solid rgba(122,162,255,.28); color:#cdd9ff;
+  border-radius:999px; font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+  background: rgba(122,162,255,.08);
+}
+h1 {
+  font-size: clamp(2rem, 4.3vw, 3.8rem);
+  line-height:1.05; margin:16px 0 14px; max-width: 940px;
+}
+.subtitle {
+  max-width: 900px; color: var(--muted); font-size: 1.08rem; margin: 0 0 18px;
+}
+.meta {
+  display:flex; flex-wrap:wrap; gap:10px 18px; color: var(--muted); font-size: 14px;
+}
+.grid {
+  display:grid; grid-template-columns: 1.2fr .8fr; gap: 22px; margin-top: 26px;
+}
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+.card {
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
+  border:1px solid rgba(255,255,255,.07); border-radius: 20px; padding: 20px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.24);
+}
+.toc h3, .summary h3, .section h2 { margin-top:0; }
+.toc ol { margin: 0; padding-left: 18px; }
+.toc li { margin: 8px 0; color: var(--muted); }
+.section { margin-top: 28px; }
+.section h2 {
+  font-size: clamp(1.3rem, 2.3vw, 2rem); margin-bottom: 12px;
+}
+.section p, .section li { color: #dce5ff; }
+.section ul { padding-left: 20px; }
+.note {
+  border-left: 3px solid var(--accent-2); padding: 12px 14px; background: rgba(142,240,208,.06);
+  border-radius: 10px; color: #dffdf4;
+}
+.diagram {
+  margin: 18px 0; padding: 14px; background: rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.08);
+  border-radius: 18px;
+}
+.diagram svg { width:100%; height:auto; display:block; }
+.figcap { color: var(--muted); font-size: 14px; margin-top: 8px; }
+.codebox {
+  background:#09101d; border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:16px; overflow:auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; color:#d6e3ff;
+}
+.twocol { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+@media (max-width: 780px) { .twocol { grid-template-columns:1fr; } }
+.footer {
+  margin-top: 42px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,.06); color: var(--muted); font-size: 14px;
+}
+.smallcaps { letter-spacing:.08em; text-transform: uppercase; font-size:12px; color:#b9c6eb; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">Home</div>
+      <div><a href="https://manishklach.github.io/writings.html">Back to writings</a></div>
+    </div>
+    <header class="hero">
+      <span class="kicker">Provisional patent explainer</span>
+      <h1>SLA-Constrained Energy-Aware Inference Scheduling on ARM Edge Systems</h1>
+      <p class="subtitle">A technical essay on a runtime controller that co-optimizes latency SLA, energy, memory residency, DMA policy, model variant selection, and performance-state control for edge inference deployments.</p>
+      <div class="meta">
+        <span>Technical blog post</span>
+        <span>10 min read</span>
+        <span>Dark HTML standalone</span>
+      </div>
+    </header>
+    
+<div class="grid">
+  <section class="card summary">
+    <h3>Executive summary</h3>
+    <p>This patent is about a runtime controller for edge inference that does not treat inference as a fixed, one-size-fits-all workload. Instead, it continuously weighs latency SLA, memory residency, DMA transfer policy, model variant, and accelerator performance state, then chooses the execution policy that minimizes energy while keeping latency within target bounds.</p>
+    <p>The interesting systems insight is that “energy-aware inference” is not just a DVFS problem. It is a coordinated control problem spanning where tensors live, how they move, what model variant runs, and how aggressively the accelerator is clocked under real thermal and bandwidth pressure.</p>
+  </section>
+  <aside class="card toc">
+    <h3>In this post</h3>
+    <ol>
+      <li>The systems problem this patent attacks</li>
+      <li>Why SLA-aware energy control matters on ARM edge systems</li>
+      <li>Controller architecture and telemetry loop</li>
+      <li>How policy selection works at runtime</li>
+      <li>Why this matters commercially</li>
+    </ol>
+  </aside>
+</div>
+
+<section class="section">
+  <h2>The real problem: edge inference is not static</h2>
+  <p>Many edge deployments look simple from the outside: a model runs on an ARM SoC, a camera or sensor provides input, and the system is expected to stay under a latency target. But in practice, the same inference request may arrive under very different thermal, queue-depth, power, and memory conditions. A scheduler that assumes the world is static either wastes power or misses latency targets.</p>
+  <p>This patent frames the system correctly: inference behavior depends on interactions among model variants, residency state, DMA movement overhead, accelerator state, and live telemetry. That is what makes the controller more interesting than a normal low-level governor.</p>
+  <div class="note">Core thesis: the optimal inference plan is conditional. It depends on current operating state, not just on the model graph.</div>
+</section>
+
+<section class="section">
+  <h2>Architecture: controller + accelerator + memory + telemetry</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 980 420" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="g1" x1="0" x2="1">
+          <stop offset="0%" stop-color="#7aa2ff" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#8ef0d0" stop-opacity="0.25"/>
+        </linearGradient>
+        <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#9db9ff"/>
+        </marker>
+      </defs>
+      <rect x="30" y="40" width="250" height="82" rx="16" fill="url(#g1)" stroke="#7aa2ff"/>
+      <text x="155" y="73" fill="#eef3ff" font-size="22" text-anchor="middle">Inference Controller</text>
+      <text x="155" y="101" fill="#c7d4ff" font-size="14" text-anchor="middle">Policy evaluator + SLA optimizer</text>
+
+      <rect x="360" y="40" width="250" height="82" rx="16" fill="#12203f" stroke="#7aa2ff"/>
+      <text x="485" y="73" fill="#eef3ff" font-size="22" text-anchor="middle">Accelerator / NPU</text>
+      <text x="485" y="101" fill="#c7d4ff" font-size="14" text-anchor="middle">Perf-state / DVFS / dispatch</text>
+
+      <rect x="690" y="40" width="250" height="82" rx="16" fill="#102133" stroke="#8ef0d0"/>
+      <text x="815" y="73" fill="#eef3ff" font-size="22" text-anchor="middle">Model Variants</text>
+      <text x="815" y="101" fill="#d6fff1" font-size="14" text-anchor="middle">full / reduced / fallback</text>
+
+      <rect x="160" y="210" width="250" height="92" rx="16" fill="#17172a" stroke="#ffc97a"/>
+      <text x="285" y="245" fill="#fff4df" font-size="22" text-anchor="middle">DMA Policy</text>
+      <text x="285" y="274" fill="#ffe7b8" font-size="14" text-anchor="middle">prefetch timing / movement cost</text>
+
+      <rect x="470" y="210" width="250" height="92" rx="16" fill="#161d33" stroke="#8ef0d0"/>
+      <text x="595" y="245" fill="#eef3ff" font-size="22" text-anchor="middle">Memory Residency</text>
+      <text x="595" y="274" fill="#d6fff1" font-size="14" text-anchor="middle">hot data placement / reuse</text>
+
+      <rect x="320" y="340" width="330" height="56" rx="16" fill="#101728" stroke="#95a6d8"/>
+      <text x="485" y="374" fill="#eef3ff" font-size="20" text-anchor="middle">Telemetry: power · temp · queue depth</text>
+
+      <line x1="280" y1="81" x2="360" y2="81" stroke="#9db9ff" stroke-width="3" marker-end="url(#arrow)"/>
+      <line x1="610" y1="81" x2="690" y2="81" stroke="#9db9ff" stroke-width="3" marker-end="url(#arrow)"/>
+      <line x1="230" y1="122" x2="250" y2="210" stroke="#ffce8f" stroke-width="3" marker-end="url(#arrow)"/>
+      <line x1="450" y1="122" x2="360" y2="210" stroke="#9df5d8" stroke-width="3" marker-end="url(#arrow)"/>
+      <line x1="485" y1="340" x2="485" y2="122" stroke="#c8d2f3" stroke-width="3" marker-end="url(#arrow)"/>
+    </svg>
+    <div class="figcap">Figure 1. A practical reading of the patent: the controller chooses an execution policy using SLA targets and live telemetry, not just static compile-time assumptions.</div>
+  </div>
+</section>
+
+<section class="section twocol">
+  <div class="card">
+    <h2>Why the patent is stronger than “just DVFS”</h2>
+    <p>A lot of energy-management approaches act only on clock states. This patent is broader. It explicitly combines four knobs:</p>
+    <ul>
+      <li>memory residency,</li>
+      <li>DMA transfer strategy,</li>
+      <li>model variant choice, and</li>
+      <li>accelerator performance-state control.</li>
+    </ul>
+    <p>That combination matters because these knobs interact. Slowing clocks may save power, but if it increases queueing or causes worse transfer overlap, the total joules per inference can actually get worse.</p>
+  </div>
+  <div class="card">
+    <h2>What runtime adaptation likely looks like</h2>
+    <p>One can imagine the controller evaluating candidate policies such as:</p>
+    <ul>
+      <li>keep a hotter model variant in memory and lower clocks,</li>
+      <li>switch to a smaller variant under thermal pressure,</li>
+      <li>change DMA behavior to reduce contention,</li>
+      <li>use a more aggressive performance state if queue depth is rising.</li>
+    </ul>
+    <p>The novelty is not a single choice. It is the policy engine that jointly reasons across these choices under an SLA.</p>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Runtime feedback loop</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 980 240" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#9db9ff"/>
+        </marker>
+      </defs>
+      <rect x="20" y="80" width="170" height="70" rx="16" fill="#17213a" stroke="#7aa2ff"/>
+      <text x="105" y="122" fill="#eef3ff" font-size="22" text-anchor="middle">Observe</text>
+      <rect x="215" y="80" width="170" height="70" rx="16" fill="#132338" stroke="#8ef0d0"/>
+      <text x="300" y="122" fill="#eef3ff" font-size="22" text-anchor="middle">Estimate</text>
+      <rect x="410" y="80" width="170" height="70" rx="16" fill="#1c1f34" stroke="#ffc97a"/>
+      <text x="495" y="122" fill="#eef3ff" font-size="22" text-anchor="middle">Select Policy</text>
+      <rect x="605" y="80" width="170" height="70" rx="16" fill="#16203a" stroke="#7aa2ff"/>
+      <text x="690" y="122" fill="#eef3ff" font-size="22" text-anchor="middle">Execute</text>
+      <rect x="800" y="80" width="160" height="70" rx="16" fill="#122032" stroke="#8ef0d0"/>
+      <text x="880" y="122" fill="#eef3ff" font-size="22" text-anchor="middle">Re-check SLA</text>
+      <line x1="190" y1="115" x2="215" y2="115" stroke="#9db9ff" stroke-width="3" marker-end="url(#arrow2)"/>
+      <line x1="385" y1="115" x2="410" y2="115" stroke="#9db9ff" stroke-width="3" marker-end="url(#arrow2)"/>
+      <line x1="580" y1="115" x2="605" y2="115" stroke="#9db9ff" stroke-width="3" marker-end="url(#arrow2)"/>
+      <line x1="775" y1="115" x2="800" y2="115" stroke="#9db9ff" stroke-width="3" marker-end="url(#arrow2)"/>
+      <path d="M880 150 C880 205, 105 205, 105 150" fill="none" stroke="#95a6d8" stroke-width="3" marker-end="url(#arrow2)"/>
+    </svg>
+    <div class="figcap">Figure 2. A control-loop view: the patent effectively describes a closed-loop inference governor driven by SLA and energy objectives.</div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Commercial relevance</h2>
+  <p>This kind of controller is appealing anywhere energy efficiency and latency predictability both matter: cameras, smart gateways, industrial vision, drones, robotics, and rugged battery-backed devices. The reason is straightforward. OEMs do not want to overbuild hardware just to survive worst-case thermal states. A better scheduler can turn the same silicon into a more reliable product.</p>
+  <p>In business terms, this patent points toward a software-defined edge inference controller that can squeeze more useful work from constrained SoCs without blindly sacrificing QoS.</p>
+</section>
+
+    <div class="footer">Prepared as a publication-style technical explainer from the uploaded patent drafts. Inline diagrams are original blog visuals generated for exposition.</div>
+  </div>
+</body>
+</html>
