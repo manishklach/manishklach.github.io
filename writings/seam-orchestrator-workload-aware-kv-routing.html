@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seam Orchestrator: Workload-Aware KV Routing in Disaggregated Inference | Manish KL</title>
+  <meta name="description" content="A technical essay on Seam Orchestrator, workload-aware KV routing, disaggregated inference, replacement-capable glue layers, and experiments in admissibility, capacity-aware routing, hysteresis, and baseline comparisons." />
+  <meta name="keywords" content="Seam Orchestrator, workload-aware KV routing, disaggregated inference, KV cache transfer, admissibility, NIXL, EFA, UCX, AI infrastructure, heterogeneous prefill decode, policy over transport" />
+  <meta name="author" content="Manish KL" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/seam-orchestrator-workload-aware-kv-routing.html" />
+
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Seam Orchestrator: Workload-Aware KV Routing in Disaggregated Inference" />
+  <meta property="og:description" content="A technical essay on policy above transport for KV movement in disaggregated inference, with scenario results, experiments, and a replacement-capable glue-layer prototype path." />
+  <meta property="og:site_name" content="Manish KL" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:url" content="https://manishklach.github.io/writings/seam-orchestrator-workload-aware-kv-routing.html" />
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <meta property="og:image:alt" content="Editorial essay preview for Seam Orchestrator and workload-aware KV routing in disaggregated inference." />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Seam Orchestrator: Workload-Aware KV Routing in Disaggregated Inference" />
+  <meta name="twitter:description" content="A technical essay on policy over transport, workload-aware admissibility, routing, and experimental results in disaggregated inference." />
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <meta name="twitter:image:alt" content="Editorial essay preview for Seam Orchestrator and workload-aware KV routing in disaggregated inference." />
+  <meta name="twitter:site" content="@manishkl_" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "Seam Orchestrator: Workload-Aware KV Routing in Disaggregated Inference",
+    "description": "A technical essay on Seam Orchestrator, workload-aware KV routing in disaggregated inference, replacement-capable glue layers, and experiments in admissibility, capacity-aware routing, hysteresis, and baseline comparisons.",
+    "url": "https://manishklach.github.io/writings/seam-orchestrator-workload-aware-kv-routing.html",
+    "mainEntityOfPage": "https://manishklach.github.io/writings/seam-orchestrator-workload-aware-kv-routing.html",
+    "datePublished": "2026-04-07",
+    "dateModified": "2026-04-07",
+    "image": "https://manishklach.github.io/assets/og-image.png",
+    "author": {
+      "@type": "Person",
+      "name": "Manish KL",
+      "url": "https://manishklach.github.io/"
+    },
+    "publisher": {
+      "@type": "Person",
+      "name": "Manish KL",
+      "url": "https://manishklach.github.io/"
+    },
+    "keywords": [
+      "Seam Orchestrator",
+      "disaggregated inference",
+      "KV cache transfer",
+      "workload-aware routing",
+      "policy over transport",
+      "NIXL",
+      "EFA",
+      "UCX",
+      "admissibility",
+      "AI infrastructure"
+    ]
+  }
+  </script>
+
+  <style>
+    :root {
+      --bg: #0b1120;
+      --panel: rgba(15, 23, 42, 0.74);
+      --line: rgba(148, 163, 184, 0.18);
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --strong: #f8fafc;
+      --accent: #7dd3fc;
+      --accent2: #a78bfa;
+      --good: #86efac;
+      --warn: #fcd34d;
+      --bad: #fca5a5;
+      --shadow: 0 12px 36px rgba(0,0,0,0.28);
+      --maxw: 880px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(125,211,252,0.07), transparent 28%),
+        linear-gradient(180deg, #172554 0%, #0f172a 20%, #0b1120 100%);
+      line-height: 1.72;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { width: min(var(--maxw), calc(100vw - 32px)); margin: 0 auto; }
+    header.site { padding: 24px 0 8px; }
+    .nav { display: flex; justify-content: space-between; align-items: center; gap: 16px; color: var(--muted); font-size: 14px; }
+    .brand { color: var(--strong); font-weight: 700; letter-spacing: .02em; }
+    .hero { padding: 36px 0 18px; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px;
+      color: var(--muted); font-size: 13px; background: rgba(15,23,42,0.46);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 999px; background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+    h1 {
+      margin: 18px 0 12px;
+      font-size: clamp(2.3rem, 5.5vw, 4.2rem);
+      line-height: 1.03;
+      letter-spacing: -0.045em;
+      color: var(--strong);
+      max-width: 12ch;
+    }
+    .dek { margin: 0; max-width: 760px; color: #cbd5e1; font-size: clamp(1.04rem, 2vw, 1.2rem); }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; color: var(--muted); font-size: 14px; margin-top: 18px; }
+    .meta span:not(:last-child)::after { content: "•"; margin-left: 14px; color: rgba(148,163,184,0.45); }
+    .summary-box, .callout {
+      margin-top: 26px;
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(15,23,42,0.42);
+    }
+    .summary-box p:last-child { margin-bottom: 0; }
+    main { padding: 8px 0 80px; }
+    article h2 { margin: 52px 0 12px; font-size: clamp(1.48rem, 2.4vw, 2rem); line-height: 1.15; letter-spacing: -0.03em; color: var(--strong); }
+    article h3 { margin: 28px 0 10px; font-size: 1.12rem; color: var(--strong); letter-spacing: -0.02em; }
+    article p { margin: 0 0 18px; font-size: 1.04rem; color: #dbe4f0; }
+    blockquote {
+      margin: 26px 0;
+      padding: 16px 18px;
+      border-left: 3px solid var(--accent);
+      background: rgba(15,23,42,0.42);
+      border-radius: 0 14px 14px 0;
+      color: #e2e8f0;
+    }
+    .figure { margin: 28px 0 30px; }
+    .figure svg {
+      width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 22px;
+      background: linear-gradient(180deg, rgba(2,6,23,0.82), rgba(15,23,42,0.88)); box-shadow: var(--shadow);
+    }
+    .figcap { margin-top: 10px; color: var(--muted); font-size: 14px; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 22px 0 8px; }
+    .stat { border: 1px solid var(--line); border-radius: 18px; padding: 16px; background: rgba(15,23,42,0.44); }
+    .stat .num { display: block; font-size: 1.7rem; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 6px; color: #93c5fd; }
+    .stat:nth-child(2) .num { color: var(--good); }
+    .stat:nth-child(3) .num { color: var(--warn); }
+    .stat:nth-child(4) .num { color: var(--bad); }
+    .table-wrap { margin: 22px 0; overflow-x: auto; border: 1px solid var(--line); border-radius: 18px; background: rgba(15,23,42,0.44); }
+    table { width: 100%; min-width: 720px; border-collapse: collapse; }
+    th, td { padding: 14px 16px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    th { background: rgba(30,41,59,0.55); color: var(--strong); font-size: 14px; }
+    td { color: #dbe4f0; font-size: 15px; }
+    tr:last-child td { border-bottom: none; }
+    .yes { color: var(--good); font-weight: 700; }
+    .no { color: var(--bad); font-weight: 700; }
+    .tight-list { margin: 16px 0 18px; padding-left: 18px; }
+    .tight-list li { margin: 8px 0; }
+    code {
+      background: rgba(15,23,42,0.66);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 2px 6px;
+      color: #e2e8f0;
+    }
+    .footer-note { margin-top: 50px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+    @media (max-width: 920px) { .stats { grid-template-columns: 1fr 1fr; } h1 { max-width: none; } }
+    @media (max-width: 640px) { .stats { grid-template-columns: 1fr; } .meta span:not(:last-child)::after { content: ""; margin: 0; } }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <div class="wrap">
+      <div class="nav">
+        <div class="brand">Manish KL</div>
+        <div><a href="https://manishklach.github.io/writings.html">← Back to writings</a></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <div class="eyebrow"><span class="dot"></span> AI Infrastructure · Disaggregated Inference · Experimental Results</div>
+      <h1>Seam Orchestrator: Workload-Aware KV Routing in Disaggregated Inference</h1>
+      <p class="dek">A policy layer above transport for KV movement, workload-aware admissibility, and routing in disaggregated inference.</p>
+      <div class="meta">
+        <span>By Manish KL</span>
+        <span>April 7, 2026</span>
+        <span>~15 min read</span>
+        <span>Technical Essay</span>
+      </div>
+      <div class="summary-box">
+        <p>The interesting question in disaggregated inference is no longer only whether bytes can move. It is whether a candidate path is admissible for a specific workload right now, under current latency, jitter, capacity, and topology conditions. That is the control point Seam Orchestrator makes explicit.</p>
+      </div>
+    </section>
+
+    <article>
+      <h2>Why this matters now</h2>
+      <p>Once prefill and decode live on different systems, the software problem is no longer only “move KV cache quickly.” It becomes “decide which candidate path is appropriate for which workload under current conditions.” Transport alone does not answer the whole systems question.</p>
+      <p>Seam Orchestrator turns that seam into an explicit control plane. It tracks non-binary <code>PathState</code>, computes <code>GFS</code>, <code>PRS</code>, and <code>FAE</code>, incorporates workload profiles and capacity state, and emits decision records explaining why a candidate path was chosen, skipped, or rejected.</p>
+
+      <blockquote>The interesting software layer in disaggregated inference is not only the one that can move bytes. It is the one that can decide whether a still-alive path deserves trust for a given workload.</blockquote>
+
+      <div class="stats">
+        <div class="stat"><span class="num">95.5%</span>strict workloads preserved on healthy paths</div>
+        <div class="stat"><span class="num">82.6%</span>tolerant degraded-path utilization</div>
+        <div class="stat"><span class="num">100%</span>healthy headroom preservation</div>
+        <div class="stat"><span class="num">7</span>oscillations avoided by hysteresis</div>
+      </div>
+
+      <h2>The architecture: policy above transport</h2>
+      <p>The cleanest thing about the repository is the boundary it draws. Backends move bytes. The orchestrator makes judgments. That distinction is strategically important because backend choice can vary while the policy layer remains coherent.</p>
+
+      <div class="figure">
+        <svg viewBox="0 0 1200 620" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Architecture showing session layer, seam orchestrator, and swappable transport backends">
+          <defs>
+            <linearGradient id="g1" x1="0" x2="1">
+              <stop offset="0%" stop-color="#7dd3fc"/>
+              <stop offset="100%" stop-color="#a78bfa"/>
+            </linearGradient>
+            <linearGradient id="g2" x1="0" x2="1">
+              <stop offset="0%" stop-color="#34d399"/>
+              <stop offset="100%" stop-color="#7dd3fc"/>
+            </linearGradient>
+          </defs>
+          <text x="70" y="72" font-size="38" font-family="Inter, sans-serif" font-weight="800" fill="#f8fafc">Policy above transport</text>
+          <text x="70" y="108" font-size="20" font-family="Inter, sans-serif" fill="#94a3b8">The backend moves bytes. The orchestrator decides whether a path is trustworthy for the workload.</text>
+          <rect x="140" y="150" rx="24" ry="24" width="920" height="96" fill="rgba(15,23,42,0.82)" stroke="rgba(148,163,184,0.18)"/>
+          <text x="600" y="192" text-anchor="middle" font-size="28" font-family="Inter, sans-serif" font-weight="800" fill="#f8fafc">Application / Session Layer</text>
+          <text x="600" y="222" text-anchor="middle" font-size="18" font-family="Inter, sans-serif" fill="#cbd5e1">Prefill session • workload profile • KV handoff request • decode destination selection</text>
+          <rect x="180" y="286" rx="28" ry="28" width="840" height="180" fill="rgba(30,41,59,0.76)" stroke="url(#g1)" stroke-width="2.5"/>
+          <text x="600" y="334" text-anchor="middle" font-size="34" font-family="Inter, sans-serif" font-weight="800" fill="#f8fafc">Seam Orchestrator</text>
+          <text x="600" y="370" text-anchor="middle" font-size="18" font-family="Inter, sans-serif" fill="#cbd5e1">PathState • GFS • PRS • FAE • hysteresis • capacity • admissibility • decision records</text>
+          <rect x="235" y="392" rx="16" ry="16" width="180" height="48" fill="rgba(15,23,42,0.84)" stroke="rgba(148,163,184,0.18)"/>
+          <rect x="430" y="392" rx="16" ry="16" width="140" height="48" fill="rgba(15,23,42,0.84)" stroke="rgba(148,163,184,0.18)"/>
+          <rect x="585" y="392" rx="16" ry="16" width="140" height="48" fill="rgba(15,23,42,0.84)" stroke="rgba(148,163,184,0.18)"/>
+          <rect x="740" y="392" rx="16" ry="16" width="225" height="48" fill="rgba(15,23,42,0.84)" stroke="rgba(148,163,184,0.18)"/>
+          <text x="325" y="423" text-anchor="middle" font-size="16" font-family="Inter, sans-serif" fill="#f8fafc">Workload Profiles</text>
+          <text x="500" y="423" text-anchor="middle" font-size="16" font-family="Inter, sans-serif" fill="#f8fafc">Path Scoring</text>
+          <text x="655" y="423" text-anchor="middle" font-size="16" font-family="Inter, sans-serif" fill="#f8fafc">Capacity</text>
+          <text x="852" y="423" text-anchor="middle" font-size="16" font-family="Inter, sans-serif" fill="#f8fafc">Decision Records</text>
+          <line x1="600" y1="246" x2="600" y2="286" stroke="url(#g2)" stroke-width="5" stroke-linecap="round"/>
+          <rect x="210" y="516" rx="20" ry="20" width="210" height="62" fill="rgba(15,23,42,0.82)" stroke="rgba(148,163,184,0.18)"/>
+          <rect x="495" y="516" rx="20" ry="20" width="210" height="62" fill="rgba(15,23,42,0.82)" stroke="rgba(148,163,184,0.18)"/>
+          <rect x="780" y="516" rx="20" ry="20" width="210" height="62" fill="rgba(15,23,42,0.82)" stroke="rgba(148,163,184,0.18)"/>
+          <text x="315" y="553" text-anchor="middle" font-size="20" font-family="Inter, sans-serif" font-weight="700" fill="#f8fafc">MockBackend</text>
+          <text x="600" y="553" text-anchor="middle" font-size="20" font-family="Inter, sans-serif" font-weight="700" fill="#f8fafc">NIXLBackend</text>
+          <text x="885" y="553" text-anchor="middle" font-size="20" font-family="Inter, sans-serif" font-weight="700" fill="#f8fafc">UCXBackend</text>
+          <line x1="315" y1="466" x2="315" y2="516" stroke="rgba(125,211,252,0.65)" stroke-width="4" stroke-linecap="round"/>
+          <line x1="600" y1="466" x2="600" y2="516" stroke="rgba(125,211,252,0.65)" stroke-width="4" stroke-linecap="round"/>
+          <line x1="885" y1="466" x2="885" y2="516" stroke="rgba(125,211,252,0.65)" stroke-width="4" stroke-linecap="round"/>
+        </svg>
+        <div class="figcap">Figure 1. Seam Orchestrator as a policy/control layer above swappable transport backends.</div>
+      </div>
+
+      <div class="callout">
+        <strong>Terminology that makes the design legible:</strong>
+        <ul class="tight-list">
+          <li><strong>pool</strong> = decode resource group</li>
+          <li><strong>path</strong> = route or transfer path to that pool</li>
+          <li><strong>candidate</strong> = pool + path + state snapshot</li>
+          <li><strong>decision record</strong> = structured explanation of the routing outcome</li>
+          <li><strong>transport backend</strong> = backend below the orchestrator</li>
+        </ul>
+      </div>
+
+      <h2>Can the glue layer be replaced?</h2>
+      <p>In prototype form, yes. That is one of the most useful things the project shows. The repository demonstrates swappable backends in practice through mock, NIXL, and UCX adapters, while keeping the backend abstraction intentionally narrow.</p>
+      <p>That is not the same as claiming production parity with hardened transport stacks. The narrower claim is already strategically meaningful: the glue layer is not magic, swappable backends are plausible, and the more durable software leverage may move upward into interface ownership and policy logic above transport.</p>
+
+      <h2>Scenario E: the category-defining proof</h2>
+      <p>Scenario E remains the strongest single artifact in the repository because it demonstrates the whole thesis in a compact table. <strong>Same path. Same transfer mechanism. Different admissibility by workload.</strong></p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Workload</th>
+              <th>SLA</th>
+              <th>Jitter tolerance</th>
+              <th>Admissible?</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>BATCH</td><td>200ms</td><td>0.9</td><td class="yes">YES</td><td>admitted despite <code>DEGRADED_USABLE</code></td></tr>
+            <tr><td>INTERACTIVE</td><td>30ms</td><td>0.3</td><td class="no">NO</td><td>jitter budget exceeded</td></tr>
+            <tr><td>RELEASE</td><td>15ms</td><td>0.1</td><td class="no">NO</td><td>p99 latency above SLA threshold</td></tr>
+            <tr><td>ASYNC-BATCH</td><td>100ms</td><td>0.9</td><td class="yes">YES</td><td>admitted despite degradation</td></tr>
+            <tr><td>STRICT-SYNC</td><td>20ms</td><td>0.2</td><td class="no">NO</td><td>jitter intolerance on degraded path</td></tr>
+            <tr><td>TOLERANT-MED</td><td>50ms</td><td>0.7</td><td class="yes">YES</td><td>acceptable under current degraded state</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>This is what turns the repo from a scoring toy into a category statement. If every alive path were equally appropriate for every workload, transport would dominate and the rest of the control plane would be ornamental. Scenario E proves the opposite.</p>
+
+      <h2>Scenario F: health vs headroom</h2>
+      <p>Scenario F extends the thesis under capacity pressure. The healthiest path is not always the best path if healthy headroom should be preserved for stricter workloads. That is where Seam Orchestrator stops behaving like a path-quality ranker and starts behaving like a real policy layer.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Condition</th>
+              <th>Healthy path status</th>
+              <th>Degraded path status</th>
+              <th>Policy outcome</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Strict traffic, healthy path near saturation</td>
+              <td>healthy but scarce</td>
+              <td>degraded-usable with slack</td>
+              <td>preserve healthy headroom for strict workloads</td>
+            </tr>
+            <tr>
+              <td>Tolerant traffic under same occupancy</td>
+              <td>healthy but near capacity</td>
+              <td>degraded-usable and acceptable</td>
+              <td>shift tolerant work onto degraded-but-usable path</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>In practical terms, the system can deliberately place tolerant work onto a degraded-but-usable path when doing so protects the remaining healthy capacity for interactive or release-critical traffic.</p>
+
+      <h2>Experiments: moving from demos to evidence</h2>
+      <p>The repository now includes more than hand-built scenarios. It carries experiment summaries, evaluation artifacts, and baseline comparisons that make the project publishable as a systems artifact rather than only a prototype. The experiment families test admissibility boundaries, capacity-pressure tradeoffs, hysteresis stability, alternate-path scarcity, and baseline behavior under simpler routing heuristics.</p>
+
+      <h3>Admissibility boundary sweep</h3>
+      <p>This sweep increases degradation severity while holding the candidate path otherwise stable. The key observation is not merely when a path becomes bad. It is how different workload classes stop trusting it at different rates. Batch and tolerant workloads remain admissible far longer than interactive or release-sensitive workloads.</p>
+
+      <div class="figure">
+        <svg viewBox="0 0 800 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Admissibility boundary sweep chart">
+          <rect x="0" y="0" width="800" height="420" fill="rgba(15,23,42,0.88)"/>
+          <text x="40" y="42" fill="#f8fafc" font-size="24" font-family="Inter, sans-serif" font-weight="700">Admissibility boundary sweep</text>
+          <text x="40" y="68" fill="#94a3b8" font-size="14" font-family="Inter, sans-serif">Admissibility rate vs path degradation severity</text>
+          <line x1="80" y1="340" x2="740" y2="340" stroke="rgba(148,163,184,0.35)" stroke-width="2"/>
+          <line x1="80" y1="90" x2="80" y2="340" stroke="rgba(148,163,184,0.35)" stroke-width="2"/>
+          <polyline points="80,110 180,122 280,138 380,168 480,208 580,258 680,308" fill="none" stroke="#86efac" stroke-width="4"/>
+          <polyline points="80,138 180,162 280,198 380,242 480,286 580,320 680,334" fill="none" stroke="#7dd3fc" stroke-width="4"/>
+          <polyline points="80,162 180,202 280,252 380,302 480,330 580,338 680,340" fill="none" stroke="#fca5a5" stroke-width="4"/>
+          <text x="690" y="310" fill="#86efac" font-size="14" font-family="Inter, sans-serif">batch / tolerant</text>
+          <text x="640" y="265" fill="#7dd3fc" font-size="14" font-family="Inter, sans-serif">interactive</text>
+          <text x="612" y="344" fill="#fca5a5" font-size="14" font-family="Inter, sans-serif">release-strict</text>
+          <text x="82" y="362" fill="#94a3b8" font-size="13" font-family="Inter, sans-serif">low degradation</text>
+          <text x="642" y="362" fill="#94a3b8" font-size="13" font-family="Inter, sans-serif">high degradation</text>
+        </svg>
+        <div class="figcap">Figure 2. Admissibility peels away by workload class rather than collapsing all at once.</div>
+      </div>
+
+      <h3>Capacity-pressure tradeoff sweep</h3>
+      <p>This sweep raises occupancy on the healthy path while leaving a degraded-but-usable path with headroom. The result formalizes Scenario F: healthy-path preservation matters, and the orchestrator deliberately spends degraded-but-usable capacity on tolerant traffic to keep the best path available for stricter work.</p>
+
+      <div class="figure">
+        <svg viewBox="0 0 800 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Capacity pressure tradeoff chart">
+          <rect x="0" y="0" width="800" height="420" fill="rgba(15,23,42,0.88)"/>
+          <text x="40" y="42" fill="#f8fafc" font-size="24" font-family="Inter, sans-serif" font-weight="700">Capacity-pressure tradeoff</text>
+          <text x="40" y="68" fill="#94a3b8" font-size="14" font-family="Inter, sans-serif">Routing distribution as healthy-path occupancy rises</text>
+          <line x1="80" y1="340" x2="740" y2="340" stroke="rgba(148,163,184,0.35)" stroke-width="2"/>
+          <line x1="80" y1="90" x2="80" y2="340" stroke="rgba(148,163,184,0.35)" stroke-width="2"/>
+          <polyline points="80,290 180,270 280,236 380,198 480,158 580,126 680,102" fill="none" stroke="#86efac" stroke-width="4"/>
+          <polyline points="80,128 180,146 280,176 380,212 480,252 580,290 680,320" fill="none" stroke="#fcd34d" stroke-width="4"/>
+          <text x="650" y="104" fill="#86efac" font-size="14" font-family="Inter, sans-serif">tolerant traffic shifted</text>
+          <text x="594" y="316" fill="#fcd34d" font-size="14" font-family="Inter, sans-serif">healthy headroom preserved</text>
+        </svg>
+        <div class="figcap">Figure 3. As healthy-path occupancy rises, tolerant work shifts first while strict headroom is preserved.</div>
+      </div>
+
+      <h3>Hysteresis stability</h3>
+      <p>Hysteresis is not cosmetic. A gray-failure controller that flaps is not operationally believable. The staged restore model in the repository avoids immediate snap-back after a single clean sample and instead requires cleaner windows before returning to healthy.</p>
+
+      <div class="callout"><strong>Why this matters:</strong> a control plane that escalates fast and restores slowly under noise is much easier to trust than one that rapidly oscillates between degraded and healthy states.</div>
+
+      <h2>What the baselines show</h2>
+      <p>The baseline comparison answers the obvious skepticism: why not just pick the lowest-latency path, the healthiest path, or the least occupied path? Because each naive baseline throws away a different part of the control problem.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Baseline</th>
+              <th>What it preserves</th>
+              <th>What it loses</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>lowest latency</td>
+              <td>raw fast-path bias</td>
+              <td>controlled use of degraded-but-usable capacity</td>
+            </tr>
+            <tr>
+              <td>binary health only</td>
+              <td>simple exclusion logic</td>
+              <td>workload-relative admissibility nuance</td>
+            </tr>
+            <tr>
+              <td>capacity only</td>
+              <td>headroom awareness</td>
+              <td>strict-workload protection under degraded conditions</td>
+            </tr>
+            <tr>
+              <td>Seam Orchestrator</td>
+              <td>policy balance across health, headroom, workload strictness, and explainability</td>
+              <td>more complexity, but in service of a richer control objective</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>That is why the repository does not read like “just another router.” It is trying to preserve strict workload success, controlled degraded-path utilization, healthy headroom, and decision explainability at the same time.</p>
+
+      <h2>What this means</h2>
+      <p>The narrow conclusion is that a replacement-capable prototype path exists for the glue layer. The broader conclusion is that once backend choice becomes abstractable, the more durable software leverage may move upward into interface ownership and policy logic.</p>
+      <p>In practical terms, that means the strategic moat in disaggregated inference may no longer be only “who owns the backend that moves bytes?” It may increasingly be “who owns the control plane that decides which paths deserve trust, for which workloads, and under what capacity conditions?”</p>
+
+      <blockquote>The glue layer is replaceable in principle. The higher-leverage software question is who owns the policy layer that decides which paths deserve trust.</blockquote>
+
+      <h2>Limits and next steps</h2>
+      <p>The replacement-path note in the repository is careful, and that care is the right tone. This is not claiming production parity with hardened stacks. It is claiming something narrower and credible: replacement feasibility, backend swappability, and a useful orchestration layer above transport.</p>
+      <p>The next clean extensions are visible from the published artifacts: broader embodiments beyond KV routing, richer replay tooling, more topology-aware experiments, and stronger public presentation. Even in its current form, though, the project is already more than a concept. It is a compact systems artifact for a real category.</p>
+
+      <div class="footer-note">
+        Related project: <a href="https://github.com/manishklach/seam-orchestrator">manishklach/seam-orchestrator</a><br/>
+        Article URL: <code>https://manishklach.github.io/writings/seam-orchestrator-workload-aware-kv-routing.html</code>
+      </div>
+    </article>
+  </main>
+</body>
+</html>
