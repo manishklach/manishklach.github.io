@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>From SSD to GPU to SRAM: Why the Last Bottleneck Is Now On-Chip | Manish KL</title>
+  <meta name="description" content="Once host-memory bounce buffers are reduced, the bottleneck shifts inward. The next frontier is deterministic HBM↔SRAM orchestration inside the accelerator."/>
+  <meta name="author" content="Manish KL"/>
+  <meta name="robots" content="index, follow, max-image-preview:large"/>
+  <meta name="theme-color" content="#040c08"/>
+  <link rel="canonical" href="https://manishklach.github.io/writings/from-ssd-to-gpu-to-sram-last-bottleneck-on-chip.html"/>
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="From SSD to GPU to SRAM: Why the Last Bottleneck Is Now On-Chip" />
+  <meta property="og:description" content="Once host-memory bounce buffers are reduced, the bottleneck shifts inward. The next frontier is deterministic HBM↔SRAM orchestration inside the accelerator." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/from-ssd-to-gpu-to-sram-last-bottleneck-on-chip.html"/>
+  <meta property="og:site_name" content="Manish KL"/>
+  <meta property="og:locale" content="en_US"/>
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png"/>
+  <meta property="og:image:alt" content="From SSD to GPU to SRAM: Why the Last Bottleneck Is Now On-Chip essay cover image."/>
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="From SSD to GPU to SRAM: Why the Last Bottleneck Is Now On-Chip" />
+  <meta name="twitter:description" content="Once host-memory bounce buffers are reduced, the bottleneck shifts inward. The next frontier is deterministic HBM↔SRAM orchestration inside the accelerator."/>
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png"/>
+  <meta name="twitter:image:alt" content="From SSD to GPU to SRAM: Why the Last Bottleneck Is Now On-Chip essay cover image."/>
+  <meta name="twitter:site" content="@manishkl_"/>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "From SSD to GPU to SRAM: Why the Last Bottleneck Is Now On-Chip", "description": "Once host-memory bounce buffers are reduced, the bottleneck shifts inward. The next frontier is deterministic HBM↔SRAM orchestration inside the accelerator.", "datePublished": "2026-04-08", "dateModified": "2026-04-08", "author": {"@type": "Person", "name": "Manish KL", "url": "https://manishklach.github.io/"}, "publisher": {"@type": "Person", "name": "Manish KL", "url": "https://manishklach.github.io/"}, "mainEntityOfPage": "https://manishklach.github.io/writings/from-ssd-to-gpu-to-sram-last-bottleneck-on-chip.html", "url": "https://manishklach.github.io/writings/from-ssd-to-gpu-to-sram-last-bottleneck-on-chip.html", "image": "https://manishklach.github.io/assets/og-image.png", "keywords": ["SSD to GPU", "HBM SRAM orchestration", "on-chip bottleneck", "AI accelerator memory", "deterministic data movement", "AI systems"]}</script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg:#040c08; --surface:rgba(8,20,12,.88); --surface2:rgba(6,22,12,.68);
+      --line:rgba(255,255,255,.07); --line-e:rgba(52,210,110,.2);
+      --text:#aac8b0; --muted:#3a5840; --strong:#e0ffe8;
+      --accent:#34d26e; --accent2:#7de89a; --accent3:#1a9040;
+      --mono:'JetBrains Mono',monospace; --display:'Syne',sans-serif; --body:'Source Serif 4',Georgia,serif;
+      --maxw:940px; --shadow:0 28px 72px rgba(0,0,0,.55);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth}
+    body{font-family:var(--body);font-size:18px;background:var(--bg);color:var(--text);line-height:1.82;
+      background-image:
+        radial-gradient(ellipse 800px 500px at 15% -5%,rgba(52,210,110,.06),transparent 55%),
+        radial-gradient(ellipse 600px 600px at 88% 10%,rgba(26,144,64,.04),transparent 55%),
+        radial-gradient(ellipse 400px 600px at 5% 85%,rgba(52,210,110,.03),transparent);
+      background-attachment:fixed;}
+    a{color:var(--accent2);text-decoration:none} a:hover{text-decoration:underline}
+    .wrap{width:min(var(--maxw),calc(100% - 40px));margin:0 auto}
+    .site-nav{position:sticky;top:0;z-index:100;padding:14px 0;border-bottom:1px solid var(--line);
+      background:rgba(4,12,8,.9);backdrop-filter:blur(20px)}
+    .nav-inner{display:flex;justify-content:space-between;align-items:center}
+    .brand{font-family:var(--display);font-weight:700;font-size:14px;color:var(--strong)}
+    .back{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.04em}
+    .back:hover{color:var(--accent);text-decoration:none}
+    .hero{padding:64px 0 44px}
+    .eyebrow{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;
+      border:1px solid var(--line-e);background:rgba(52,210,110,.05);
+      font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.07em;text-transform:uppercase;margin-bottom:22px}
+    .blink{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:blink 2s ease-in-out infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+    h1{font-family:var(--display);font-weight:800;font-size:clamp(2.4rem,5.2vw,4.2rem);
+      line-height:1.0;letter-spacing:-.04em;color:var(--strong);margin-bottom:20px;max-width:14ch;
+      background:linear-gradient(135deg,#e0ffe8 0%,#7de89a 55%,#1a9040 100%);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .subhead{font-size:clamp(1.05rem,1.7vw,1.18rem);color:#4a7855;max-width:680px;line-height:1.7;font-weight:300;margin-bottom:24px}
+    .meta{display:flex;flex-wrap:wrap;gap:6px 20px;font-family:var(--mono);font-size:11px;color:var(--muted);
+      padding-top:20px;border-top:1px solid var(--line);letter-spacing:.03em}
+    .meta-a{color:var(--accent)}
+    .hero-diagram{margin-top:40px;border:1px solid var(--line-e);border-radius:22px;overflow:hidden;
+      background:rgba(2,8,4,.96);box-shadow:var(--shadow),0 0 0 1px rgba(52,210,110,.07)}
+    main{padding:12px 0 100px}
+    article{border:1px solid var(--line);border-radius:22px;padding:40px 44px;
+      background:linear-gradient(180deg,rgba(255,255,255,.022),rgba(255,255,255,.009));box-shadow:var(--shadow)}
+    .toc{margin-bottom:44px;padding:20px 24px;background:var(--surface2);border:1px solid var(--line);border-radius:16px}
+    .toc-label{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px}
+    .toc ol{margin:0;padding-left:18px}
+    .toc li{margin:5px 0;font-family:var(--mono);font-size:11px;color:var(--muted)}
+    .toc a{color:var(--muted)} .toc a:hover{color:var(--accent2);text-decoration:none}
+    h2{font-family:var(--display);font-weight:700;font-size:clamp(1.45rem,2.4vw,1.9rem);
+      color:var(--strong);letter-spacing:-.03em;margin:56px 0 14px;line-height:1.2}
+    h2::before{content:'// ';font-family:var(--mono);font-size:.72em;color:var(--accent);opacity:.65;letter-spacing:0}
+    h3{font-family:var(--display);font-weight:600;font-size:1.12rem;color:var(--strong);margin:30px 0 10px;letter-spacing:-.02em}
+    p{margin:0 0 18px;font-size:1.05rem;color:#6a9070;line-height:1.85}
+    .lede{font-size:1.12rem;color:#a0c8a8;font-weight:400}
+    blockquote,.callout{margin:28px 0;padding:18px 22px;border-left:2px solid var(--accent);
+      background:rgba(52,210,110,.04);border-radius:0 14px 14px 0;color:#70c880;font-style:italic}
+    blockquote p,.callout p{margin:0;color:#70c880;font-size:1.02rem}
+    ul{list-style:none;margin:12px 0 20px;padding:0}
+    ul li{position:relative;padding-left:20px;margin:9px 0;font-size:1.0rem;color:#6a9070}
+    ul li::before{content:'→';position:absolute;left:0;color:var(--accent);font-family:var(--mono);font-size:.85em}
+    code{font-family:var(--mono);background:rgba(52,210,110,.08);border:1px solid rgba(52,210,110,.15);
+      border-radius:6px;padding:2px 7px;font-size:.85em;color:var(--accent2)}
+    pre{background:rgba(2,6,3,.9);border:1px solid var(--line);border-radius:14px;padding:18px 22px;overflow-x:auto;margin:18px 0}
+    pre code{background:none;border:none;padding:0;font-size:.9rem;color:#80a888;letter-spacing:.02em}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
+    .three-col{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}
+    .card{background:var(--surface2);border:1px solid var(--line);border-radius:16px;padding:20px;transition:border-color .2s}
+    .card:hover{border-color:var(--line-e)}
+    .card-label{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
+    .card h4{font-family:var(--display);font-weight:600;font-size:.98rem;color:var(--strong);margin-bottom:8px}
+    .card p{margin:0;font-size:.9rem;color:var(--muted);line-height:1.6}
+    .table-wrap{margin:24px 0;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+    table{width:100%;min-width:520px;border-collapse:collapse}
+    th{padding:12px 18px;text-align:left;background:rgba(52,210,110,.05);color:var(--strong);
+      font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--line)}
+    td{padding:12px 18px;color:#6a9070;font-size:.93rem;border-bottom:1px solid var(--line);vertical-align:top}
+    tr:last-child td{border-bottom:none} tr:hover td{background:rgba(52,210,110,.02)}
+    .figure{margin:36px 0 44px}
+    .figure-inner{border:1px solid var(--line);border-radius:20px;overflow:hidden;background:rgba(2,6,3,.97);box-shadow:0 16px 48px rgba(0,0,0,.45)}
+    figcaption{margin-top:11px;color:var(--muted);font-family:var(--mono);font-size:11px;padding-left:2px;letter-spacing:.02em}
+    figcaption strong{color:var(--accent2)}
+    .refs{color:var(--muted);font-family:var(--mono);font-size:11px;list-style:decimal;padding-left:20px}
+    .refs li{margin:8px 0;padding-left:4px}
+    .divider{height:1px;background:var(--line);margin:36px 0}
+    .footer-note{color:var(--muted);font-family:var(--mono);font-size:11px;line-height:1.8}
+    @media(max-width:760px){article{padding:24px 22px}.two-col,.three-col{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<nav class="site-nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">Home</a>
+    <a class="back" href="../writings.html">← Back to writings</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow"><span class="blink"></span> Systems for AI · SmartNICs · HBM/SRAM · TPU vs GPU</div>
+    <h1>From SSD to GPU to SRAM: Why the Last Bottleneck Is Now On-Chip</h1>
+    <p class="subhead">Once host-memory bounce buffers are reduced, the bottleneck shifts inward. The next frontier is not just storage-to-GPU delivery, but deterministic movement between HBM and on-chip SRAM.</p>
+    <div class="meta">
+      <span>Manish KL</span><span class="meta-a">April 2026</span><span>~14 min read</span><span>Technical Essay</span>
+    </div>
+
+    <!-- HERO DIAGRAM: full pipeline showing system vs on-chip split -->
+    <div class="hero-diagram">
+      <svg viewBox="0 0 960 300" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+        <defs>
+          <linearGradient id="p4sys" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#38c8dc"/><stop offset="100%" stop-color="#34d26e"/></linearGradient>
+          <linearGradient id="p4chip" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#f0a032"/><stop offset="100%" stop-color="#f97070"/></linearGradient>
+          <marker id="p4a1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#34d26e"/></marker>
+          <marker id="p4a2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#f0a032"/></marker>
+        </defs>
+        <rect width="960" height="300" fill="rgba(2,6,3,.97)"/>
+        <text x="480" y="28" text-anchor="middle" font-family="Syne,sans-serif" font-weight="700" font-size="15" fill="#e0ffe8">The Full Pipeline: System-Level Copies vs On-Chip Movement</text>
+
+        <!-- System path zone -->
+        <rect x="20" y="44" width="508" height="150" rx="14" fill="rgba(52,210,110,.04)" stroke="rgba(52,210,110,.2)" stroke-dasharray="6,4"/>
+        <text x="274" y="62" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="#34d26e" letter-spacing=".06em">SYSTEM-LEVEL PATH — can be cleaned up</text>
+
+        <rect x="36" y="74" width="96" height="44" rx="10" fill="rgba(52,210,110,.08)" stroke="rgba(52,210,110,.3)" stroke-width="1.5"/>
+        <text x="84" y="96" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="11" fill="#e0ffe8" font-weight="600">SSD</text>
+        <text x="84" y="111" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#3a5840">local / remote</text>
+
+        <line x1="132" y1="96" x2="165" y2="96" stroke="url(#p4sys)" stroke-width="3" marker-end="url(#p4a1)"/>
+        <text x="148" y="88" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="7" fill="#34d26e">GDS</text>
+
+        <rect x="165" y="74" width="130" height="44" rx="10" fill="rgba(52,210,110,.08)" stroke="rgba(52,210,110,.3)" stroke-width="1.5"/>
+        <text x="230" y="96" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="11" fill="#e0ffe8" font-weight="600">SmartNIC / DPU</text>
+        <text x="230" y="111" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#3a5840">RDMA endpoint</text>
+
+        <line x1="295" y1="96" x2="328" y2="96" stroke="url(#p4sys)" stroke-width="3" marker-end="url(#p4a1)"/>
+        <text x="311" y="88" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="7" fill="#34d26e">RDMA</text>
+
+        <rect x="328" y="74" width="180" height="44" rx="10" fill="rgba(52,210,110,.1)" stroke="rgba(52,210,110,.45)" stroke-width="2"/>
+        <text x="418" y="96" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="11" fill="#e0ffe8" font-weight="700">GPU HBM</text>
+        <text x="418" y="111" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#3a5840">tens of GB · GDs admissible</text>
+
+        <!-- System path: what it eliminates -->
+        <text x="274" y="148" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#34d26e">GPUDirect Storage + RDMA eliminates CPU copies ✓</text>
+        <text x="274" y="164" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#3a5840">host bounce buffers, page cache, CPU rendezvous → reduced dramatically</text>
+
+        <!-- Boundary arrow -->
+        <line x1="528" y1="44" x2="528" y2="210" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
+        <text x="528" y="230" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(255,255,255,.15)" transform="rotate(-90,528,230)">BOUNDARY</text>
+
+        <!-- On-chip zone -->
+        <rect x="544" y="44" width="396" height="150" rx="14" fill="rgba(240,160,50,.04)" stroke="rgba(240,160,50,.2)" stroke-dasharray="6,4"/>
+        <text x="742" y="62" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="#f0a032" letter-spacing=".06em">ON-CHIP PATH — cannot be eliminated</text>
+
+        <rect x="558" y="74" width="180" height="44" rx="10" fill="rgba(240,160,50,.08)" stroke="rgba(240,160,50,.3)" stroke-width="1.5"/>
+        <text x="648" y="96" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="11" fill="#fff4e0" font-weight="600">GPU HBM</text>
+        <text x="648" y="111" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7a5020">shared with system path →</text>
+
+        <line x1="738" y1="96" x2="772" y2="96" stroke="url(#p4chip)" stroke-width="3" stroke-dasharray="7,4" marker-end="url(#p4a2)"/>
+        <text x="755" y="86" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="7" fill="#f0a032">tile / block</text>
+
+        <rect x="772" y="74" width="148" height="44" rx="10" fill="rgba(240,160,50,.1)" stroke="rgba(240,160,50,.45)" stroke-width="2"/>
+        <text x="846" y="93" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="11" fill="#fff4e0" font-weight="700">SRAM / Regs</text>
+        <text x="846" y="109" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7a5020">feeds compute units</text>
+
+        <!-- On-chip note -->
+        <text x="742" y="148" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#f0a032">HBM→SRAM movement is physical — cannot be removed ✗</text>
+        <text x="742" y="164" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#7a5020">only scheduled, overlapped, tiled, and reused better</text>
+
+        <!-- Bottom insight bar -->
+        <rect x="20" y="218" width="920" height="68" rx="12" fill="rgba(52,210,110,.04)" stroke="rgba(52,210,110,.1)"/>
+        <text x="480" y="242" text-anchor="middle" font-family="Syne,sans-serif" font-weight="700" font-size="13" fill="#7de89a">System-level zero-copy is becoming real.</text>
+        <text x="480" y="262" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="#3a5840">The next bottleneck is on-chip memory orchestration.</text>
+        <text x="480" y="279" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="#2a3830">Winner: makes HBM→SRAM movement deterministic, overlapped, and reusable — not eliminated.</text>
+      </svg>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <article>
+      <nav class="toc"><div class="toc-label">Contents</div>
+        <ol>
+          <li><a href="#intro">The right way to frame the problem</a></li>
+          <li><a href="#pipeline">Your pipeline intuition, and where it breaks</a></li>
+          <li><a href="#why-hbm-sram">Why HBM → SRAM movement exists</a></li>
+          <li><a href="#training-inference">Training vs. inference</a></li>
+          <li><a href="#sram-arch">What changes in SRAM-heavy architectures</a></li>
+          <li><a href="#tpu">How this works on TPU</a></li>
+          <li><a href="#system-vs-chip">System-level vs. on-chip movement</a></li>
+          <li><a href="#future">What the frontier actually is</a></li>
+        </ol>
+      </nav>
+
+      <section id="intro">
+        <p class="lede">There is a natural next step once you start thinking about SmartNICs, GPUDirect, and zero-copy system design: if storage can reach the accelerator without all the old CPU and host-memory overhead, can the rest of the path become just as clean?</p>
+        <p>The answer is subtle. At the system level, yes — a great deal of waste can be removed. GPUDirect Storage provides a direct DMA path between storage and GPU memory while avoiding a CPU bounce buffer, and GPUDirect RDMA enables direct data exchange between GPUs and third-party PCIe peer devices such as ConnectX SmartNICs or BlueField DPUs.</p>
+        <p>But once those host-side copies are reduced, the bottleneck does not disappear. It moves inward. The new seam is often <strong>inside the accelerator</strong>, between high-bandwidth global memory and the much smaller, faster SRAM and register files that actually feed the compute units.</p>
+        <blockquote><p>System-level zero-copy is not the end of the story. It just means the remaining bottleneck becomes easier to see.</p></blockquote>
+      </section>
+
+      <section id="pipeline">
+        <h2>Your pipeline intuition, and where it breaks</h2>
+        <p>The clean mental model to start with is:</p>
+        <pre><code>SSD → SmartNIC / DPU → RDMA over fabric → GPU HBM → SRAM → compute</code></pre>
+        <p>That already eliminates a lot:</p>
+        <div class="three-col">
+          <div class="card"><div class="card-label">CPU copies</div><p>Reduced dramatically when the payload no longer bounces through host DRAM.</p></div>
+          <div class="card"><div class="card-label">Page-cache-heavy paths</div><p>Bypassed or minimized when GPUDirect Storage is used with a GPU-first application.</p></div>
+          <div class="card"><div class="card-label">Host rendezvous points</div><p>Reduced when RDMA and GPUDirect RDMA let the NIC/DPU and GPU exchange data more directly.</p></div>
+        </div>
+        <p>But the model breaks at the final step. Even with a nearly ideal system path, there is still a fundamentally different kind of movement remaining:</p>
+        <pre><code>GPU HBM → on-chip SRAM / registers → tensor cores / ALUs</code></pre>
+        <p>That movement is not a bad software artifact. It is a consequence of the accelerator's physical memory hierarchy.</p>
+      </section>
+
+      <section id="why-hbm-sram">
+        <h2>Why HBM → SRAM movement exists</h2>
+        <p>Accelerators use multiple memory tiers because no single memory technology gives you huge capacity, ultra-low latency, and extreme energy efficiency per access simultaneously. HBM gives large capacity and high bandwidth, but it is still "farther" from the compute units than on-chip SRAM and register files.</p>
+        <div class="two-col">
+          <div class="card"><div class="card-label">HBM / global memory</div><p>Large and high-bandwidth, but still off-array and relatively expensive to touch every cycle. Tens of GB.</p></div>
+          <div class="card"><div class="card-label">SRAM / registers / shared buffers</div><p>Tiny (~MB), ultra-fast, physically close to compute. This is what actually feeds the math engines efficiently.</p></div>
+        </div>
+        <p>So the question "can we avoid HBM → SRAM movement?" has a hard answer: <strong>not really.</strong> You can reduce it, structure it, overlap it, and reuse it better. But if compute units run from SRAM-like local storage, some form of staging into that local storage remains fundamental to how accelerators work.</p>
+        <div class="callout"><p>Once the bytes have arrived at the accelerator, the remaining problem is no longer "host copies." It is "how efficiently do I feed local compute from the global memory tier?"</p></div>
+      </section>
+
+      <section id="training-inference">
+        <h2>Training vs. inference</h2>
+
+        <h3>Training</h3>
+        <p>Training is extremely movement-heavy because you are not only reading weights and activations but also writing gradients, optimizer state, and updated parameters. The HBM↔SRAM path is exercised constantly, and data reuse matters enormously. The system-level storage path is still important for checkpointing, dataset streaming, and distributed state movement, but the dominant steady-state traffic during training is usually inside the accelerator.</p>
+
+        <h3>Inference</h3>
+        <p>Inference is where the on-chip question becomes especially interesting, because inference increasingly looks memory-bound rather than purely compute-bound. Long-context serving, KV cache pressure, and weight streaming all increase pressure on the memory hierarchy. Once inference is underway, the hot issue is still how weights, activations, and cache state move between global memory and the on-chip working set.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Mode</th><th>Main system concern</th><th>Main on-chip concern</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Training</strong></td><td>Dataset ingest, checkpoints, distributed synchronization</td><td>Weight / activation / gradient movement and reuse across HBM↔SRAM</td></tr>
+              <tr><td><strong>Inference</strong></td><td>Request-time data supply, model loading, cache/state movement</td><td>Weight / KV / activation movement between HBM and local SRAM per token</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="sram-arch">
+        <h2>What changes in SRAM-heavy architectures</h2>
+        <p>If inference shifts toward more SRAM-centric designs, the architecture improves in a specific way. It does not make movement disappear — it changes movement from something reactive and repetitive into something structured and schedulable.</p>
+        <pre><code>Today's common pattern:
+HBM ↔ SRAM  (frequent, repeating working-set churn)
+
+SRAM-heavy / deliberate pattern:
+HBM → SRAM  (less frequent, more deliberate residency)
+SRAM → multiple operations → writeback later</code></pre>
+        <p>The win is not "no movement." The win is:</p>
+        <div class="three-col">
+          <div class="card"><div class="card-label">Longer residency</div><p>Keep data in SRAM long enough to amortize the cost of bringing it there across multiple operations.</p></div>
+          <div class="card"><div class="card-label">Better tiling</div><p>Move smaller, more useful chunks that map cleanly to the local compute structure — not entire tensors reactively.</p></div>
+          <div class="card"><div class="card-label">Overlap</div><p>Load tile N+1 while tile N is being computed, hiding transfer latency under execution.</p></div>
+        </div>
+        <p>The better framing is not "can SRAM remove movement?" but "can SRAM-based designs turn movement into a deterministic schedule instead of a reactive penalty?"</p>
+      </section>
+
+      <section id="tpu">
+        <h2>How this works on TPU</h2>
+        <p>TPU is a useful reference because it makes the dataflow philosophy more explicit. Google's public TPU architecture describes the heart of computation as large systolic arrays — which already implies a dataflow style: the array wants a steady, structured stream of operands rather than random, cache-like access patterns.</p>
+        <pre><code>HBM → on-chip buffer / local memory → systolic array → on-chip buffer → HBM</code></pre>
+        <p>TPU does not magically eliminate the off-chip to on-chip transition. What it does is make that transition feel more like part of the intended execution model. The compiler and runtime know they are feeding a systolic array with tiles — not hoping a general-purpose cache hierarchy behaves well enough.</p>
+
+        <!-- GPU vs TPU comparison diagram -->
+        <div class="figure">
+          <div class="figure-inner">
+            <svg viewBox="0 0 860 280" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+              <rect width="860" height="280" fill="rgba(2,6,3,.97)"/>
+              <text x="430" y="24" text-anchor="middle" font-family="Syne,sans-serif" font-weight="700" font-size="14" fill="#e0ffe8">GPU vs TPU: Memory Feeding Philosophy</text>
+
+              <!-- GPU side -->
+              <text x="200" y="50" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="#7de89a" letter-spacing=".06em">GPU TENDENCY</text>
+              <rect x="40" y="60" width="320" height="160" rx="12" fill="rgba(52,210,110,.04)" stroke="rgba(52,210,110,.15)" stroke-width="1.5"/>
+              <rect x="65" y="80" width="120" height="38" rx="8" fill="rgba(52,210,110,.08)" stroke="rgba(52,210,110,.25)"/>
+              <text x="125" y="104" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="#e0ffe8">HBM</text>
+              <line x1="125" y1="118" x2="125" y2="138" stroke="#34d26e" stroke-width="2" stroke-dasharray="4,3"/>
+              <rect x="65" y="138" width="120" height="38" rx="8" fill="rgba(52,210,110,.06)" stroke="rgba(52,210,110,.2)"/>
+              <text x="125" y="162" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="#e0ffe8">SRAM / SM</text>
+              <line x1="125" y1="176" x2="125" y2="196" stroke="#34d26e" stroke-width="2" stroke-dasharray="4,3"/>
+              <rect x="65" y="196" width="120" height="22" rx="6" fill="rgba(52,210,110,.08)"/>
+              <text x="125" y="212" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#e0ffe8">CUDA Cores</text>
+              <text x="250" y="105" font-family="JetBrains Mono,monospace" font-size="8" fill="#3a5840">general-purpose</text>
+              <text x="250" y="120" font-family="JetBrains Mono,monospace" font-size="8" fill="#3a5840">flexible kernels</text>
+              <text x="250" y="165" font-family="JetBrains Mono,monospace" font-size="8" fill="#3a5840">reactive to kernel</text>
+              <text x="250" y="180" font-family="JetBrains Mono,monospace" font-size="8" fill="#3a5840">structure choices</text>
+              <text x="200" y="238" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#2a4030">movement: reactive to runtime / tiling choices</text>
+
+              <!-- TPU side -->
+              <text x="660" y="50" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="#7de89a" letter-spacing=".06em">TPU TENDENCY</text>
+              <rect x="500" y="60" width="320" height="160" rx="12" fill="rgba(52,210,110,.07)" stroke="rgba(52,210,110,.25)" stroke-width="1.5"/>
+              <rect x="525" y="80" width="120" height="38" rx="8" fill="rgba(52,210,110,.1)" stroke="rgba(52,210,110,.35)"/>
+              <text x="585" y="104" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="#e0ffe8">HBM</text>
+              <line x1="585" y1="118" x2="585" y2="138" stroke="#34d26e" stroke-width="2"/>
+              <rect x="525" y="138" width="120" height="38" rx="8" fill="rgba(52,210,110,.1)" stroke="rgba(52,210,110,.35)"/>
+              <text x="585" y="157" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="#e0ffe8" font-weight="600">On-Chip Buffer</text>
+              <text x="585" y="171" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#34d26e">compiler-scheduled tiles</text>
+              <line x1="585" y1="176" x2="585" y2="196" stroke="#34d26e" stroke-width="2"/>
+              <rect x="525" y="196" width="120" height="22" rx="6" fill="rgba(52,210,110,.12)"/>
+              <text x="585" y="212" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#e0ffe8">Systolic Array</text>
+              <text x="710" y="105" font-family="JetBrains Mono,monospace" font-size="8" fill="#3a5840">explicit dataflow</text>
+              <text x="710" y="120" font-family="JetBrains Mono,monospace" font-size="8" fill="#3a5840">array-feeding model</text>
+              <text x="710" y="165" font-family="JetBrains Mono,monospace" font-size="8" fill="#34d26e">movement is part of</text>
+              <text x="710" y="180" font-family="JetBrains Mono,monospace" font-size="8" fill="#34d26e">the design center</text>
+              <text x="660" y="238" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#2a4030">movement: scheduled, compiler-aware, structured</text>
+
+              <!-- Insight bar -->
+              <rect x="40" y="250" width="780" height="22" rx="6" fill="rgba(52,210,110,.04)" stroke="rgba(52,210,110,.1)"/>
+              <text x="430" y="265" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#3a5840">both still have HBM→local movement — TPU just makes it feel more intentional and scheduled</text>
+            </svg>
+          </div>
+          <figcaption><strong>Figure 1.</strong> GPU vs TPU memory feeding philosophy. Both require HBM→local movement — the difference is how intentional and compiler-scheduled that movement is.</figcaption>
+        </div>
+
+        <div class="two-col">
+          <div class="card"><div class="card-label">GPU tendency</div><p>More general-purpose execution model, more flexible kernels, but often more reactive to kernel structure and runtime choices.</p></div>
+          <div class="card"><div class="card-label">TPU tendency</div><p>More explicit array feeding model — data motion into local buffers is part of the design center rather than an emergent side effect.</p></div>
+        </div>
+      </section>
+
+      <section id="system-vs-chip">
+        <h2>System-level movement vs. on-chip movement</h2>
+        <p>This is the most important conceptual split in the whole discussion:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Problem class</th><th>Example</th><th>Can it be reduced?</th><th>How</th></tr></thead>
+            <tbody>
+              <tr><td><strong>System-level</strong></td><td>SSD ↔ SmartNIC/DPU ↔ GPU</td><td>Yes, substantially</td><td>GPUDirect Storage, RDMA, GPUDirect RDMA, better fabric placement, fewer bounce buffers</td></tr>
+              <tr><td><strong>On-chip</strong></td><td>HBM ↔ SRAM / registers</td><td>Not eliminated, only optimized</td><td>Tiling, streaming, overlap, compiler scheduling, longer residency, more local reuse</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <blockquote><p>We are close to eliminating many host-side bounce buffers. What remains is the accelerator's own internal memory hierarchy.</p></blockquote>
+      </section>
+
+      <section id="future">
+        <h2>What the frontier actually is</h2>
+        <p>The frontier is not "make SRAM directly RDMA-addressable tomorrow." SRAM is not generally exposed as a normal external DMA target, and local memory structures inside accelerators are tightly coupled to timing, buffering, and compute orchestration. What matters more in the near term is making the path from external storage or fabric into the accelerator's working set as predictable as possible.</p>
+        <p>The winning architectures will likely do two things simultaneously:</p>
+        <div class="three-col">
+          <div class="card"><div class="card-label">Cleaner system ingress</div><p>SmartNICs, DPUs, GPUDirect Storage, and GPUDirect RDMA so the host CPU is not the payload janitor.</p></div>
+          <div class="card"><div class="card-label">Deterministic local scheduling</div><p>Move data from HBM into SRAM in a planned, compiler- or runtime-aware way rather than through reactive churn.</p></div>
+          <div class="card"><div class="card-label">GPU-first or array-first</div><p>Design the software so the accelerator is the first and last meaningful consumer of the payload.</p></div>
+        </div>
+        <p><strong>System-level zero-copy is becoming real. The next bottleneck is on-chip memory orchestration. The winner will not be the architecture that pretends HBM→SRAM movement disappears, but the one that makes that movement deterministic, overlapped, and reusable.</strong></p>
+
+        <div class="divider"></div>
+        <h3>Reference notes</h3>
+        <ul class="refs">
+          <li>NVIDIA's GPUDirect Storage overview describes a direct DMA path between storage and GPU memory that avoids a CPU bounce buffer.</li>
+          <li>NVIDIA's GPUDirect RDMA documentation describes direct data exchange between GPUs and third-party PCIe peer devices including ConnectX SmartNICs and BlueField DPUs.</li>
+          <li>NVIDIA's GDS design guide notes that the GPU must be the first and/or last meaningful agent touching the transferred data for GDS to help materially.</li>
+          <li>NVIDIA's planning documentation notes that GPUDirect performance is best when the GPU and peer devices are close in PCIe topology, ideally under the same switch.</li>
+          <li>Google Cloud TPU architecture documentation describes TPUs as systolic-array-based processors built for large matrix operations — which is why data feeding and local buffering are central to their design.</li>
+        </ul>
+
+        <div class="divider"></div>
+        <p class="footer-note">
+          <code>from-ssd-to-gpu-to-sram-why-the-last-bottleneck-is-now-on-chip-v2.html</code> · April 2026<br>
+          Social: <em>"We're getting good at eliminating host bounce buffers. The next bottleneck is inside the accelerator: HBM→SRAM orchestration."</em><br>
+          <a href="../writings.html">← All writings</a>
+        </p>
+        <div class="essay-copyright">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a></div>
+      </section>
+    </article>
+  </div>
+</main>
+</body>
+</html>

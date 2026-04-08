@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Why "Disk → RDMA → GPU" Is Still Fragmented Today | Manish KL</title>
+  <meta name="description" content="We have local direct-storage acceleration and network direct-memory acceleration, but we still do not have a universal GPU-native end-to-end storage fabric. The missing layer is orchestration."/>
+  <meta name="author" content="Manish KL"/>
+  <meta name="robots" content="index, follow, max-image-preview:large"/>
+  <meta name="theme-color" content="#0a0804"/>
+  <link rel="canonical" href="https://manishklach.github.io/writings/why-disk-rdma-gpu-is-still-fragmented-today.html"/>
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Why &quot;Disk → RDMA → GPU&quot; Is Still Fragmented Today" />
+  <meta property="og:description" content="We have local direct-storage acceleration and network direct-memory acceleration, but we still do not have a universal GPU-native end-to-end storage fabric. The missing layer is orchestration." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/why-disk-rdma-gpu-is-still-fragmented-today.html"/>
+  <meta property="og:site_name" content="Manish KL"/>
+  <meta property="og:locale" content="en_US"/>
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png"/>
+  <meta property="og:image:alt" content="Why &quot;Disk → RDMA → GPU&quot; Is Still Fragmented Today essay cover image."/>
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Why &quot;Disk → RDMA → GPU&quot; Is Still Fragmented Today" />
+  <meta name="twitter:description" content="We have local direct-storage acceleration and network direct-memory acceleration, but we still do not have a universal GPU-native end-to-end storage fabric. The missing layer is orchestration."/>
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png"/>
+  <meta name="twitter:image:alt" content="Why &quot;Disk → RDMA → GPU&quot; Is Still Fragmented Today essay cover image."/>
+  <meta name="twitter:site" content="@manishkl_"/>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Why \"Disk → RDMA → GPU\" Is Still Fragmented Today", "description": "We have local direct-storage acceleration and network direct-memory acceleration, but we still do not have a universal GPU-native end-to-end storage fabric. The missing layer is orchestration.", "datePublished": "2026-04-08", "dateModified": "2026-04-08", "author": {"@type": "Person", "name": "Manish KL", "url": "https://manishklach.github.io/"}, "publisher": {"@type": "Person", "name": "Manish KL", "url": "https://manishklach.github.io/"}, "mainEntityOfPage": "https://manishklach.github.io/writings/why-disk-rdma-gpu-is-still-fragmented-today.html", "url": "https://manishklach.github.io/writings/why-disk-rdma-gpu-is-still-fragmented-today.html", "image": "https://manishklach.github.io/assets/og-image.png", "keywords": ["RDMA", "GPUDirect Storage", "GPUDirect RDMA", "GPU-native storage", "AI infrastructure", "data movement orchestration"]}</script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg:#0a0804; --surface:rgba(22,16,8,.88); --surface2:rgba(30,20,8,.65);
+      --line:rgba(255,255,255,.07); --line-a:rgba(240,160,50,.22);
+      --text:#ccc0a8; --muted:#6a5040; --strong:#fff4e0;
+      --accent:#f0a032; --accent2:#ffc870; --accent3:#c07818;
+      --mono:'JetBrains Mono',monospace; --display:'Syne',sans-serif; --body:'Source Serif 4',Georgia,serif;
+      --maxw:920px; --shadow:0 28px 72px rgba(0,0,0,.55);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth}
+    body{font-family:var(--body);font-size:18px;background:var(--bg);color:var(--text);line-height:1.82;
+      background-image:
+        radial-gradient(ellipse 900px 500px at 20% -5%,rgba(240,160,50,.06),transparent 55%),
+        radial-gradient(ellipse 600px 600px at 85% 15%,rgba(192,120,24,.04),transparent 55%),
+        radial-gradient(ellipse 400px 600px at 5% 80%,rgba(240,160,50,.03),transparent);
+      background-attachment:fixed;}
+    a{color:var(--accent2);text-decoration:none} a:hover{text-decoration:underline}
+    .wrap{width:min(var(--maxw),calc(100% - 40px));margin:0 auto}
+    .site-nav{position:sticky;top:0;z-index:100;padding:14px 0;border-bottom:1px solid var(--line);
+      background:rgba(10,8,4,.9);backdrop-filter:blur(20px)}
+    .nav-inner{display:flex;justify-content:space-between;align-items:center}
+    .brand{font-family:var(--display);font-weight:700;font-size:14px;color:var(--strong)}
+    .back{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.04em}
+    .back:hover{color:var(--accent);text-decoration:none}
+    .hero{padding:64px 0 44px}
+    .eyebrow{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;
+      border:1px solid var(--line-a);background:rgba(240,160,50,.05);
+      font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.07em;text-transform:uppercase;margin-bottom:22px}
+    .blink{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:blink 2s ease-in-out infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+    h1{font-family:var(--display);font-weight:800;font-size:clamp(2.4rem,5.2vw,4.2rem);
+      line-height:1.0;letter-spacing:-.04em;color:var(--strong);margin-bottom:20px;max-width:15ch;
+      background:linear-gradient(135deg,#fff4e0 0%,#ffc870 55%,#c07818 100%);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .subhead{font-size:clamp(1.05rem,1.7vw,1.18rem);color:#8a7055;max-width:680px;line-height:1.7;font-weight:300;margin-bottom:24px}
+    .meta{display:flex;flex-wrap:wrap;gap:6px 20px;font-family:var(--mono);font-size:11px;color:var(--muted);
+      padding-top:20px;border-top:1px solid var(--line);letter-spacing:.03em}
+    .meta-a{color:var(--accent)}
+    .hero-diagram{margin-top:40px;border:1px solid var(--line-a);border-radius:22px;overflow:hidden;
+      background:rgba(8,5,2,.96);box-shadow:var(--shadow),0 0 0 1px rgba(240,160,50,.07)}
+    main{padding:12px 0 100px}
+    article{border:1px solid var(--line);border-radius:22px;padding:40px 44px;
+      background:linear-gradient(180deg,rgba(255,255,255,.022),rgba(255,255,255,.009));box-shadow:var(--shadow)}
+    .toc{margin-bottom:44px;padding:20px 24px;background:var(--surface2);border:1px solid var(--line);border-radius:16px}
+    .toc-label{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px}
+    .toc ol{margin:0;padding-left:18px}
+    .toc li{margin:5px 0;font-family:var(--mono);font-size:11px;color:var(--muted)}
+    .toc a{color:var(--muted)} .toc a:hover{color:var(--accent2);text-decoration:none}
+    h2{font-family:var(--display);font-weight:700;font-size:clamp(1.45rem,2.4vw,1.9rem);
+      color:var(--strong);letter-spacing:-.03em;margin:56px 0 14px;line-height:1.2}
+    h2::before{content:'// ';font-family:var(--mono);font-size:.72em;color:var(--accent);opacity:.65;letter-spacing:0}
+    h3{font-family:var(--display);font-weight:600;font-size:1.12rem;color:var(--strong);margin:30px 0 10px;letter-spacing:-.02em}
+    p{margin:0 0 18px;font-size:1.05rem;color:#8a7a60;line-height:1.85}
+    .lede{font-size:1.12rem;color:#c0a880;font-weight:400}
+    blockquote,.callout{margin:28px 0;padding:18px 22px;border-left:2px solid var(--accent);
+      background:rgba(240,160,50,.05);border-radius:0 14px 14px 0;color:#c09050;font-style:italic}
+    blockquote p,.callout p{margin:0;color:#c09050;font-size:1.02rem}
+    ul{list-style:none;margin:12px 0 20px;padding:0}
+    ul li{position:relative;padding-left:20px;margin:9px 0;font-size:1.0rem;color:#8a7a60}
+    ul li::before{content:'→';position:absolute;left:0;color:var(--accent);font-family:var(--mono);font-size:.85em}
+    code{font-family:var(--mono);background:rgba(240,160,50,.08);border:1px solid rgba(240,160,50,.15);
+      border-radius:6px;padding:2px 7px;font-size:.85em;color:var(--accent2)}
+    pre{background:rgba(5,3,1,.9);border:1px solid var(--line);border-radius:14px;padding:18px 22px;overflow-x:auto;margin:18px 0}
+    pre code{background:none;border:none;padding:0;font-size:.9rem;color:#b0a080;letter-spacing:.02em}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
+    .three-col{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}
+    .card{background:var(--surface2);border:1px solid var(--line);border-radius:16px;padding:20px;transition:border-color .2s}
+    .card:hover{border-color:var(--line-a)}
+    .card-label{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
+    .card h4{font-family:var(--display);font-weight:600;font-size:.98rem;color:var(--strong);margin-bottom:8px}
+    .card p{margin:0;font-size:.9rem;color:var(--muted);line-height:1.6}
+    .table-wrap{margin:24px 0;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+    table{width:100%;min-width:520px;border-collapse:collapse}
+    th{padding:12px 18px;text-align:left;background:rgba(240,160,50,.05);color:var(--strong);
+      font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--line)}
+    td{padding:12px 18px;color:#8a7a60;font-size:.93rem;border-bottom:1px solid var(--line);vertical-align:top}
+    tr:last-child td{border-bottom:none} tr:hover td{background:rgba(240,160,50,.02)}
+    .figure{margin:36px 0 44px}
+    .figure-inner{border:1px solid var(--line);border-radius:20px;overflow:hidden;background:rgba(5,3,1,.97);box-shadow:0 16px 48px rgba(0,0,0,.45)}
+    figcaption{margin-top:11px;color:var(--muted);font-family:var(--mono);font-size:11px;padding-left:2px;letter-spacing:.02em}
+    figcaption strong{color:var(--accent2)}
+    .divider{height:1px;background:var(--line);margin:36px 0}
+    .footer-note{color:var(--muted);font-family:var(--mono);font-size:11px;line-height:1.8}
+    @media(max-width:760px){article{padding:24px 22px}.two-col,.three-col{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<nav class="site-nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">Home</a>
+    <a class="back" href="../writings.html">← Back to writings</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow"><span class="blink"></span> Systems for AI · Data Movement · Storage/Network/GPU</div>
+    <h1>Why "Disk → RDMA → GPU" Is Still Fragmented Today</h1>
+    <p class="subhead">We have local direct-storage acceleration and network direct-memory acceleration, but we still do not have a universal GPU-native end-to-end storage fabric. The missing layer is orchestration.</p>
+    <div class="meta">
+      <span>Manish KL</span><span class="meta-a">April 2026</span><span>~15 min read</span><span>Technical Essay</span>
+    </div>
+
+    <!-- HERO DIAGRAM: ideal vs fragmented path -->
+    <div class="hero-diagram">
+      <svg viewBox="0 0 920 320" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+        <defs>
+          <linearGradient id="p3ideal" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#38c8dc"/><stop offset="100%" stop-color="#4ade80"/></linearGradient>
+          <linearGradient id="p3frag" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#f0a032"/><stop offset="100%" stop-color="#f97070"/></linearGradient>
+          <marker id="p3ai" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#4ade80"/></marker>
+          <marker id="p3af" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#f0a032"/></marker>
+        </defs>
+        <rect width="920" height="320" fill="rgba(5,3,1,.97)"/>
+        <text x="460" y="28" text-anchor="middle" font-family="Syne,sans-serif" font-weight="700" font-size="15" fill="#fff4e0">Ideal vs Real: The Fragmented Disk→RDMA→GPU Path</text>
+
+        <!-- IDEAL ROW -->
+        <text x="30" y="58" font-family="JetBrains Mono,monospace" font-size="10" fill="#4ade80" letter-spacing=".07em">IDEAL PATH</text>
+        <rect x="30" y="66" width="110" height="44" rx="10" fill="rgba(74,222,128,.08)" stroke="rgba(74,222,128,.3)" stroke-width="1.5"/>
+        <text x="85" y="93" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="11" fill="#e8ffe8" font-weight="600">NVMe</text>
+        <line x1="140" y1="88" x2="195" y2="88" stroke="url(#p3ideal)" stroke-width="3" marker-end="url(#p3ai)"/>
+        <rect x="195" y="66" width="140" height="44" rx="10" fill="rgba(74,222,128,.08)" stroke="rgba(74,222,128,.3)" stroke-width="1.5"/>
+        <text x="265" y="93" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="11" fill="#e8ffe8" font-weight="600">Fabric / RDMA</text>
+        <line x1="335" y1="88" x2="390" y2="88" stroke="url(#p3ideal)" stroke-width="3" marker-end="url(#p3ai)"/>
+        <rect x="390" y="66" width="130" height="44" rx="10" fill="rgba(74,222,128,.08)" stroke="rgba(74,222,128,.3)" stroke-width="1.5"/>
+        <text x="455" y="93" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="11" fill="#e8ffe8" font-weight="600">NIC / DPU</text>
+        <line x1="520" y1="88" x2="575" y2="88" stroke="url(#p3ideal)" stroke-width="3" marker-end="url(#p3ai)"/>
+        <rect x="575" y="66" width="130" height="44" rx="10" fill="rgba(74,222,128,.1)" stroke="rgba(74,222,128,.45)" stroke-width="2"/>
+        <text x="640" y="93" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="11" fill="#e8ffe8" font-weight="700">GPU HBM</text>
+        <text x="760" y="78" font-family="JetBrains Mono,monospace" font-size="9" fill="#4ade80">descriptor-driven</text>
+        <text x="760" y="94" font-family="JetBrains Mono,monospace" font-size="9" fill="#4ade80">GPU-first, no host staging</text>
+
+        <!-- Divider -->
+        <line x1="30" y1="130" x2="890" y2="130" stroke="rgba(255,255,255,.05)" stroke-width="1"/>
+
+        <!-- FRAGMENTED ROW -->
+        <text x="30" y="154" font-family="JetBrains Mono,monospace" font-size="10" fill="#f0a032" letter-spacing=".07em">REAL FRAGMENTED PATH</text>
+
+        <!-- Host zone -->
+        <rect x="230" y="160" width="380" height="120" rx="14" fill="rgba(240,160,50,.04)" stroke="rgba(240,160,50,.2)" stroke-dasharray="7,4" stroke-width="1.5"/>
+        <text x="420" y="270" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(240,160,50,.6)" font-style="italic">Host Seam: registrations · staging · protocol glue</text>
+
+        <rect x="30" y="168" width="110" height="44" rx="10" fill="rgba(240,160,50,.07)" stroke="rgba(240,160,50,.25)"/>
+        <text x="85" y="195" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="11" fill="#fff4e0" font-weight="600">NVMe</text>
+
+        <line x1="140" y1="190" x2="182" y2="190" stroke="#f0a032" stroke-width="2" marker-end="url(#p3af)" opacity=".9"/>
+
+        <rect x="182" y="168" width="100" height="44" rx="10" fill="rgba(240,160,50,.1)" stroke="rgba(240,160,50,.4)" stroke-width="1.5"/>
+        <text x="232" y="186" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#ffc870" font-weight="600">Host MR /</text>
+        <text x="232" y="202" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#ffc870">Registration</text>
+        <circle cx="176" cy="190" r="5" fill="#f0a032"/>
+        <text x="160" y="178" font-family="JetBrains Mono,monospace" font-size="7" fill="#f0a032">reg</text>
+
+        <line x1="282" y1="190" x2="322" y2="190" stroke="#f0a032" stroke-width="2" marker-end="url(#p3af)" opacity=".9"/>
+
+        <rect x="322" y="168" width="100" height="44" rx="10" fill="rgba(240,160,50,.1)" stroke="rgba(240,160,50,.4)" stroke-width="1.5"/>
+        <text x="372" y="186" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#ffc870" font-weight="600">Pinned</text>
+        <text x="372" y="202" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#ffc870">Buffer</text>
+        <circle cx="316" cy="190" r="5" fill="#f0a032"/>
+        <text x="296" y="178" font-family="JetBrains Mono,monospace" font-size="7" fill="#f0a032">stage</text>
+
+        <line x1="422" y1="190" x2="462" y2="190" stroke="#f0a032" stroke-width="2" marker-end="url(#p3af)" opacity=".9"/>
+
+        <rect x="462" y="168" width="100" height="44" rx="10" fill="rgba(240,160,50,.1)" stroke="rgba(240,160,50,.4)" stroke-width="1.5"/>
+        <text x="512" y="186" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#ffc870" font-weight="600">NIC / DPU</text>
+        <text x="512" y="202" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#ffc870">handoff</text>
+        <circle cx="456" cy="190" r="5" fill="#f0a032"/>
+        <text x="436" y="178" font-family="JetBrains Mono,monospace" font-size="7" fill="#f0a032">handoff</text>
+
+        <line x1="562" y1="190" x2="602" y2="190" stroke="#f97070" stroke-width="2" marker-end="url(#p3af)" opacity=".9"/>
+
+        <rect x="602" y="168" width="120" height="44" rx="10" fill="rgba(74,222,128,.07)" stroke="rgba(74,222,128,.25)"/>
+        <text x="662" y="195" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="11" fill="#e8f8e8" font-weight="600">GPU HBM</text>
+
+        <!-- Missing primitive label -->
+        <rect x="30" y="292" width="860" height="20" rx="6" fill="rgba(240,160,50,.06)"/>
+        <text x="460" y="306" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#f0a032">missing primitive: remote storage namespace → fabric → GPU memory with no host seam in the middle</text>
+      </svg>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <article>
+      <nav class="toc"><div class="toc-label">Contents</div>
+        <ol>
+          <li><a href="#intro">Why the idea is so compelling</a></li>
+          <li><a href="#control-data">Control path vs. data path</a></li>
+          <li><a href="#gds">What GPUDirect Storage actually solves</a></li>
+          <li><a href="#gdrdma">What GPUDirect RDMA actually solves</a></li>
+          <li><a href="#gap">The missing primitive</a></li>
+          <li><a href="#nvmeof">Why NVMe-over-Fabrics is not the whole answer</a></li>
+          <li><a href="#staging">Where staging sneaks back in</a></li>
+          <li><a href="#cases">The three best cases today</a></li>
+          <li><a href="#dpu">Why DPUs matter so much</a></li>
+          <li><a href="#cxl">Where CXL fits</a></li>
+          <li><a href="#close">The real systems insight</a></li>
+        </ol>
+      </nav>
+
+      <section id="intro">
+        <p class="lede">There is a seductive idea in modern AI infrastructure: data should move from storage to the GPU almost as if the entire system were one continuous fabric. No wasteful CPU copies. No host-memory bounce buffers. No awkward handoffs between storage, networking, and accelerator memory. Just descriptors, DMA, and compute.</p>
+        <p>That vision is directionally right. But the current reality is more fragmented than it first appears. Today, we have strong building blocks for local direct-storage access and for direct network-to-GPU transfers, but we still do not have a universal, GPU-native end-to-end storage fabric that makes <strong>disk → fabric → GPU</strong> feel like one seamless primitive.</p>
+        <blockquote><p>The industry has powerful pieces of the puzzle, but the whole path is still stitched together across storage semantics, network semantics, GPU memory constraints, and host-side orchestration.</p></blockquote>
+      </section>
+
+      <section id="control-data">
+        <h2>Control path vs. data path</h2>
+        <p>The cleanest way to reason about these systems is to split them into two planes. The goal is not to eliminate the CPU completely — it is to keep the CPU on the control path and off the data path.</p>
+        <div class="two-col">
+          <div class="card"><div class="card-label">Control path</div><p>CPU, drivers, runtimes, and orchestration software set up registrations, descriptors, queue pairs, permissions, mappings, and transport policy. This is where software belongs.</p></div>
+          <div class="card"><div class="card-label">Data path</div><p>The bytes themselves move via DMA, PCIe, RDMA, or storage transports. This is where you want the CPU to disappear as much as possible.</p></div>
+        </div>
+        <p>Technologies like GPUDirect Storage and GPUDirect RDMA are important precisely because they do not abolish system software — they reduce the need for the CPU to shepherd payload bytes through host memory.</p>
+      </section>
+
+      <section id="gds">
+        <h2>What GPUDirect Storage actually solves</h2>
+        <p>GPUDirect Storage is the strongest current answer for the local-box problem. It changes the path between storage and GPU memory so that data can avoid the classic CPU bounce-buffer route.</p>
+        <pre><code>Older path:
+NVMe SSD → host/page cache → user/runtime buffers → GPU
+
+GDS-style path:
+NVMe SSD → GPU memory  (direct DMA)</code></pre>
+        <p>But there is a subtle architectural condition that matters a lot: GDS helps most when the <strong>GPU is the first and/or last meaningful agent</strong> to touch the data. If the CPU still needs to parse, inspect, transform, decompress, or reformat the payload before the GPU can use it, a lot of the benefit disappears.</p>
+        <div class="callout"><p>GPUDirect Storage is not merely a transport trick. It is also a test of whether the application itself is GPU-native enough to keep the payload off the host path.</p></div>
+      </section>
+
+      <section id="gdrdma">
+        <h2>What GPUDirect RDMA actually solves</h2>
+        <p>GPUDirect RDMA is the network-side analog. If GDS is fundamentally about <strong>storage ↔ GPU</strong>, then GPUDirect RDMA is fundamentally about <strong>NIC/DPU ↔ GPU</strong>.</p>
+        <pre><code>Remote source → RDMA fabric → NIC / DPU → GPU memory</code></pre>
+        <p>That matters enormously in distributed training and inference, because it lets network traffic land much closer to the GPU without repeatedly bouncing through CPU memory. The direct-network story in modern AI clusters is much stronger today precisely because the system increasingly wants the network endpoint and the accelerator to speak directly, while the CPU mostly programs setup, policy, and recovery.</p>
+      </section>
+
+      <section id="gap">
+        <h2>The missing primitive</h2>
+        <p>The real missing primitive is not "fast local storage" or "fast direct network access" in isolation. The missing primitive is:</p>
+        <pre><code>remote NVMe / storage namespace
+   ↓
+fabric transport
+   ↓
+GPU memory on another host
+(no ugly host-memory seam in the middle)</code></pre>
+        <p>Today, the pieces exist but they are still not unified into a single, GPU-first abstraction. We have one family of technologies for local direct-storage access and another for direct network-to-GPU movement, but the overall system still tends to stitch them together through protocol assumptions and host-centric control glue.</p>
+      </section>
+
+      <section id="nvmeof">
+        <h2>Why NVMe-over-Fabrics is not the whole answer</h2>
+        <p>NVMe over Fabrics is a critical part of the story because it extends NVMe semantics over network fabrics. But it is not, by itself, the full "remote storage directly into GPU memory" answer.</p>
+        <p>The reason is conceptual: storage-fabric transports were built in a host-centric world. The buffer and registration models often still assume host-visible, host-registered memory as the primary abstraction. That lineage matters — the protocol language is powerful, but still not inherently GPU-native from end to end.</p>
+        <div class="three-col">
+          <div class="card"><div class="card-label">What NVMe-oF gives you</div><p>Transported NVMe semantics across a fabric — essential for disaggregated storage.</p></div>
+          <div class="card"><div class="card-label">What it doesn't give you</div><p>A universal guarantee that the destination abstraction is GPU-first rather than host-memory-first.</p></div>
+          <div class="card"><div class="card-label">Why it matters</div><p>A host-centric buffer model naturally makes host staging or host registration the seam where fragmentation reappears.</p></div>
+        </div>
+      </section>
+
+      <section id="staging">
+        <h2>Where staging sneaks back in</h2>
+        <p>Even in highly optimized systems, staging and bounce regions still show up for recurring reasons:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Source of fragmentation</th><th>What actually happens</th><th>Why it matters</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Transport assumptions</strong></td><td>Protocol and registration model still thinks first in terms of host memory regions or host-visible buffers.</td><td>Host-side staging remains the natural rendezvous point.</td></tr>
+              <tr><td><strong>Application behavior</strong></td><td>CPU still parses, decompresses, frames, serializes, or converts payloads before the GPU can consume them.</td><td>Lower layers may be excellent, but the end-to-end path is still not direct.</td></tr>
+              <tr><td><strong>Control-plane admissibility</strong></td><td>Registrations, permissions, mappings, or peer compatibility are not ready on the fast path.</td><td>System falls back into staging, bounce buffers, or extra handoff logic.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <blockquote><p>The real enemy is not just copies. It is copy-worthy seams in the architecture.</p></blockquote>
+      </section>
+
+      <section id="cases">
+        <h2>The three best cases today</h2>
+
+        <!-- Best-case diagram -->
+        <div class="figure">
+          <div class="figure-inner">
+            <svg viewBox="0 0 860 300" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+              <defs>
+                <marker id="p3bc" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#4ade80"/></marker>
+                <marker id="p3bc2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#38c8dc"/></marker>
+                <marker id="p3bc3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#f0a032"/></marker>
+              </defs>
+              <rect width="860" height="300" fill="rgba(5,3,1,.97)"/>
+              <text x="430" y="24" text-anchor="middle" font-family="Syne,sans-serif" font-weight="700" font-size="15" fill="#fff4e0">Best Cases Today: What Works, What Doesn't</text>
+
+              <!-- Case 1: Local box -->
+              <text x="30" y="50" font-family="JetBrains Mono,monospace" font-size="9" fill="#4ade80" letter-spacing=".05em">① BEST LOCAL-BOX CASE</text>
+              <rect x="30" y="58" width="80" height="34" rx="7" fill="rgba(74,222,128,.07)" stroke="rgba(74,222,128,.3)"/>
+              <text x="70" y="80" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#e0ffe0">NVMe SSD</text>
+              <line x1="110" y1="75" x2="145" y2="75" stroke="#4ade80" stroke-width="2" marker-end="url(#p3bc)"/>
+              <rect x="145" y="58" width="90" height="34" rx="7" fill="rgba(74,222,128,.07)" stroke="rgba(74,222,128,.3)"/>
+              <text x="190" y="80" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#e0ffe0">GDS / cuFile</text>
+              <line x1="235" y1="75" x2="270" y2="75" stroke="#4ade80" stroke-width="2" marker-end="url(#p3bc)"/>
+              <rect x="270" y="58" width="90" height="34" rx="7" fill="rgba(74,222,128,.1)" stroke="rgba(74,222,128,.4)"/>
+              <text x="315" y="80" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#e0ffe0">GPU HBM</text>
+              <text x="380" y="70" font-family="JetBrains Mono,monospace" font-size="8" fill="#4a6070">strongest local answer</text>
+              <text x="380" y="83" font-family="JetBrains Mono,monospace" font-size="8" fill="#4a6070">GPU is first consumer</text>
+
+              <!-- Case 2: Network box -->
+              <text x="30" y="118" font-family="JetBrains Mono,monospace" font-size="9" fill="#38c8dc" letter-spacing=".05em">② BEST NETWORK-BOX CASE</text>
+              <rect x="30" y="126" width="80" height="34" rx="7" fill="rgba(56,200,220,.07)" stroke="rgba(56,200,220,.3)"/>
+              <text x="70" y="148" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#e0f8ff">Remote src</text>
+              <line x1="110" y1="143" x2="145" y2="143" stroke="#38c8dc" stroke-width="2" marker-end="url(#p3bc2)"/>
+              <rect x="145" y="126" width="90" height="34" rx="7" fill="rgba(56,200,220,.07)" stroke="rgba(56,200,220,.3)"/>
+              <text x="190" y="148" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#e0f8ff">RDMA fabric</text>
+              <line x1="235" y1="143" x2="270" y2="143" stroke="#38c8dc" stroke-width="2" marker-end="url(#p3bc2)"/>
+              <rect x="270" y="126" width="90" height="34" rx="7" fill="rgba(56,200,220,.07)" stroke="rgba(56,200,220,.3)"/>
+              <text x="315" y="148" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#e0f8ff">NIC / DPU</text>
+              <line x1="360" y1="143" x2="395" y2="143" stroke="#38c8dc" stroke-width="2" marker-end="url(#p3bc2)"/>
+              <rect x="395" y="126" width="90" height="34" rx="7" fill="rgba(74,222,128,.1)" stroke="rgba(74,222,128,.4)"/>
+              <text x="440" y="148" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#e0ffe0">GPU HBM</text>
+              <text x="510" y="138" font-family="JetBrains Mono,monospace" font-size="8" fill="#4a6070">strongest network answer</text>
+              <text x="510" y="151" font-family="JetBrains Mono,monospace" font-size="8" fill="#4a6070">CPU mostly off data path</text>
+
+              <!-- Case 3: Not unified -->
+              <text x="30" y="186" font-family="JetBrains Mono,monospace" font-size="9" fill="#f0a032" letter-spacing=".05em">③ NOT-YET-UNIFIED (important gap)</text>
+              <rect x="30" y="194" width="80" height="34" rx="7" fill="rgba(240,160,50,.07)" stroke="rgba(240,160,50,.3)"/>
+              <text x="70" y="216" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#ffe0c0">Remote NVMe</text>
+              <line x1="110" y1="211" x2="145" y2="211" stroke="#f0a032" stroke-width="2" marker-end="url(#p3bc3)"/>
+              <rect x="145" y="194" width="90" height="34" rx="7" fill="rgba(240,160,50,.07)" stroke="rgba(240,160,50,.3)"/>
+              <text x="190" y="211" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#ffe0c0">NVMe-oF</text>
+              <line x1="235" y1="211" x2="270" y2="211" stroke="#f0a032" stroke-width="2" marker-end="url(#p3bc3)"/>
+              <rect x="270" y="194" width="120" height="34" rx="7" fill="rgba(240,160,50,.12)" stroke="rgba(240,160,50,.5)" stroke-width="1.5"/>
+              <text x="330" y="211" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#ffc870" font-weight="600">host orchestration ⚠</text>
+              <line x1="390" y1="211" x2="425" y2="211" stroke="#f0a032" stroke-width="2" marker-end="url(#p3bc3)"/>
+              <rect x="425" y="194" width="70" height="34" rx="7" fill="rgba(240,160,50,.07)" stroke="rgba(240,160,50,.3)"/>
+              <text x="460" y="211" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#ffe0c0">NIC/DPU</text>
+              <line x1="495" y1="211" x2="530" y2="211" stroke="#f0a032" stroke-width="2" marker-end="url(#p3bc3)"/>
+              <rect x="530" y="194" width="90" height="34" rx="7" fill="rgba(74,222,128,.07)" stroke="rgba(74,222,128,.3)"/>
+              <text x="575" y="211" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#e0ffe0">GPU HBM</text>
+              <text x="640" y="200" font-family="JetBrains Mono,monospace" font-size="8" fill="#f0a032">abstractions still layered</text>
+              <text x="640" y="214" font-family="JetBrains Mono,monospace" font-size="8" fill="#8a5030">host staging persists</text>
+
+              <rect x="30" y="260" width="800" height="28" rx="8" fill="rgba(240,160,50,.04)" stroke="rgba(240,160,50,.1)"/>
+              <text x="430" y="278" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#6a5040">gap: the whole path is not yet admissible end-to-end as a single GPU-native fabric primitive</text>
+            </svg>
+          </div>
+          <figcaption><strong>Figure 1.</strong> The three best cases today. Local GDS and network GPUDirect RDMA are strong individually — the gap is the unified remote-storage-to-GPU path with no host seam.</figcaption>
+        </div>
+
+        <h3>1. Best local-box case</h3>
+        <p>NVMe SSD → GDS/cuFile path → GPU memory → GPU compute. The strongest local answer available today, especially when the GPU is the first meaningful consumer of the bytes.</p>
+
+        <h3>2. Best network-box case</h3>
+        <p>Remote source → RDMA fabric → NIC/DPU → GPU memory. The strongest network-side story: once the data is already on the wire, the system can keep the CPU largely out of the payload path.</p>
+
+        <h3>3. Not-yet-fully-unified case</h3>
+        <p>Remote NVMe → NVMe-oF/RDMA transport → host-side orchestration/registration/possible staging → NIC/DPU/PCIe → GPU memory. This is the important gap — the stack is powerful, but the abstractions are still layered rather than fully unified.</p>
+      </section>
+
+      <section id="dpu">
+        <h2>Why DPUs matter so much</h2>
+        <p>The DPU is strategically important because it can act as a <strong>data-path orchestrator</strong> at the edge of networking and storage, much closer to where bytes first enter or leave the system than the main CPU. A DPU can help terminate transport logic, participate in networking and storage control planes, program mappings, manage queues, and keep the host CPU out of the payload path.</p>
+        <div class="two-col">
+          <div class="card"><div class="card-label">Host-centric model</div><p>CPU remains the rendezvous point and repeatedly mediates transport, memory setup, and byte movement across subsystems.</p></div>
+          <div class="card"><div class="card-label">DPU-assisted model</div><p>DPU absorbs more of the control and transport orchestration near the fabric edge, helping the payload stay closer to a direct path.</p></div>
+        </div>
+        <p>In that sense, the DPU is one of the missing architectural bridges between storage-native and GPU-native worlds.</p>
+      </section>
+
+      <section id="cxl">
+        <h2>Where CXL fits</h2>
+        <p>CXL is not "disk to GPU over RDMA," but it matters because it changes the shape of the memory system around the problem. Once memory becomes more pooled, shared, and fabric-aware, the architecture has a much better chance of reducing rigid host-centric seams.</p>
+        <p>Systems where staging areas are pre-arranged fabric resources with better alignment between endpoints — rather than ad hoc host buffers — don't magically solve the problem, but they clearly push the industry toward a more composable, less bounce-heavy memory hierarchy.</p>
+      </section>
+
+      <section id="close">
+        <h2>The real systems insight</h2>
+        <p>The hardest part here is not inventing yet another faster link. The hardest part is making the <strong>whole path admissible</strong>. The destination must be registered correctly. The transport semantics must align with the memory model. The consumer must be able to accept the payload in place. The software stack must avoid re-materializing the bytes into host-native forms.</p>
+        <blockquote><p>The bottleneck is not storage or compute alone. It is data movement orchestration across the whole system.</p></blockquote>
+        <p><strong>Today we have local direct-storage acceleration and network direct-memory acceleration, but not yet a universal GPU-native end-to-end storage fabric. The missing layer is the orchestration that makes disk, fabric, NIC/DPU, and GPU memory behave like one continuous path instead of separate subsystems stitched together by host staging.</strong></p>
+        <div class="divider"></div>
+        <p class="footer-note">
+          <code>why-disk-rdma-gpu-is-still-fragmented-today-v2.html</code> · April 2026<br>
+          Social: <em>"We have GDS. We have GPUDirect RDMA. What we still don't have is a universal GPU-native end-to-end storage fabric."</em><br>
+          <a href="../writings.html">← All writings</a>
+        </p>
+        <div class="essay-copyright">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a></div>
+      </section>
+    </article>
+  </div>
+</main>
+</body>
+</html>
