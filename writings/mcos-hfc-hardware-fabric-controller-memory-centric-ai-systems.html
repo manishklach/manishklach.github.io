@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MCOS-HFC: A Hardware Fabric Controller for Memory-Centric AI Systems | Manish KL</title>
+<meta name="description" content="A technical essay on MCOS-HFC: a hardware fabric controller for memory-centric AI systems, covering explicit memory intent, residency maps, regret-aware eviction, recomputation-vs-transfer arbitration, atomic doorbells, and DPU embodiments."/>
+<meta name="author" content="Manish KL"/>
+<meta name="robots" content="index, follow, max-image-preview:large"/>
+<meta name="theme-color" content="#0d1117"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/mcos-hfc-hardware-fabric-controller-memory-centric-ai-systems.html"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="MCOS-HFC: A Hardware Fabric Controller for Memory-Centric AI Systems"/>
+<meta property="og:description" content="A technical essay on MCOS-HFC, explicit memory intent, residency maps, regret-aware eviction, recomputation-vs-transfer arbitration, and hardware-near fabric control for AI systems."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/mcos-hfc-hardware-fabric-controller-memory-centric-ai-systems.html"/>
+<meta property="og:site_name" content="Manish KL"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png"/>
+<meta property="og:image:alt" content="MCOS-HFC essay cover image."/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="MCOS-HFC: A Hardware Fabric Controller for Memory-Centric AI Systems"/>
+<meta name="twitter:description" content="A technical essay on MCOS-HFC, memory intent, fabric control, and hardware-assisted residency and eviction policy in AI systems."/>
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png"/>
+<meta name="twitter:image:alt" content="MCOS-HFC essay cover image."/>
+<meta name="twitter:site" content="@manishkl_"/>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"MCOS-HFC: A Hardware Fabric Controller for Memory-Centric AI Systems","description":"A technical essay on MCOS-HFC: a hardware fabric controller for memory-centric AI systems, covering explicit memory intent, residency maps, regret-aware eviction, recomputation-vs-transfer arbitration, atomic doorbells, and DPU embodiments.","datePublished":"2026-04-08","dateModified":"2026-04-08","author":{"@type":"Person","name":"Manish KL","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"Manish KL","url":"https://manishklach.github.io/"},"mainEntityOfPage":"https://manishklach.github.io/writings/mcos-hfc-hardware-fabric-controller-memory-centric-ai-systems.html","url":"https://manishklach.github.io/writings/mcos-hfc-hardware-fabric-controller-memory-centric-ai-systems.html","image":"https://manishklach.github.io/assets/og-image.png","keywords":["MCOS-HFC","hardware fabric controller","memory-centric AI systems","residency maps","regret-aware eviction","recomputation vs transfer","DPU embodiments"]}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,300;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #13181f;
+  --surface2: #1a2230;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
+  --text: #e8dcc8;
+  --text2: #a89880;
+  --text3: #6b7280;
+  --gold: #c9a84c;
+  --gold2: #e8c76a;
+  --gold-dim: rgba(201,168,76,0.15);
+  --gold-border: rgba(201,168,76,0.3);
+  --blue: #4a90d9;
+  --blue-dim: rgba(74,144,217,0.12);
+  --green: #5a9e6f;
+  --red: #c0614a;
+  --maxw: 780px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 18px;
+  line-height: 1.82;
+  font-weight: 300;
+  /* Subtle grain texture */
+  background-image:
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
+}
+
+/* Reading progress bar */
+#progress-bar {
+  position: fixed;
+  top: 0; left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--gold), var(--gold2));
+  width: 0%;
+  z-index: 100;
+  transition: width 0.1s linear;
+}
+
+/* Nav */
+.nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 50;
+  padding: 0;
+  background: rgba(13,17,23,0.88);
+  backdrop-filter: blur(18px) saturate(150%);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  width: min(var(--maxw), calc(100% - 48px));
+  margin: 0 auto;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.nav-home {
+  font-family: 'Playfair Display', serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+.nav-meta {
+  font-size: 12px;
+  color: var(--text3);
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.04em;
+}
+
+/* Main layout */
+.outer {
+  width: min(var(--maxw), calc(100% - 48px));
+  margin: 0 auto;
+  padding-top: 100px;
+  padding-bottom: 96px;
+}
+
+/* Hero */
+.hero {
+  padding: 64px 0 48px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 56px;
+  opacity: 0;
+  animation: fadeUp 0.9s ease forwards;
+}
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+  background: var(--gold-dim);
+  border: 1px solid var(--gold-border);
+  border-radius: 4px;
+  padding: 5px 10px;
+  margin-bottom: 28px;
+}
+.eyebrow::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  animation: pulse 2s infinite;
+}
+h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(2.4rem, 5.5vw, 4rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: #f2e8d8;
+  font-weight: 900;
+  max-width: 14ch;
+  margin-bottom: 20px;
+}
+h1 em {
+  color: var(--gold);
+  font-style: italic;
+}
+.dek {
+  font-size: 1.05rem;
+  color: var(--text2);
+  max-width: 620px;
+  line-height: 1.65;
+  font-weight: 300;
+  font-style: italic;
+  margin-bottom: 24px;
+}
+.meta-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.meta-item {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  color: var(--text3);
+  letter-spacing: 0.04em;
+}
+.meta-dot {
+  width: 3px; height: 3px;
+  border-radius: 50%;
+  background: var(--border2);
+}
+
+/* TOC */
+.toc {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--gold-border);
+  border-radius: 8px;
+  padding: 24px 28px;
+  margin: 0 0 56px;
+  opacity: 0;
+  animation: fadeUp 0.9s 0.15s ease forwards;
+}
+.toc-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 16px;
+}
+.toc ol {
+  list-style: none;
+  padding: 0;
+  counter-reset: toc;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 32px;
+}
+.toc li {
+  counter-increment: toc;
+  font-size: 13.5px;
+  color: var(--text2);
+  line-height: 1.4;
+}
+.toc li a {
+  color: var(--text2);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.toc li a:hover { color: var(--gold2); }
+.toc li::before {
+  content: counter(toc, decimal-leading-zero);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text3);
+  margin-right: 8px;
+}
+@media (max-width: 600px) { .toc ol { grid-template-columns: 1fr; } }
+
+/* Sections */
+.section {
+  margin-bottom: 72px;
+  opacity: 0;
+  animation: fadeUp 0.8s ease forwards;
+}
+.section:nth-child(1) { animation-delay: 0.1s; }
+.section:nth-child(2) { animation-delay: 0.2s; }
+.section:nth-child(3) { animation-delay: 0.3s; }
+.section:nth-child(4) { animation-delay: 0.4s; }
+
+h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(1.5rem, 2.8vw, 2.1rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: #f2e8d8;
+  font-weight: 700;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+h3 {
+  font-size: 1rem;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 500;
+  margin: 32px 0 12px;
+}
+p {
+  margin-bottom: 18px;
+  color: var(--text);
+  font-weight: 300;
+}
+.lede {
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: #d4c8b4;
+  font-style: italic;
+  border-left: 2px solid var(--gold-border);
+  padding-left: 20px;
+  margin-bottom: 32px;
+}
+strong { color: #f2e8d8; font-weight: 600; }
+em { color: var(--gold2); font-style: italic; }
+
+ul, ol {
+  padding-left: 22px;
+  margin-bottom: 18px;
+}
+li {
+  margin-bottom: 8px;
+  color: var(--text);
+  font-weight: 300;
+}
+
+/* Callout */
+.callout {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--gold);
+  border-radius: 6px;
+  padding: 18px 22px;
+  margin: 28px 0;
+  font-style: italic;
+  color: var(--text2);
+  font-size: 0.97rem;
+}
+.callout strong { color: var(--gold2); }
+
+/* Formula */
+.formula {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 16px 24px;
+  margin: 24px 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.95rem;
+  text-align: center;
+  color: #c8d8f0;
+  letter-spacing: 0.02em;
+  overflow-x: auto;
+}
+
+/* Code block */
+pre {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px 22px;
+  overflow-x: auto;
+  margin: 24px 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem;
+  line-height: 1.7;
+  color: #a8c0d8;
+}
+pre .key { color: var(--gold2); }
+pre .val { color: #7ec8a0; }
+pre .cmt { color: var(--text3); font-style: italic; }
+
+/* Two-col cards */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 24px 0;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 22px;
+  transition: border-color 0.25s, background 0.25s;
+}
+.card:hover {
+  border-color: var(--gold-border);
+  background: var(--surface2);
+}
+.card h4 {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 10px;
+}
+.card p { font-size: 0.93rem; color: var(--text2); margin: 0; }
+
+/* Diagram figure */
+.fig {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 32px 0;
+}
+.fig-header {
+  padding: 12px 20px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fig-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.fig-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  color: var(--text2);
+}
+.fig svg { display: block; width: 100%; height: auto; }
+figcaption {
+  padding: 10px 20px 14px;
+  font-size: 12px;
+  color: var(--text3);
+  font-style: italic;
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+
+/* Stat callout row */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin: 32px 0;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+.stat-num {
+  font-family: 'Playfair Display', serif;
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: var(--gold2);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.stat-label {
+  font-size: 11.5px;
+  color: var(--text3);
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.06em;
+}
+
+/* Section separator */
+.sep {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 64px 0 48px;
+  color: var(--text3);
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.08em;
+}
+.sep::before, .sep::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Pull quote */
+.pullquote {
+  margin: 40px -24px;
+  padding: 32px 40px;
+  background: linear-gradient(135deg, rgba(201,168,76,0.06), rgba(74,144,217,0.04));
+  border-top: 1px solid var(--gold-border);
+  border-bottom: 1px solid var(--gold-border);
+  font-family: 'Playfair Display', serif;
+  font-style: italic;
+  font-size: 1.3rem;
+  line-height: 1.6;
+  color: #d4c8b4;
+  text-align: center;
+}
+.pullquote cite {
+  display: block;
+  margin-top: 12px;
+  font-size: 11.5px;
+  color: var(--text3);
+  font-family: 'JetBrains Mono', monospace;
+  font-style: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Footer */
+.article-footer {
+  margin-top: 64px;
+  padding-top: 32px;
+  border-top: 1px solid var(--border);
+}
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text3);
+  text-decoration: none;
+  letter-spacing: 0.06em;
+  transition: color 0.2s;
+}
+.back-link:hover { color: var(--gold); }
+.footer-meta {
+  margin-top: 20px;
+  font-size: 12px;
+  color: var(--text3);
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1.8;
+}
+
+/* Animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+@media (max-width: 640px) {
+  .grid-2 { grid-template-columns: 1fr; }
+  .stats-row { grid-template-columns: 1fr; }
+  .pullquote { margin: 40px 0; padding: 28px 20px; font-size: 1.1rem; }
+  h1 { max-width: none; }
+}
+</style>
+</head>
+<body>
+
+<div id="progress-bar"></div>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-home" href="../index.html">Manish KL</a>
+    <span class="nav-meta">MCOS-HFC · Architecture Essay · Part V</span>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="outer">
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="eyebrow">Hardware-Resident MCOS · AI Memory Fabrics</div>
+    <h1>MCOS-HFC: A <em>Hardware</em> Fabric Controller for Memory-Centric AI</h1>
+    <p class="dek">Software defines the intent. Hardware enforces the residency, movement, admission, eviction, and handoff — near the fabric and the accelerator, without touching the CPU hot path.</p>
+    <div class="meta-row">
+      <span class="meta-item">Manish KL</span>
+      <span class="meta-dot"></span>
+      <span class="meta-item">April 2026</span>
+      <span class="meta-dot"></span>
+      <span class="meta-item">~16 min read</span>
+      <span class="meta-dot"></span>
+      <span class="meta-item">Architecture Essay</span>
+    </div>
+  </header>
+
+  <!-- TOC -->
+  <nav class="toc" aria-label="Contents">
+    <div class="toc-label">Contents</div>
+    <ol>
+      <li><a href="#problem">The byte movement tax</a></li>
+      <li><a href="#caches">Why caches fall short</a></li>
+      <li><a href="#mcos">What MCOS actually is</a></li>
+      <li><a href="#hfc">What the HFC does</a></li>
+      <li><a href="#residency">The residency map</a></li>
+      <li><a href="#regret">Regret-aware eviction</a></li>
+      <li><a href="#recompute">Recompute vs. transfer</a></li>
+      <li><a href="#doorbell">Atomic doorbell handoff</a></li>
+      <li><a href="#security">Security &amp; multi-tenancy</a></li>
+      <li><a href="#dpu">The DPU embodiment</a></li>
+      <li><a href="#why-now">Why this matters now</a></li>
+    </ol>
+  </nav>
+
+  <!-- LEDE -->
+  <p class="lede">The central claim behind MCOS-HFC is straightforward but consequential: in large-scale AI systems, memory movement is no longer an implementation detail. It is the system. Once weights, KV cache, activations, expert shards, and optimizer state spill across multiple tiers, performance is defined entirely by how intelligently those bytes are staged, retained, evicted, moved, or recomputed.</p>
+
+  <!-- FIG 1: System Architecture Overview -->
+  <div class="fig">
+    <div class="fig-header">
+      <span class="fig-label">Fig. 01</span>
+      <span class="fig-title">MCOS-HFC System Architecture — Three-Plane Overview</span>
+    </div>
+    <svg viewBox="0 0 780 300" xmlns="http://www.w3.org/2000/svg" style="background:#13181f;">
+      <!-- Labels -->
+      <text x="100" y="28" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="9" letter-spacing="0.1em" text-anchor="middle">SOFTWARE PLANE</text>
+      <text x="390" y="28" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="9" letter-spacing="0.1em" text-anchor="middle">MCOS-HFC CONTROLLER</text>
+      <text x="660" y="28" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="9" letter-spacing="0.1em" text-anchor="middle">EXECUTION &amp; TIERS</text>
+
+      <!-- Dividers -->
+      <line x1="220" y1="18" x2="220" y2="280" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+      <line x1="540" y1="18" x2="540" y2="280" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+
+      <!-- Software plane box -->
+      <rect x="30" y="48" width="160" height="58" rx="6" fill="#1a2230" stroke="rgba(201,168,76,0.3)" stroke-width="1"/>
+      <text x="110" y="74" fill="#e8dcc8" font-family="JetBrains Mono,monospace" font-size="11" font-weight="500" text-anchor="middle">Runtime / Compiler</text>
+      <text x="110" y="92" fill="#a89880" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">intent · lifetime · deadline</text>
+
+      <!-- HFC controller box -->
+      <rect x="240" y="36" width="280" height="220" rx="8" fill="rgba(74,144,217,0.05)" stroke="rgba(74,144,217,0.2)" stroke-width="1"/>
+      <text x="380" y="60" fill="#c8d8f0" font-family="JetBrains Mono,monospace" font-size="12" font-weight="500" text-anchor="middle">MCOS-HFC</text>
+
+      <!-- HFC sub-blocks -->
+      <rect x="258" y="74" width="106" height="38" rx="5" fill="#1a2230" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      <text x="311" y="93" fill="#e8dcc8" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">Policy Ingest</text>
+      <text x="311" y="105" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">typed descriptors</text>
+
+      <rect x="376" y="74" width="126" height="38" rx="5" fill="#1a2230" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      <text x="439" y="93" fill="#e8dcc8" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">Telemetry Engine</text>
+      <text x="439" y="105" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">tier pressure · congestion</text>
+
+      <rect x="258" y="126" width="116" height="38" rx="5" fill="#1a2230" stroke="rgba(201,168,76,0.25)" stroke-width="1"/>
+      <text x="316" y="145" fill="#e8c76a" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">Residency Map</text>
+      <text x="316" y="157" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">on-chip SRAM</text>
+
+      <rect x="386" y="126" width="116" height="38" rx="5" fill="#1a2230" stroke="rgba(192,97,74,0.3)" stroke-width="1"/>
+      <text x="444" y="145" fill="#e8a090" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">Admit / Evict</text>
+      <text x="444" y="157" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">regret counters</text>
+
+      <rect x="258" y="178" width="116" height="38" rx="5" fill="#1a2230" stroke="rgba(90,158,111,0.3)" stroke-width="1"/>
+      <text x="316" y="197" fill="#7ec8a0" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">Path Selector</text>
+      <text x="316" y="209" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">transfer ∨ recompute</text>
+
+      <rect x="386" y="178" width="116" height="38" rx="5" fill="#1a2230" stroke="rgba(74,144,217,0.25)" stroke-width="1"/>
+      <text x="444" y="197" fill="#7aabe0" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">Descriptor Gen</text>
+      <text x="444" y="209" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">signed commands</text>
+
+      <!-- Arrow: software → HFC -->
+      <path d="M 190 77 L 238 77" fill="none" stroke="rgba(201,168,76,0.5)" stroke-width="1.5" marker-end="url(#arr-gold)"/>
+      <text x="214" y="72" fill="#c9a84c" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">intent</text>
+
+      <!-- Execution tiers -->
+      <rect x="558" y="56" width="156" height="36" rx="5" fill="#1a2230" stroke="rgba(90,158,111,0.3)" stroke-width="1"/>
+      <text x="636" y="78" fill="#7ec8a0" font-family="JetBrains Mono,monospace" font-size="10" text-anchor="middle">DPU / Execution Agent</text>
+
+      <rect x="558" y="106" width="156" height="30" rx="5" fill="#1a2230" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      <text x="636" y="126" fill="#a89880" font-family="JetBrains Mono,monospace" font-size="10" text-anchor="middle">SRAM / HBM</text>
+
+      <rect x="558" y="150" width="156" height="30" rx="5" fill="#1a2230" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      <text x="636" y="170" fill="#a89880" font-family="JetBrains Mono,monospace" font-size="10" text-anchor="middle">Host DRAM / CXL</text>
+
+      <rect x="558" y="194" width="156" height="30" rx="5" fill="#1a2230" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      <text x="636" y="214" fill="#a89880" font-family="JetBrains Mono,monospace" font-size="10" text-anchor="middle">NVMe / Fabric</text>
+
+      <!-- Arrow: HFC → DPU -->
+      <path d="M 521 197 L 556 197" fill="none" stroke="rgba(74,144,217,0.5)" stroke-width="1.5" marker-end="url(#arr-blue)"/>
+      <text x="538" y="192" fill="#4a90d9" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">desc</text>
+
+      <!-- Doorbell arrow: DPU → HBM -->
+      <path d="M 636 93 L 636 104" fill="none" stroke="rgba(232,199,106,0.4)" stroke-width="1.5" marker-end="url(#arr-gold2)"/>
+
+      <!-- Backpressure arrow -->
+      <path d="M 259 240 Q 214 260 108 240 Q 80 230 108 160" fill="none" stroke="rgba(201,168,76,0.2)" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr-dim)"/>
+      <text x="150" y="268" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">backpressure</text>
+
+      <!-- Defs -->
+      <defs>
+        <marker id="arr-gold" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="rgba(201,168,76,0.6)"/>
+        </marker>
+        <marker id="arr-gold2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="rgba(232,199,106,0.5)"/>
+        </marker>
+        <marker id="arr-blue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="rgba(74,144,217,0.6)"/>
+        </marker>
+        <marker id="arr-dim" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="rgba(201,168,76,0.3)"/>
+        </marker>
+      </defs>
+    </svg>
+    <figcaption>Three-plane architecture: software intent flows into the hardware controller, which enforces residency and issues signed movement descriptors to fabric execution agents and memory tiers.</figcaption>
+  </div>
+
+  <!-- SECTION 1: THE PROBLEM -->
+  <section class="section" id="problem">
+    <h2>The real problem: AI pays a byte movement tax</h2>
+    <p>Most AI infrastructure discussions still start with compute. How many FLOPs are available? How many accelerators are provisioned? How wide is the interconnect? Those questions matter, but they often miss the actual source of inefficiency in modern large-scale systems.</p>
+    <p>The dominant tax in modern AI systems is the repeated movement of state across tiers that do not share the same latency, bandwidth, or semantics. A weight tile that is logically "hot" may still sit one hop too far away. A KV-cache segment may be needed one token-step from now, yet remain stranded on the wrong side of a congested path. A transient activation may occupy valuable HBM while something with much higher reuse value gets evicted.</p>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-num">~100×</div>
+        <div class="stat-label">NVMe stall penalty vs HBM refetch</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">64K+</div>
+        <div class="stat-label">AI objects tracked in 1.1MB residency map</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">0</div>
+        <div class="stat-label">CPU instructions in the movement hot path</div>
+      </div>
+    </div>
+
+    <div class="callout"><strong>The premise of MCOS-HFC:</strong> AI performance is increasingly shaped by data residency and movement policy, not by raw compute throughput alone. The system that controls the bytes controls the machine.</div>
+  </section>
+
+  <!-- SECTION 2: CACHES -->
+  <section class="section" id="caches">
+    <h2>Why caches and software-only schedulers are not enough</h2>
+    <div class="grid-2">
+      <div class="card">
+        <h4>Generic caches</h4>
+        <p>Traditional caches infer future need from past accesses. That works well for general-purpose workloads, but it is a weak abstraction for AI objects with known type, lifetime, deadline, and phase semantics. A weight tile that will be reused 50 times looks the same as a transient activation that will never be touched again.</p>
+      </div>
+      <div class="card">
+        <h4>Software-only control loops</h4>
+        <p>Software can reason about the problem, but it often sits too far from the hot path. By the time the CPU sees the signal, computes the policy, and issues the command, the window for an optimal action may already be gone. Context switches are counted in microseconds; memory decisions need nanoseconds.</p>
+      </div>
+    </div>
+    <p>AI systems already know much more than generic memory controllers assume. Compilers know graph structure. Runtimes know the phase of execution. Serving systems know deadlines, batch shape, token progression, and tenant policy. The problem is that this knowledge is not expressed as a first-class hardware-enforced contract.</p>
+    <p>That gap is where MCOS-HFC lives.</p>
+
+    <!-- FIG 2: Memory Tier Stack -->
+    <div class="fig">
+      <div class="fig-header">
+        <span class="fig-label">Fig. 02</span>
+        <span class="fig-title">Memory Tier Hierarchy — Latency &amp; Bandwidth Profile</span>
+      </div>
+      <svg viewBox="0 0 780 240" xmlns="http://www.w3.org/2000/svg" style="background:#13181f;">
+        <!-- Y axis label -->
+        <text x="18" y="130" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle" transform="rotate(-90,18,130)" letter-spacing="0.08em">LATENCY / COST →</text>
+
+        <!-- Tiers — pyramid style -->
+        <!-- SRAM (hottest, smallest) -->
+        <rect x="280" y="28" width="220" height="28" rx="4" fill="rgba(201,168,76,0.18)" stroke="rgba(201,168,76,0.5)" stroke-width="1"/>
+        <text x="390" y="47" fill="#e8c76a" font-family="JetBrains Mono,monospace" font-size="10" font-weight="500" text-anchor="middle">Accelerator SRAM</text>
+        <text x="630" y="47" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="start">~1 ns · BW: highest</text>
+
+        <!-- HBM -->
+        <rect x="240" y="66" width="300" height="28" rx="4" fill="rgba(74,144,217,0.14)" stroke="rgba(74,144,217,0.4)" stroke-width="1"/>
+        <text x="390" y="85" fill="#7aabe0" font-family="JetBrains Mono,monospace" font-size="10" text-anchor="middle">HBM (accelerator-attached)</text>
+        <text x="560" y="85" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="start">~10 ns · ~3 TB/s</text>
+
+        <!-- Host DRAM -->
+        <rect x="190" y="104" width="400" height="28" rx="4" fill="rgba(90,158,111,0.1)" stroke="rgba(90,158,111,0.3)" stroke-width="1"/>
+        <text x="390" y="123" fill="#7ec8a0" font-family="JetBrains Mono,monospace" font-size="10" text-anchor="middle">Host DRAM / CXL-attached</text>
+        <text x="610" y="123" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="start">~100 ns · ~600 GB/s</text>
+
+        <!-- DPU memory -->
+        <rect x="140" y="142" width="500" height="28" rx="4" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+        <text x="390" y="161" fill="#a89880" font-family="JetBrains Mono,monospace" font-size="10" text-anchor="middle">DPU-attached / Network-attached</text>
+        <text x="660" y="161" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="start">~1 µs</text>
+
+        <!-- NVMe -->
+        <rect x="80" y="180" width="620" height="28" rx="4" fill="rgba(192,97,74,0.08)" stroke="rgba(192,97,74,0.2)" stroke-width="1"/>
+        <text x="390" y="199" fill="#c0816a" font-family="JetBrains Mono,monospace" font-size="10" text-anchor="middle">NVMe / Fabric-attached Storage</text>
+        <text x="720" y="199" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="start">~100 µs</text>
+
+        <!-- bracket label -->
+        <text x="58" y="115" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">←hotter</text>
+        <text x="58" y="175" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">colder→</text>
+
+        <!-- MCOS-HFC label -->
+        <rect x="60" y="28" width="96" height="180" rx="5" fill="transparent" stroke="rgba(201,168,76,0.12)" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="108" y="122" fill="rgba(201,168,76,0.4)" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle" transform="rotate(-90,108,122)" letter-spacing="0.08em">MCOS-HFC governs all tiers</text>
+      </svg>
+      <figcaption>The memory hierarchy MCOS-HFC governs — from nanosecond SRAM at the hot end to 100-microsecond NVMe at the cold end. Wrong placement is the tax; the controller eliminates it.</figcaption>
+    </div>
+  </section>
+
+  <div class="sep">§</div>
+
+  <!-- SECTION 3: MCOS -->
+  <section class="section" id="mcos">
+    <h2>What MCOS actually is</h2>
+    <p><strong>MCOS</strong> stands for <strong>Memory-Centric Operating System</strong>. In practice, it should not be read as "yet another OS kernel." It is better understood as a memory-centric policy plane for AI systems — the layer that speaks for intent.</p>
+    <p>MCOS is the layer that tells the system what an object is, how hot it is, how long it should live, how urgently it will be needed, where it would ideally reside, what fallback tiers are acceptable, whether recomputation is allowed, and what security domain governs it. That is the policy half.</p>
+    <p>The enforcement half is the HFC.</p>
+    <div class="callout"><strong>The key split:</strong> MCOS declares intent in software. The HFC enforces it in hardware. Neither works without the other — the intent without enforcement is a wish; the enforcement without intent is a blind heuristic.</div>
+  </section>
+
+  <!-- SECTION 4: HFC -->
+  <section class="section" id="hfc">
+    <h2>What the Hardware Fabric Controller does</h2>
+    <p><strong>HFC</strong> stands for <strong>Hardware Fabric Controller</strong>. This is the hardware-resident engine that receives memory intent from software and turns it into real movement, admission, eviction, and execution decisions at line rate.</p>
+    <p>The HFC is not just a transport primitive, and it is not just a cache controller. It is a control system for multi-tier AI memory — purpose-built for the kind of structured, typed, phase-aware access patterns that large models produce.</p>
+
+    <h3>The Five Core Operations</h3>
+    <ol>
+      <li><strong>Ingest</strong> typed memory intent descriptors from software (type, lifetime, deadline, recompute flag, security domain).</li>
+      <li><strong>Track</strong> current residency — a hardware-readable map of where every AI object lives and what state it is in.</li>
+      <li><strong>Decide</strong> what to promote, retain, demote, or deny — using regret-aware utility scoring without CPU involvement.</li>
+      <li><strong>Arbitrate</strong> among physical transfer paths and arithmetic recomputation via a shared cost function.</li>
+      <li><strong>Emit</strong> signed execution descriptors to distributed agents that physically perform the movement.</li>
+    </ol>
+    <p>That is the architecture in full. Each of those five steps is worth examining closely.</p>
+  </section>
+
+  <!-- SECTION 5: RESIDENCY MAP -->
+  <section class="section" id="residency">
+    <h2>The residency map: hardware truth about where state lives</h2>
+    <p>One of the most important ideas in MCOS-HFC is the <strong>multi-tier residency map</strong>. This is not a vague software table or a cache tag array. It is a hardware-resident map, stored in dedicated on-controller SRAM, that tracks precisely where AI objects currently live and what state they are in — at line rate, without CPU involvement.</p>
+    <p>Instead of guessing from address history, the controller directly knows:</p>
+    <ul>
+      <li>which tier currently holds the object (SRAM / HBM / HOST / CXL / DPU / NVMe / PEER)</li>
+      <li>how many replicas exist and which accelerator owns it</li>
+      <li>its hotness score, reuse window, and remaining lifetime</li>
+      <li>its <strong>regret counter</strong> — a saturating hardware counter that encodes predicted future value</li>
+      <li>its current transfer state (idle / in-flight / completing / failed)</li>
+      <li>its tenant or security domain assignment</li>
+    </ul>
+
+    <pre><code><span class="cmt">// Example residency map entry (141 bits per object)</span>
+<span class="key">Object ID</span>       <span class="val">→  tensor:layer:expert identity hash    (64b)</span>
+<span class="key">Current Tier</span>    <span class="val">→  SRAM | HBM | HOST | CXL | DPU | NVMe  (4b)</span>
+<span class="key">Hotness Score</span>   <span class="val">→  compiler-supplied + runtime-adjusted  (16b)</span>
+<span class="key">Reuse Window</span>    <span class="val">→  expected remaining accesses           (16b)</span>
+<span class="key">Regret Counter</span>  <span class="val">→  saturating hw counter (0–65535)       (16b)</span>
+<span class="key">Transfer State</span>  <span class="val">→  idle | inflight | completing | failed  (4b)</span>
+<span class="key">Security Domain</span> <span class="val">→  tenant isolation domain ID            (8b)</span></code></pre>
+
+    <p>At 141 bits per entry, a 1.1 MB SRAM budget tracks over 64,000 distinct AI objects. That is well within the on-chip budget of a modern DPU — and it means the controller can make placement decisions in a single clock cycle without touching external memory.</p>
+    <p>This is what makes the system feel like a real controller rather than a dressed-up heuristic. It operates from explicit object-aware state, not inference alone.</p>
+  </section>
+
+  <!-- SECTION 6: REGRET -->
+  <section class="section" id="regret">
+    <h2>Regret-aware eviction instead of generic replacement</h2>
+    <p>A normal memory hierarchy asks: <em>what was used most recently, or most frequently?</em> That is LRU. That is LFU. Those are reasonable heuristics for general-purpose computing, where access patterns are unknown and object semantics are opaque.</p>
+    <p>MCOS-HFC asks a more useful question: <em>what will we regret evicting?</em></p>
+
+    <div class="formula">R(i) = P(reuse<sub>i</sub>) × StallPenalty(tier_distance<sub>i</sub>) × RemainingLifetime(i)</div>
+
+    <p>This metric captures three things simultaneously that LRU and LFU cannot:</p>
+    <ul>
+      <li><strong>P(reuse)</strong> — how likely the object is to be needed again, estimated from the predictor and the workload phase graph</li>
+      <li><strong>StallPenalty(tier_distance)</strong> — how expensive it will be to refetch from the demotion target — fetching from NVMe is ~100× costlier than from HBM</li>
+      <li><strong>RemainingLifetime</strong> — whether the object still has meaningful useful life, or is about to expire anyway</li>
+    </ul>
+
+    <!-- FIG 3: Regret counter logic -->
+    <div class="fig">
+      <div class="fig-header">
+        <span class="fig-label">Fig. 03</span>
+        <span class="fig-title">Regret Counter Lifecycle — Saturating Hardware Counter</span>
+      </div>
+      <svg viewBox="0 0 780 220" xmlns="http://www.w3.org/2000/svg" style="background:#13181f;">
+        <!-- Counter visualization -->
+        <!-- Track -->
+        <rect x="60" y="95" width="480" height="18" rx="9" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+        <!-- Fill levels -->
+        <rect x="60" y="95" width="290" height="18" rx="9" fill="url(#regret-grad)"/>
+        <text x="350" y="108" fill="#e8c76a" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">regret = 38,000 / 65,535</text>
+
+        <!-- Increment arrow -->
+        <text x="210" y="82" fill="#7ec8a0" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">+increment</text>
+        <path d="M 210 85 L 210 93" fill="none" stroke="#5a9e6f" stroke-width="1.5" marker-end="url(#arr-green)"/>
+        <text x="210" y="148" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">predictor: access predicted</text>
+
+        <!-- Decrement arrow -->
+        <text x="410" y="82" fill="#e8a090" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">−decrement</text>
+        <path d="M 410 93 L 410 85" fill="none" stroke="#c0614a" stroke-width="1.5" marker-end="url(#arr-red)"/>
+        <text x="410" y="148" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">accelerator: observed access</text>
+
+        <!-- Labels -->
+        <text x="60" y="88" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8">0</text>
+        <text x="540" y="88" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8">65535 (sat.)</text>
+
+        <!-- Eviction decision box -->
+        <rect x="580" y="78" width="170" height="58" rx="6" fill="#1a2230" stroke="rgba(201,168,76,0.3)" stroke-width="1"/>
+        <text x="665" y="101" fill="#e8c76a" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">Eviction Engine</text>
+        <text x="665" y="115" fill="#a89880" font-family="JetBrains Mono,monospace" font-size="8.5" text-anchor="middle">reads counter at line rate</text>
+        <text x="665" y="127" fill="#a89880" font-family="JetBrains Mono,monospace" font-size="8.5" text-anchor="middle">min(R) → victim selected</text>
+
+        <!-- Eviction engine connector -->
+        <path d="M 541 104 L 578 104" fill="none" stroke="rgba(201,168,76,0.4)" stroke-width="1.5" marker-end="url(#arr-gold3)"/>
+
+        <!-- Key insight box -->
+        <rect x="60" y="166" width="480" height="38" rx="5" fill="rgba(201,168,76,0.06)" stroke="rgba(201,168,76,0.15)" stroke-width="1"/>
+        <text x="300" y="183" fill="#c9a84c" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">No CPU instruction needed. Counter lives in Residency Map SRAM.</text>
+        <text x="300" y="197" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8.5" text-anchor="middle">Eviction decision at nanosecond latency — not microseconds via software interrupt</text>
+
+        <defs>
+          <linearGradient id="regret-grad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#4a90d9" stop-opacity="0.5"/>
+            <stop offset="100%" stop-color="#c9a84c" stop-opacity="0.7"/>
+          </linearGradient>
+          <marker id="arr-green" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#5a9e6f"/>
+          </marker>
+          <marker id="arr-red" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#c0614a"/>
+          </marker>
+          <marker id="arr-gold3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="rgba(201,168,76,0.6)"/>
+          </marker>
+        </defs>
+      </svg>
+      <figcaption>The regret counter increments when the predictor anticipates a future access, and decrements on each observed accelerator access. The eviction engine reads it directly from SRAM — no CPU, no interrupt, no context switch.</figcaption>
+    </div>
+
+    <div class="callout"><strong>The architectural jump:</strong> software expresses semantics, but hardware carries out regret-aware displacement at the speed of the fabric. The counter is the bridge between declared intent and real-time hardware decision.</div>
+  </section>
+
+  <div class="sep">§</div>
+
+  <!-- SECTION 7: RECOMPUTE -->
+  <section class="section" id="recompute">
+    <h2>Recomputation vs. transfer as a first-class decision</h2>
+    <p>Most systems compare one transfer path against another: direct path, staged path, peer path, host bounce path, storage path. MCOS-HFC adds a more interesting competitor: <strong>recomputation</strong>.</p>
+    <p>The controller evaluates whether it is cheaper to fetch a piece of state or regenerate it locally — treating arithmetic work as a legitimate alternative to moving bytes across a congested fabric.</p>
+
+    <div class="formula">argmin( C<sub>transfer</sub>(path₁), C<sub>transfer</sub>(path₂), …, C<sub>recompute</sub> )</div>
+
+    <!-- FIG 4: Path arbitration tree -->
+    <div class="fig">
+      <div class="fig-header">
+        <span class="fig-label">Fig. 04</span>
+        <span class="fig-title">Movement Path Selector — Cost-Function Arbitration</span>
+      </div>
+      <svg viewBox="0 0 780 260" xmlns="http://www.w3.org/2000/svg" style="background:#13181f;">
+        <!-- Root: movement decision -->
+        <rect x="300" y="18" width="180" height="36" rx="6" fill="#1a2230" stroke="rgba(74,144,217,0.35)" stroke-width="1.5"/>
+        <text x="390" y="41" fill="#c8d8f0" font-family="JetBrains Mono,monospace" font-size="10" font-weight="500" text-anchor="middle">Movement Decision Required</text>
+
+        <!-- Branches to 5 paths -->
+        <!-- Lines -->
+        <line x1="390" y1="54" x2="80"  y2="110" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+        <line x1="390" y1="54" x2="220" y2="110" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+        <line x1="390" y1="54" x2="390" y2="110" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+        <line x1="390" y1="54" x2="558" y2="110" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+        <line x1="390" y1="54" x2="700" y2="110" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+
+        <!-- Path 1: Direct GPUDirect -->
+        <rect x="30" y="110" width="100" height="48" rx="5" fill="#1a2230" stroke="rgba(90,158,111,0.35)" stroke-width="1"/>
+        <text x="80" y="132" fill="#7ec8a0" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">GPUDirect</text>
+        <text x="80" y="146" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">NVMe → HBM</text>
+        <text x="80" y="160" fill="#5a9e6f" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">depth: 1</text>
+
+        <!-- Path 2: DPU staged -->
+        <rect x="168" y="110" width="106" height="48" rx="5" fill="#1a2230" stroke="rgba(90,158,111,0.25)" stroke-width="1"/>
+        <text x="221" y="132" fill="#7ec8a0" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">DPU Staged</text>
+        <text x="221" y="146" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">NVMe→DPU→HBM</text>
+        <text x="221" y="160" fill="#5a9e6f" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">depth: 2</text>
+
+        <!-- Path 3: RDMA -->
+        <rect x="340" y="110" width="100" height="48" rx="5" fill="#1a2230" stroke="rgba(74,144,217,0.3)" stroke-width="1"/>
+        <text x="390" y="132" fill="#7aabe0" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">RDMA Peer</text>
+        <text x="390" y="146" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">HBM → HBM</text>
+        <text x="390" y="160" fill="#4a90d9" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">depth: 1–2</text>
+
+        <!-- Path 4: Host bounce -->
+        <rect x="508" y="110" width="100" height="48" rx="5" fill="#1a2230" stroke="rgba(192,97,74,0.25)" stroke-width="1"/>
+        <text x="558" y="132" fill="#e8a090" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle">Host Bounce</text>
+        <text x="558" y="146" fill="#6b7280" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">via DRAM</text>
+        <text x="558" y="160" fill="#c0614a" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">depth: 3</text>
+
+        <!-- Path 5: RECOMPUTE — highlighted -->
+        <rect x="648" y="108" width="106" height="52" rx="5" fill="rgba(201,168,76,0.1)" stroke="rgba(201,168,76,0.55)" stroke-width="1.5"/>
+        <text x="701" y="130" fill="#e8c76a" font-family="JetBrains Mono,monospace" font-size="9" font-weight="500" text-anchor="middle">Recompute</text>
+        <text x="701" y="144" fill="#a89880" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">FLOPs / bandwidth</text>
+        <text x="701" y="158" fill="#c9a84c" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">depth: 0 ✦</text>
+
+        <!-- Cost lines down to result -->
+        <line x1="80"  y1="158" x2="390" y2="210" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+        <line x1="221" y1="158" x2="390" y2="210" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+        <line x1="390" y1="158" x2="390" y2="210" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+        <line x1="558" y1="158" x2="390" y2="210" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+        <line x1="701" y1="160" x2="390" y2="210" stroke="rgba(201,168,76,0.2)" stroke-width="1"/>
+
+        <!-- Winner box -->
+        <rect x="280" y="210" width="220" height="36" rx="6" fill="rgba(201,168,76,0.12)" stroke="rgba(201,168,76,0.4)" stroke-width="1.5"/>
+        <text x="390" y="233" fill="#e8c76a" font-family="JetBrains Mono,monospace" font-size="10" font-weight="500" text-anchor="middle">argmin → winner executed</text>
+
+        <!-- Non-obvious note -->
+        <text x="701" y="178" fill="#c9a84c" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">non-obvious:</text>
+        <text x="701" y="190" fill="#c9a84c" font-family="JetBrains Mono,monospace" font-size="8" text-anchor="middle">first-class path</text>
+      </svg>
+      <figcaption>The Path Selector evaluates five options — including recomputation — using a shared cost function. When fabric congestion makes a layer re-execution cheaper than a fetch, the hardware routes that way automatically.</figcaption>
+    </div>
+
+    <p>This matters because congested AI clusters regularly hit situations where the time to transfer exceeds the time to recompute. Once that becomes true, recomputation is not a fallback or a failure mode. It is a legitimate, first-class path decision evaluated by the same cost function as every physical route.</p>
+
+    <div class="pullquote">
+      "When an NVMe-oF link is congested, it may be faster to re-execute a layer than to wait for weight transfer. MCOS-HFC makes this decision automatically — no software loop, no human tuning."
+      <cite>— Architecture decision rationale, MCOS-HFC provisional specification</cite>
+    </div>
+
+    <p>That framing is important. It moves the architecture beyond transport optimization and into full movement economics: a system that treats computation, bandwidth, and latency as fungible resources to be arbitrated over in a unified cost function.</p>
+  </section>
+
+  <!-- SECTION 8: DOORBELL -->
+  <section class="section" id="doorbell">
+    <h2>Atomic doorbell handoff and zero-stall compute</h2>
+    <p>Movement is only half the story. Coordination overhead can still destroy the benefit if the consumer must poll memory, trap into software, or wait on a slow control-plane notification. This is a commonly overlooked source of latency in otherwise well-optimized data pipelines.</p>
+    <p>MCOS-HFC addresses that with an <strong>atomic doorbell handoff</strong>. Once an execution agent completes a transfer into the target memory region, it performs a single atomic write to a doorbell register visible to the accelerator — a hardware-level completion signal that lets compute resume cleanly, without CPU involvement.</p>
+    <ol>
+      <li>Execution agent completes DMA/RDMA placement into target HBM region.</li>
+      <li>Agent performs an <strong>atomic PCIe MMIO or CXL.io write</strong> to the accelerator's Doorbell Register.</li>
+      <li>Accelerator observes the doorbell event — via interrupt or firmware poll — immediately.</li>
+      <li>Compute kernel proceeds. Data was staged before demand. <strong>Stall is zero.</strong></li>
+    </ol>
+    <div class="callout"><strong>Why it matters:</strong> Without hardware signaling, the accelerator must poll memory or rely on software notification — both add latency in the tens to hundreds of microseconds. The atomic doorbell collapses that to a single-cycle hardware event. The seam between movement and compute gets tightened to the point where it effectively disappears.</div>
+  </section>
+
+  <div class="sep">§</div>
+
+  <!-- SECTION 9: SECURITY -->
+  <section class="section" id="security">
+    <h2>Security, signing, and multi-tenant control</h2>
+    <p>MCOS-HFC is not only a performance story. It is also a control and isolation story. In multi-tenant cloud AI systems, a memory movement command is not just a scheduling action — it is a privileged capability that can cross tenant protection boundaries and touch another tenant's state if misused.</p>
+    <p>That is why the architecture supports <strong>cryptographically signed descriptors</strong>. Each movement command can be authenticated, tied to a hardware-bound key, and restricted by policy so that unauthorized movement or memory injection is structurally impossible. An immutable hardware audit log records every state transition for compliance verification.</p>
+    <div class="grid-2">
+      <div class="card">
+        <h4>Descriptor signing</h4>
+        <p>Each data movement command is signed by the Security Engine using a hardware-bound tenant key before dispatch to execution agents. Unsigned descriptors are rejected at the fabric boundary.</p>
+      </div>
+      <div class="card">
+        <h4>Tenant isolation</h4>
+        <p>The Residency Map SRAM encodes a security domain per object entry. Promotion, demotion, and movement decisions are isolated per domain — cross-tenant movement is architecturally prevented.</p>
+      </div>
+    </div>
+    <p>This broadens the appeal of the architecture considerably. A hyperscaler is not just buying faster movement. It is buying a safer, more governable movement plane — one that can be operated as a shared infrastructure service across many tenants with strong isolation guarantees.</p>
+  </section>
+
+  <!-- SECTION 10: DPU -->
+  <section class="section" id="dpu">
+    <h2>Why the DPU embodiment matters</h2>
+    <p><strong>DPU</strong> stands for <strong>Data Processing Unit</strong>. The DPU embodiment matters because it gives MCOS-HFC a physically credible home in the production system — not a speculative future chip, but a class of hardware that is already deployed at scale today.</p>
+    <p>A modern DPU or SmartNIC already sits at the intersection of all the boundaries the controller needs to govern: PCIe uplinks to host and accelerators, RDMA fabric endpoints, NVMe-oF storage transport, tenant isolation enforcement, and control-plane offload. It is, in other words, already positioned to host a residency map, descriptor issue engines, security controls, and a doorbell-capable completion path.</p>
+    <div class="grid-2">
+      <div class="card">
+        <h4>Why it fits</h4>
+        <p>The DPU sits on the data path between host, accelerator, fabric, and storage. It is already trusted with infrastructure responsibilities. It has the on-chip SRAM budget, crypto engines, and line-rate processing capability MCOS-HFC requires.</p>
+      </div>
+      <div class="card">
+        <h4>Why it matters commercially</h4>
+        <p>It transforms MCOS-HFC from an abstract controller concept into a deployable architectural unit for real AI clusters — one that can be shipped as a hardware SKU, provisioned per node, and updated via firmware.</p>
+      </div>
+    </div>
+    <div class="callout">The DPU is where memory policy becomes infrastructure. It is the difference between a research architecture and a product.</div>
+  </section>
+
+  <div class="sep">§</div>
+
+  <!-- SECTION 11: WHY NOW -->
+  <section class="section" id="why-now">
+    <h2>Why this matters now</h2>
+    <p>The old model of system design assumed compute scarcity first and memory management second. AI has inverted that assumption quietly but decisively. Once models grow past the capacity of a single accelerator's HBM, once contexts stretch to hundreds of thousands of tokens, once serving systems juggle hundreds of concurrent KV-cache segments across a fabric, the scheduling of bytes starts to dominate the quality of the machine.</p>
+    <p>That is why AI needs something closer to an operating system for memory. Not an OS in the narrow historical sense — not a kernel, not a scheduler for CPU threads — but a system-level control plane that understands object semantics, residency, urgency, tier distance, path economics, and safe enforcement at line rate.</p>
+
+    <div class="pullquote">
+      "Future AI systems will not be differentiated only by faster chips. They will be differentiated by who best controls the movement, residency, and reuse of state across memory and fabric tiers."
+      <cite>— MCOS-HFC design thesis</cite>
+    </div>
+
+    <p>That is the role MCOS-HFC is trying to define. And the window for defining it is now — before the default answers get locked into the wrong abstractions, and before the memory movement tax becomes a permanent cost of doing business at scale.</p>
+  </section>
+
+  <!-- CLOSING -->
+  <div class="sep">✦</div>
+
+  <section class="section">
+    <h2>Closing thought</h2>
+    <p>MCOS-HFC is ultimately an argument about where complexity belongs. Today, too much of the burden sits in scattered runtimes, opaque heuristics, and reactive software loops that are perpetually too slow for the problem they are trying to solve. A memory-centric AI machine needs a cleaner contract: software declares intent, hardware tracks truth, and the fabric executes policy with enough precision to keep compute fed without wasting movement budget.</p>
+    <p>If AI is becoming a memory system with compute attached, then the control plane for memory is no longer optional. It is foundational — and it belongs in hardware, near the fabric, operating at line rate.</p>
+  </section>
+
+  <!-- ARTICLE FOOTER -->
+  <div class="article-footer">
+    <a class="back-link" href="../writings.html">← All writings</a>
+    <div class="footer-meta">
+      <div>mcos-hfc-hardware-fabric-controller-memory-centric-ai-systems · April 2026</div>
+      <div style="margin-top:6px; color:#4b5563; font-style:italic; font-family:'Source Serif 4',serif; font-size:13px; letter-spacing:0;">
+        "AI systems do not just need more memory. They need a controller that knows what to move, where to keep it, and when compute is cheaper than transfer."
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:14px; color:#a89880; font-size:0.95em; text-align:center;">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer" style="color:inherit; font-weight:600; text-decoration:none;">Manish KL</a></div>
+
+</div><!-- /outer -->
+
+<script>
+// Reading progress bar
+const bar = document.getElementById('progress-bar');
+function updateProgress() {
+  const doc = document.documentElement;
+  const scrollTop = doc.scrollTop || document.body.scrollTop;
+  const height = doc.scrollHeight - doc.clientHeight;
+  bar.style.width = (scrollTop / height * 100) + '%';
+}
+window.addEventListener('scroll', updateProgress, { passive: true });
+
+// Intersection observer for section reveal
+const sections = document.querySelectorAll('.section');
+const obs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.style.animation = 'fadeUp 0.7s ease forwards';
+    }
+  });
+}, { threshold: 0.08 });
+sections.forEach(s => { s.style.opacity = '0'; obs.observe(s); });
+</script>
+</body>
+</html>
