@@ -141,14 +141,14 @@
 
 <header>
   <div class="header-inner">
-    <div class="eyebrow"><div class="eyebrow-dot"></div>AI Infrastructure &nbsp;Â·&nbsp; Memory Hierarchy &nbsp;Â·&nbsp; Writings</div>
+    <div class="eyebrow"><div class="eyebrow-dot"></div>AI Infrastructure &nbsp;·&nbsp; Memory Hierarchy &nbsp;·&nbsp; Writings</div>
     <h1>vOrchestrate and the Case for <em>Controller-Centric Memory Policy</em> in LLM Inference</h1>
     <p class="header-sub">Why dynamic multi-tier weight residency should be treated as a control problem across HBM, DRAM, and NVMe, not just a static quantization or offload problem.</p>
     <div class="byline">
       <span>Based on the vOrchestrate repository</span>
-      <span class="byline-sep">Â·</span>
+      <span class="byline-sep">·</span>
       <span>April 2026</span>
-      <span class="byline-sep">Â·</span>
+      <span class="byline-sep">·</span>
       <span>11 min read</span>
     </div>
   </div>
@@ -159,14 +159,14 @@
 
   <p>The <code>vOrchestrate</code> repository tackles exactly that layer. It presents itself as an <strong>early systems prototype for dynamic multi-tier weight residency orchestration across HBM, DRAM, and NVMe</strong>, with the current implementation focused on controller logic: metadata tracking, scoring, guardrail-aware demotion, state transitions, controller simulation, and integration surfaces for richer runtime experiments. It is explicit that the repository should be read as a <strong>reference implementation of the controller architecture</strong>, not as finished production infrastructure or broad real-model validation. That honesty is part of what makes it interesting.</p>
 
-  <p>In simple terms, this is not â€œyet another offload trick.â€ It is a system for treating <strong>weight residency as a continuously managed control problem</strong> rather than a static placement decision. That is the central idea worth paying attention to.</p>
+  <p>In simple terms, this is not “yet another offload trick.” It is a system for treating <strong>weight residency as a continuously managed control problem</strong> rather than a static placement decision. That is the central idea worth paying attention to.</p>
 
   <h2>The Problem Is Not Just Capacity</h2>
-  <p>The repositoryâ€™s problem statement is crisp: for many large-model inference setups, <strong>HBM is the tightest memory tier</strong>. A static residency policy can waste scarce device memory by keeping blocks resident beyond their useful window, while other blocks are fetched too late or demoted too aggressively. The README contrasts this controller-centric alternative with three common approaches: static quantization, naive offload, and brute-force overprovisioned GPU memory. Each helps, but each has obvious tradeoffs.</p>
+  <p>The repository’s problem statement is crisp: for many large-model inference setups, <strong>HBM is the tightest memory tier</strong>. A static residency policy can waste scarce device memory by keeping blocks resident beyond their useful window, while other blocks are fetched too late or demoted too aggressively. The README contrasts this controller-centric alternative with three common approaches: static quantization, naive offload, and brute-force overprovisioned GPU memory. Each helps, but each has obvious tradeoffs.</p>
 
   <div class="stat-row">
     <div class="stat-cell"><div class="stat-num">3</div><div class="stat-label">Primary memory tiers called out in the repo: HBM, host DRAM, and NVMe</div></div>
-    <div class="stat-cell"><div class="stat-num">7</div><div class="stat-label">Residency states in the controllerâ€™s current model, from full precision in HBM to recomputable fallback</div></div>
+    <div class="stat-cell"><div class="stat-num">7</div><div class="stat-label">Residency states in the controller’s current model, from full precision in HBM to recomputable fallback</div></div>
     <div class="stat-cell"><div class="stat-num">Early</div><div class="stat-label">The repository explicitly describes itself as an early prototype and research implementation</div></div>
     <div class="stat-cell"><div class="stat-num">1</div><div class="stat-label">Main architectural bet: treat memory placement as continuous controller policy, not one-off static setup</div></div>
   </div>
@@ -174,41 +174,41 @@
   <div class="pull-quote"><p>HBM pressure is not just a storage problem. It is a policy problem: what stays near compute, what cools down, and what gets brought back early enough to matter.</p></div>
 
   <h2>Why the Controller Lens Is Strong</h2>
-  <p>What <code>vOrchestrate</code> does well is change the framing. Instead of asking â€œShould this model be quantized?â€ or â€œShould we offload some layers?â€ it asks a more useful question: <strong>how should each block be scored continuously so the right thing lives in the right tier at the right time?</strong> The repository describes the long-term direction as broader than the current scaffold, with plans for tighter adapter integration, real movement backends, and validated studies of memory, latency, and quality tradeoffs on real models.</p>
-  <p>That is a stronger systems abstraction because the real world is not binary. Blocks do not simply belong either â€œon GPUâ€ or â€œoff GPU.â€ They differ in reuse, routing likelihood, criticality, sensitivity, decompression cost, and transfer cost. Those are controller variables, not static config values.</p>
+  <p>What <code>vOrchestrate</code> does well is change the framing. Instead of asking “Should this model be quantized?” or “Should we offload some layers?” it asks a more useful question: <strong>how should each block be scored continuously so the right thing lives in the right tier at the right time?</strong> The repository describes the long-term direction as broader than the current scaffold, with plans for tighter adapter integration, real movement backends, and validated studies of memory, latency, and quality tradeoffs on real models.</p>
+  <p>That is a stronger systems abstraction because the real world is not binary. Blocks do not simply belong either “on GPU” or “off GPU.” They differ in reuse, routing likelihood, criticality, sensitivity, decompression cost, and transfer cost. Those are controller variables, not static config values.</p>
 
   <h2>The Scoring Model Encodes the Right Intuition</h2>
   <p>The README exposes the current scoring model directly:</p>
 
-  <div class="code-block"><div class="code-label">Repository scoring model</div><pre>R(b) = (w1Â·Ï(b) + w2Â·Î»(b) + w3Â·Îº(b) + w4Â·Ïˆ(b))
-       Ã· (Î±Â·Î´(b) + Î²Â·Ï„(b))</pre></div>
+  <div class="code-block"><div class="code-label">Repository scoring model</div><pre>R(b) = (w1·ρ(b) + w2·λ(b) + w3·κ(b) + w4·ψ(b))
+       ÷ (α·δ(b) + β·τ(b))</pre></div>
 
-  <p>And it defines the terms: <code>Ï(b)</code> as reuse score, <code>Î»(b)</code> as routing likelihood, <code>Îº(b)</code> as criticality, <code>Ïˆ(b)</code> as sensitivity, <code>Î´(b)</code> as decompression cost, and <code>Ï„(b)</code> as transfer cost. That is a very sensible policy surface. The model is not pretending the right answer is driven by one metric. It explicitly balances value-near-compute against the cost of moving or restoring the block.</p>
+  <p>And it defines the terms: <code>ρ(b)</code> as reuse score, <code>λ(b)</code> as routing likelihood, <code>κ(b)</code> as criticality, <code>ψ(b)</code> as sensitivity, <code>δ(b)</code> as decompression cost, and <code>τ(b)</code> as transfer cost. That is a very sensible policy surface. The model is not pretending the right answer is driven by one metric. It explicitly balances value-near-compute against the cost of moving or restoring the block.</p>
 
   <div class="concept-grid">
-    <div class="concept-card"><div class="concept-icon">Ï</div><div class="concept-title">Reuse</div><div class="concept-body">How likely the block is to matter again soon enough that keeping it close is worthwhile.</div></div>
-    <div class="concept-card"><div class="concept-icon">Î»</div><div class="concept-title">Routing likelihood</div><div class="concept-body">A way to encode whether the block is likely to be invoked based on model path or routing behavior.</div></div>
-    <div class="concept-card"><div class="concept-icon">Îº</div><div class="concept-title">Criticality</div><div class="concept-body">Not all blocks are equally important to system performance or quality, so policy should not treat them uniformly.</div></div>
-    <div class="concept-card"><div class="concept-icon">Î´/Ï„</div><div class="concept-title">Restore cost</div><div class="concept-body">Decompression and transfer are both part of the penalty of letting a block cool down too far.</div></div>
+    <div class="concept-card"><div class="concept-icon">ρ</div><div class="concept-title">Reuse</div><div class="concept-body">How likely the block is to matter again soon enough that keeping it close is worthwhile.</div></div>
+    <div class="concept-card"><div class="concept-icon">λ</div><div class="concept-title">Routing likelihood</div><div class="concept-body">A way to encode whether the block is likely to be invoked based on model path or routing behavior.</div></div>
+    <div class="concept-card"><div class="concept-icon">κ</div><div class="concept-title">Criticality</div><div class="concept-body">Not all blocks are equally important to system performance or quality, so policy should not treat them uniformly.</div></div>
+    <div class="concept-card"><div class="concept-icon">δ/τ</div><div class="concept-title">Restore cost</div><div class="concept-body">Decompression and transfer are both part of the penalty of letting a block cool down too far.</div></div>
   </div>
 
-  <p>That combination is exactly what you want from a controller prototype. It exposes the real tradeoff rather than hiding it behind vague â€œsmart placementâ€ language.</p>
+  <p>That combination is exactly what you want from a controller prototype. It exposes the real tradeoff rather than hiding it behind vague “smart placement” language.</p>
 
   <h2>The Seven-State Residency Ladder Matters</h2>
-  <p>The controller currently reasons over a seven-state model: <code>S0</code> full precision in HBM, <code>S1</code> low-bit in HBM, <code>S2</code> compressed in HBM, <code>S3</code> staged in host DRAM, <code>S4</code> staged on NVMe, <code>S5</code> in-flight transfer, and <code>S6</code> recomputable or derived fallback. This is important because it avoids a very shallow binary framing of â€œresidentâ€ versus â€œoffloaded.â€</p>
+  <p>The controller currently reasons over a seven-state model: <code>S0</code> full precision in HBM, <code>S1</code> low-bit in HBM, <code>S2</code> compressed in HBM, <code>S3</code> staged in host DRAM, <code>S4</code> staged on NVMe, <code>S5</code> in-flight transfer, and <code>S6</code> recomputable or derived fallback. This is important because it avoids a very shallow binary framing of “resident” versus “offloaded.”</p>
 
   <div class="diagram-wrap"><pre>S0  full precision in HBM
- â†“
+ ↓
 S1  low-bit in HBM
- â†“
+ ↓
 S2  compressed in HBM
- â†“
+ ↓
 S3  staged in host DRAM
- â†“
+ ↓
 S4  staged on NVMe
- â†“
+ ↓
 S5  in-flight transfer
- â†“
+ ↓
 S6  recomputable / derived fallback</pre></div>
 
   <p>That ladder is valuable because it encodes optionality. Demotion does not have to be a cliff. It can be a series of increasingly colder and more expensive states, each with different recovery properties. In real inference systems, that is much closer to how the memory hierarchy actually behaves.</p>
@@ -228,7 +228,7 @@ S6  recomputable / derived fallback</pre></div>
 
   <h2>Simulation-First Is the Right Level of Honesty</h2>
   <p>Another strong choice is that the repository does not overclaim. It says directly that the current implementation includes a <strong>synthetic controller simulation</strong> using structured synthetic block descriptors, along with JSON and CSV trace output, a lightweight metrics container, and illustrative examples rather than broad real-model proof. It also says that large-model benchmarks, quality-parity claims, and universal Hugging Face support are not yet complete.</p>
-  <p>That is exactly how a good systems prototype should present itself. It is much better to say â€œthis captures the controller shapeâ€ than to pretend the existence of a scheduler scaffold means production readiness.</p>
+  <p>That is exactly how a good systems prototype should present itself. It is much better to say “this captures the controller shape” than to pretend the existence of a scheduler scaffold means production readiness.</p>
 
   <div class="code-block"><div class="code-label">How the repo suggests you inspect behavior</div><pre>python examples/simulated_trace.py
 python examples/render_trace_report.py</pre></div>
@@ -254,7 +254,7 @@ python examples/render_trace_report.py</pre></div>
 
 <footer>
   <div class="foot-inner">
-    <span><a href="https://github.com/manishklach/vOrchestrate">Source repository</a> Â· Writings Â· LLM inference / memory hierarchy / controller design</span>
+    <span><a href="https://github.com/manishklach/vOrchestrate">Source repository</a> · Writings · LLM inference / memory hierarchy / controller design</span>
     <a href="../writings.html">Back to Writings</a>
   </div>
   <p class="essay-copyright">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a></p>
