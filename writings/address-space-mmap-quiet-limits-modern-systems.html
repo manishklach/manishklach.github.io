@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>When 128 TB Stops Feeling Infinite: Address Space, mmap, and the Quiet Limits of Modern Systems | Manish KL</title>
+  <meta name="description" content="A systems-focused explanation of why 48-bit virtual addressing and mmap-heavy designs are starting to collide with modern storage scale, and why the long-term answer is explicit data orchestration." />
+  <meta name="keywords" content="address space limits, mmap limits, x86-64 virtual addressing, 48-bit virtual addressing, 5-level paging, LA57, virtual memory, storage systems, explicit data orchestration" />
+  <meta name="author" content="Manish KL" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/address-space-mmap-quiet-limits-modern-systems.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="When 128 TB Stops Feeling Infinite: Address Space, mmap, and the Quiet Limits of Modern Systems" />
+  <meta property="og:description" content="A systems-focused explanation of why 48-bit virtual addressing and mmap-heavy designs are starting to collide with modern storage scale, and why the long-term answer is explicit data orchestration." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/address-space-mmap-quiet-limits-modern-systems.html" />
+  <meta property="og:site_name" content="Manish KL" />
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <meta property="og:image:alt" content="Address space and mmap limits essay by Manish KL" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="When 128 TB Stops Feeling Infinite: Address Space, mmap, and the Quiet Limits of Modern Systems" />
+  <meta name="twitter:description" content="A systems-focused explanation of why 48-bit virtual addressing and mmap-heavy designs are starting to collide with modern storage scale, and why the long-term answer is explicit data orchestration." />
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <meta name="twitter:image:alt" content="Address space and mmap limits essay by Manish KL" />
+  <meta name="twitter:site" content="@manishklach" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "When 128 TB Stops Feeling Infinite: Address Space, mmap, and the Quiet Limits of Modern Systems",
+      "description": "A systems-focused explanation of why 48-bit virtual addressing and mmap-heavy designs are starting to collide with modern storage scale, and why the long-term answer is explicit data orchestration.",
+      "author": {
+        "@type": "Person",
+        "name": "Manish KL",
+        "url": "https://github.com/manishklach"
+      },
+      "publisher": {
+        "@type": "Person",
+        "name": "Manish KL",
+        "url": "https://github.com/manishklach"
+      },
+      "datePublished": "2026-04-09",
+      "dateModified": "2026-04-09",
+      "mainEntityOfPage": "https://manishklach.github.io/writings/address-space-mmap-quiet-limits-modern-systems.html",
+      "url": "https://manishklach.github.io/writings/address-space-mmap-quiet-limits-modern-systems.html",
+      "image": "https://manishklach.github.io/assets/og-image.png",
+      "keywords": [
+        "address space limits",
+        "mmap limits",
+        "5-level paging",
+        "LA57",
+        "virtual memory",
+        "storage systems"
+      ]
+    }
+  </script>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121a31;
+      --panel-2: #182342;
+      --text: #e8edf7;
+      --muted: #b6c1d9;
+      --accent: #8bc4ff;
+      --accent-2: #9ff3d2;
+      --line: rgba(255,255,255,0.12);
+      --shadow: 0 24px 60px rgba(0,0,0,0.28);
+      --code: #0c1327;
+      --warn: #ffd88c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(139,196,255,0.12), transparent 34%),
+        radial-gradient(circle at top right, rgba(159,243,210,0.10), transparent 28%),
+        linear-gradient(180deg, #0a0f1d, #0c1223 45%, #0b1020);
+      color: var(--text);
+      line-height: 1.68;
+    }
+    .wrap {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 32px 20px 80px;
+    }
+    .topnav {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    .hero {
+      padding: 36px 32px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      position: relative;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -100px auto;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, rgba(139,196,255,0.20), transparent 60%);
+      pointer-events: none;
+    }
+    .eyebrow {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--accent-2);
+      background: rgba(159,243,210,0.08);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    h1 {
+      font-size: clamp(2rem, 5vw, 4rem);
+      line-height: 1.06;
+      margin: 16px 0 16px;
+      letter-spacing: -0.03em;
+      max-width: 920px;
+    }
+    .dek {
+      max-width: 840px;
+      font-size: 1.12rem;
+      color: var(--muted);
+      margin: 0;
+    }
+    .meta {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.12fr 0.88fr;
+      gap: 22px;
+      margin-top: 24px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.018));
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+    h2 {
+      margin: 58px 0 12px;
+      font-size: 1.82rem;
+      letter-spacing: -0.02em;
+    }
+    h3 {
+      margin: 28px 0 10px;
+      font-size: 1.15rem;
+      letter-spacing: -0.01em;
+    }
+    p { margin: 14px 0; }
+    ul { margin: 12px 0 18px 22px; }
+    li { margin: 6px 0; }
+    .ledebox {
+      font-size: 1.03rem;
+      color: var(--muted);
+    }
+    .kpi {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 16px;
+    }
+    .kpi .mini {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,0.03);
+    }
+    .mini .num {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+    .quote {
+      border-left: 3px solid var(--accent);
+      padding: 6px 0 6px 16px;
+      margin: 18px 0;
+      color: #d9e5fa;
+      font-size: 1.06rem;
+    }
+    .equation, pre {
+      background: var(--code);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px 18px;
+      overflow-x: auto;
+    }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .diagram {
+      margin: 24px 0;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+      padding: 18px;
+    }
+    .caption {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin-top: 10px;
+    }
+    .tableish {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      overflow: hidden;
+      margin: 18px 0 8px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 1.4fr;
+    }
+    .row > div {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+    }
+    .row > div:last-child { border-right: none; }
+    .row.header {
+      background: rgba(139,196,255,0.08);
+      font-weight: 700;
+    }
+    .row:last-child > div { border-bottom: none; }
+    .callout {
+      padding: 18px 18px;
+      border-radius: 20px;
+      background: rgba(139,196,255,0.08);
+      border: 1px solid rgba(139,196,255,0.22);
+      margin: 22px 0;
+    }
+    .warning {
+      padding: 18px 18px;
+      border-radius: 20px;
+      background: rgba(255,216,140,0.08);
+      border: 1px solid rgba(255,216,140,0.22);
+      margin: 22px 0;
+    }
+    .footer {
+      margin-top: 56px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .copyright {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.95rem;
+      text-align: center;
+    }
+    .tagline {
+      display: inline-block;
+      padding: 8px 11px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-right: 8px;
+      margin-top: 8px;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .kpi { grid-template-columns: 1fr; }
+      .row { grid-template-columns: 1fr; }
+      .row > div { border-right: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topnav">
+      <a href="../index.html">Home</a>
+      <span>•</span>
+      <a href="../writings.html">Writings</a>
+    </div>
+    <section class="hero">
+      <div class="eyebrow">Systems architecture · virtual memory · storage scale</div>
+      <h1>When 128 TB Stops Feeling Infinite</h1>
+      <p class="dek">For years, 48-bit virtual addressing sounded effectively unbounded. Then storage kept scaling, <code>mmap</code> stayed convenient, and modern systems quietly wandered into a new class of limit: not RAM exhaustion, but address-space exhaustion.</p>
+      <div class="meta">
+        <span>By Manish Klach</span>
+        <span>•</span>
+        <span>Updated draft</span>
+        <span>•</span>
+        <span>Topic: x86-64 address space, <code>mmap</code>, storage-dense systems</span>
+      </div>
+    </section>
+
+    <div class="grid">
+      <div class="card ledebox">
+        <p>The headline problem is simple: on many widely deployed x86-64 Linux systems, user space is effectively limited to about <strong>128 TB</strong> of virtual address space under the common 4-level paging layout. That felt enormous when disks were smaller and applications were less storage-dense. It feels much smaller once a single process starts mapping dozens of multi-terabyte SSD-backed files.</p>
+        <p>The key point is easy to miss: <strong><code>mmap</code> consumes virtual address space even when pages are not resident in RAM.</strong> So a workload can run out of addressability before it runs out of storage, and before it runs out of physical memory.</p>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">The argument in one glance</h3>
+        <div class="kpi">
+          <div class="mini">
+            <div class="num">48 bits</div>
+            <div>Total canonical VA often cited as 256 TB</div>
+          </div>
+          <div class="mini">
+            <div class="num">47 bits</div>
+            <div>Typical user space on common x86-64 Linux layouts: 128 TB</div>
+          </div>
+          <div class="mini">
+            <div class="num">15 × 8 TB</div>
+            <div>120 TB of files already pushes against that user-space ceiling</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h2>The misleading comfort of “48 bits is enough”</h2>
+    <p>The familiar statement goes like this: 48 bits gives you 256 TB of addressable space, so what is the problem?</p>
+    <div class="equation"><code>2^48 = 256 TB</code></div>
+    <p>That arithmetic is fine. The trouble is that application software usually does not own all 256 TB. On the common x86-64 split used by many Linux systems with 4-level paging, user mode gets roughly half of that canonical space.</p>
+    <div class="equation"><code>2^47 = 128 TB of user virtual address space</code></div>
+    <p>So the practical ceiling for a single user-space process is not the full 256 TB figure people casually cite. It is closer to 128 TB, and that ceiling becomes surprisingly reachable in storage-heavy designs.</p>
+    <p>And in practice, the real limit is often lower. You rarely get one pristine, contiguous 128 TB arena. Address space is already fragmented by shared libraries, stacks, heaps, guard regions, allocator behavior, and layout choices. The slogan number is clean. Reality is diced up.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 960 310" width="100%" height="auto" aria-label="Diagram showing split between total virtual address space and user space">
+        <defs>
+          <linearGradient id="g1" x1="0" x2="1">
+            <stop offset="0%" stop-color="#8bc4ff"/>
+            <stop offset="100%" stop-color="#9ff3d2"/>
+          </linearGradient>
+        </defs>
+        <rect x="20" y="70" width="920" height="68" rx="18" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)"/>
+        <rect x="20" y="70" width="460" height="68" rx="18" fill="url(#g1)" opacity="0.95"/>
+        <text x="40" y="112" fill="#07101f" font-size="28" font-weight="700">User space ~128 TB (47 bits)</text>
+        <text x="525" y="112" fill="#dfe9fb" font-size="28" font-weight="700">Kernel / remaining canonical half</text>
+
+        <rect x="80" y="190" width="800" height="54" rx="16" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)"/>
+        <rect x="80" y="190" width="750" height="54" rx="16" fill="#8bc4ff" opacity="0.75"/>
+        <text x="98" y="224" fill="#07101f" font-size="24" font-weight="700">15 NVMe SSDs × 8 TB each = 120 TB of mapped files</text>
+        <text x="746" y="182" fill="#9ff3d2" font-size="20" font-weight="700">almost the whole user VA budget</text>
+
+        <text x="20" y="38" fill="#e8edf7" font-size="30" font-weight="800">Why the problem arrives sooner than the “256 TB” slogan suggests</text>
+      </svg>
+      <div class="caption">The raw 48-bit number is not what a single process typically gets to use. On many systems, the effective user-space ceiling is about 128 TB, and storage arrays can approach that faster than many engineers expect.</div>
+    </div>
+
+    <h2>Why <code>mmap</code> makes this limit concrete</h2>
+    <p><code>mmap</code> is seductive because it makes file-backed data feel like memory. That simplicity has real value. But the abstraction comes with a hidden cost: every mapping reserves a portion of the process’s virtual address space.</p>
+    <p>Importantly, this is true even when the pages are not yet faulted into DRAM. The address range still exists. The mapping still occupies virtual address real estate. So a system can hit a virtual-address ceiling while still having plenty of free physical memory and plenty of disk capacity left.</p>
+    <div class="quote">We are no longer running out of RAM; we are running out of places to point to.</div>
+
+    <h3>The failure mode is quieter than people expect</h3>
+    <p>The failure is not dramatic. There is no cinematic collapse where the machine obviously “runs out of memory.” Instead, a large mapping simply fails. The process gets <code>ENOMEM</code> from <code>mmap</code>, even while RAM is mostly free and disks are nowhere near full. That is the moment people realize they did not run out of memory. They ran out of addressability.</p>
+
+<pre><code>void* p = mmap(NULL, huge_len, PROT_READ, MAP_SHARED, fd, 0);
+if (p == MAP_FAILED) {
+    perror("mmap");   // often: ENOMEM
+}</code></pre>
+
+    <p>And for very large mappings, contiguity matters. Even with enough aggregate free virtual space, fragmentation can make a specific <code>mmap</code> request impossible to satisfy as one clean region.</p>
+
+    <h3>A simple thought experiment</h3>
+    <p>Assume a storage-heavy analytics or vector-search machine with fifteen 8 TB SSDs. That is 120 TB of file-backed capacity. If a design leans on one large process and maps most or all of those files, it is suddenly operating right next to the 128 TB user-space boundary.</p>
+    <p>That is the key inversion. Storage scale is beginning to collide with virtual address scale.</p>
+
+    <h2>Why this stayed quiet for so long</h2>
+    <p>For a long time, the industry could treat virtual address space as effectively infinite because other bottlenecks arrived first. Disks were smaller. Datasets were more fragmented. Applications naturally distributed data across machines or across processes before one process could plausibly map tens of terabytes.</p>
+    <p>That world changed. Multi-terabyte NVMe drives are now normal. Memory-mapped databases are common. Retrieval systems and vector stores often prefer large, file-backed indexes. AI systems increasingly manage corpora and artifacts that are too big to think of as a small set of files loaded in the old way.</p>
+
+    <div class="tableish">
+      <div class="row header">
+        <div>Old assumption</div>
+        <div>Why it worked</div>
+        <div>Why it is cracking now</div>
+      </div>
+      <div class="row">
+        <div>“Address space is effectively infinite.”</div>
+        <div>Disks were smaller and per-process mappings stayed modest.</div>
+        <div>High-density NVMe boxes and mmap-heavy designs can now approach the limit.</div>
+      </div>
+      <div class="row">
+        <div>“If it is on disk, I can just map it.”</div>
+        <div>File-backed convenience usually dominated any hidden cost.</div>
+        <div>The hidden cost is no longer hidden at 100+ TB scale.</div>
+      </div>
+      <div class="row">
+        <div>“Memory abstraction is flat enough.”</div>
+        <div>DRAM-centric systems hid tier boundaries.</div>
+        <div>HBM, DRAM, CXL, and SSD expose radically different access economics.</div>
+      </div>
+    </div>
+
+    <h2>What kinds of systems feel this first</h2>
+    <p>Not every machine will care. Most laptops and ordinary application servers will never come close. The pressure appears first in systems that combine all of the following:</p>
+    <ul>
+      <li>large local SSD capacity, often tens to hundreds of terabytes,</li>
+      <li>single-process or low-process-count designs,</li>
+      <li>heavy reliance on <code>mmap</code> for convenience or performance,</li>
+      <li>large indexes, datasets, or corpora that are expected to be addressable at once.</li>
+    </ul>
+    <p>That makes the problem especially relevant to databases, vector indexes, search systems, analytics engines, and AI-adjacent retrieval pipelines.</p>
+    <p>This is one reason parts of the disk-ANN and vector-store world have been moving toward custom buffer managers and more explicit control instead of pure “just mmap it” designs. Once the working set gets enormous, convenience stops being free.</p>
+
+    <h2>How the industry solves it in practice</h2>
+    <p>There is no single fix. Instead, the response is happening at three different layers: hardware/platform evolution, software workarounds, and architectural change.</p>
+
+    <h3>1. Bigger virtual address spaces</h3>
+    <p>The most straightforward answer is to expand the address-space ceiling itself. On x86, that means 5-level paging, often referred to by the configuration symbol <code>CONFIG_X86_5LEVEL</code>, enabling LA57 on supported systems.</p>
+    <div class="equation"><code>2^57 = 128 PB of virtual address space</code></div>
+    <p>This does not magically solve every systems problem, but it moves the cliff much farther away. For certain classes of storage-dense machines, that alone is a meaningful relief.</p>
+    <div class="warning"><strong>One tradeoff:</strong> 5-level paging adds another level to the page-table walk. In the common case, TLBs hide most of that cost. But on a TLB miss, the walk can be slightly more expensive. More bits buy headroom, not free lunch.</div>
+
+    <h3>2. Stop mapping everything at once</h3>
+    <p>Many production systems avoid the cliff by abandoning the “map the world” instinct. Instead, they use sliding windows, chunked mappings, or explicit I/O. The software becomes more complicated, but the address-space demand becomes more manageable.</p>
+    <ul>
+      <li><strong>Windowed mapping:</strong> map only a slice of the dataset at a time.</li>
+      <li><strong>Explicit I/O:</strong> use <code>pread</code>, asynchronous I/O, or runtime-controlled buffering instead of file-backed addressability everywhere.</li>
+      <li><strong>Process sharding:</strong> split the problem across multiple processes so each gets its own virtual address budget.</li>
+    </ul>
+
+    <h3>3. Move toward explicit data orchestration</h3>
+    <p>This is the deeper shift. The old model says: map data, let page faults discover access patterns reactively, and let the OS fill in the rest. The new model says: data movement needs to be intentional, tier-aware, and increasingly explicit.</p>
+    <p>That matters well beyond SSD-backed files. The same pressure appears once systems span HBM, DRAM, CXL-attached memory, local NVMe, and remote storage. Not all tiers should look like equally addressable memory, and not all movement should be reactive.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 980 420" width="100%" height="auto" aria-label="Diagram contrasting mmap-everything and orchestrated data movement">
+        <text x="20" y="34" fill="#e8edf7" font-size="30" font-weight="800">Two design philosophies</text>
+
+        <rect x="20" y="60" width="430" height="320" rx="24" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)"/>
+        <text x="46" y="98" fill="#8bc4ff" font-size="28" font-weight="800">A. “Map everything” model</text>
+        <rect x="62" y="138" width="170" height="52" rx="14" fill="#8bc4ff"/>
+        <text x="92" y="171" fill="#07101f" font-size="22" font-weight="700">Application</text>
+        <rect x="62" y="236" width="170" height="52" rx="14" fill="#9ff3d2"/>
+        <text x="104" y="269" fill="#07101f" font-size="22" font-weight="700">mmap</text>
+        <rect x="280" y="138" width="120" height="52" rx="14" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.16)"/>
+        <text x="304" y="171" fill="#e8edf7" font-size="22" font-weight="700">VA space</text>
+        <rect x="280" y="236" width="120" height="52" rx="14" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.16)"/>
+        <text x="311" y="269" fill="#e8edf7" font-size="22" font-weight="700">SSD</text>
+        <line x1="147" y1="190" x2="147" y2="236" stroke="#dbe6fb" stroke-width="3"/>
+        <line x1="232" y1="164" x2="280" y2="164" stroke="#dbe6fb" stroke-width="3"/>
+        <line x1="232" y1="262" x2="280" y2="262" stroke="#dbe6fb" stroke-width="3"/>
+        <text x="48" y="334" fill="#b6c1d9" font-size="19">Simple abstraction, but every mapping burns VA space.</text>
+
+        <rect x="500" y="60" width="460" height="320" rx="24" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)"/>
+        <text x="526" y="98" fill="#9ff3d2" font-size="28" font-weight="800">B. Orchestrated movement model</text>
+        <rect x="545" y="138" width="160" height="52" rx="14" fill="#8bc4ff"/>
+        <text x="575" y="171" fill="#07101f" font-size="22" font-weight="700">Runtime / app</text>
+        <rect x="738" y="138" width="176" height="52" rx="14" fill="#9ff3d2"/>
+        <text x="776" y="171" fill="#07101f" font-size="22" font-weight="700">Data orchestrator</text>
+
+        <rect x="530" y="250" width="92" height="46" rx="12" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.16)"/>
+        <text x="558" y="279" fill="#e8edf7" font-size="20" font-weight="700">HBM</text>
+        <rect x="640" y="250" width="92" height="46" rx="12" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.16)"/>
+        <text x="668" y="279" fill="#e8edf7" font-size="20" font-weight="700">DRAM</text>
+        <rect x="750" y="250" width="92" height="46" rx="12" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.16)"/>
+        <text x="780" y="279" fill="#e8edf7" font-size="20" font-weight="700">CXL</text>
+        <rect x="860" y="250" width="72" height="46" rx="12" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.16)"/>
+        <text x="876" y="279" fill="#e8edf7" font-size="20" font-weight="700">SSD</text>
+
+        <line x1="705" y1="164" x2="738" y2="164" stroke="#dbe6fb" stroke-width="3"/>
+        <line x1="826" y1="190" x2="576" y2="250" stroke="#dbe6fb" stroke-width="2.4"/>
+        <line x1="826" y1="190" x2="686" y2="250" stroke="#dbe6fb" stroke-width="2.4"/>
+        <line x1="826" y1="190" x2="796" y2="250" stroke="#dbe6fb" stroke-width="2.4"/>
+        <line x1="826" y1="190" x2="896" y2="250" stroke="#dbe6fb" stroke-width="2.4"/>
+
+        <text x="526" y="334" fill="#b6c1d9" font-size="19">Not every byte must be addressable at once; placement and movement become explicit.</text>
+      </svg>
+      <div class="caption">The architectural shift is larger than just adding more bits. Systems are moving from reactive, page-fault-driven discovery toward explicit, tier-aware movement and placement.</div>
+    </div>
+
+    <h2>CXL makes the story more interesting, not simpler</h2>
+    <p>CXL-attached memory expands the physical capacity of a node. That sounds like it should make everything better, and in many ways it does. But it also increases the temptation to build even larger “map everything” systems. In other words, CXL can indirectly accelerate address-space pressure by encouraging single-node designs whose logical working universe keeps expanding faster than old assumptions about virtual space.</p>
+    <p>That is why CXL belongs in this discussion. It is not just another tier. It is one more reason the industry must separate <em>physical capacity</em> from <em>what should be continuously and uniformly addressable in one process.</em></p>
+
+    <h2>Why this matters beyond one Linux configuration</h2>
+    <p>It is easy to read this as a niche complaint about a particular paging mode. That would miss the more important lesson. The lesson is that the old “storage can just pretend to be memory” story gets weaker as systems become more heterogeneous and more storage dense.</p>
+    <p>Once a machine spans multiple very different tiers, addressability and residency stop meaning the same thing. A byte can exist in a system without it making sense to keep it permanently represented in one giant, flat, process-visible virtual address layout.</p>
+
+    <div class="callout">
+      <strong>The deeper takeaway:</strong> the abstraction that breaks first is not necessarily memory capacity. It is the assumption that one process can or should present the entire working universe as a single, continuously addressable map.
+    </div>
+
+    <h2>From the “why” to the “how”</h2>
+    <p>This is where the conversation gets broader than <code>mmap</code>. If address space stops being the right control plane, then data movement has to become explicit. The system needs a richer notion of intent: what data matters now, what must stay resident, what can be windowed, what can be prefetched, and what belongs in which tier.</p>
+    <p>That is exactly why ideas like compiler- or runtime-emitted memory intent become interesting. The old model relies on faults and generic heuristics to infer what should happen. The emerging model is more declarative: the software stack says what phase it is in, what data will be hot, and what residency guarantees matter. This blog is the “why.” Memory-intent-style architectures are one candidate “how.”</p>
+
+    <h2>So is this a serious problem?</h2>
+    <p>For ordinary applications, no. For storage-dense, <code>mmap</code>-heavy, single-process designs, yes. That distinction matters. This is not a universal emergency. It is a real systems constraint that becomes very sharp in exactly the class of machines now being built for data-intensive workloads.</p>
+    <p>And that is why the issue is worth paying attention to. It reveals an emerging boundary in the old memory model. Bigger address spaces will buy time. Better runtime and operating-system design will reduce the immediate pressure. But the long-term answer is architectural: explicit orchestration of where data lives, when it moves, and which tiers are truly part of the active addressable working set.</p>
+
+    <h2>A small symbol with a big message: <code>CONFIG_X86_5LEVEL</code></h2>
+    <p>There is something quietly profound about a configuration symbol like <code>CONFIG_X86_5LEVEL</code>. It looks mundane, but it marks the moment a limit once treated as academic becomes operationally relevant. It is the industry acknowledging that scale moved, and the memory model has to move with it.</p>
+    <p>The bigger story is not just “thank you for more bits.” It is this: <strong>we are entering an era where address space itself is a first-class systems design concern again.</strong></p>
+
+    <div class="quote">We went from “640 KB should be enough for anyone” to “128 TB is tighter than expected” — not because machines got smaller, but because our abstractions stayed the same while scale did not.</div>
+
+    <div class="footer">
+      <div class="tagline">virtual memory</div>
+      <div class="tagline">mmap</div>
+      <div class="tagline">x86-64</div>
+      <div class="tagline">storage systems</div>
+      <div class="tagline">systems architecture</div>
+      <p>This draft is intentionally written as a systems essay rather than a kernel deep dive. It is meant to frame why the issue matters, where it appears first, and why the response is bigger than a single configuration change.</p>
+    </div>
+    <div class="copyright">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a></div>
+  </div>
+</body>
+</html>
