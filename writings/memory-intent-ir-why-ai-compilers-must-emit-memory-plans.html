@@ -1,0 +1,1474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Memory Intent IR: Why AI Compilers Must Emit Memory Plans | Manish KL</title>
+<meta name="description" content="A systems essay on Memory Intent IR: the missing compiler artifact that gives hardware orchestration structured object semantics instead of blind guesses."/>
+<meta name="author" content="Manish KL"/>
+<meta name="keywords" content="memory intent IR, AI compiler memory plans, memory-centric orchestration, AI systems memory policy, compiler emitted memory intent, MCOS, hardware memory orchestration"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/memory-intent-ir-why-ai-compilers-must-emit-memory-plans.html"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Memory Intent IR: Why AI Compilers Must Emit Memory Plans"/>
+<meta property="og:description" content="A systems essay on Memory Intent IR: the missing compiler artifact that gives hardware orchestration structured object semantics instead of blind guesses."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/memory-intent-ir-why-ai-compilers-must-emit-memory-plans.html"/>
+<meta property="og:site_name" content="Manish KL"/>
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png"/>
+<meta property="og:image:alt" content="Memory Intent IR essay by Manish KL"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Memory Intent IR: Why AI Compilers Must Emit Memory Plans"/>
+<meta name="twitter:description" content="A systems essay on Memory Intent IR: the missing compiler artifact that gives hardware orchestration structured object semantics instead of blind guesses."/>
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png"/>
+<meta name="twitter:image:alt" content="Memory Intent IR essay by Manish KL"/>
+<meta name="twitter:site" content="@manishklach"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,800;1,9..144,300;1,9..144,600&family=Instrument+Sans:ital,wght@0,300;0,400;0,500;1,300&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Memory Intent IR: Why AI Compilers Must Emit Memory Plans",
+  "description": "A systems essay on Memory Intent IR: the missing compiler artifact that gives hardware orchestration structured object semantics instead of blind guesses.",
+  "author": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://github.com/manishklach"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://github.com/manishklach"
+  },
+  "datePublished": "2026-04-09",
+  "dateModified": "2026-04-09",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/memory-intent-ir-why-ai-compilers-must-emit-memory-plans.html",
+  "url": "https://manishklach.github.io/writings/memory-intent-ir-why-ai-compilers-must-emit-memory-plans.html",
+  "image": "https://manishklach.github.io/assets/og-image.png",
+  "keywords": ["memory intent IR", "AI compiler", "memory policy", "memory-centric orchestration", "MCOS"]
+}
+</script>
+<style>
+/* ─── TOKENS ─────────────────────────────────────────── */
+:root {
+  --ink:     #0e1117;
+  --ink2:    #181e28;
+  --ink3:    #1e2636;
+  --text:    #dde4f0;
+  --text2:   #8b96b0;
+  --text3:   #4f5a70;
+  --cyan:    #3ecfcf;
+  --cyan2:   #6de0e0;
+  --cyan-d:  rgba(62,207,207,.12);
+  --cyan-b:  rgba(62,207,207,.28);
+  --amber:   #f0a843;
+  --amber2:  #f8c878;
+  --amber-d: rgba(240,168,67,.1);
+  --amber-b: rgba(240,168,67,.3);
+  --green:   #4ecb8d;
+  --rose:    #e05a6a;
+  --border:  rgba(255,255,255,.07);
+  --border2: rgba(255,255,255,.13);
+  --maxw:    720px;
+  --wide:    980px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 17px; }
+
+body {
+  background: var(--ink);
+  color: var(--text);
+  font-family: 'Instrument Sans', system-ui, sans-serif;
+  font-weight: 300;
+  line-height: 1.8;
+  /* Subtle dot grid */
+  background-image: radial-gradient(circle, rgba(62,207,207,.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-attachment: fixed;
+}
+
+/* Overlay gradient */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 900px 600px at 10% 0%, rgba(62,207,207,.09), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 90% 100%, rgba(240,168,67,.07), transparent 60%),
+    linear-gradient(180deg, rgba(14,17,23,.97) 0%, rgba(14,17,23,.94) 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+body > * { position: relative; z-index: 1; }
+
+/* ─── PROGRESS BAR ─────────────────────────────────────── */
+#bar {
+  position: fixed; top: 0; left: 0; z-index: 200;
+  height: 2px; width: 0%;
+  background: linear-gradient(90deg, var(--cyan), var(--amber));
+  transition: width .08s linear;
+}
+
+/* ─── NAV ───────────────────────────────────────────────── */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  height: 52px;
+  display: flex; align-items: center;
+  padding: 0 clamp(20px, 4vw, 48px);
+  background: rgba(14,17,23,.85);
+  backdrop-filter: blur(20px) saturate(160%);
+  border-bottom: 1px solid var(--border);
+  gap: 20px;
+}
+.nav-logo {
+  font-family: 'Fraunces', serif;
+  font-size: 15px; font-weight: 600;
+  color: var(--text); text-decoration: none;
+  letter-spacing: -.01em;
+}
+.nav-crumb {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--text3);
+  letter-spacing: .04em;
+  display: flex; align-items: center; gap: 8px;
+}
+.nav-crumb::before { content: '/'; color: var(--text3); }
+.nav-right {
+  margin-left: auto;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--text3);
+  letter-spacing: .04em;
+}
+
+/* ─── PAGE SHELL ───────────────────────────────────────── */
+.page { padding-top: 52px; }
+
+/* ─── HERO ─────────────────────────────────────────────── */
+.hero {
+  padding: clamp(48px,7vw,88px) clamp(20px,5vw,64px) clamp(40px,5vw,64px);
+  border-bottom: 1px solid var(--border);
+  max-width: var(--wide);
+  margin: 0 auto;
+  opacity: 0;
+  animation: rise .9s .05s ease forwards;
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 6px 12px;
+  border: 1px solid var(--cyan-b);
+  background: var(--cyan-d);
+  border-radius: 3px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--cyan);
+  margin-bottom: 24px;
+}
+.chip-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--cyan);
+  animation: blink 2.2s infinite;
+}
+h1 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(2.2rem, 5.5vw, 4rem);
+  line-height: 1.06; letter-spacing: -.03em;
+  font-weight: 800;
+  color: #eef2ff;
+  max-width: 16ch;
+  margin-bottom: 20px;
+}
+h1 em { color: var(--cyan); font-style: italic; }
+h1 strong { color: var(--amber); font-style: normal; }
+.hero-sub {
+  font-size: 1.05rem; color: var(--text2);
+  max-width: 600px; line-height: 1.7;
+  font-weight: 300; font-style: italic;
+  margin-bottom: 28px;
+}
+.meta-bar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--text3);
+  letter-spacing: .04em;
+}
+.meta-sep { color: var(--border2); }
+
+/* ─── ANIMATED HERO DIAGRAM ─────────────────────────────── */
+.hero-viz {
+  margin-top: 40px;
+  background: var(--ink2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+.hero-viz-inner {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: 110px;
+}
+.tier-block {
+  flex: 1; padding: 14px 10px;
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 6px;
+  transition: background .3s;
+  cursor: default;
+  position: relative; overflow: hidden;
+}
+.tier-block:last-child { border-right: none; }
+.tier-block::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: var(--glow-color, transparent);
+  opacity: 0;
+  transition: opacity .4s;
+}
+.tier-block.pulse::after { opacity: 1; animation: tierPulse .6s ease; }
+.tier-name {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9.5px; font-weight: 500;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text3);
+}
+.tier-lat {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px; color: var(--text3);
+}
+.tier-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--td-color, #333);
+  box-shadow: 0 0 6px var(--td-color, #333);
+}
+.particle-track {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+}
+.hero-viz-label {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--text3);
+  letter-spacing: .04em;
+  text-align: center;
+}
+
+/* ─── LAYOUT ────────────────────────────────────────────── */
+.body-layout {
+  max-width: var(--wide);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 0;
+  align-items: start;
+  padding: 0 clamp(20px,4vw,48px) 96px;
+}
+
+/* ─── STICKY TOC ────────────────────────────────────────── */
+.toc-rail {
+  position: sticky;
+  top: 68px;
+  padding: 28px 20px 28px 0;
+  border-right: 1px solid var(--border);
+}
+.toc-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9.5px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--cyan);
+  margin-bottom: 14px;
+}
+.toc-list {
+  list-style: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+.toc-list li { margin-bottom: 2px; }
+.toc-list a {
+  color: var(--text3); text-decoration: none;
+  display: block; padding: 4px 0;
+  border-left: 2px solid transparent;
+  padding-left: 8px;
+  transition: color .2s, border-color .2s;
+  line-height: 1.4;
+}
+.toc-list a:hover, .toc-list a.active {
+  color: var(--cyan2);
+  border-left-color: var(--cyan);
+}
+.toc-divider {
+  height: 1px; background: var(--border);
+  margin: 16px 0;
+}
+.toc-aside {
+  font-size: 10px; color: var(--text3); line-height: 1.55;
+  font-style: italic;
+}
+
+/* ─── ARTICLE ───────────────────────────────────────────── */
+.article-body {
+  padding: 40px 0 0 clamp(24px,3vw,48px);
+  min-width: 0;
+}
+
+/* Scroll-reveal */
+.reveal {
+  opacity: 0; transform: translateY(16px);
+  transition: opacity .65s ease, transform .65s ease;
+}
+.reveal.visible { opacity: 1; transform: none; }
+
+.lede {
+  font-size: 1.08rem; line-height: 1.82;
+  color: #c8d4ea; font-style: italic;
+  border-left: 2px solid var(--cyan-b);
+  padding-left: 18px; margin-bottom: 40px;
+}
+
+h2 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(1.5rem,2.8vw,2rem);
+  font-weight: 600; line-height: 1.15;
+  letter-spacing: -.025em; color: #eef2ff;
+  margin: 52px 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+h2:first-child { margin-top: 0; }
+
+h3 {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; font-weight: 500;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--amber); margin: 32px 0 12px;
+}
+
+p { margin-bottom: 18px; color: var(--text); font-weight: 300; }
+strong { color: #eef2ff; font-weight: 500; }
+em { color: var(--cyan2); font-style: italic; }
+ul, ol { margin: 0 0 18px 20px; }
+li { margin-bottom: 7px; color: var(--text); font-weight: 300; }
+
+/* ─── CALLOUT ────────────────────────────────────────────── */
+.callout {
+  margin: 24px 0; padding: 16px 20px;
+  background: var(--ink2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cyan);
+  border-radius: 0 6px 6px 0;
+  font-size: .96rem; color: var(--text2);
+}
+.callout strong { color: var(--cyan2); }
+.callout.amber { border-left-color: var(--amber); }
+.callout.amber strong { color: var(--amber2); }
+
+/* ─── PULL QUOTE ─────────────────────────────────────────── */
+.pull {
+  margin: 40px -24px;
+  padding: 28px 36px;
+  background: linear-gradient(135deg, rgba(62,207,207,.05), rgba(240,168,67,.04));
+  border-top: 1px solid var(--cyan-b);
+  border-bottom: 1px solid var(--cyan-b);
+  font-family: 'Fraunces', serif;
+  font-style: italic; font-size: 1.22rem;
+  color: #c8d4ea; line-height: 1.6; text-align: center;
+}
+.pull cite {
+  display: block; margin-top: 10px;
+  font-size: 10.5px; color: var(--text3);
+  font-family: 'IBM Plex Mono', monospace;
+  font-style: normal; letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+/* ─── FIGURE ─────────────────────────────────────────────── */
+.fig {
+  margin: 32px 0;
+  background: var(--ink2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.fig-head {
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 10px;
+  background: var(--ink3);
+  border-bottom: 1px solid var(--border);
+}
+.fig-num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text3);
+}
+.fig-ttl {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--text2);
+}
+.fig svg { display: block; width: 100%; height: auto; }
+.fig-cap {
+  padding: 10px 16px 14px;
+  font-size: 12px; color: var(--text3);
+  line-height: 1.55; font-style: italic;
+  border-top: 1px solid var(--border);
+}
+
+/* ─── CODE ───────────────────────────────────────────────── */
+pre {
+  background: #0a0f18;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 18px 20px;
+  overflow-x: auto; margin: 20px 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12.5px; line-height: 1.7;
+  color: #a8b8d8;
+}
+.kw  { color: var(--cyan2); }
+.ty  { color: var(--amber); }
+.vl  { color: var(--green); }
+.cm  { color: var(--text3); font-style: italic; }
+.st  { color: #b8d4ff; }
+
+/* ─── CARDS ──────────────────────────────────────────────── */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px; margin: 20px 0;
+}
+.card {
+  background: var(--ink2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 18px 20px;
+  transition: border-color .25s, background .25s;
+}
+.card:hover {
+  border-color: var(--cyan-b);
+  background: var(--ink3);
+}
+.card-icon {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--cyan);
+  margin-bottom: 8px;
+}
+.card h4 {
+  font-size: .95rem; font-weight: 500;
+  color: #eef2ff; margin-bottom: 8px;
+}
+.card p {
+  font-size: .88rem; color: var(--text2);
+  margin: 0; line-height: 1.6;
+}
+
+/* ─── COMPARISON TABLE ───────────────────────────────────── */
+.compare {
+  width: 100%; border-collapse: collapse;
+  margin: 20px 0; font-size: .9rem;
+}
+.compare th, .compare td {
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  text-align: left; vertical-align: top;
+}
+.compare th {
+  background: var(--ink3);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text3);
+  font-weight: 500;
+}
+.compare tr:nth-child(even) td { background: rgba(255,255,255,.018); }
+.compare td:first-child { color: var(--amber2); font-weight: 500; font-size: .85rem; }
+
+/* ─── STAT ROW ───────────────────────────────────────────── */
+.stats {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 12px; margin: 24px 0;
+}
+.stat {
+  background: var(--ink2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 18px 16px; text-align: center;
+}
+.stat-n {
+  font-family: 'Fraunces', serif;
+  font-size: 2rem; font-weight: 600;
+  color: var(--cyan2); line-height: 1;
+  margin-bottom: 6px;
+}
+.stat-l {
+  font-size: 11px; color: var(--text3);
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: .04em; line-height: 1.4;
+}
+
+/* ─── OBJECTION ──────────────────────────────────────────── */
+.objection {
+  margin: 20px 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.obj-q {
+  padding: 12px 18px;
+  background: var(--ink3);
+  border-bottom: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; color: var(--amber2);
+  font-style: italic;
+}
+.obj-a {
+  padding: 14px 18px;
+  font-size: .93rem; color: var(--text2);
+}
+.obj-a p { margin: 0; }
+
+/* ─── SECTION SEPARATOR ──────────────────────────────────── */
+.sep {
+  display: flex; align-items: center; gap: 14px;
+  margin: 52px 0 40px; color: var(--text3);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; letter-spacing: .08em;
+}
+.sep::before, .sep::after {
+  content: ''; flex: 1; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+/* ─── FOOTER ─────────────────────────────────────────────── */
+.article-footer {
+  margin-top: 56px; padding-top: 28px;
+  border-top: 1px solid var(--border);
+}
+.back-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px; color: var(--text3);
+  text-decoration: none; letter-spacing: .04em;
+  transition: color .2s;
+}
+.back-link:hover { color: var(--cyan); }
+.footer-note {
+  margin-top: 16px;
+  font-size: 11.5px; color: var(--text3);
+  font-family: 'IBM Plex Mono', monospace;
+  line-height: 1.7;
+}
+.footer-quote {
+  margin-top: 10px;
+  font-style: italic; color: var(--text3);
+  font-size: 13px; font-family: 'Instrument Sans', sans-serif;
+}
+
+/* ─── ANIMATIONS ─────────────────────────────────────────── */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes blink {
+  0%,100% { opacity: 1; } 50% { opacity: .3; }
+}
+@keyframes tierPulse {
+  0%   { opacity: 0; }
+  30%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes flowDot {
+  0%   { transform: translateX(0); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateX(var(--tx, 400px)); opacity: 0; }
+}
+
+/* ─── RESPONSIVE ─────────────────────────────────────────── */
+@media(max-width:740px) {
+  .body-layout { grid-template-columns: 1fr; }
+  .toc-rail { display: none; }
+  .article-body { padding-left: 0; }
+  .cards { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: 1fr; }
+  .pull { margin: 32px 0; padding: 24px 20px; font-size: 1.05rem; }
+  .hero { padding: 40px 20px 32px; }
+}
+</style>
+</head>
+<body>
+
+<div id="bar"></div>
+
+<nav class="nav">
+  <a class="nav-logo" href="../index.html">Manish KL</a>
+  <span class="nav-crumb">Architecture Essay · Part VI</span>
+  <span class="nav-right">Memory Intent IR</span>
+</nav>
+
+<div class="page">
+
+<!-- ═══ HERO ══════════════════════════════════════════════ -->
+<header class="hero">
+  <div class="chip"><span class="chip-dot"></span>AI Systems · Compiler Architecture · Memory Fabrics</div>
+  <h1>Memory <em>Intent</em> IR: The <strong>Missing</strong> Compiler Output</h1>
+  <p class="hero-sub">Compute graphs tell the system what to calculate. They stay silent about how the objects involved are expected to live, compete, expire, and move. That silence is becoming a first-order performance tax.</p>
+  <div class="meta-bar">
+    <span>Manish KL</span><span class="meta-sep">·</span>
+    <span>April 2026</span><span class="meta-sep">·</span>
+    <span>~15 min read</span><span class="meta-sep">·</span>
+    <span>Architecture Essay</span>
+  </div>
+
+  <!-- Live animated tier flow -->
+  <div class="hero-viz" id="heroViz">
+    <div class="hero-viz-inner" id="tierRow">
+      <div class="tier-block" style="--td-color:#f0a843;--glow-color:rgba(240,168,67,.08);" data-tier="sram">
+        <div class="tier-dot"></div>
+        <div class="tier-name">SRAM</div>
+        <div class="tier-lat">~1 ns</div>
+      </div>
+      <div class="tier-block" style="--td-color:#3ecfcf;--glow-color:rgba(62,207,207,.08);" data-tier="hbm">
+        <div class="tier-dot"></div>
+        <div class="tier-name">HBM</div>
+        <div class="tier-lat">~10 ns</div>
+      </div>
+      <div class="tier-block" style="--td-color:#4ecb8d;--glow-color:rgba(78,203,141,.08);" data-tier="dram">
+        <div class="tier-dot"></div>
+        <div class="tier-name">Host DRAM</div>
+        <div class="tier-lat">~100 ns</div>
+      </div>
+      <div class="tier-block" style="--td-color:#8888ff;--glow-color:rgba(128,128,255,.08);" data-tier="cxl">
+        <div class="tier-dot"></div>
+        <div class="tier-name">CXL</div>
+        <div class="tier-lat">~300 ns</div>
+      </div>
+      <div class="tier-block" style="--td-color:#9b8ea0;--glow-color:rgba(155,142,160,.08);" data-tier="dpu">
+        <div class="tier-dot"></div>
+        <div class="tier-name">DPU Buf</div>
+        <div class="tier-lat">~1 µs</div>
+      </div>
+      <div class="tier-block" style="--td-color:#e05a6a;--glow-color:rgba(224,90,106,.08);" data-tier="nvme">
+        <div class="tier-dot"></div>
+        <div class="tier-name">NVMe</div>
+        <div class="tier-lat">~100 µs</div>
+      </div>
+    </div>
+    <canvas class="particle-track" id="pCanvas" height="110"></canvas>
+    <div class="hero-viz-label" id="vizLabel">▸ Without intent: objects move reactively. The wrong bytes arrive late.</div>
+  </div>
+</header>
+
+<!-- ═══ BODY ═══════════════════════════════════════════════ -->
+<div class="body-layout">
+
+  <!-- TOC -->
+  <aside class="toc-rail">
+    <div class="toc-label">Contents</div>
+    <ul class="toc-list">
+      <li><a href="#missing">The missing artifact</a></li>
+      <li><a href="#core">The core idea</a></li>
+      <li><a href="#differs">How it differs</a></li>
+      <li><a href="#why-now">Why now</a></li>
+      <li><a href="#shape">What it looks like</a></li>
+      <li><a href="#compiler-passes">Compiler passes</a></li>
+      <li><a href="#example">Inference example</a></li>
+      <li><a href="#hardware">Hardware perspective</a></li>
+      <li><a href="#engineer">For the AI engineer</a></li>
+      <li><a href="#objections">Objections</a></li>
+      <li><a href="#unlocks">What it unlocks</a></li>
+      <li><a href="#closing">Final thought</a></li>
+    </ul>
+    <div class="toc-divider"></div>
+    <div class="toc-aside">Part of the MCOS architecture series. Pairs with the MCOS-HFC hardware controller essay.</div>
+  </aside>
+
+  <!-- ARTICLE -->
+  <main class="article-body">
+
+    <p class="lede reveal">The modern AI stack still behaves as if compute is the scarce resource and memory is a secondary implementation detail. That assumption is breaking. Performance is increasingly determined by whether the right object arrives in the right place at the right time — without avoidable copies, fabric congestion, spill storms, or eviction regret.</p>
+
+    <!-- FIG 1: Three-plane view -->
+    <div class="fig reveal">
+      <div class="fig-head">
+        <span class="fig-num">Fig. 01</span>
+        <span class="fig-ttl">Memory Intent IR — Three-Plane Architecture</span>
+      </div>
+      <svg viewBox="0 0 880 380" xmlns="http://www.w3.org/2000/svg" style="background:#0e1117;">
+        <defs>
+          <marker id="ah" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+            <path d="M0,0 L0,7 L7,3.5z" fill="rgba(62,207,207,.7)"/>
+          </marker>
+          <marker id="ah2" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+            <path d="M0,0 L0,7 L7,3.5z" fill="rgba(240,168,67,.5)"/>
+          </marker>
+        </defs>
+
+        <!-- Plane 1: Compiler -->
+        <rect x="24" y="24" width="832" height="80" rx="6" fill="rgba(62,207,207,.04)" stroke="rgba(62,207,207,.2)" stroke-width="1"/>
+        <text x="40" y="46" fill="#3ecfcf" font-family="IBM Plex Mono,monospace" font-size="8.5" letter-spacing="0.1em">SOFTWARE / COMPILER PLANE</text>
+        <rect x="48" y="54" width="130" height="32" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+        <text x="113" y="74" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Graph lowering</text>
+        <rect x="196" y="54" width="130" height="32" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+        <text x="261" y="74" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Liveness analysis</text>
+        <rect x="344" y="54" width="130" height="32" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+        <text x="409" y="74" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Reuse estimation</text>
+        <rect x="492" y="54" width="148" height="32" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+        <text x="566" y="74" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Phase annotation</text>
+        <rect x="658" y="54" width="178" height="32" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+        <text x="747" y="74" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Deadline + tier policy emit</text>
+
+        <!-- Arrow down -->
+        <path d="M440 106 L440 148" stroke="rgba(62,207,207,.5)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ah)"/>
+        <text x="446" y="132" fill="#3ecfcf" font-family="IBM Plex Mono,monospace" font-size="9">emit IR</text>
+
+        <!-- Plane 2: Memory Intent IR (the star) -->
+        <rect x="24" y="150" width="832" height="80" rx="6" fill="rgba(62,207,207,.07)" stroke="rgba(62,207,207,.4)" stroke-width="1.5"/>
+        <text x="40" y="172" fill="#6de0e0" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" letter-spacing="0.1em">MEMORY INTENT IR  ✦ the missing artifact</text>
+        <!-- IR chips -->
+        <rect x="48" y="180" width="96" height="30" rx="14" fill="rgba(62,207,207,.18)" stroke="rgba(62,207,207,.4)"/>
+        <text x="96" y="200" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" text-anchor="middle">Objects</text>
+        <rect x="154" y="180" width="88" height="30" rx="14" fill="rgba(240,168,67,.15)" stroke="rgba(240,168,67,.4)"/>
+        <text x="198" y="200" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" text-anchor="middle">Phases</text>
+        <rect x="252" y="180" width="100" height="30" rx="14" fill="rgba(62,207,207,.18)" stroke="rgba(62,207,207,.4)"/>
+        <text x="302" y="200" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" text-anchor="middle">Deadlines</text>
+        <rect x="362" y="180" width="96" height="30" rx="14" fill="rgba(240,168,67,.15)" stroke="rgba(240,168,67,.4)"/>
+        <text x="410" y="200" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" text-anchor="middle">Tier set</text>
+        <rect x="468" y="180" width="88" height="30" rx="14" fill="rgba(62,207,207,.18)" stroke="rgba(62,207,207,.4)"/>
+        <text x="512" y="200" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" text-anchor="middle">Reuse</text>
+        <rect x="566" y="180" width="86" height="30" rx="14" fill="rgba(240,168,67,.15)" stroke="rgba(240,168,67,.4)"/>
+        <text x="609" y="200" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" text-anchor="middle">Spill class</text>
+        <rect x="662" y="180" width="96" height="30" rx="14" fill="rgba(62,207,207,.18)" stroke="rgba(62,207,207,.4)"/>
+        <text x="710" y="200" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" text-anchor="middle">Anti-evict</text>
+        <rect x="768" y="180" width="76" height="30" rx="14" fill="rgba(78,203,141,.15)" stroke="rgba(78,203,141,.4)"/>
+        <text x="806" y="200" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" text-anchor="middle">Recompute</text>
+
+        <!-- Arrow down -->
+        <path d="M440 232 L440 274" stroke="rgba(240,168,67,.5)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ah2)"/>
+        <text x="446" y="258" fill="#f0a843" font-family="IBM Plex Mono,monospace" font-size="9">ingest</text>
+
+        <!-- Plane 3: Runtime / HW -->
+        <rect x="24" y="276" width="832" height="80" rx="6" fill="rgba(240,168,67,.04)" stroke="rgba(240,168,67,.22)" stroke-width="1"/>
+        <text x="40" y="298" fill="#f0a843" font-family="IBM Plex Mono,monospace" font-size="8.5" letter-spacing="0.1em">RUNTIME / HARDWARE ORCHESTRATION PLANE</text>
+        <rect x="48" y="306" width="148" height="32" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+        <text x="122" y="326" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Placement engine</text>
+        <rect x="210" y="306" width="148" height="32" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+        <text x="284" y="326" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Prefetch + admission</text>
+        <rect x="372" y="306" width="148" height="32" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+        <text x="446" y="326" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Eviction policy</text>
+        <rect x="534" y="306" width="160" height="32" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+        <text x="614" y="326" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Line-rate decisions</text>
+        <rect x="708" y="306" width="138" height="32" rx="4" fill="#1a2232" stroke="rgba(78,203,141,.2)" stroke-width="1"/>
+        <text x="777" y="326" fill="#4ecb8d" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Feedback loop</text>
+
+        <!-- Feedback arrow -->
+        <path d="M846 338 Q870 338 870 190 Q870 74 858 74" stroke="rgba(240,168,67,.2)" stroke-width="1" stroke-dasharray="3 4" fill="none" marker-end="url(#ah2)"/>
+        <text x="874" y="210" fill="rgba(240,168,67,.4)" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" transform="rotate(90,874,210)">observed vs. declared</text>
+      </svg>
+      <div class="fig-cap">The Memory Intent IR sits between the compiler and the runtime/hardware controller — a structured behavioral contract for AI objects that neither plane can infer on its own. The feedback loop allows observed behavior to refine compiler estimates over time.</div>
+    </div>
+
+    <!-- ═══ SECTION: MISSING ARTIFACT ════════════════════ -->
+    <section id="missing" class="reveal">
+      <h2>The missing artifact in the AI stack</h2>
+      <p>Today, most AI compilers emit some combination of a lowered graph, fused kernels, local buffer allocation plans, communication schedules, and device placement hints. Those artifacts are necessary. They are no longer sufficient.</p>
+      <p>They tell the system <em>what must run</em>. They do not tell the system how the objects involved in that execution are expected to behave over time — which tensors are truly latency-critical, which objects have short but intense reuse windows, which buffers are safe to spill, which groups of objects are usually needed together, and which data should be pinned because eviction would create a disproportionate stall.</p>
+      <p>The runtime is left to infer this, after the fact, from access history alone. That is a structurally bad position. The compiler already had most of this information. It just never wrote it down.</p>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-n">2</div>
+          <div class="stat-l">Compiler outputs needed: compute plan + memory plan</div>
+        </div>
+        <div class="stat">
+          <div class="stat-n">6+</div>
+          <div class="stat-l">Memory tiers a controller may span: SRAM → NVMe</div>
+        </div>
+        <div class="stat">
+          <div class="stat-n">0</div>
+          <div class="stat-l">Good reasons to leave object semantics implicit</div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <strong>The gap:</strong> The compiler knows graph structure, tensor liveness, phase boundaries, recomputation cost, and communication windows. The controller knows nothing except access history. That asymmetry is the root cause of bad placement, premature eviction, and avoidable movement.
+      </div>
+    </section>
+
+    <!-- ═══ SECTION: CORE IDEA ════════════════════════════ -->
+    <section id="core" class="reveal">
+      <h2>The core idea</h2>
+      <p>A <strong>Memory Intent IR</strong> is a compiler-emitted intermediate representation that describes expected memory behavior — not just initial allocation. It is a behavioral contract for objects: how they live, how they expire, how hot they are, what deadlines matter, what tiers are acceptable, what spill policies are permitted, and what future reuse the system should preserve.</p>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-icon">Object Semantics</div>
+          <h4>What the object is</h4>
+          <p>Weight tile, KV block, activation, optimizer state, gradient shard, expert weight family, checkpoint fragment, metadata page. Each type implies a different reuse pattern and eviction cost.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">Lifecycle Semantics</div>
+          <h4>How it lives and dies</h4>
+          <p>Creation time, earliest use, latest use, persistence scope, reuse window, recompute cost, sharing rules, and retirement conditions — the temporal contract of the object.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">Placement Semantics</div>
+          <h4>Where it wants to live</h4>
+          <p>Preferred tiers, allowed fallback tiers, prefetch horizon, replication eligibility, coalition hints (objects usually needed together), and anti-eviction rules.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">Pressure Semantics</div>
+          <h4>What to do under stress</h4>
+          <p>What to protect under congestion, what can spill without consequence, what can be dropped and cheaply recomputed, and what is deadline-sensitive and must not stall.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="sep">§</div>
+
+    <!-- ═══ SECTION: HOW IT DIFFERS ══════════════════════ -->
+    <section id="differs" class="reveal">
+      <h2>How this differs from existing approaches</h2>
+      <p>The easiest way to misread Memory Intent IR is to treat it as a prettier buffer allocation table. That is not what it is. Existing approaches each capture a slice of the problem. None assemble it into a first-class transferable artifact.</p>
+
+      <table class="compare">
+        <thead>
+          <tr>
+            <th>Existing Approach</th>
+            <th>What it captures</th>
+            <th>What it misses</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Buffer allocation (XLA, TVM)</td>
+            <td>Size and initial placement per tensor</td>
+            <td>Reuse patterns, phase transitions, tier preferences, spill policy</td>
+          </tr>
+          <tr>
+            <td>OS page policies (LRU, LFU)</td>
+            <td>Recency/frequency of access</td>
+            <td>Object semantics, deadlines, recompute cost, shared prefix value</td>
+          </tr>
+          <tr>
+            <td>vLLM PagedAttention</td>
+            <td>KV block address management, fragmentation reduction</td>
+            <td>Phase-aware urgency, anti-eviction rules, prefetch horizon, hardware signaling</td>
+          </tr>
+          <tr>
+            <td>DeepSpeed ZeRO offload hints</td>
+            <td>Coarse CPU/GPU offload strategy</td>
+            <td>Per-object typed semantics, line-rate hardware enforcement, multi-tier placement</td>
+          </tr>
+          <tr>
+            <td>Compiler liveness analysis</td>
+            <td>Buffer liveness windows for register/memory allocation</td>
+            <td>Cross-tier residency, reuse estimation, pressure classes, multi-phase behavior</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout amber">
+        <strong>The point is not to record where memory is allocated.</strong> The point is to expose the expected behavior of objects across phases so the rest of the system can make better decisions — at hardware line rate, without repeated software intervention.
+      </div>
+    </section>
+
+    <!-- ═══ SECTION: WHY NOW ══════════════════════════════ -->
+    <section id="why-now" class="reveal">
+      <h2>Why this matters now</h2>
+
+      <h3>1. Models have outgrown single-device memory</h3>
+      <p>Once a model spills across HBM, host DRAM, CXL pools, and peer accelerators, the number of placement decisions that can go wrong grows rapidly. A recency policy that worked at single-GPU scale becomes a liability at rack scale.</p>
+
+      <h3>2. KV cache has become a first-order memory management problem</h3>
+      <p>Long contexts, prefix sharing, speculative decoding, and retrieval-augmented generation all push KV cache management into a domain that generic page replacement cannot handle correctly. A prefix-shared KV block may look cold to LRU yet be one of the highest-value objects in the system because dozens of decode continuations are about to depend on it.</p>
+
+      <h3>3. Expert routing creates dynamic hotness</h3>
+      <p>In MoE models, which expert weights are "hot" changes across decode steps based on routing decisions. The compiler can observe this structure statically and emit probability-weighted prefetch hints. The hardware has no access to this information without an intent channel.</p>
+
+      <h3>4. Hardware controllers are getting smarter — but need structured input</h3>
+      <p>If hardware-resident or near-hardware orchestration exists (as in MCOS-HFC), it needs structured input. Otherwise it becomes a faster blind heuristic engine — powerful machinery with no map.</p>
+
+      <div class="pull">
+        "A reactive runtime alone is always late. The compiler saw the future first."
+        <cite>— Memory Intent IR design thesis</cite>
+      </div>
+    </section>
+
+    <!-- ═══ SECTION: WHAT IT LOOKS LIKE ══════════════════ -->
+    <section id="shape" class="reveal">
+      <h2>What a Memory Intent IR could look like</h2>
+      <p>Conceptually the IR is organized around three levels: <strong>object descriptors</strong>, <strong>phase descriptors</strong>, and <strong>policy overrides</strong>. Object descriptors define type, size, lifecycle, and base placement preferences. Phase descriptors capture execution stages that reshape urgency and locality. Policy overrides let phase-specific behavior modify base rules without redundancy.</p>
+
+      <pre><code><span class="cm">// ── Object descriptors ──────────────────────────────────────</span>
+
+<span class="kw">object</span> <span class="ty">layer_18_weight_group_A</span> {
+  class              = <span class="vl">WEIGHT_TILE</span>
+  size_bytes         = <span class="vl">134_217_728</span>          <span class="cm">// 128 MB</span>
+  persistence_scope  = <span class="vl">SESSION</span>
+  reuse_window       = <span class="vl">HIGH</span>                 <span class="cm">// reused every layer pass</span>
+  preferred_tiers    = [<span class="vl">SRAM</span>, <span class="vl">HBM</span>]
+  fallback_tiers     = [<span class="vl">DRAM</span>, <span class="vl">CXL</span>]
+  spill_policy       = <span class="vl">SEVERE_PRESSURE_ONLY</span>
+  multicast_eligible = <span class="vl">true</span>                <span class="cm">// can fan-out to multiple accs</span>
+  deadline_class     = <span class="vl">HARD</span>
+}
+
+<span class="kw">object</span> <span class="ty">kv_prefix_seg_P</span> {
+  class              = <span class="vl">KV_BLOCK</span>
+  sharing_scope      = <span class="st">SEQUENCE_GROUP(17, 18, 21)</span>  <span class="cm">// shared by 3 seqs</span>
+  persistence_scope  = <span class="vl">TOKEN_PROGRESS</span>
+  anti_evict_rule    = <span class="vl">WHILE_FANOUT_GT_1</span>   <span class="cm">// protect while shared</span>
+  preferred_tiers    = [<span class="vl">HBM</span>, <span class="vl">DRAM</span>]
+  deadline_class     = <span class="vl">HARD</span>
+}
+
+<span class="kw">object</span> <span class="ty">decode_buf_D</span> {
+  class              = <span class="vl">ACTIVATION_TEMP</span>
+  persistence_scope  = <span class="vl">STEP</span>               <span class="cm">// expires after one step</span>
+  recompute_class    = <span class="vl">CHEAP</span>              <span class="cm">// safe to recompute</span>
+  spill_policy       = <span class="vl">ALLOW</span>
+  deadline_class     = <span class="vl">SOFT</span>
+}
+
+<span class="cm">// ── Phase descriptors with overrides ────────────────────────</span>
+
+<span class="kw">phase</span> <span class="ty">decode_step</span> {
+  <span class="kw">override</span> <span class="ty">kv_prefix_seg_P</span> {
+    anti_evict_rule      = <span class="vl">WHILE_FANOUT_GT_1</span>
+    prefetch_horizon_us  = <span class="vl">12</span>
+    preferred_tiers      = [<span class="vl">HBM</span>, <span class="vl">DRAM</span>]
+  }
+  <span class="kw">override</span> <span class="ty">expert_weight_group_E3</span> {
+    route_probability    = <span class="vl">HIGH</span>           <span class="cm">// router hints this is likely</span>
+    replication_allowed  = <span class="vl">true</span>
+    prefetch_horizon_us  = <span class="vl">20</span>
+  }
+}
+
+<span class="kw">phase</span> <span class="ty">optimizer_update</span> {
+  <span class="kw">override</span> <span class="ty">gradient_shard_G</span> {
+    persistence_scope    = <span class="vl">UPDATE_WINDOW</span>
+    preferred_tiers      = [<span class="vl">DRAM</span>, <span class="vl">CXL</span>]   <span class="cm">// keep off HBM during fwd pass</span>
+    anti_evict_rule      = <span class="vl">UNTIL_ALLREDUCE_COMPLETE</span>
+  }
+}</code></pre>
+
+      <!-- FIG 2: Object × Phase × Policy diagram -->
+      <div class="fig">
+        <div class="fig-head">
+          <span class="fig-num">Fig. 02</span>
+          <span class="fig-ttl">IR Structure — Objects × Phases × Policies</span>
+        </div>
+        <svg viewBox="0 0 880 340" xmlns="http://www.w3.org/2000/svg" style="background:#0e1117;">
+          <!-- Objects column -->
+          <rect x="20" y="20" width="220" height="300" rx="6" fill="rgba(62,207,207,.04)" stroke="rgba(62,207,207,.2)" stroke-width="1"/>
+          <text x="40" y="42" fill="#3ecfcf" font-family="IBM Plex Mono,monospace" font-size="8.5" letter-spacing=".1em">OBJECTS</text>
+
+          <rect x="36" y="54" width="188" height="42" rx="4" fill="rgba(240,168,67,.1)" stroke="rgba(240,168,67,.3)"/>
+          <text x="130" y="72" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Weight tiles</text>
+          <text x="130" y="87" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">HIGH reuse · large · multicastable</text>
+
+          <rect x="36" y="106" width="188" height="42" rx="4" fill="rgba(62,207,207,.1)" stroke="rgba(62,207,207,.3)"/>
+          <text x="130" y="124" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">KV blocks</text>
+          <text x="130" y="139" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">seq affinity · prefix sharing · growth</text>
+
+          <rect x="36" y="158" width="188" height="42" rx="4" fill="rgba(78,203,141,.08)" stroke="rgba(78,203,141,.25)"/>
+          <text x="130" y="176" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Activations</text>
+          <text x="130" y="191" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">short-lived · recompute-cheap</text>
+
+          <rect x="36" y="210" width="188" height="42" rx="4" fill="rgba(128,128,255,.08)" stroke="rgba(128,128,255,.2)"/>
+          <text x="130" y="228" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Optimizer state</text>
+          <text x="130" y="243" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">long-lived · update-phase only</text>
+
+          <rect x="36" y="262" width="188" height="42" rx="4" fill="rgba(224,90,106,.08)" stroke="rgba(224,90,106,.2)"/>
+          <text x="130" y="280" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Expert shards</text>
+          <text x="130" y="295" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">dynamic hotness · route-probability</text>
+
+          <!-- Phases column -->
+          <rect x="266" y="20" width="200" height="300" rx="6" fill="rgba(240,168,67,.04)" stroke="rgba(240,168,67,.2)" stroke-width="1"/>
+          <text x="286" y="42" fill="#f0a843" font-family="IBM Plex Mono,monospace" font-size="8.5" letter-spacing=".1em">PHASES</text>
+
+          <rect x="282" y="54" width="168" height="38" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)"/>
+          <text x="366" y="78" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle">Prefill</text>
+          <rect x="282" y="102" width="168" height="38" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)"/>
+          <text x="366" y="126" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle">Decode step</text>
+          <rect x="282" y="150" width="168" height="38" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)"/>
+          <text x="366" y="174" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle">Expert dispatch</text>
+          <rect x="282" y="198" width="168" height="38" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)"/>
+          <text x="366" y="222" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle">AllReduce window</text>
+          <rect x="282" y="246" width="168" height="38" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)"/>
+          <text x="366" y="270" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle">Optimizer update</text>
+          <rect x="282" y="294" width="168" height="20" rx="4" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.06)"/>
+          <text x="366" y="309" fill="#4f5a70" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">Checkpoint · retrieval…</text>
+
+          <!-- Policies column -->
+          <rect x="492" y="20" width="220" height="300" rx="6" fill="rgba(78,203,141,.04)" stroke="rgba(78,203,141,.2)" stroke-width="1"/>
+          <text x="512" y="42" fill="#4ecb8d" font-family="IBM Plex Mono,monospace" font-size="8.5" letter-spacing=".1em">POLICIES</text>
+
+          <rect x="508" y="54" width="188" height="38" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)"/>
+          <text x="602" y="78" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">preferred_tiers + fallbacks</text>
+          <rect x="508" y="102" width="188" height="38" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)"/>
+          <text x="602" y="126" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">prefetch_horizon_us</text>
+          <rect x="508" y="150" width="188" height="38" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)"/>
+          <text x="602" y="174" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">spill_policy + recompute_class</text>
+          <rect x="508" y="198" width="188" height="38" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)"/>
+          <text x="602" y="222" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">anti_evict_rule</text>
+          <rect x="508" y="246" width="188" height="38" rx="4" fill="#1a2232" stroke="rgba(255,255,255,.1)"/>
+          <text x="602" y="270" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">deadline_class (HARD / SOFT)</text>
+          <rect x="508" y="294" width="188" height="20" rx="4" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.06)"/>
+          <text x="602" y="309" fill="#4f5a70" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">coalition_hints · security_domain…</text>
+
+          <!-- Controller box -->
+          <rect x="738" y="80" width="122" height="160" rx="6" fill="rgba(240,168,67,.06)" stroke="rgba(240,168,67,.25)" stroke-width="1.5"/>
+          <text x="799" y="106" fill="#f0a843" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" letter-spacing=".06em">CONTROLLER</text>
+          <text x="799" y="126" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">ingests all</text>
+          <text x="799" y="140" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">three planes</text>
+          <text x="799" y="170" fill="#4ecb8d" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">placement</text>
+          <text x="799" y="185" fill="#4ecb8d" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">prefetch</text>
+          <text x="799" y="200" fill="#4ecb8d" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">eviction</text>
+          <text x="799" y="215" fill="#4ecb8d" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">at line rate</text>
+
+          <!-- Arrows to controller -->
+          <path d="M712 170 L736 170" stroke="rgba(62,207,207,.35)" stroke-width="1.2" marker-end="url(#ah)"/>
+        </svg>
+        <div class="fig-cap">The IR is organized as object descriptors (what the object is and how it lives) × phase descriptors (when urgency changes) × policy descriptors (how to handle placement and pressure). The controller ingests all three at load time and operates at line rate thereafter.</div>
+      </div>
+    </section>
+
+    <!-- ═══ SECTION: COMPILER PASSES ═════════════════════ -->
+    <section id="compiler-passes" class="reveal">
+      <h2>What new compiler passes this requires</h2>
+      <p>Memory Intent IR is not just a runtime improvement. It implies new compiler passes that elevate existing analyses into a formal, transferable artifact. The compiler already performs many of the underlying analyses — it just does not emit the results in a consumable form.</p>
+
+      <!-- FIG 3: Compiler pipeline -->
+      <div class="fig">
+        <div class="fig-head">
+          <span class="fig-num">Fig. 03</span>
+          <span class="fig-ttl">Compiler Pipeline — From Graph to Memory Intent IR</span>
+        </div>
+        <svg viewBox="0 0 880 260" xmlns="http://www.w3.org/2000/svg" style="background:#0e1117;">
+          <defs>
+            <marker id="pah" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+              <path d="M0,0 L0,7 L7,3.5z" fill="rgba(62,207,207,.6)"/>
+            </marker>
+          </defs>
+
+          <!-- Stage boxes -->
+          <!-- 1 -->
+          <rect x="20" y="90" width="110" height="80" rx="5" fill="#1a2232" stroke="rgba(62,207,207,.25)" stroke-width="1"/>
+          <text x="75" y="125" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" font-weight="500">Model Graph</text>
+          <text x="75" y="140" fill="#4f5a70" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">ops · tensors</text>
+          <text x="75" y="153" fill="#4f5a70" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">dependencies</text>
+          <path d="M130 130 L154 130" stroke="rgba(62,207,207,.4)" stroke-width="1.2" marker-end="url(#pah)"/>
+
+          <!-- 2 -->
+          <rect x="156" y="60" width="120" height="140" rx="5" fill="rgba(62,207,207,.05)" stroke="rgba(62,207,207,.3)" stroke-width="1"/>
+          <text x="216" y="82" fill="#3ecfcf" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" letter-spacing=".06em">ANALYSIS</text>
+          <text x="216" y="102" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Liveness</text>
+          <text x="216" y="118" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Reuse est.</text>
+          <text x="216" y="134" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Phase bound.</text>
+          <text x="216" y="150" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Recompute cost</text>
+          <text x="216" y="166" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Coalition detect</text>
+          <text x="216" y="182" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Expert routing</text>
+          <path d="M276 130 L300 130" stroke="rgba(62,207,207,.4)" stroke-width="1.2" marker-end="url(#pah)"/>
+
+          <!-- 3 -->
+          <rect x="302" y="60" width="120" height="140" rx="5" fill="rgba(240,168,67,.05)" stroke="rgba(240,168,67,.3)" stroke-width="1"/>
+          <text x="362" y="82" fill="#f0a843" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" letter-spacing=".06em">ANNOTATION</text>
+          <text x="362" y="102" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Classify types</text>
+          <text x="362" y="118" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Assign deadlines</text>
+          <text x="362" y="134" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Tier preferences</text>
+          <text x="362" y="150" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Spill classes</text>
+          <text x="362" y="166" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Coalition groups</text>
+          <text x="362" y="182" fill="#dde4f0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Phase overrides</text>
+          <path d="M422 130 L446 130" stroke="rgba(62,207,207,.4)" stroke-width="1.2" marker-end="url(#pah)"/>
+
+          <!-- 4: IR emit (star) -->
+          <rect x="448" y="70" width="130" height="120" rx="6" fill="rgba(62,207,207,.09)" stroke="rgba(62,207,207,.5)" stroke-width="1.5"/>
+          <text x="513" y="96" fill="#6de0e0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" letter-spacing=".08em" font-weight="500">EMIT</text>
+          <text x="513" y="120" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="11" text-anchor="middle" font-weight="500">Memory</text>
+          <text x="513" y="136" fill="#eef2ff" font-family="IBM Plex Mono,monospace" font-size="11" text-anchor="middle" font-weight="500">Intent IR</text>
+          <text x="513" y="160" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">structured artifact</text>
+          <text x="513" y="175" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">alongside kernel binary</text>
+          <path d="M578 130 L602 130" stroke="rgba(240,168,67,.5)" stroke-width="1.2" marker-end="url(#ah2)"/>
+
+          <!-- 5: Two outputs split -->
+          <rect x="604" y="60" width="118" height="54" rx="5" fill="#1a2232" stroke="rgba(240,168,67,.25)"/>
+          <text x="663" y="83" fill="#f0a843" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">HW Controller</text>
+          <text x="663" y="98" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">ingest at load time</text>
+
+          <rect x="604" y="126" width="118" height="54" rx="5" fill="#1a2232" stroke="rgba(78,203,141,.25)"/>
+          <text x="663" y="149" fill="#4ecb8d" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">SW Runtime</text>
+          <text x="663" y="164" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">policy guidance</text>
+
+          <!-- Parallel existing output -->
+          <path d="M448 190 L368 220 L20 220 L20 175 L130 175" stroke="rgba(255,255,255,.06)" stroke-width="1" stroke-dasharray="3 4" fill="none"/>
+          <text x="240" y="238" fill="#4f5a70" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">existing output: kernel binary, buffer plan, comms schedule (unchanged)</text>
+
+          <!-- Feedback arrow -->
+          <rect x="740" y="90" width="118" height="60" rx="5" fill="rgba(78,203,141,.05)" stroke="rgba(78,203,141,.2)"/>
+          <text x="799" y="115" fill="#4ecb8d" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">Feedback</text>
+          <text x="799" y="132" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">observed vs. intent</text>
+          <path d="M722 130 L740 130" stroke="rgba(78,203,141,.35)" stroke-width="1.2" marker-end="url(#pah)"/>
+          <path d="M799 90 Q799 40 513 40 L513 70" stroke="rgba(78,203,141,.2)" stroke-width="1" stroke-dasharray="3 4" fill="none" marker-end="url(#pah)"/>
+        </svg>
+        <div class="fig-cap">The compiler gains two new pass groups: analysis (elevating existing liveness, reuse, and phase analyses) and annotation (classifying objects, assigning policies, detecting coalitions). The IR is emitted alongside the existing binary — it does not replace it. A feedback loop allows observed mismatch to refine future compilations.</div>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-icon">New Pass: Tier Liveness</div>
+          <h4>Cross-tier lifetime analysis</h4>
+          <p>Extends traditional register-allocation liveness to span memory tiers. Instead of "this buffer is live from op 4 to op 12," the analysis determines "this object should remain in HBM from layer 4 through layer 18, then is eligible for demotion."</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">New Pass: Coalition Detection</div>
+          <h4>Co-access group identification</h4>
+          <p>Identifies sets of objects that are frequently accessed together and should be co-placed. Weight tiles for a given layer family, KV blocks for sequences in the same prefix group, expert weights likely to be co-routed.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">New Pass: Recompute Classifier</div>
+          <h4>Spill vs. recompute cost</h4>
+          <p>For each object, estimates the FLOPs cost to recompute vs. the bandwidth cost to spill and refetch. Emits a <code>recompute_class</code> that the path selector can use to choose between movement and arithmetic regeneration.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">New Pass: Phase Annotator</div>
+          <h4>Phase-sensitive urgency</h4>
+          <p>Marks execution boundaries where object urgency changes — prefill → decode transition, collective windows, expert dispatch gates — and emits per-phase policy overrides that let the controller adapt without re-querying software.</p>
+        </div>
+      </div>
+
+      <p>In other words: the compiler stops thinking only like a kernel scheduler and starts thinking like a memory strategist — one that describes not just <em>what</em> to compute but <em>what the data will need</em> to do while that computation runs.</p>
+    </section>
+
+    <div class="sep">§</div>
+
+    <!-- ═══ SECTION: EXAMPLE ══════════════════════════════ -->
+    <section id="example" class="reveal">
+      <h2>A concrete inference example</h2>
+      <p>In LLM serving, the compiler and serving stack often know several useful things before runtime pressure appears. Weight groups for active layers will be reused. Prefix-shared KV segments have disproportionate value. Some activation buffers are short-lived and cheap to recompute. Expert routing may make a subset of weights hotter over the next few decode steps.</p>
+      <p>That means the system does not need clairvoyance. It needs a disciplined way to express what is already structurally known.</p>
+
+      <!-- FIG 4: Inference timeline -->
+      <div class="fig">
+        <div class="fig-head">
+          <span class="fig-num">Fig. 04</span>
+          <span class="fig-ttl">Autoregressive Inference — Intent-Guided Object Behavior</span>
+        </div>
+        <svg viewBox="0 0 880 310" xmlns="http://www.w3.org/2000/svg" style="background:#0e1117;">
+          <!-- Timeline axis -->
+          <line x1="40" y1="50" x2="860" y2="50" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+          <text x="40" y="44" fill="#4f5a70" font-family="IBM Plex Mono,monospace" font-size="8" letter-spacing=".06em">PREFILL</text>
+          <line x1="220" y1="36" x2="220" y2="64" stroke="rgba(255,255,255,.08)" stroke-width="1" stroke-dasharray="3 3"/>
+          <text x="222" y="44" fill="#4f5a70" font-family="IBM Plex Mono,monospace" font-size="8" letter-spacing=".06em">DECODE →</text>
+          <text x="500" y="44" fill="#4f5a70" font-family="IBM Plex Mono,monospace" font-size="8" letter-spacing=".06em">STEP N+1 →</text>
+          <line x1="480" y1="36" x2="480" y2="64" stroke="rgba(255,255,255,.08)" stroke-width="1" stroke-dasharray="3 3"/>
+          <text x="680" y="44" fill="#4f5a70" font-family="IBM Plex Mono,monospace" font-size="8" letter-spacing=".06em">STEP N+K →</text>
+          <line x1="660" y1="36" x2="660" y2="64" stroke="rgba(255,255,255,.08)" stroke-width="1" stroke-dasharray="3 3"/>
+
+          <!-- Weight tiles row -->
+          <text x="16" y="96" fill="#f0a843" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" transform="rotate(-90,16,96)">Weights</text>
+          <rect x="40" y="72" width="810" height="34" rx="3" fill="rgba(240,168,67,.08)" stroke="rgba(240,168,67,.2)"/>
+          <text x="450" y="94" fill="#f8c878" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">PROTECTED in HBM throughout · HIGH reuse · multicast to peers</text>
+
+          <!-- KV prefix row -->
+          <text x="16" y="152" fill="#3ecfcf" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" transform="rotate(-90,16,152)">KV Prefix</text>
+          <rect x="40" y="116" width="620" height="34" rx="3" fill="rgba(62,207,207,.1)" stroke="rgba(62,207,207,.3)"/>
+          <text x="330" y="138" fill="#6de0e0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">ANTI-EVICT while fanout &gt; 1 · expires when all seqs complete</text>
+          <!-- Expiry indicator -->
+          <rect x="660" y="116" width="190" height="34" rx="3" fill="rgba(224,90,106,.06)" stroke="rgba(224,90,106,.15)" stroke-dasharray="4 3"/>
+          <text x="755" y="138" fill="#e05a6a" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">fanout → 0 · eligible for eviction</text>
+
+          <!-- Activation row -->
+          <text x="16" y="207" fill="#4ecb8d" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" transform="rotate(-90,16,207)">Activations</text>
+          <rect x="40" y="160" width="178" height="34" rx="3" fill="rgba(78,203,141,.08)" stroke="rgba(78,203,141,.2)"/>
+          <text x="129" y="182" fill="#4ecb8d" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">step-scoped</text>
+          <rect x="226" y="160" width="152" height="34" rx="3" fill="rgba(78,203,141,.08)" stroke="rgba(78,203,141,.2)"/>
+          <text x="302" y="182" fill="#4ecb8d" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">step-scoped</text>
+          <text x="432" y="182" fill="#4f5a70" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">CHEAP recompute · ALLOW spill · no long-term retention</text>
+
+          <!-- Expert weights row -->
+          <text x="16" y="263" fill="#8888ff" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" transform="rotate(-90,16,263)">Experts</text>
+          <rect x="40" y="204" width="178" height="34" rx="3" fill="rgba(128,128,255,.05)" stroke="rgba(128,128,255,.1)" stroke-dasharray="4 3"/>
+          <text x="129" y="225" fill="#9b8ea0" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">cold · in NVMe</text>
+          <!-- Expert becomes hot -->
+          <rect x="480" y="204" width="200" height="34" rx="3" fill="rgba(128,128,255,.12)" stroke="rgba(128,128,255,.4)"/>
+          <text x="580" y="225" fill="#b8b4ff" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">route_prob HIGH → prefetch to HBM</text>
+          <path d="M440 221 L478 221" stroke="rgba(128,128,255,.5)" stroke-width="1.2" stroke-dasharray="3 2" marker-end="url(#pah)"/>
+          <text x="459" y="217" fill="#8888ff" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle">MIR hint</text>
+
+          <!-- Legend -->
+          <rect x="40" y="250" width="12" height="12" rx="2" fill="rgba(240,168,67,.3)"/>
+          <text x="58" y="261" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8">HARD deadline</text>
+          <rect x="160" y="250" width="12" height="12" rx="2" fill="rgba(62,207,207,.3)"/>
+          <text x="178" y="261" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8">anti-evict active</text>
+          <rect x="300" y="250" width="12" height="12" rx="2" fill="rgba(78,203,141,.3)"/>
+          <text x="318" y="261" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8">ALLOW spill</text>
+          <rect x="420" y="250" width="12" height="12" rx="2" fill="rgba(128,128,255,.3)" stroke="rgba(128,128,255,.5)" stroke-width="1"/>
+          <text x="438" y="261" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8">IR-guided prefetch</text>
+          <rect x="570" y="250" width="12" height="12" rx="2" fill="rgba(224,90,106,.2)" stroke="rgba(224,90,106,.3)" stroke-width="1" stroke-dasharray="3 2"/>
+          <text x="588" y="261" fill="#8b96b0" font-family="IBM Plex Mono,monospace" font-size="8">expiry eligible</text>
+        </svg>
+        <div class="fig-cap">Each object class follows a different timeline: weight tiles stay protected throughout; KV prefix blocks are guarded until sequence fanout drops to zero; activations are step-scoped and spill-eligible; expert weights are cold until the router signals high route probability, at which point the IR-guided prefetch pulls them to HBM ahead of demand.</div>
+      </div>
+
+      <div class="callout">
+        <strong>Memory Intent IR is not about predicting everything.</strong> It is about refusing to throw away the structural knowledge the compiler already has — and surfacing it in a form that controllers can act on, at hardware speed, without repeated software intervention.
+      </div>
+
+      <p>The example policy split is straightforward: protect shared prefix KV (hard anti-evict); keep high-reuse weights in HBM (hard deadline); allow cheap decode temporaries to spill or recompute (soft deadline, cheap recompute); and pre-stage likely-hot expert weights a few steps ahead (route-probability override in the decode phase descriptor).</p>
+    </section>
+
+    <div class="sep">§</div>
+
+    <!-- ═══ SECTION: HARDWARE PERSPECTIVE ════════════════ -->
+    <section id="hardware" class="reveal">
+      <h2>Why hardware people should care</h2>
+      <p>Without a structured intent channel, hardware memory orchestration is forced into two unsatisfying modes: fixed heuristics that only work for some workloads, or software-driven micromanagement that drags the control path back into microsecond territory and defeats the purpose of the hardware accelerator.</p>
+      <p>Memory Intent IR offers a cleaner architecture. The controller remains generic and fabric-agnostic. But it is no longer blind. It receives normalized object semantics at model load time and combines them with live telemetry — queue depth, bandwidth pressure, residency fill, hit history — to make placement and eviction decisions that are simultaneously fast and informed.</p>
+      <div class="callout amber">
+        <strong>The hardware contract:</strong> The IR is emitted once per model load. The controller ingests it, builds its residency map, and then operates at line rate for the rest of the run. No repeated software calls. No control-path round-trips. The intent is already there.
+      </div>
+    </section>
+
+    <!-- ═══ SECTION: AI ENGINEER ══════════════════════════ -->
+    <section id="engineer" class="reveal">
+      <h2>What this means for the AI engineer</h2>
+      <p>This is not only for compiler researchers or hardware architects. If it becomes real in production systems, the downstream effect for AI engineers is practical and immediate.</p>
+      <div class="cards">
+        <div class="card">
+          <div class="card-icon">Reliability</div>
+          <h4>More predictable latency tails</h4>
+          <p>Better retention and prefetch policy means fewer surprise refetches, fewer stall cascades, and more stable p95/p99 behavior under load — especially under shared multi-tenant pressure.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">Stability</div>
+          <h4>Fewer policy-shaped OOM events</h4>
+          <p>Some "out of memory" failures are really bad retention and spill decisions. Intent-aware policy can eliminate that class of failure — the controller knows what must stay and what can go.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">Ergonomics</div>
+          <h4>Less manual memory tuning</h4>
+          <p>Engineers spend too much time working around opaque memory behavior with one-off knobs, cache flushes, and fragile heuristics. Intent makes the system legible and self-documenting.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">Scale</div>
+          <h4>Cleaner scaling behavior</h4>
+          <p>As workloads grow larger, more multi-tenant, or more disaggregated, intent-aware orchestration degrades more gracefully than blind paging — the controller knows which objects matter even under pressure.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ SECTION: OBJECTIONS ═══════════════════════════ -->
+    <section id="objections" class="reveal">
+      <h2>Objections worth taking seriously</h2>
+
+      <div class="objection">
+        <div class="obj-q">"Runtime observation is enough."</div>
+        <div class="obj-a"><p>Runtime observation matters and will always be part of the picture — live telemetry catches what the compiler couldn't predict. But observation is inherently lagging. By the time the system sees a pattern, the damage is already done: the wrong object was evicted, the prefetch arrived too late, the recomputation wasn't triggered in time. The best systems combine declared compiler intent with runtime correction — neither alone is sufficient.</p></div>
+      </div>
+
+      <div class="objection">
+        <div class="obj-q">"This will be too brittle — compiler predictions won't match runtime reality."</div>
+        <div class="obj-a"><p>Only if treated as a rigid contract. In practice, it should be a weighted guidance layer with confidence levels, escape hatches, and runtime override capability. The IR says "I think this object will be needed with HIGH probability in the next 20 microseconds." The controller treats that as a strong prior, not a hard constraint. When the prior is wrong, the controller corrects from telemetry. The gain comes from getting it right the majority of the time.</p></div>
+      </div>
+
+      <div class="objection">
+        <div class="obj-q">"The compiler cannot know dynamic behavior."</div>
+        <div class="obj-a"><p>It doesn't need omniscience. Partial structured knowledge — knowing that weight tiles for transformer layers have HIGH reuse, that shared prefix KV blocks should never be evicted while fanout is greater than one, that transient activations are CHEAP to recompute — is vastly better than treating all objects as anonymous pages. Partial knowledge with confidence levels beats pretending all bytes are equivalent.</p></div>
+      </div>
+
+      <div class="objection">
+        <div class="obj-q">"This sounds like metadata bloat."</div>
+        <div class="obj-a"><p>A compact intent descriptor is approximately 141 bits per object (as in the MCOS-HFC residency map). For 64,000 objects, that is 1.1 MB of SRAM. Compare that with the cost of repeated misplacement: a single NVMe refetch that could have been avoided costs ~100 microseconds. A single avoidable copy across a congested RDMA link wastes bandwidth that could have been serving other requests. The metadata is not the cost. The misplacement is.</p></div>
+      </div>
+    </section>
+
+    <!-- ═══ SECTION: WHAT IT UNLOCKS ═════════════════════ -->
+    <section id="unlocks" class="reveal">
+      <h2>What this unlocks next</h2>
+      <p>Once a Memory Intent IR exists as a real artifact, several practical directions open up immediately and naturally.</p>
+      <div class="cards">
+        <div class="card">
+          <div class="card-icon">Portability</div>
+          <h4>Portable memory policies</h4>
+          <p>Different vendors and runtimes can consume the same intent vocabulary even if their controllers and memory fabrics differ underneath. One IR format, multiple controllers.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">Hardware Integration</div>
+          <h4>Model-load-time hardware ingest</h4>
+          <p>Controllers like MCOS-HFC can ingest intent once at load time and operate at line rate for the entire run, instead of depending on repeated software intervention per token step.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">Observability</div>
+          <h4>Intent vs. observed behavior analysis</h4>
+          <p>Production systems can compare predicted reuse, deadlines, and pressure classes against observed reality and automatically refine compiler passes over time — a closed feedback loop.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">Economics</div>
+          <h4>Explicit compute-vs-movement tradeoffs</h4>
+          <p>Compilers can reason more cleanly about whether to recompute, retain, replicate, or spill based on declared object value — not crude fallback policy triggered when something has already gone wrong.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="sep">✦</div>
+
+    <!-- ═══ SECTION: CLOSING ══════════════════════════════ -->
+    <section id="closing" class="reveal">
+      <h2>Compute graphs are incomplete</h2>
+      <p>A compute graph tells you what must be computed. A Memory Intent IR tells you how the objects involved in that computation are expected to behave under pressure — which ones are fragile, which are resilient, which are time-sensitive, which are cheap to reproduce, and which ones, if evicted at the wrong moment, will cascade into a stall that propagates to everything downstream.</p>
+      <p>As long as AI systems emit only the first artifact, they leave one of the central determinants of performance underspecified. And underspecified systems get patched with heuristics — fragile, opaque heuristics that work until they don't.</p>
+
+      <div class="pull">
+        "The compiler should emit a second artifact: one that tells the system what data matters, how long it matters, how urgently it matters, where it would rather live, and what tradeoffs are acceptable when contention arrives. Once you see that gap, it becomes hard to unsee it."
+        <cite>— Memory Intent IR, closing argument</cite>
+      </div>
+
+      <p>The gap is real. The compiler already has the information. The question is only whether the ecosystem decides that writing it down is worth the effort. Given what bad memory policy costs at scale, the answer seems clear.</p>
+    </section>
+
+    <!-- FOOTER -->
+    <div class="article-footer reveal">
+      <a class="back-link" href="../writings.html">← All writings</a>
+      <div class="footer-note">
+        memory-intent-ir-ai-compilers-memory-plans · April 2026<br>
+        Part of the MCOS architecture series. See also: MCOS-HFC hardware fabric controller essay.
+      </div>
+      <div class="footer-quote">"AI systems do not just need more memory. They need a compiler that tells the hardware what each byte is worth."</div>
+    </div>
+    <div style="margin-top:14px; color:#8b96b0; font-size:0.95em; text-align:center;">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer" style="color:inherit; font-weight:600; text-decoration:none;">Manish KL</a></div>
+
+  </main>
+</div><!-- /body-layout -->
+</div><!-- /page -->
+
+<script>
+// ── Progress bar ──────────────────────────────────────────────
+const bar = document.getElementById('bar');
+window.addEventListener('scroll', () => {
+  const d = document.documentElement;
+  bar.style.width = ((d.scrollTop || document.body.scrollTop) / (d.scrollHeight - d.clientHeight) * 100) + '%';
+}, { passive: true });
+
+// ── Scroll reveal ─────────────────────────────────────────────
+const revealEls = document.querySelectorAll('.reveal');
+const ro = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); ro.unobserve(e.target); } });
+}, { threshold: 0.07 });
+revealEls.forEach(el => ro.observe(el));
+
+// ── TOC active tracking ───────────────────────────────────────
+const sections = document.querySelectorAll('section[id]');
+const links = document.querySelectorAll('.toc-list a');
+const so = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(l => l.classList.remove('active'));
+      const link = document.querySelector(`.toc-list a[href="#${e.target.id}"]`);
+      if (link) link.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+sections.forEach(s => so.observe(s));
+
+// ── Hero tier animation ───────────────────────────────────────
+const canvas = document.getElementById('pCanvas');
+const ctx = canvas.getContext('2d');
+const tierBlocks = document.querySelectorAll('.tier-block');
+const vizLabel = document.getElementById('vizLabel');
+
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = 110;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+const tierColors = ['#f0a843','#3ecfcf','#4ecb8d','#8888ff','#9b8ea0','#e05a6a'];
+const modeLabels = [
+  '▸ Without intent: objects move reactively. The wrong bytes arrive late.',
+  '▸ With Memory Intent IR: weight tile pre-staged to HBM 20µs before demand.',
+  '▸ KV prefix block protected in HBM — anti-evict rule active (fanout = 3).',
+  '▸ Activation buffer classified CHEAP recompute → allowed to spill to DRAM.',
+  '▸ Expert shard: route_probability HIGH → pre-fetched from NVMe to HBM.',
+  '▸ Closed-loop feedback: observed vs. declared intent compared, compiler updated.'
+];
+
+let particles = [];
+let mode = 0;
+let modeTimer = 0;
+
+function spawnParticle(fromIdx, toIdx, label) {
+  if (!canvas.width) return;
+  const blocks = canvas.parentElement.querySelectorAll('.tier-block');
+  if (fromIdx >= blocks.length || toIdx >= blocks.length) return;
+  const from = blocks[fromIdx].getBoundingClientRect();
+  const to   = blocks[toIdx].getBoundingClientRect();
+  const base = canvas.getBoundingClientRect();
+  const fx = from.left + from.width/2 - base.left;
+  const tx = to.left + to.width/2 - base.left;
+  particles.push({
+    x: fx, y: 55,
+    tx, speed: (tx - fx) / 80,
+    color: tierColors[toIdx],
+    alpha: 1, size: 4,
+    label
+  });
+}
+
+const modeFlows = [
+  [[5,0],[5,1]],  // NVMe → SRAM, NVMe → HBM (reactive, wrong)
+  [[2,1],[1,0]],  // DRAM → HBM, HBM → SRAM (weight prefetch)
+  [[1,1]],        // HBM stays (KV protected)
+  [[1,2],[2,2]],  // HBM → DRAM spill (activation)
+  [[5,1]],        // NVMe → HBM (expert prefetch)
+  [[1,2],[2,5]]   // feedback
+];
+
+function animate(ts) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  modeTimer++;
+  if (modeTimer % 90 === 0) {
+    mode = (mode + 1) % modeFlows.length;
+    vizLabel.textContent = modeLabels[mode];
+    modeFlows[mode].forEach(([f, t]) => spawnParticle(f, t, ''));
+    // Pulse target tier
+    const targetBlock = tierBlocks[modeFlows[mode][0][1]];
+    if (targetBlock) {
+      targetBlock.classList.remove('pulse');
+      void targetBlock.offsetWidth;
+      targetBlock.classList.add('pulse');
+    }
+  }
+  // Draw particles
+  particles = particles.filter(p => {
+    p.x += p.speed;
+    if (p.speed > 0 ? p.x >= p.tx : p.x <= p.tx) return false;
+    p.alpha = Math.max(0, p.alpha - 0.008);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = p.color + Math.floor(p.alpha * 255).toString(16).padStart(2,'0');
+    ctx.fill();
+    // Trail
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x - p.speed * 12, p.y);
+    ctx.strokeStyle = p.color + '44';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    return p.alpha > 0.05;
+  });
+  requestAnimationFrame(animate);
+}
+// Initial spawn
+setTimeout(() => {
+  modeFlows[0].forEach(([f, t]) => spawnParticle(f, t, ''));
+  requestAnimationFrame(animate);
+}, 600);
+</script>
+</body>
+</html>
