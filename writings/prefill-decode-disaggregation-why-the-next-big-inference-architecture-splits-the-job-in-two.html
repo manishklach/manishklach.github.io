@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Prefill-Decode Disaggregation: Why the Next Big Inference Architecture Splits the Job in Two | Manish KL</title>
+  <meta name="description" content="Prefill and decode have opposite resource profiles. Prefill is compute-bound. Decode is memory-bandwidth-bound. Running them on the same GPU forces a hardware compromise that satisfies neither. Disaggregation separates them — and exposes a set of memory orchestration problems that will define the next generation of inference infrastructure."/>
+  <meta name="keywords" content="prefill decode disaggregation, LLM inference architecture, chunked prefill, KV cache transfer disaggregated inference, AI inference serving, prefill compute bound decode memory bound"/>
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1"/>
+  <link rel="canonical" href="https://manishklach.github.io/writings/prefill-decode-disaggregation-why-the-next-big-inference-architecture-splits-the-job-in-two.html"/>
+  <meta property="og:title" content="Prefill-Decode Disaggregation: Why the Next Big Inference Architecture Splits the Job in Two"/>
+  <meta property="og:description" content="Prefill is compute-bound. Decode is memory-bandwidth-bound. Running them together forces a compromise. Here is why disaggregation is the right answer and what it costs in memory orchestration complexity."/>
+  <meta property="og:type" content="article"/>
+  <meta property="og:url" content="https://manishklach.github.io/writings/prefill-decode-disaggregation-why-the-next-big-inference-architecture-splits-the-job-in-two.html"/>
+  <meta property="og:site_name" content="Manish KL"/>
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png"/>
+  <meta property="og:image:alt" content="Preview image for Prefill-Decode Disaggregation: Why the Next Big Inference Architecture Splits the Job in Two"/>
+  <meta property="article:published_time" content="2026-04-11T00:00:00Z"/>
+  <meta property="article:author" content="Manish KL"/>
+  <meta property="article:section" content="AI Infrastructure"/>
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:title" content="Prefill-Decode Disaggregation: Why the Next Big Inference Architecture Splits the Job in Two"/>
+  <meta name="twitter:description" content="Why splitting prefill and decode creates a better inference architecture but a harder memory orchestration problem."/>
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png"/>
+  <meta name="twitter:image:alt" content="Preview image for Prefill-Decode Disaggregation: Why the Next Big Inference Architecture Splits the Job in Two"/>
+  <meta name="twitter:site" content="@manishklach"/>
+  <meta name="twitter:creator" content="@manishklach"/>
+  <meta name="author" content="Manish KL"/>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Prefill-Decode Disaggregation: Why the Next Big Inference Architecture Splits the Job in Two",
+    "description": "Prefill and decode have opposite resource profiles. This essay explains why disaggregation is the right architecture and what it costs in memory orchestration complexity.",
+    "author": {
+      "@type": "Person",
+      "name": "Manish KL",
+      "url": "https://github.com/manishklach"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "Manish KL",
+      "url": "https://manishklach.github.io/"
+    },
+    "datePublished": "2026-04-11",
+    "dateModified": "2026-04-11",
+    "url": "https://manishklach.github.io/writings/prefill-decode-disaggregation-why-the-next-big-inference-architecture-splits-the-job-in-two.html",
+    "mainEntityOfPage": "https://manishklach.github.io/writings/prefill-decode-disaggregation-why-the-next-big-inference-architecture-splits-the-job-in-two.html",
+    "image": "https://manishklach.github.io/assets/og-image.png",
+    "keywords": ["prefill decode disaggregation", "LLM inference architecture", "KV cache transfer", "disaggregated inference", "AI inference serving"],
+    "articleSection": "AI Infrastructure",
+    "inLanguage": "en-US"
+  }
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+
+  <style>
+    :root {
+      --bg: #06101c;
+      --surface: #0b1726;
+      --surface2: #0f1e30;
+      --text: #dce8f6;
+      --muted: #6a8ab0;
+      --muted2: #3a5070;
+      --line: rgba(255,255,255,.07);
+      --line2: rgba(255,255,255,.13);
+      --p: #818cf8; /* prefill = indigo */
+      --d: #34d399; /* decode = emerald */
+      --c: #f59e0b; /* connector / KV transfer = amber */
+      --warn: #fb7185;
+      --info: #38bdf8;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse 75% 40% at 8% 0%, rgba(129,140,248,.09), transparent 55%),
+        radial-gradient(ellipse 60% 35% at 92% 5%, rgba(52,211,153,.07), transparent 50%);
+      color: var(--text);
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.78;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #rdbar { position: fixed; top: 0; left: 0; height: 2px; width: 0; background: linear-gradient(90deg,var(--p),var(--d),var(--c)); z-index: 999; transition: width .1s linear; }
+
+    a { color: var(--info); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .wrap { max-width: 1060px; margin: 0 auto; padding: 0 28px; }
+    .content-grid { display: grid; grid-template-columns: 1fr 264px; gap: 52px; padding: 52px 0 100px; align-items: start; }
+    .sticky-rail { position: sticky; top: 24px; }
+
+    .topnav { padding: 20px 0; border-bottom: 1px solid var(--line); }
+    .topnav-inner { display: flex; align-items: center; gap: 20px; font-size: .87rem; color: var(--muted); font-family: 'DM Mono', monospace; }
+    .topnav-inner a { color: var(--muted); }
+    .topnav-inner a:hover { color: var(--text); text-decoration: none; }
+
+    .hero { padding: 56px 0 44px; border-bottom: 1px solid var(--line); }
+    .series-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px; border-radius: 999px;
+      border: 1px solid rgba(129,140,248,.28); background: rgba(129,140,248,.06);
+      color: var(--p); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+      font-family: 'DM Mono', monospace; margin-bottom: 20px;
+    }
+    h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      line-height: 1.06; letter-spacing: -.025em;
+      margin-bottom: 20px; max-width: 860px;
+    }
+    h1 em { font-style: italic; color: var(--p); }
+    .hero-dek { max-width: 740px; color: var(--muted); font-size: 1.12rem; line-height: 1.72; margin-bottom: 18px; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted2); font-size: .83rem; font-family: 'DM Mono', monospace; }
+
+    .lede-card {
+      margin-top: 32px; padding: 24px 28px;
+      border-radius: 18px; border: 1px solid rgba(129,140,248,.16);
+      background: linear-gradient(135deg, rgba(129,140,248,.06), rgba(52,211,153,.04));
+      max-width: 800px;
+    }
+    .lede-card .lbl { font-family: 'DM Mono', monospace; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--p); margin-bottom: 10px; }
+    .lede-card p { color: #b4cce8; font-size: 1.02rem; line-height: 1.72; margin: 0; }
+    .lede-card strong { color: var(--text); }
+
+    .stat-strip { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin: 32px 0; }
+    .stat { padding: 18px; border: 1px solid var(--line2); border-radius: 14px; background: rgba(255,255,255,.025); }
+    .stat .n { font-family: 'DM Mono', monospace; font-size: 1.5rem; margin-bottom: 6px; }
+    .stat .l { font-size: .8rem; color: var(--muted2); line-height: 1.4; }
+    .stat.p .n { color: var(--p); } .stat.d .n { color: var(--d); }
+    .stat.c .n { color: var(--c); } .stat.w .n { color: var(--warn); }
+
+    .toc { background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 18px; padding: 20px; margin-bottom: 16px; }
+    .toc-hd { font-family: 'DM Mono', monospace; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted2); margin-bottom: 14px; }
+    .toc a { display: block; padding: 7px 0; color: var(--muted); font-size: .87rem; border-bottom: 1px solid var(--line); text-decoration: none; transition: color .18s; }
+    .toc a:last-child { border-bottom: none; }
+    .toc a:hover { color: var(--p); }
+    .side-card { background: rgba(255,255,255,.02); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; margin-bottom: 14px; }
+    .side-card .lbl { font-family: 'DM Mono', monospace; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted2); margin-bottom: 8px; }
+    .side-card p { color: var(--muted); font-size: .86rem; line-height: 1.62; margin: 0; }
+
+    article section { margin-bottom: 60px; }
+    article h2 {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(1.65rem, 2.8vw, 2.1rem);
+      line-height: 1.2; letter-spacing: -.02em;
+      margin: 0 0 18px; padding-top: 52px;
+      border-top: 1px solid var(--line);
+    }
+    article h2:first-child { border-top: none; padding-top: 0; }
+    article h3 { font-family: 'DM Mono', monospace; font-size: .82rem; letter-spacing: .07em; text-transform: uppercase; color: var(--p); margin: 26px 0 10px; }
+    article h4 { font-size: 1rem; font-weight: 600; margin: 20px 0 8px; color: var(--text); }
+    article p { color: #b0ccec; line-height: 1.8; margin-bottom: 16px; }
+    article ul, article ol { margin: 10px 0 18px 22px; }
+    article li { color: var(--muted); margin-bottom: 8px; line-height: 1.65; }
+    article li strong { color: var(--text); }
+
+    .callout { margin: 26px 0; padding: 20px 24px; border-radius: 16px; border: 1px solid rgba(129,140,248,.2); background: rgba(129,140,248,.05); font-size: .99rem; line-height: 1.72; }
+    .callout strong { color: var(--p); }
+    .callout-d { border-color: rgba(52,211,153,.2); background: rgba(52,211,153,.05); }
+    .callout-d strong { color: var(--d); }
+    .callout-c { border-color: rgba(245,158,11,.2); background: rgba(245,158,11,.05); }
+    .callout-c strong { color: var(--c); }
+    .callout-w { border-color: rgba(251,113,133,.2); background: rgba(251,113,133,.05); }
+    .callout-w strong { color: var(--warn); }
+
+    .pq { margin: 30px 0; padding: 22px 26px; border-left: 3px solid var(--p); background: rgba(129,140,248,.04); border-radius: 0 16px 16px 0; font-family: 'DM Serif Display', serif; font-style: italic; font-size: 1.22rem; color: #d4d8ff; line-height: 1.55; }
+
+    .fig { margin: 30px 0; padding: 22px; border: 1px solid var(--line); border-radius: 20px; background: linear-gradient(155deg, rgba(255,255,255,.03), rgba(255,255,255,.01)); }
+    .fig-title { font-family: 'DM Mono', monospace; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--p); margin-bottom: 14px; }
+    .fig svg { display: block; width: 100%; height: auto; }
+    .figcap { margin-top: 12px; color: var(--muted2); font-size: .86rem; line-height: 1.62; border-top: 1px solid var(--line); padding-top: 10px; }
+
+    .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 20px 0; }
+    .threecol { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin: 20px 0; }
+    .pbox { padding: 20px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.02); }
+    .pbox h4 { font-family: 'DM Mono', monospace; font-size: .78rem; letter-spacing: .07em; text-transform: uppercase; margin: 0 0 10px; }
+    .pbox.p h4 { color: var(--p); } .pbox.d h4 { color: var(--d); }
+    .pbox.c h4 { color: var(--c); } .pbox.w h4 { color: var(--warn); }
+    .pbox p, .pbox li { color: var(--muted); font-size: .9rem; line-height: 1.6; }
+    .pbox ul { margin: 0 0 0 16px; }
+
+    .dtable { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin: 22px 0; }
+    .dt-head { display: grid; background: rgba(255,255,255,.04); padding: 12px 16px; font-family: 'DM Mono', monospace; font-size: .72rem; letter-spacing: .07em; text-transform: uppercase; color: var(--muted2); gap: 8px; }
+    .dt-row { display: grid; padding: 13px 16px; border-top: 1px solid var(--line); gap: 8px; align-items: start; }
+    .dt-row:hover { background: rgba(255,255,255,.015); }
+    .dt-row .label { font-weight: 600; font-size: .93rem; }
+    .dt-row .cell { font-size: .87rem; color: var(--muted); }
+    .cols-3 { grid-template-columns: 1.2fr 1.4fr 1.4fr; }
+    .cols-4 { grid-template-columns: 1fr 1fr 1fr 1.2fr; }
+    .cols-2 { grid-template-columns: 1fr 1fr; }
+
+    pre { background: rgba(0,0,0,.35); border: 1px solid var(--line2); border-radius: 12px; padding: 18px 20px; font-family: 'DM Mono', monospace; font-size: .84rem; color: #c0daf4; overflow-x: auto; margin: 20px 0; line-height: 1.6; }
+    code { font-family: 'DM Mono', monospace; font-size: .86em; color: var(--p); background: rgba(129,140,248,.1); padding: 1px 6px; border-radius: 5px; }
+
+    .pipeline { display: flex; flex-direction: column; gap: 0; margin: 22px 0; }
+    .pipe-step { display: flex; gap: 18px; align-items: flex-start; padding: 16px 18px; border: 1px solid var(--line); background: rgba(255,255,255,.02); border-bottom: none; }
+    .pipe-step:first-child { border-radius: 14px 14px 0 0; }
+    .pipe-step:last-child { border-radius: 0 0 14px 14px; border-bottom: 1px solid var(--line); }
+    .pipe-num { font-family: 'DM Mono', monospace; font-size: .78rem; color: var(--p); min-width: 28px; padding-top: 2px; }
+    .pipe-body h5 { font-size: .95rem; font-weight: 600; margin-bottom: 4px; }
+    .pipe-body p { color: var(--muted); font-size: .9rem; margin: 0; line-height: 1.6; }
+
+    .footer-note { margin-top: 52px; padding: 22px; border-radius: 16px; border: 1px solid var(--line); background: rgba(255,255,255,.02); }
+    .footer-note p { color: var(--muted2); font-size: .86rem; line-height: 1.7; margin: 0; }
+
+    footer { border-top: 1px solid var(--line); padding: 28px 0; }
+    .footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; color: var(--muted2); font-size: .85rem; }
+
+    @media (max-width: 960px) {
+      .content-grid { grid-template-columns: 1fr; gap: 32px; }
+      .sticky-rail { position: static; }
+      .twocol, .threecol { grid-template-columns: 1fr; }
+      .stat-strip { grid-template-columns: 1fr 1fr; }
+      .cols-3, .cols-4, .cols-2 { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 580px) { h1 { font-size: 2.1rem; } }
+  </style>
+</head>
+<body>
+<div id="rdbar"></div>
+
+<nav class="topnav">
+  <div class="wrap">
+    <div class="topnav-inner">
+      <a href="https://manishklach.github.io/index.html">Home</a>
+      <span>·</span>
+      <a href="https://manishklach.github.io/writings.html">← Back to Writings</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="series-badge">Inference Architecture · Disaggregated Serving · Memory Systems</div>
+    <h1>Prefill-Decode <em>Disaggregation:</em><br>Why the Next Big Inference Architecture<br>Splits the Job in Two</h1>
+    <p class="hero-dek">Prefill and decode have opposite resource profiles. Prefill is compute-bound — it processes the entire input context in a single large matrix multiply and wants high FLOP density. Decode is memory-bandwidth-bound — it generates one token per step and spends most of its time reading weights and KV cache from HBM. Running them on the same GPU imposes a hardware compromise that satisfies neither. Disaggregation separates them — and exposes a set of memory orchestration problems that will define the next generation of inference infrastructure.</p>
+    <div class="hero-meta">
+      <span>By <a href="https://manishklach.github.io/index.html">Manish KL</a></span>
+      <span>·</span>
+      <span>April 2026</span>
+      <span>·</span>
+      <span>~15 min read</span>
+    </div>
+    <div class="lede-card">
+      <div class="lbl">Core thesis</div>
+      <p>Prefill and decode are different workloads running on the same hardware. Disaggregation fixes the hardware mismatch — but creates a new problem: <strong>KV cache transfer, residency management at disaggregated decode nodes, and the scheduler that routes requests between the two pools</strong> become the dominant engineering challenges. The compute win is straightforward. The memory system complexity is where the real work is.</p>
+    </div>
+  </div>
+</header>
+
+<div class="wrap content-grid">
+<article>
+
+  <div class="stat-strip">
+    <div class="stat p"><div class="n">~10–100×</div><div class="l">Compute intensity ratio between prefill and decode (FLOP/byte)</div></div>
+    <div class="stat d"><div class="n">~3.35 TB/s</div><div class="l">HBM bandwidth H100 — the resource decode is bottlenecked on</div></div>
+    <div class="stat c"><div class="n">50–200 GB/s</div><div class="l">Typical NVLink / PCIe KV transfer bandwidth between disaggregated nodes</div></div>
+    <div class="stat w"><div class="n">1–10 ms</div><div class="l">KV transfer latency between prefill and decode nodes at production batch sizes</div></div>
+  </div>
+
+  <!-- SECTION 1 -->
+  <section id="the-mismatch">
+    <h2>1. The fundamental resource mismatch</h2>
+
+    <p>Every LLM inference request has two distinct phases. The prefill phase processes the full input prompt — potentially thousands of tokens — in a single forward pass. The decode phase generates output tokens one at a time, autoregressively, until the sequence is complete.</p>
+
+    <p>These two phases have opposite resource requirements, and the difference is not subtle:</p>
+
+    <div class="twocol">
+      <div class="pbox p">
+        <h4>Prefill: compute-bound</h4>
+        <ul>
+          <li>Processes all input tokens simultaneously — large matrix-matrix multiplies</li>
+          <li>Arithmetic intensity: ~100–1000 FLOP/byte depending on sequence length</li>
+          <li>Wants: high TFLOP/s, wide tensor cores, FLOP density</li>
+          <li>Bottleneck: compute throughput, not memory bandwidth</li>
+          <li>Duration: milliseconds to seconds (proportional to prompt length)</li>
+          <li>GPU utilization: very high — tensors fill every core</li>
+        </ul>
+      </div>
+      <div class="pbox d">
+        <h4>Decode: memory-bandwidth-bound</h4>
+        <ul>
+          <li>Generates one token at a time — matrix-vector multiplies</li>
+          <li>Arithmetic intensity: ~1–10 FLOP/byte (reads all weights for one token)</li>
+          <li>Wants: high HBM bandwidth, large KV cache capacity, low latency</li>
+          <li>Bottleneck: memory bandwidth, not compute</li>
+          <li>Duration: seconds to minutes (proportional to output length)</li>
+          <li>GPU utilization: low — compute cores sit idle waiting on memory</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pq">Prefill wants more arithmetic throughput. Decode wants more memory bandwidth. Optimizing one hardware for both is a hardware design compromise that wastes resources on each phase separately.</div>
+
+    <p>When prefill and decode run on the same GPU, neither runs at its hardware-optimal point. During prefill, the GPU's HBM bandwidth sits partially idle while compute cores are busy. During decode, the GPU's tensor cores sit mostly idle while HBM bandwidth is the critical resource. This is not a software problem that can be optimized away — it is a hardware profile mismatch baked into the workload structure.</p>
+
+    <div class="fig">
+      <div class="fig-title">Fig 1 — Resource utilization: prefill vs. decode on the same GPU</div>
+      <svg viewBox="0 0 760 240" xmlns="http://www.w3.org/2000/svg" role="img">
+        <title>Bar chart comparing compute utilization and HBM bandwidth utilization during prefill and decode phases on a shared GPU</title>
+
+        <!-- PREFILL bars -->
+        <text x="190" y="22" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#6a8ab0" letter-spacing=".06em">PREFILL PHASE</text>
+
+        <!-- Compute bar -->
+        <rect x="60" y="40" width="260" height="28" rx="5" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.1)"/>
+        <rect x="60" y="40" width="247" height="28" rx="5" fill="rgba(129,140,248,.5)" stroke="rgba(129,140,248,.4)"/>
+        <text x="54" y="58" text-anchor="end" font-family="DM Mono,monospace" font-size="10" fill="#6a8ab0">Compute</text>
+        <text x="316" y="58" font-family="DM Mono,monospace" font-size="10" fill="#818cf8">~95%</text>
+
+        <!-- HBM BW bar -->
+        <rect x="60" y="80" width="260" height="28" rx="5" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.1)"/>
+        <rect x="60" y="80" width="104" height="28" rx="5" fill="rgba(52,211,153,.3)" stroke="rgba(52,211,153,.3)"/>
+        <text x="54" y="98" text-anchor="end" font-family="DM Mono,monospace" font-size="10" fill="#6a8ab0">HBM BW</text>
+        <text x="172" y="98" font-family="DM Mono,monospace" font-size="10" fill="#34d399">~40%</text>
+
+        <!-- Prefill note -->
+        <text x="190" y="130" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#818cf8">Compute is the bottleneck</text>
+        <text x="190" y="144" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3a5070">HBM bandwidth is underused</text>
+
+        <!-- DIVIDER -->
+        <line x1="390" y1="20" x2="390" y2="200" stroke="rgba(255,255,255,.08)" stroke-width="1" stroke-dasharray="6,4"/>
+
+        <!-- DECODE bars -->
+        <text x="575" y="22" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#6a8ab0" letter-spacing=".06em">DECODE PHASE</text>
+
+        <!-- Compute bar -->
+        <rect x="445" y="40" width="260" height="28" rx="5" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.1)"/>
+        <rect x="445" y="40" width="52" height="28" rx="5" fill="rgba(129,140,248,.25)" stroke="rgba(129,140,248,.3)"/>
+        <text x="439" y="58" text-anchor="end" font-family="DM Mono,monospace" font-size="10" fill="#6a8ab0">Compute</text>
+        <text x="503" y="58" font-family="DM Mono,monospace" font-size="10" fill="#818cf8">~20%</text>
+
+        <!-- HBM BW bar (high) -->
+        <rect x="445" y="80" width="260" height="28" rx="5" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.1)"/>
+        <rect x="445" y="80" width="247" height="28" rx="5" fill="rgba(52,211,153,.5)" stroke="rgba(52,211,153,.4)"/>
+        <text x="439" y="98" text-anchor="end" font-family="DM Mono,monospace" font-size="10" fill="#6a8ab0">HBM BW</text>
+        <text x="700" y="98" font-family="DM Mono,monospace" font-size="10" fill="#34d399">~95%</text>
+
+        <!-- Decode note -->
+        <text x="575" y="130" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#34d399">HBM bandwidth is the bottleneck</text>
+        <text x="575" y="144" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3a5070">Compute cores sit mostly idle</text>
+
+        <!-- Bottom: the compromise -->
+        <rect x="40" y="168" width="680" height="36" rx="8" fill="rgba(245,158,11,.05)" stroke="rgba(245,158,11,.15)"/>
+        <text x="380" y="184" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#f59e0b">Co-located serving: every GPU is suboptimal for both phases simultaneously</text>
+        <text x="380" y="198" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3a5070">Prefill wants compute-optimized hardware. Decode wants memory-bandwidth-optimized hardware.</text>
+      </svg>
+      <div class="figcap">The resource mismatch between prefill and decode phases is fundamental. A GPU that is well-utilized during prefill (high compute, moderate HBM) is poorly utilized during decode (low compute, near-saturated HBM), and vice versa. This mismatch is the motivation for disaggregation: run each phase on hardware matched to its resource profile.</div>
+    </div>
+  </section>
+
+  <!-- SECTION 2 -->
+  <section id="what-disaggregation-means">
+    <h2>2. What disaggregation means in practice</h2>
+
+    <p>Disaggregated inference separates the serving fleet into two pools:</p>
+
+    <ul>
+      <li><strong>Prefill nodes</strong> — optimized for compute throughput. Could be the same H100/H200 GPUs used for training, or could be specialized ASICs with more TFLOP/s and less HBM. Each prefill node processes one or more prompts, generates the full KV cache, and then transfers the KV cache to a decode node.</li>
+      <li><strong>Decode nodes</strong> — optimized for memory bandwidth and KV cache capacity. These could be the same H100s, or future memory-bandwidth-optimized hardware. Each decode node receives KV caches from one or more prefill nodes and then handles the full autoregressive generation loop.</li>
+    </ul>
+
+    <p>The system does not send the request from client to prefill to decode linearly for each token. The prefill node does its work once, transfers the KV state, and then hands off. The decode node owns the session from that point until the sequence completes.</p>
+
+    <div class="callout">
+      <strong>The key architectural invariant:</strong> after disaggregation, no GPU is doing both prefill and decode simultaneously. Each GPU specializes. The coupling between the two pools is exactly the KV cache transfer that happens once per request, at the transition from prefill completion to decode start.
+    </div>
+
+    <div class="fig">
+      <div class="fig-title">Fig 2 — Disaggregated inference system architecture</div>
+      <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg" role="img">
+        <title>System architecture diagram of disaggregated inference showing client, router, prefill pool, KV transfer, and decode pool</title>
+        <defs>
+          <marker id="arr3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <!-- Client -->
+        <rect x="40" y="128" width="80" height="56" rx="10" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.15)" stroke-width="1.5"/>
+        <text x="80" y="152" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#6a8ab0">Client</text>
+        <text x="80" y="168" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#3a5070">request</text>
+
+        <!-- Router -->
+        <line x1="120" y1="156" x2="150" y2="156" stroke="#6a8ab0" stroke-width="1.5" marker-end="url(#arr3)"/>
+        <rect x="150" y="128" width="80" height="56" rx="10" fill="rgba(245,158,11,.08)" stroke="rgba(245,158,11,.3)" stroke-width="1.5"/>
+        <text x="190" y="152" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#f59e0b">Router</text>
+        <text x="190" y="168" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#b87a0a">scheduler</text>
+
+        <!-- Prefill pool -->
+        <line x1="230" y1="148" x2="270" y2="100" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arr3)"/>
+        <rect x="270" y="40" width="160" height="200" rx="12" fill="rgba(129,140,248,.05)" stroke="rgba(129,140,248,.25)" stroke-width="1.5"/>
+        <text x="350" y="62" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#818cf8" letter-spacing=".05em">PREFILL POOL</text>
+        <rect x="286" y="74" width="128" height="36" rx="7" fill="rgba(129,140,248,.12)" stroke="rgba(129,140,248,.25)" stroke-width="1"/>
+        <text x="350" y="96" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#818cf8">GPU-P1</text>
+        <rect x="286" y="118" width="128" height="36" rx="7" fill="rgba(129,140,248,.12)" stroke="rgba(129,140,248,.25)" stroke-width="1"/>
+        <text x="350" y="140" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#818cf8">GPU-P2</text>
+        <rect x="286" y="162" width="128" height="36" rx="7" fill="rgba(129,140,248,.08)" stroke="rgba(129,140,248,.2)" stroke-width="1"/>
+        <text x="350" y="184" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#818cf8">GPU-P3</text>
+        <text x="350" y="230" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#3a5070">compute-optimized</text>
+
+        <!-- KV transfer -->
+        <rect x="460" y="100" width="100" height="120" rx="10" fill="rgba(245,158,11,.06)" stroke="rgba(245,158,11,.3)" stroke-width="1.5" stroke-dasharray="6,2"/>
+        <text x="510" y="130" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#f59e0b">KV</text>
+        <text x="510" y="144" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#f59e0b">Transfer</text>
+        <text x="510" y="162" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#6a8ab0">NVLink /</text>
+        <text x="510" y="175" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#6a8ab0">RDMA</text>
+        <text x="510" y="200" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#f59e0b">once per request</text>
+
+        <!-- Arrow: prefill → KV transfer -->
+        <line x1="430" y1="140" x2="460" y2="160" stroke="rgba(245,158,11,.6)" stroke-width="2" marker-end="url(#arr3)"/>
+        <text x="444" y="143" font-family="DM Mono,monospace" font-size="9" fill="#f59e0b">KV state</text>
+
+        <!-- Decode pool -->
+        <rect x="590" y="40" width="130" height="240" rx="12" fill="rgba(52,211,153,.05)" stroke="rgba(52,211,153,.25)" stroke-width="1.5"/>
+        <text x="655" y="62" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#34d399" letter-spacing=".05em">DECODE POOL</text>
+        <rect x="606" y="74" width="98" height="32" rx="7" fill="rgba(52,211,153,.12)" stroke="rgba(52,211,153,.25)" stroke-width="1"/>
+        <text x="655" y="94" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#34d399">GPU-D1</text>
+        <rect x="606" y="114" width="98" height="32" rx="7" fill="rgba(52,211,153,.12)" stroke="rgba(52,211,153,.25)" stroke-width="1"/>
+        <text x="655" y="134" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#34d399">GPU-D2</text>
+        <rect x="606" y="154" width="98" height="32" rx="7" fill="rgba(52,211,153,.08)" stroke="rgba(52,211,153,.2)" stroke-width="1"/>
+        <text x="655" y="174" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#34d399">GPU-D3</text>
+        <rect x="606" y="194" width="98" height="32" rx="7" fill="rgba(52,211,153,.08)" stroke="rgba(52,211,153,.2)" stroke-width="1"/>
+        <text x="655" y="214" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#34d399">GPU-D4</text>
+        <text x="655" y="268" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#3a5070">memory-bw-optimized</text>
+
+        <!-- Arrow: KV transfer → decode pool -->
+        <line x1="560" y1="160" x2="590" y2="140" stroke="rgba(52,211,153,.6)" stroke-width="2" marker-end="url(#arr3)"/>
+
+        <!-- Response arrow -->
+        <line x1="590" y1="200" x2="540" y2="240" stroke="rgba(52,211,153,.4)" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arr3)"/>
+        <line x1="540" y1="240" x2="190" y2="240" stroke="rgba(52,211,153,.4)" stroke-width="1.5" stroke-dasharray="4,2"/>
+        <line x1="190" y1="240" x2="80" y2="200" stroke="rgba(52,211,153,.4)" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arr3)"/>
+        <text x="350" y="258" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#34d399">Token stream (response)</text>
+
+        <!-- Prefill → router response arrow -->
+        <line x1="230" y1="163" x2="270" y2="183" stroke="#818cf8" stroke-width="1" stroke-dasharray="4,2" opacity=".4"/>
+      </svg>
+      <div class="figcap">Disaggregated inference routes each request through a prefill node (which processes the prompt and generates the full KV cache) and then transfers the KV cache to a decode node (which owns the autoregressive generation loop). The transfer happens once per request. The decode node handles the session from KV receipt until sequence completion. The router matches requests to available prefill and decode capacity.</div>
+    </div>
+  </section>
+
+  <!-- SECTION 3 -->
+  <section id="kv-transfer">
+    <h2>3. KV transfer: the hard part nobody talks about enough</h2>
+
+    <p>The compute argument for disaggregation is clean. The memory problem is messier. Once prefill and decode are on different machines, the full KV cache for every completed prefill must travel from the prefill node to the decode node before decoding can begin. This transfer is not free.</p>
+
+    <h3>Transfer volume is large</h3>
+    <p>For a 70B model on a 128K-token prompt, the KV cache is roughly:</p>
+
+    <pre>
+layers × 2 × num_heads × head_dim × seq_len × dtype_bytes
+= 80 × 2 × 64 × 128 × 128,000 × 2  (BF16)
+≈ 42 GB</pre>
+
+    <p>Forty-two gigabytes must travel from the prefill node to the decode node before decoding can start. At NVLink speeds (~200 GB/s per direction between directly connected GPUs), that is about 210 milliseconds of transfer time. At PCIe bandwidth (~20–30 GB/s realistic throughput across switches), it can exceed 1.5 seconds. That delay directly adds to time-to-first-token latency.</p>
+
+    <div class="callout callout-c">
+      <strong>The transfer cost is not background work:</strong> the user experiences the KV transfer latency directly, as added time before the first token appears. Minimizing transfer time — through compression, pipelining, direct NVLink topology, or chunked prefill — is a first-order user experience optimization, not a back-of-the-house implementation detail.
+    </div>
+
+    <h3>Transfer must be atomic from the decode node's perspective</h3>
+    <p>When a KV cache transfer is in flight, the decode node cannot begin processing — it needs the complete KV state before it can compute attention for the first decode step. The transfer is a synchronization point. This means overlapping transfers with decode computation requires careful orchestration: the decode node can begin processing prefix-attended queries only once the layers whose KV data is fully received.</p>
+
+    <h3>Layer-by-layer pipelining can overlap transfer with early decode layers</h3>
+    <p>One optimization is to pipeline the KV transfer layer by layer: send the KV cache for layer 0 first, start decode computation for layer 0 while layer 1's KV data is still in flight, and so on. This requires the decode node to begin execution in a partial-KV-state, which complicates the residency management but can reduce effective time-to-first-token by hiding the transfer latency behind compute.</p>
+
+    <div class="dtable">
+      <div class="dt-head cols-3">
+        <span>Transfer strategy</span>
+        <span>Latency impact</span>
+        <span>Complexity</span>
+      </div>
+      <div class="dt-row cols-3">
+        <div class="label" style="color:var(--warn)">Monolithic (wait for all layers)</div>
+        <div class="cell">Full transfer time added to TTFT. Simplest to implement.</div>
+        <div class="cell">Low — no partial-state decode required</div>
+      </div>
+      <div class="dt-row cols-3">
+        <div class="label" style="color:var(--c)">Layer-pipelined transfer</div>
+        <div class="cell">Overlap transfer with decode layers. Hides ~40–60% of transfer latency behind compute.</div>
+        <div class="cell">Medium — requires partial-layer-ready decode logic</div>
+      </div>
+      <div class="dt-row cols-3">
+        <div class="label" style="color:var(--d)">Compressed + pipelined</div>
+        <div class="cell">KV quantization (FP8 or INT4) reduces transfer volume 2–4×. Combine with pipelining.</div>
+        <div class="cell">High — compression/decompression on transfer path, quality tradeoff</div>
+      </div>
+      <div class="dt-row cols-3">
+        <div class="label" style="color:var(--p)">Chunked prefill + streaming</div>
+        <div class="cell">Start sending KV chunks during prefill itself. Decode begins as soon as first chunk arrives.</div>
+        <div class="cell">Highest — requires tight prefill/decode coordination, chunked attention</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 4 -->
+  <section id="decode-residency">
+    <h2>4. KV residency management at the decode node</h2>
+
+    <p>Once the decode node receives a KV cache and begins serving the session, it faces the same residency management problem as any long-running decode session — but with a new constraint: the KV cache arrived from outside, was transferred in full, and cannot be regenerated locally without re-running the prefill node. That changes the eviction calculus.</p>
+
+    <p>In co-located serving, a KV block that is evicted from HBM can be regenerated by running prefill on the relevant context prefix — expensive but possible. In disaggregated serving, evicting a KV block from the decode node's HBM means either:</p>
+
+    <ol>
+      <li><strong>Transfer it to host DRAM on the decode node</strong> — preserving state but adding latency on re-access.</li>
+      <li><strong>Transfer it back to the prefill pool</strong> — preserving state but adding round-trip transfer cost.</li>
+      <li><strong>Drop it and re-request regeneration from the prefill node</strong> — full prefill cost, plus another transfer.</li>
+    </ol>
+
+    <p>Option 3 is catastrophically expensive. Option 2 is architecturally complex. Option 1 is the practical baseline, but it requires the decode node to have a well-managed DRAM tier specifically for in-flight session KV state — not just cold archived state.</p>
+
+    <div class="callout callout-d">
+      <strong>Disaggregation changes the eviction penalty:</strong> in co-located serving, KV eviction triggers a recompute. In disaggregated serving, KV eviction triggers a transfer (at best) or a full recompute-plus-transfer (at worst). The eviction penalty goes up, which means the eviction policy must be more conservative — and the decode node must have more capacity headroom than co-located serving would suggest.
+    </div>
+
+    <div class="fig">
+      <div class="fig-title">Fig 3 — KV state lifecycle in disaggregated serving</div>
+      <svg viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg" role="img">
+        <title>State lifecycle of KV cache across disaggregated prefill and decode nodes</title>
+        <defs>
+          <marker id="arr4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <!-- Prefill node side -->
+        <rect x="40" y="30" width="200" height="220" rx="12" fill="rgba(129,140,248,.04)" stroke="rgba(129,140,248,.2)"/>
+        <text x="140" y="50" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#818cf8" letter-spacing=".05em">PREFILL NODE</text>
+
+        <rect x="60" y="64" width="160" height="48" rx="8" fill="rgba(129,140,248,.12)" stroke="rgba(129,140,248,.3)"/>
+        <text x="140" y="86" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#818cf8">KV generated</text>
+        <text x="140" y="100" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#6a8ab0">in prefill HBM</text>
+
+        <rect x="60" y="130" width="160" height="40" rx="8" fill="rgba(129,140,248,.07)" stroke="rgba(129,140,248,.2)" stroke-dasharray="4,2"/>
+        <text x="140" y="154" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#818cf8">Staged for transfer</text>
+
+        <text x="140" y="200" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3a5070">KV no longer needed</text>
+        <text x="140" y="214" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3a5070">after transfer ACK</text>
+
+        <!-- Transfer arrow -->
+        <line x1="240" y1="110" x2="320" y2="110" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#arr4)"/>
+        <text x="280" y="100" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#f59e0b">NVLink/RDMA</text>
+        <text x="280" y="124" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#f59e0b">~42 GB</text>
+
+        <!-- Decode node -->
+        <rect x="320" y="30" width="400" height="220" rx="12" fill="rgba(52,211,153,.04)" stroke="rgba(52,211,153,.2)"/>
+        <text x="520" y="50" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#34d399" letter-spacing=".05em">DECODE NODE</text>
+
+        <!-- HBM tier -->
+        <rect x="340" y="64" width="160" height="48" rx="8" fill="rgba(52,211,153,.12)" stroke="rgba(52,211,153,.3)"/>
+        <text x="420" y="86" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#34d399">HBM resident</text>
+        <text x="420" y="100" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#6a8ab0">active decode KV</text>
+
+        <!-- Demotion arrow -->
+        <line x1="420" y1="112" x2="420" y2="130" stroke="rgba(245,158,11,.6)" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr4)"/>
+        <text x="450" y="125" font-family="DM Mono,monospace" font-size="9" fill="#f59e0b">evict to DRAM</text>
+        <text x="450" y="138" font-family="DM Mono,monospace" font-size="9" fill="#f59e0b">(preserve state)</text>
+
+        <!-- DRAM tier -->
+        <rect x="340" y="130" width="160" height="40" rx="8" fill="rgba(245,158,11,.08)" stroke="rgba(245,158,11,.2)"/>
+        <text x="420" y="154" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#f59e0b">DRAM (decode node)</text>
+
+        <!-- Drop path -->
+        <line x1="340" y1="152" x2="310" y2="185" stroke="rgba(251,113,133,.5)" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arr4)"/>
+        <text x="318" y="208" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#fb7185">drop KV → re-prefill</text>
+        <text x="318" y="220" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#fb7185">+ re-transfer ⚡ expensive</text>
+
+        <!-- Token generation -->
+        <rect x="530" y="64" width="170" height="130" rx="8" fill="rgba(52,211,153,.06)" stroke="rgba(52,211,153,.2)"/>
+        <text x="615" y="88" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#34d399">Autoregressive</text>
+        <text x="615" y="102" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#34d399">decode loop</text>
+        <text x="615" y="122" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#6a8ab0">generate t₁, t₂, ... tₙ</text>
+        <text x="615" y="136" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#6a8ab0">until EOS or max len</text>
+        <text x="615" y="158" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#34d399">KV grows each step</text>
+        <text x="615" y="172" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#3a5070">session owns full state</text>
+
+        <line x1="500" y1="88" x2="530" y2="88" stroke="rgba(52,211,153,.5)" stroke-width="1.5" marker-end="url(#arr4)"/>
+      </svg>
+      <div class="figcap">KV state is generated on the prefill node, transferred once to the decode node, and then managed entirely by the decode node for the session's lifetime. If HBM pressure forces eviction, the decode node demotes to local DRAM — losing the regeneration-free fallback that co-located serving provides. Dropping KV state entirely forces a full re-prefill plus re-transfer, which is the most expensive failure mode in disaggregated serving.</div>
+    </div>
+  </section>
+
+  <!-- SECTION 5 -->
+  <section id="scheduler-complexity">
+    <h2>5. The router and scheduler: harder than it looks</h2>
+
+    <p>Disaggregation replaces one hard scheduling problem (how do we batch prefill and decode together on the same GPU?) with two easier problems connected by a harder coordination problem (how do we route requests across two pools with different resource profiles, connected by a transfer bottleneck?).</p>
+
+    <p>The routing decisions are non-trivial:</p>
+
+    <div class="pipeline">
+      <div class="pipe-step">
+        <div class="pipe-num">01</div>
+        <div class="pipe-body">
+          <h5>Prefill pool admission</h5>
+          <p>The router must decide which prefill node to assign each incoming request. This depends on available compute capacity, expected prefill duration (proportional to prompt length), and whether the prefill node can reach a decode node with available KV capacity via a fast transfer path. The router must avoid assigning a prefill to a node whose nearest decode nodes are full.</p>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">02</div>
+        <div class="pipe-body">
+          <h5>Decode node selection and KV reservation</h5>
+          <p>Before prefill starts, the router should reserve KV capacity on a decode node — because if no decode node has room for the incoming KV cache when prefill completes, the prefill node must either wait (tying up its GPU) or drop the KV (wasting all the prefill compute). Reservation before prefill avoids both failure modes.</p>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">03</div>
+        <div class="pipe-body">
+          <h5>Transfer topology awareness</h5>
+          <p>NVLink between directly connected GPUs is much faster than PCIe across switch hops. The router should prefer prefill-decode pairs on the same NVLink fabric. When topology constraints force slower transfer paths, the router must account for the higher transfer latency in its TTFT estimates.</p>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">04</div>
+        <div class="pipe-body">
+          <h5>Decode load balancing across sessions</h5>
+          <p>Decode nodes have different KV pressure depending on the active session mix — long contexts fill HBM faster than short ones. The router must balance incoming sessions across decode nodes to avoid HBM saturation on any single node, which would force eviction and damage latency for all sessions on that node.</p>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">05</div>
+        <div class="pipe-body">
+          <h5>Prefill pool sizing</h5>
+          <p>The right ratio of prefill nodes to decode nodes depends on the workload's prompt/output length ratio and the cluster's SLA targets. A workload with very long prompts and short outputs needs more prefill capacity. A workload with short prompts and long outputs needs more decode capacity. The router must be able to operate over a dynamically re-balanced pool ratio.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 6 -->
+  <section id="chunked-prefill">
+    <h2>6. Chunked prefill and its interaction with disaggregation</h2>
+
+    <p>Chunked prefill — processing the prompt in fixed-size chunks rather than all at once — is often discussed as a technique for reducing prefill latency variance in co-located serving. In disaggregated serving, it has a second purpose: it enables the KV cache transfer to begin during prefill, rather than waiting for prefill to complete.</p>
+
+    <p>The mechanism: as each chunk of the prompt is processed, the KV state for those tokens is complete and can be transmitted to the decode node immediately. By the time the last chunk of prefill completes, the decode node already holds most of the KV cache — only the KV state for the last chunk needs to arrive before decoding can start.</p>
+
+    <p>This is the most aggressive latency optimization available in disaggregated serving, but it creates coordination requirements: the decode node must implement partial-KV-cache attention, the transfer must be layer-aligned, and the prefill node must handle chunk completion signaling.</p>
+
+    <div class="callout callout-d">
+      <strong>Chunked prefill + disaggregation = streaming KV delivery:</strong> this combination treats the KV cache as a stream that the decode node begins consuming before it is fully produced. It is the same conceptual pattern as streaming prefetch in memory hierarchies — start using data as it arrives rather than waiting for the full transfer to complete. The implementation complexity is significant but the latency benefit is large, especially for long prompts over slow transfer paths.
+    </div>
+  </section>
+
+  <!-- SECTION 7 -->
+  <section id="memory-policy-implications">
+    <h2>7. Memory policy implications for disaggregated serving</h2>
+
+    <p>Disaggregation changes the assumptions that existing KV memory policies were designed around. Most production KV cache management — including PagedAttention, confidence-gated residency, and region-based tiering — was designed for co-located serving where the KV cache is generated and consumed on the same GPU. In disaggregated serving, several of those assumptions break:</p>
+
+    <div class="threecol">
+      <div class="pbox p">
+        <h4>Assumption broken: regeneration is cheap</h4>
+        <p>Co-located serving can evict KV and recompute. Disaggregated serving must transfer instead of recompute. Eviction penalty goes up by 10–100×.</p>
+      </div>
+      <div class="pbox d">
+        <h4>Assumption broken: KV locality</h4>
+        <p>Co-located serving has KV cache locality within one GPU's HBM. Disaggregated serving has KV state arriving from a remote node with transfer latency.</p>
+      </div>
+      <div class="pbox c">
+        <h4>Assumption broken: admission = generation</h4>
+        <p>Co-located: KV enters the cache when prefill runs on that GPU. Disaggregated: KV arrives as a transfer from a different machine at an unpredictable time.</p>
+      </div>
+    </div>
+
+    <p>These broken assumptions require a different memory policy framework at decode nodes. Specifically:</p>
+    <ul>
+      <li><strong>More conservative eviction thresholds.</strong> Since eviction triggers transfer rather than recompute, the cost of a wrong eviction is much higher. The hysteresis band discussed in the HBM Fragmentation Guard essay should be widened for disaggregated decode nodes.</li>
+      <li><strong>Transfer-aware admission control.</strong> When a KV transfer is in flight but the decode node's HBM is nearly full, the node must decide whether to evict an existing session's KV (risking that session's latency) or delay the incoming transfer (adding latency to the new session). This is a new scheduling decision that co-located serving never faces.</li>
+      <li><strong>DRAM tier as a first-class cache, not an overflow buffer.</strong> Since eviction to DRAM is far preferred over eviction to re-transfer, decode nodes should maintain a larger and more actively managed DRAM KV tier than co-located serving would suggest.</li>
+    </ul>
+  </section>
+
+  <!-- SECTION 8 -->
+  <section id="prefix-caching">
+    <h2>8. Prefix caching and disaggregation: a complicated relationship</h2>
+
+    <p>Prefix caching — reusing KV state from a prior session's prompt when a new session shares the same prefix — is a major throughput optimization for serving systems with many requests sharing system prompts, instruction templates, or common context prefixes.</p>
+
+    <p>In co-located serving, prefix caching is relatively clean: if the KV for prefix X is already in HBM, skip the prefill for that prefix entirely. In disaggregated serving, the prefix caching question becomes: where is the cached prefix KV? It could be on any prefill node (if a prefill node cached it) or on any decode node (if a decode node received and retained it after a prior session ended).</p>
+
+    <p>This creates a routing constraint: if a new request shares a prefix with a session that was recently served by prefill node P3 and decode node D2, the most efficient path is to route the new request through the same P3-D2 pair so the prefix KV is already local. But that requires the router to maintain prefix-to-node affinity, which conflicts with pure load balancing.</p>
+
+    <div class="pq">Prefix caching in disaggregated serving is a distributed cache coherence problem. The cached KV state is spread across prefill and decode nodes, transfer paths have cost, and routing decisions must account for cache locality. This is a harder version of the same problem that distributed database sharding has been solving for decades.</div>
+  </section>
+
+  <!-- SECTION 9 -->
+  <section id="hardware-future">
+    <h2>9. What disaggregation tells us about future hardware</h2>
+
+    <p>The architectural separation of prefill and decode in software has implications for what hardware should look like. Once the two workloads are cleanly separated, it becomes possible to build hardware optimized specifically for each:</p>
+
+    <div class="twocol">
+      <div class="pbox p">
+        <h4>Prefill-optimized hardware</h4>
+        <ul>
+          <li>More FLOP/s, wider tensor cores, higher compute density</li>
+          <li>Less HBM — only weights + current-batch activations needed</li>
+          <li>High-bandwidth transfer interface to decode nodes</li>
+          <li>Example direction: training-class accelerators repurposed for prefill</li>
+        </ul>
+      </div>
+      <div class="pbox d">
+        <h4>Decode-optimized hardware</h4>
+        <ul>
+          <li>More HBM bandwidth and capacity per unit cost</li>
+          <li>Fewer TFLOP/s — matrix-vector multiplies at one token per step</li>
+          <li>Large, efficient KV cache management</li>
+          <li>Example direction: memory-bandwidth-optimized ASICs, CXL-attached memory expansions</li>
+        </ul>
+      </div>
+    </div>
+
+    <p>This is the same insight that motivated NVMe SSDs for cold storage and HBM for hot compute — different media optimized for different workload profiles, connected by explicit movement. Disaggregated inference is applying the same principle to GPU compute and memory bandwidth.</p>
+  </section>
+
+  <!-- SECTION 10 -->
+  <section id="what-it-means">
+    <h2>10. The systems view: what disaggregation actually requires</h2>
+
+    <p>Disaggregated inference is a genuinely better architecture for large-scale LLM serving. The theoretical benefits are real: better hardware utilization, lower TTFT for long prompts, higher throughput per dollar, and a cleaner path to purpose-built hardware.</p>
+
+    <p>But implementing it correctly requires getting several memory system problems right simultaneously:</p>
+
+    <ul>
+      <li><strong>KV transfer infrastructure</strong> that minimizes latency, handles topology heterogeneity (NVLink vs. PCIe vs. RDMA), supports compression, and enables chunked streaming delivery.</li>
+      <li><strong>Decode node memory management</strong> with conservative eviction policies, transfer-aware admission control, and an actively managed DRAM tier for in-flight session KV state.</li>
+      <li><strong>Router and scheduler</strong> that maintains prefix affinity, reserves decode capacity before prefill completes, balances decode KV pressure across nodes, and handles transfer failures gracefully.</li>
+      <li><strong>Prefix cache coherence</strong> across a distributed fleet of prefill and decode nodes with heterogeneous KV residency.</li>
+    </ul>
+
+    <div class="callout callout-d">
+      <strong>The pattern this series keeps finding:</strong> every major inference architecture advance — speculative decoding, sparse attention, KV tiering, and now prefill-decode disaggregation — produces a compute optimization that converts cleanly into a memory orchestration problem. Compute wins are finite and predictable. Memory orchestration wins compound because they determine how efficiently the compute wins can be applied across a real production workload.
+    </div>
+
+    <div class="callout">
+      <strong>Connection to earlier essays:</strong> disaggregated serving depends on all the memory policy machinery this series has analyzed: confident-gated KV residency (HBM Fragmentation Guard), explicit movement and tier orchestration (Memory Scheduler), bounce-buffer elimination (Bounce Buffers essay), RDMA-based KV transfer (RDMA in the Age of AI), and workload-aware KV routing (Seam Orchestrator). Disaggregation is not a new problem — it is the composition of all those problems at fleet scale.
+    </div>
+
+    <div class="footer-note">
+      <p>Published April 2026. This essay is part of the AI inference systems series. Related essays: <em>Seam Orchestrator: Workload-Aware KV Routing in Disaggregated Inference</em>, <em>RDMA in the Age of AI</em>, <em>HBM Fragmentation Guard</em>, <em>The Memory Scheduler Is the New Critical Path</em>. Numerical estimates in this essay are order-of-magnitude approximations based on 70B-class model parameters and H100 hardware specifications; actual values depend on configuration, precision, and network topology.</p>
+    </div>
+  </section>
+
+</article>
+
+<aside class="sticky-rail">
+  <nav class="toc">
+    <div class="toc-hd">In this essay</div>
+    <a href="#the-mismatch">1. The fundamental mismatch</a>
+    <a href="#what-disaggregation-means">2. What disaggregation means</a>
+    <a href="#kv-transfer">3. KV transfer: the hard part</a>
+    <a href="#decode-residency">4. Decode node KV residency</a>
+    <a href="#scheduler-complexity">5. The router and scheduler</a>
+    <a href="#chunked-prefill">6. Chunked prefill</a>
+    <a href="#memory-policy-implications">7. Memory policy implications</a>
+    <a href="#prefix-caching">8. Prefix caching complications</a>
+    <a href="#hardware-future">9. Hardware implications</a>
+    <a href="#what-it-means">10. The systems view</a>
+  </nav>
+  <div class="side-card">
+    <div class="lbl">Series</div>
+    <p>Inference Architecture · Disaggregated Serving · Memory Orchestration. Builds on the KV routing, RDMA, and HBM management essays in the series.</p>
+  </div>
+  <div class="side-card">
+    <div class="lbl">Key claim</div>
+    <p>Prefill-decode disaggregation is the right architecture. The compute argument is clean. The memory system complexity — KV transfer, decode residency management, router design, prefix caching — is where the real engineering work is.</p>
+  </div>
+  <div class="side-card">
+    <div class="lbl">Colors used</div>
+    <p style="font-family:DM Mono,monospace;font-size:.82rem;line-height:1.5">
+      <span style="color:var(--p)">■</span> Indigo = Prefill<br>
+      <span style="color:var(--d)">■</span> Emerald = Decode<br>
+      <span style="color:var(--c)">■</span> Amber = KV Transfer
+    </p>
+  </div>
+</aside>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-inner">
+      <a href="https://manishklach.github.io/index.html">Home</a>
+      <span>·</span>
+      <a href="https://manishklach.github.io/writings.html">← Back to Writings</a>
+      <span>·</span>
+      <span>© 2026 <a href="https://github.com/manishklach" rel="noopener noreferrer" target="_blank">Manish KL</a></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  const bar = document.getElementById('rdbar');
+  window.addEventListener('scroll', () => {
+    const h = document.documentElement;
+    bar.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+  }, { passive: true });
+</script>
+</body>
+</html>

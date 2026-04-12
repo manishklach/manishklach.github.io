@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Speculative Decoding Is a Memory Problem | Manish KL</title>
+  <meta name="description" content="Speculative decoding is almost always discussed as a compute trick. It is really a memory orchestration problem. Draft models, KV divergence, rollback mechanics, and verify-phase memory pressure all make memory policy the dominant determinant of whether speculation actually pays off."/>
+  <meta name="keywords" content="speculative decoding memory, LLM inference optimization, KV cache speculative decoding, draft model memory, verify phase AI inference, speculative execution GPU memory"/>
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1"/>
+  <link rel="canonical" href="https://manishklach.github.io/writings/speculative-decoding-is-a-memory-problem.html"/>
+  <meta property="og:title" content="Speculative Decoding Is a Memory Problem"/>
+  <meta property="og:description" content="Draft models and verify phases hide a memory orchestration challenge that dominates whether speculation actually pays off at scale."/>
+  <meta property="og:type" content="article"/>
+  <meta property="og:url" content="https://manishklach.github.io/writings/speculative-decoding-is-a-memory-problem.html"/>
+  <meta property="og:site_name" content="Manish KL"/>
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png"/>
+  <meta property="og:image:alt" content="Preview image for Speculative Decoding Is a Memory Problem"/>
+  <meta property="article:published_time" content="2026-04-11T00:00:00Z"/>
+  <meta property="article:author" content="Manish KL"/>
+  <meta property="article:section" content="AI Infrastructure"/>
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:title" content="Speculative Decoding Is a Memory Problem"/>
+  <meta name="twitter:description" content="Draft models, verify phases, and rollback mechanics make speculative decoding a memory orchestration problem."/>
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png"/>
+  <meta name="twitter:image:alt" content="Preview image for Speculative Decoding Is a Memory Problem"/>
+  <meta name="twitter:site" content="@manishklach"/>
+  <meta name="twitter:creator" content="@manishklach"/>
+  <meta name="author" content="Manish KL"/>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Speculative Decoding Is a Memory Problem",
+    "description": "This essay explains why draft models, KV divergence, rollback mechanics, and verify-phase memory pressure make speculative decoding a memory orchestration problem.",
+    "author": {
+      "@type": "Person",
+      "name": "Manish KL",
+      "url": "https://github.com/manishklach"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "Manish KL",
+      "url": "https://manishklach.github.io/"
+    },
+    "datePublished": "2026-04-11",
+    "dateModified": "2026-04-11",
+    "url": "https://manishklach.github.io/writings/speculative-decoding-is-a-memory-problem.html",
+    "mainEntityOfPage": "https://manishklach.github.io/writings/speculative-decoding-is-a-memory-problem.html",
+    "image": "https://manishklach.github.io/assets/og-image.png",
+    "keywords": ["speculative decoding memory", "LLM inference optimization", "KV cache speculative decoding", "draft model memory", "verify phase AI inference"],
+    "articleSection": "AI Infrastructure",
+    "inLanguage": "en-US"
+  }
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,300;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+
+  <style>
+    :root {
+      --bg: #07101e;
+      --surface: #0c1829;
+      --surface2: #101f35;
+      --text: #dce8f8;
+      --muted: #6e8fb5;
+      --muted2: #3d5878;
+      --line: rgba(255,255,255,.07);
+      --line2: rgba(255,255,255,.13);
+      --accent: #38c9f0;
+      --accent2: #5de8a8;
+      --accent3: #f0b83e;
+      --accent4: #f06080;
+      --accent5: #a78bfa;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse 80% 45% at 5% 0%, rgba(56,201,240,.10), transparent 55%),
+        radial-gradient(ellipse 65% 40% at 95% 5%, rgba(93,232,168,.07), transparent 50%);
+      color: var(--text);
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.78;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #rdbar { position: fixed; top: 0; left: 0; height: 2px; width: 0; background: linear-gradient(90deg,var(--accent),var(--accent2),var(--accent3)); z-index: 999; transition: width .1s linear; }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .wrap { max-width: 1060px; margin: 0 auto; padding: 0 28px; }
+    .content-grid { display: grid; grid-template-columns: 1fr 264px; gap: 52px; padding: 52px 0 100px; align-items: start; }
+    .sticky-rail { position: sticky; top: 24px; }
+
+    /* ── NAV ── */
+    .topnav { padding: 20px 0; border-bottom: 1px solid var(--line); }
+    .topnav-inner { display: flex; align-items: center; gap: 20px; font-size: .87rem; color: var(--muted); font-family: 'DM Mono', monospace; }
+    .topnav-inner a { color: var(--muted); }
+    .topnav-inner a:hover { color: var(--text); text-decoration: none; }
+
+    /* ── HERO ── */
+    .hero { padding: 56px 0 44px; border-bottom: 1px solid var(--line); }
+    .series-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px; border-radius: 999px;
+      border: 1px solid rgba(56,201,240,.28); background: rgba(56,201,240,.06);
+      color: var(--accent); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+      font-family: 'DM Mono', monospace; margin-bottom: 20px;
+    }
+    h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(2.6rem, 5.2vw, 4.2rem);
+      line-height: 1.06; letter-spacing: -.025em;
+      margin-bottom: 20px; max-width: 840px;
+    }
+    h1 em { font-style: italic; color: var(--accent); }
+    .hero-dek { max-width: 720px; color: var(--muted); font-size: 1.12rem; line-height: 1.72; margin-bottom: 18px; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted2); font-size: .83rem; font-family: 'DM Mono', monospace; }
+    .hero-meta span { display: flex; align-items: center; gap: 6px; }
+
+    /* lede card */
+    .lede-card {
+      margin-top: 32px; padding: 24px 28px;
+      border-radius: 18px; border: 1px solid rgba(56,201,240,.16);
+      background: linear-gradient(135deg, rgba(56,201,240,.06), rgba(93,232,168,.04));
+      max-width: 780px;
+    }
+    .lede-card .lbl { font-family: 'DM Mono', monospace; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+    .lede-card p { color: #b8d4f0; font-size: 1.02rem; line-height: 1.72; margin: 0; }
+    .lede-card strong { color: var(--text); }
+
+    /* stat strip */
+    .stat-strip { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin: 32px 0; }
+    .stat { padding: 18px; border: 1px solid var(--line2); border-radius: 14px; background: rgba(255,255,255,.025); }
+    .stat .n { font-family: 'DM Mono', monospace; font-size: 1.5rem; margin-bottom: 6px; }
+    .stat .l { font-size: .8rem; color: var(--muted2); line-height: 1.4; }
+    .stat.a .n { color: var(--accent); }
+    .stat.g .n { color: var(--accent2); }
+    .stat.y .n { color: var(--accent3); }
+    .stat.r .n { color: var(--accent4); }
+
+    /* TOC */
+    .toc { background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 18px; padding: 20px; margin-bottom: 16px; }
+    .toc-hd { font-family: 'DM Mono', monospace; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted2); margin-bottom: 14px; }
+    .toc a { display: block; padding: 7px 0; color: var(--muted); font-size: .87rem; border-bottom: 1px solid var(--line); text-decoration: none; transition: color .18s; }
+    .toc a:last-child { border-bottom: none; }
+    .toc a:hover { color: var(--accent); }
+    .side-card { background: rgba(255,255,255,.02); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; margin-bottom: 14px; }
+    .side-card .lbl { font-family: 'DM Mono', monospace; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted2); margin-bottom: 8px; }
+    .side-card p { color: var(--muted); font-size: .86rem; line-height: 1.62; margin: 0; }
+
+    /* article typography */
+    article section { margin-bottom: 60px; }
+    article h2 {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(1.65rem, 2.8vw, 2.15rem);
+      line-height: 1.2; letter-spacing: -.02em;
+      margin: 0 0 18px; padding-top: 52px;
+      border-top: 1px solid var(--line);
+    }
+    article h2:first-child { border-top: none; padding-top: 0; }
+    article h3 {
+      font-family: 'DM Mono', monospace; font-size: .82rem;
+      letter-spacing: .07em; text-transform: uppercase;
+      color: var(--accent); margin: 26px 0 10px;
+    }
+    article h4 { font-size: 1rem; font-weight: 600; margin: 22px 0 8px; color: var(--text); }
+    article p { color: #b8d0ec; line-height: 1.8; margin-bottom: 16px; }
+    article ul, article ol { margin: 10px 0 18px 22px; }
+    article li { color: var(--muted); margin-bottom: 8px; line-height: 1.65; }
+    article li strong { color: var(--text); }
+
+    /* callouts */
+    .callout {
+      margin: 26px 0; padding: 20px 24px;
+      border-radius: 16px; border: 1px solid rgba(56,201,240,.2);
+      background: rgba(56,201,240,.05);
+      font-size: .99rem; line-height: 1.72;
+    }
+    .callout strong { color: var(--accent); }
+    .callout-green { border-color: rgba(93,232,168,.2); background: rgba(93,232,168,.05); }
+    .callout-green strong { color: var(--accent2); }
+    .callout-amber { border-color: rgba(240,184,62,.2); background: rgba(240,184,62,.05); }
+    .callout-amber strong { color: var(--accent3); }
+    .callout-red { border-color: rgba(240,96,128,.2); background: rgba(240,96,128,.05); }
+    .callout-red strong { color: var(--accent4); }
+
+    /* pull quote */
+    .pq {
+      margin: 30px 0; padding: 22px 26px;
+      border-left: 3px solid var(--accent);
+      background: rgba(56,201,240,.04);
+      border-radius: 0 16px 16px 0;
+      font-family: 'DM Serif Display', serif; font-style: italic;
+      font-size: 1.22rem; color: #d0e8ff; line-height: 1.55;
+    }
+
+    /* figure wrapper */
+    .fig {
+      margin: 30px 0; padding: 22px;
+      border: 1px solid var(--line); border-radius: 20px;
+      background: linear-gradient(155deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+    }
+    .fig-title { font-family: 'DM Mono', monospace; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+    .fig svg { display: block; width: 100%; height: auto; }
+    .figcap { margin-top: 12px; color: var(--muted2); font-size: .86rem; line-height: 1.62; border-top: 1px solid var(--line); padding-top: 10px; }
+
+    /* comparison tables */
+    .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 20px 0; }
+    .pbox { padding: 20px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.02); }
+    .pbox h4 { font-family: 'DM Mono', monospace; font-size: .78rem; letter-spacing: .07em; text-transform: uppercase; margin: 0 0 10px; }
+    .pbox.a h4 { color: var(--accent); } .pbox.g h4 { color: var(--accent2); }
+    .pbox.y h4 { color: var(--accent3); } .pbox.r h4 { color: var(--accent4); }
+    .pbox p, .pbox li { color: var(--muted); font-size: .9rem; line-height: 1.6; }
+    .pbox ul { margin: 0 0 0 16px; }
+
+    /* structured data table */
+    .dtable { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin: 22px 0; }
+    .dt-head { display: grid; background: rgba(255,255,255,.04); padding: 12px 16px; font-family: 'DM Mono', monospace; font-size: .72rem; letter-spacing: .07em; text-transform: uppercase; color: var(--muted2); gap: 8px; }
+    .dt-row { display: grid; padding: 13px 16px; border-top: 1px solid var(--line); gap: 8px; align-items: start; }
+    .dt-row:hover { background: rgba(255,255,255,.015); }
+    .dt-row .label { font-weight: 600; font-size: .93rem; }
+    .dt-row .cell { font-size: .87rem; color: var(--muted); }
+    .cols-3 { grid-template-columns: 1.3fr 1.4fr 1.3fr; }
+    .cols-4 { grid-template-columns: 1.2fr 1fr 1fr 1.3fr; }
+
+    /* code block */
+    pre {
+      background: rgba(0,0,0,.35); border: 1px solid var(--line2);
+      border-radius: 12px; padding: 18px 20px;
+      font-family: 'DM Mono', monospace; font-size: .84rem;
+      color: #c8dff8; overflow-x: auto; margin: 20px 0;
+      line-height: 1.6;
+    }
+    code { font-family: 'DM Mono', monospace; font-size: .86em; color: var(--accent); background: rgba(56,201,240,.1); padding: 1px 6px; border-radius: 5px; }
+
+    /* pipeline steps */
+    .pipeline { display: flex; flex-direction: column; gap: 0; margin: 22px 0; }
+    .pipe-step {
+      display: flex; gap: 18px; align-items: flex-start;
+      padding: 16px 18px; border: 1px solid var(--line);
+      border-radius: 0; background: rgba(255,255,255,.02);
+      border-bottom: none;
+    }
+    .pipe-step:first-child { border-radius: 14px 14px 0 0; }
+    .pipe-step:last-child { border-radius: 0 0 14px 14px; border-bottom: 1px solid var(--line); }
+    .pipe-num { font-family: 'DM Mono', monospace; font-size: .78rem; color: var(--accent); min-width: 28px; padding-top: 2px; }
+    .pipe-body h5 { font-size: .95rem; font-weight: 600; margin-bottom: 4px; }
+    .pipe-body p { color: var(--muted); font-size: .9rem; margin: 0; line-height: 1.6; }
+
+    .footer-note { margin-top: 52px; padding: 22px; border-radius: 16px; border: 1px solid var(--line); background: rgba(255,255,255,.02); }
+    .footer-note p { color: var(--muted2); font-size: .86rem; line-height: 1.7; margin: 0; }
+
+    footer { border-top: 1px solid var(--line); padding: 28px 0; margin-top: 0; }
+    .footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; color: var(--muted2); font-size: .85rem; }
+
+    @media (max-width: 960px) {
+      .content-grid { grid-template-columns: 1fr; gap: 32px; }
+      .sticky-rail { position: static; }
+      .twocol { grid-template-columns: 1fr; }
+      .stat-strip { grid-template-columns: 1fr 1fr; }
+      .cols-3, .cols-4 { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 580px) {
+      h1 { font-size: 2.2rem; }
+      .stat-strip { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div id="rdbar"></div>
+
+<nav class="topnav">
+  <div class="wrap">
+    <div class="topnav-inner">
+      <a href="https://manishklach.github.io/index.html">Home</a>
+      <span>·</span>
+      <a href="https://manishklach.github.io/writings.html">← Back to Writings</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="series-badge">AI Runtime · Inference Systems · Memory Policy</div>
+    <h1>Speculative Decoding Is a <em>Memory Problem</em></h1>
+    <p class="hero-dek">Everyone talks about speculative decoding as a compute trick — a draft model generates tokens cheaply, the target model verifies them in parallel, and the system enjoys superlinear throughput. That framing is correct but incomplete. The real constraint, at serving scale, is memory: dual KV caches, divergence-driven rollback, verify-phase bandwidth spikes, and draft residency pressure that fights directly with concurrent request capacity.</p>
+    <div class="hero-meta">
+      <span>By <a href="https://manishklach.github.io/index.html">Manish KL</a></span>
+      <span>·</span>
+      <span>April 2026</span>
+      <span>·</span>
+      <span>~13 min read</span>
+    </div>
+    <div class="lede-card">
+      <div class="lbl">Core thesis</div>
+      <p>Speculative decoding shifts the bottleneck from arithmetic to memory. Once the draft step is cheap enough computationally, the dominant question becomes whether the draft KV state, the target KV state, and the verify-phase bandwidth all fit inside a memory budget that also has to serve concurrent requests. <strong>Getting memory policy wrong erases most of the speedup. Getting it right compounds the gains.</strong></p>
+    </div>
+  </div>
+</header>
+
+<div class="wrap content-grid">
+<article>
+
+  <div class="stat-strip">
+    <div class="stat a"><div class="n">2–3×</div><div class="l">Typical token throughput improvement with well-tuned speculative decoding</div></div>
+    <div class="stat g"><div class="n">~2×</div><div class="l">HBM pressure increase from dual KV caches (draft + target) vs. standard decode</div></div>
+    <div class="stat y"><div class="n">γ = 4–8</div><div class="l">Typical speculation window (draft tokens per verify call) in production deployments</div></div>
+    <div class="stat r"><div class="n">&lt;70%</div><div class="l">Acceptance rate below which speculative decoding often stops paying off vs. standard decode</div></div>
+  </div>
+
+  <!-- SECTION 1 -->
+  <section id="framing">
+    <h2>1. The framing everyone uses — and what it misses</h2>
+
+    <p>The standard explanation of speculative decoding goes roughly like this: a small, fast draft model generates a window of γ candidate tokens autoregressively. The large target model then verifies all γ candidates in a single parallel forward pass — the same computational cost as generating one token, but potentially accepting multiple. If the acceptance rate α is high enough, the system achieves super-linear effective throughput.</p>
+
+    <p>This framing is correct. The throughput argument is real and the math works. But it describes the mechanism entirely in terms of arithmetic: FLOPs saved, parallel verify step, acceptance rate. It says almost nothing about what happens to memory.</p>
+
+    <div class="pq">Speculative decoding was invented to defeat arithmetic bottlenecks. In practice, it often creates memory bottlenecks instead.</div>
+
+    <p>That matters because modern LLM serving is not usually compute-bound in the way the framing implies. For standard autoregressive decode, the bottleneck is memory bandwidth — reading weights and KV cache at each step. Speculative decoding adds a draft model with its own weights, its own KV state, and its own access patterns. It changes the memory system's workload before it changes the compute system's workload.</p>
+
+    <div class="callout">
+      <strong>The shift:</strong> standard decode is memory-bandwidth-bound. Speculative decoding with a naive implementation is often memory-<em>capacity</em>-bound — because two full KV caches, two sets of active weights, and a batch of pending verify requests now compete for the same HBM.
+    </div>
+  </section>
+
+  <!-- SECTION 2 -->
+  <section id="dual-kv">
+    <h2>2. The dual KV cache problem</h2>
+
+    <p>In standard autoregressive decode, the KV cache for a request grows at one token per step: attention keys and values for all layers, for all tokens seen so far. For a 70B-class model at 128K context, this is already tens of gigabytes per session.</p>
+
+    <p>Speculative decoding adds a second KV cache: one for the draft model. The draft model also needs to attend to the full prior context at each draft step. Its KV cache is smaller per layer (the draft model has fewer and narrower layers), but it is not zero. And it has to stay resident while the draft window is being generated, while the target model is verifying, and through potential rollback to an earlier position.</p>
+
+    <div class="fig">
+      <div class="fig-title">Fig 1 — Memory layout: standard decode vs. speculative decode</div>
+      <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg" role="img">
+        <title>Memory layout comparison between standard decode and speculative decode showing dual KV cache pressure</title>
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <!-- LEFT: Standard decode -->
+        <text x="185" y="22" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#6e8fb5" letter-spacing=".06em">STANDARD DECODE</text>
+
+        <!-- HBM box -->
+        <rect x="40" y="36" width="290" height="260" rx="12" fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+        <text x="185" y="54" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3d5878">HBM (80 GB)</text>
+
+        <!-- Target weights -->
+        <rect x="56" y="64" width="258" height="52" rx="8" fill="rgba(56,201,240,.12)" stroke="rgba(56,201,240,.3)" stroke-width="1.5"/>
+        <text x="185" y="88" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#38c9f0">Target model weights</text>
+        <text x="185" y="103" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#6e8fb5">~70–140 GB (70B BF16)</text>
+
+        <!-- Target KV cache -->
+        <rect x="56" y="124" width="258" height="68" rx="8" fill="rgba(93,232,168,.10)" stroke="rgba(93,232,168,.3)" stroke-width="1.5"/>
+        <text x="185" y="150" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#5de8a8">Target KV cache</text>
+        <text x="185" y="166" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#6e8fb5">Grows with context length</text>
+        <text x="185" y="181" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#6e8fb5">All active sessions</text>
+
+        <!-- Activations -->
+        <rect x="56" y="200" width="258" height="36" rx="8" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+        <text x="185" y="222" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#6e8fb5">Activations + runtime scratch</text>
+
+        <!-- Remaining -->
+        <rect x="56" y="244" width="258" height="36" rx="8" fill="rgba(255,255,255,.025)" stroke="rgba(255,255,255,.07)" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="185" y="266" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3d5878">Free / additional sessions</text>
+
+        <!-- DIVIDER -->
+        <line x1="390" y1="20" x2="390" y2="305" stroke="rgba(255,255,255,.08)" stroke-width="1" stroke-dasharray="6,4"/>
+
+        <!-- RIGHT: Speculative decode -->
+        <text x="575" y="22" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#6e8fb5" letter-spacing=".06em">SPECULATIVE DECODE</text>
+
+        <!-- HBM box -->
+        <rect x="430" y="36" width="290" height="260" rx="12" fill="rgba(248,113,113,.03)" stroke="rgba(248,113,113,.2)" stroke-width="1.5"/>
+        <text x="575" y="54" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3d5878">HBM (80 GB — same budget)</text>
+
+        <!-- Target weights -->
+        <rect x="446" y="64" width="258" height="52" rx="8" fill="rgba(56,201,240,.12)" stroke="rgba(56,201,240,.3)" stroke-width="1.5"/>
+        <text x="575" y="88" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#38c9f0">Target model weights</text>
+        <text x="575" y="103" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#6e8fb5">Same as before</text>
+
+        <!-- Draft weights (new) -->
+        <rect x="446" y="124" width="258" height="36" rx="8" fill="rgba(167,139,250,.12)" stroke="rgba(167,139,250,.3)" stroke-width="1.5"/>
+        <text x="575" y="147" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#a78bfa">Draft model weights (NEW)</text>
+
+        <!-- Target KV cache (smaller now) -->
+        <rect x="446" y="168" width="258" height="48" rx="8" fill="rgba(93,232,168,.10)" stroke="rgba(93,232,168,.3)" stroke-width="1.5"/>
+        <text x="575" y="190" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#5de8a8">Target KV cache</text>
+        <text x="575" y="205" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#6e8fb5">Now competing for space</text>
+
+        <!-- Draft KV cache (new) -->
+        <rect x="446" y="224" width="258" height="36" rx="8" fill="rgba(240,184,62,.12)" stroke="rgba(240,184,62,.3)" stroke-width="1.5"/>
+        <text x="575" y="247" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#f0b83e">Draft KV cache (NEW)</text>
+
+        <!-- Reduced free -->
+        <rect x="446" y="268" width="258" height="16" rx="4" fill="rgba(248,113,113,.12)" stroke="rgba(248,113,113,.2)" stroke-width="1"/>
+        <text x="575" y="280" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#f06080">Reduced capacity for sessions</text>
+
+        <!-- Warning annotation -->
+        <text x="575" y="305" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#f06080">↑ ~30–45% more HBM consumed</text>
+      </svg>
+      <div class="figcap">Speculative decoding consumes materially more HBM for the same workload. The draft model adds both its own weight footprint and its own KV cache. On a 70B target model with a 7B draft, the additional weight load is roughly 14GB; the draft KV cache adds further pressure proportional to context length and batch size. The net effect is reduced concurrency headroom or forced offload of KV state to slower tiers.</div>
+    </div>
+
+    <p>The memory math is concrete. A 7B draft model in BF16 occupies roughly 14GB of weight storage. Its per-token, per-layer KV footprint is smaller than the target model's, but across a 128K-token context it accumulates meaningfully. At γ = 6 draft tokens per verify step, the draft model must maintain its KV state across those 6 pending positions while the target model runs verification. Neither cache can be discarded until the verify result is known.</p>
+
+    <div class="callout-amber callout">
+      <strong>The capacity equation:</strong> for a serving system running N concurrent 128K-context sessions, speculative decoding adds roughly 15–25% more HBM consumption per session. That directly reduces the maximum batch size. If the batch was previously concurrency-limited by HBM, speculation may help arithmetic but hurt throughput by forcing fewer concurrent requests.
+    </div>
+  </section>
+
+  <!-- SECTION 3 -->
+  <section id="rollback">
+    <h2>3. Rollback mechanics and their memory cost</h2>
+
+    <p>When the target model rejects a draft token at position k, the system must roll back to position k and discard the KV state that was provisionally extended for draft tokens k+1 through γ. This is not free. The KV cache must be truncated, the draft model's own KV cache must be wound back, and the position tracking for all subsequent layers must be updated.</p>
+
+    <p>In practice, rollback behavior has three memory consequences that are easy to underestimate:</p>
+
+    <h4>Speculative KV pages cannot be eagerly freed</h4>
+    <p>During the draft phase, the KV cache is extended speculatively for each draft token. These pages cannot be freed until the verify step completes and returns an accept/reject decision for each position. The system must hold the speculative pages in a pending state — consuming HBM — for the full duration of the verify pass. At γ = 8 and a target model verify pass that takes several milliseconds, this holding cost is non-trivial at scale.</p>
+
+    <h4>Rollback creates non-contiguous free space</h4>
+    <p>Partial accepts — the most common outcome, where the target accepts tokens 0..k and rejects token k+1 — leave KV allocations that are partially valid and partially stale. Freeing only the rejected portion creates KV page fragmentation of exactly the kind the HBM Fragmentation Guard essay described. The allocator now has to manage mixed-validity pages across active sessions.</p>
+
+    <h4>Frequent rollbacks amplify bandwidth consumption</h4>
+    <p>Every rollback that touches HBM — to truncate the KV cache, reload the draft model's position embeddings, and re-read the last accepted token's attention state — burns bandwidth. When acceptance rates are low (α < 0.7), the bandwidth spent on rollbacks can exceed the bandwidth saved by avoiding full autoregressive steps in the target model.</p>
+
+    <div class="fig">
+      <div class="fig-title">Fig 2 — Speculative decode rollback: memory state transitions</div>
+      <svg viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg" role="img">
+        <title>Memory state transitions during speculative decode: draft phase, verify phase, and rollback</title>
+        <defs>
+          <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <!-- Timeline base -->
+        <line x1="40" y1="220" x2="720" y2="220" stroke="rgba(255,255,255,.15)" stroke-width="1.5"/>
+        <text x="380" y="250" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#3d5878">Time →  (one speculation round: draft γ tokens, then verify)</text>
+
+        <!-- Context: last committed token (T) -->
+        <rect x="40" y="60" width="80" height="48" rx="8" fill="rgba(56,201,240,.12)" stroke="rgba(56,201,240,.4)" stroke-width="1.5"/>
+        <text x="80" y="82" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#38c9f0">T</text>
+        <text x="80" y="97" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#6e8fb5">committed</text>
+        <text x="80" y="232" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#3d5878">t=0</text>
+
+        <!-- Draft tokens (speculative) -->
+        <rect x="140" y="60" width="60" height="48" rx="8" fill="rgba(240,184,62,.12)" stroke="rgba(240,184,62,.35)" stroke-width="1.5" stroke-dasharray="5,2"/>
+        <text x="170" y="82" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#f0b83e">d₁</text>
+        <text x="170" y="97" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#f0b83e">draft</text>
+        <text x="170" y="232" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#3d5878">draft 1</text>
+
+        <rect x="210" y="60" width="60" height="48" rx="8" fill="rgba(240,184,62,.12)" stroke="rgba(240,184,62,.35)" stroke-width="1.5" stroke-dasharray="5,2"/>
+        <text x="240" y="82" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#f0b83e">d₂</text>
+        <text x="240" y="97" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#f0b83e">draft</text>
+        <text x="240" y="232" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#3d5878">draft 2</text>
+
+        <rect x="280" y="60" width="60" height="48" rx="8" fill="rgba(240,184,62,.12)" stroke="rgba(240,184,62,.35)" stroke-width="1.5" stroke-dasharray="5,2"/>
+        <text x="310" y="82" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#f0b83e">d₃</text>
+        <text x="310" y="97" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#f0b83e">draft</text>
+        <text x="310" y="232" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#3d5878">draft 3</text>
+
+        <!-- "KV held in pending" annotation -->
+        <rect x="140" y="120" width="200" height="26" rx="6" fill="rgba(240,184,62,.06)" stroke="rgba(240,184,62,.2)" stroke-width="1"/>
+        <text x="240" y="137" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#f0b83e">KV pages HELD (speculative, cannot free)</text>
+
+        <!-- Verify phase -->
+        <rect x="360" y="40" width="180" height="80" rx="10" fill="rgba(167,139,250,.10)" stroke="rgba(167,139,250,.35)" stroke-width="1.5"/>
+        <text x="450" y="68" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#a78bfa">VERIFY PASS</text>
+        <text x="450" y="84" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#6e8fb5">target model forward</text>
+        <text x="450" y="100" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#a78bfa">accepts d₁, rejects d₂</text>
+        <line x1="340" y1="84" x2="360" y2="84" stroke="rgba(167,139,250,.5)" stroke-width="2" marker-end="url(#arr2)"/>
+
+        <!-- Rollback branch (rejected) -->
+        <rect x="560" y="60" width="80" height="48" rx="8" fill="rgba(93,232,168,.12)" stroke="rgba(93,232,168,.4)" stroke-width="1.5"/>
+        <text x="600" y="82" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#5de8a8">d₁ ✓</text>
+        <text x="600" y="97" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#5de8a8">committed</text>
+        <line x1="540" y1="80" x2="560" y2="80" stroke="rgba(93,232,168,.5)" stroke-width="2" marker-end="url(#arr2)"/>
+
+        <!-- Rollback arrow for d₂, d₃ -->
+        <path d="M 540 90 Q 590 160 310 160 Q 250 160 240 120" fill="none" stroke="rgba(248,113,113,.6)" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr2)"/>
+        <text x="420" y="177" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#f06080">ROLLBACK: d₂, d₃ KV pages freed + positions reset</text>
+
+        <!-- Draft model KV bar (second tier) -->
+        <rect x="140" y="155" width="200" height="16" rx="4" fill="rgba(167,139,250,.10)" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+        <text x="240" y="167" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#a78bfa">Draft model KV also held + rolled back</text>
+      </svg>
+      <div class="figcap">During the draft phase, KV pages for speculative positions cannot be freed — the accept/reject decision is not yet known. After a partial accept (d₁ accepted, d₂ rejected), both the target and draft KV caches must roll back to the last accepted position. The rollback is not just a pointer move; it involves freeing pages and potentially handling fragmentation in the KV allocator.</div>
+    </div>
+  </section>
+
+  <!-- SECTION 4 -->
+  <section id="verify-bandwidth">
+    <h2>4. Verify-phase bandwidth spikes</h2>
+
+    <p>The verify pass is where speculative decoding achieves its theoretical speedup: the target model processes γ draft tokens in parallel, essentially for free compared to generating them autoregressively. But this parallelism comes at a memory bandwidth cost that standard decode does not have.</p>
+
+    <p>In standard autoregressive decode, the target model reads its KV cache for one new token position per step. The reads are focused: fetch keys and values for all layers, for all prior positions, to compute attention for one new query. The memory access pattern is regular and predictable.</p>
+
+    <p>In the verify pass, the target model reads its KV cache for γ new positions simultaneously. All γ query vectors need to attend to the full prior context. The access pattern expands: instead of one query over N prior KV entries, there are γ queries over N prior entries in parallel. This is a γ× increase in attention read volume in a single forward pass.</p>
+
+    <div class="callout callout-red">
+      <strong>Bandwidth amplification:</strong> the verify pass reads γ times more KV data per step than standard decode. For γ = 8, that is an 8× spike in attention-related HBM reads. On models where attention dominates bandwidth consumption (long context, many heads), this spike can briefly saturate HBM bandwidth and delay the very step that was supposed to provide the speedup.
+    </div>
+
+    <p>This bandwidth spike is not constant — it occurs at the verify step and then returns to normal. But at high concurrency, with many sessions running verify passes simultaneously or in rapid succession, the aggregate bandwidth pattern shifts from smooth to bursty. Systems optimized for smooth bandwidth loads perform worse under this bursty profile.</p>
+
+    <div class="fig">
+      <div class="fig-title">Fig 3 — HBM bandwidth profile: standard decode vs. speculative decode</div>
+      <svg viewBox="0 0 760 240" xmlns="http://www.w3.org/2000/svg" role="img">
+        <title>Bandwidth comparison between standard and speculative decode showing verify-phase spikes</title>
+
+        <!-- Axes -->
+        <line x1="60" y1="200" x2="720" y2="200" stroke="rgba(255,255,255,.2)" stroke-width="1"/>
+        <line x1="60" y1="20" x2="60" y2="200" stroke="rgba(255,255,255,.2)" stroke-width="1"/>
+        <text x="390" y="225" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#3d5878">Time →  (token steps)</text>
+        <text x="22" y="110" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#3d5878" transform="rotate(-90,22,110)">BW</text>
+
+        <!-- Standard decode line (smooth) -->
+        <polyline points="60,130 120,132 180,128 240,131 300,129 360,130 420,132 480,129 540,131 600,130 660,128 720,131" fill="none" stroke="#38c9f0" stroke-width="2.5" opacity=".7"/>
+        <text x="700" y="122" font-family="DM Mono,monospace" font-size="10" fill="#38c9f0">Standard</text>
+
+        <!-- Speculative decode line (bursty verify phases) -->
+        <!-- Draft steps (low BW for draft) -->
+        <polyline points="60,150 100,152 140,152" fill="none" stroke="#f0b83e" stroke-width="2.5"/>
+        <!-- Verify spike -->
+        <polyline points="140,152 160,52 180,52 200,52 220,148" fill="none" stroke="#f06080" stroke-width="2.5"/>
+        <!-- Another draft run -->
+        <polyline points="220,148 260,150 300,150" fill="none" stroke="#f0b83e" stroke-width="2.5"/>
+        <!-- Verify spike 2 -->
+        <polyline points="300,150 320,60 340,60 360,60 380,148" fill="none" stroke="#f06080" stroke-width="2.5"/>
+        <!-- Another draft run -->
+        <polyline points="380,148 420,150 460,150" fill="none" stroke="#f0b83e" stroke-width="2.5"/>
+        <!-- Verify spike 3 (partial accept, smaller) -->
+        <polyline points="460,150 480,90 500,90 520,148" fill="none" stroke="#f06080" stroke-width="2.5"/>
+        <polyline points="520,148 560,150 600,150" fill="none" stroke="#f0b83e" stroke-width="2.5"/>
+        <polyline points="600,150 620,55 640,55 660,55 680,148" fill="none" stroke="#f06080" stroke-width="2.5"/>
+
+        <!-- Labels -->
+        <text x="700" y="142" font-family="DM Mono,monospace" font-size="10" fill="#f0b83e">Draft phase</text>
+        <text x="420" y="44" font-family="DM Mono,monospace" font-size="10" fill="#f06080">Verify spikes</text>
+        <text x="420" y="56" font-family="DM Mono,monospace" font-size="10" fill="#f06080">(γ× BW burst)</text>
+
+        <!-- Max bandwidth line -->
+        <line x1="60" y1="40" x2="720" y2="40" stroke="rgba(248,113,113,.3)" stroke-width="1" stroke-dasharray="6,3"/>
+        <text x="72" y="36" font-family="DM Mono,monospace" font-size="9" fill="#f06080">HBM BW ceiling</text>
+
+        <!-- Draft BW label -->
+        <rect x="62" y="162" width="100" height="16" rx="4" fill="rgba(240,184,62,.08)"/>
+        <text x="112" y="174" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#f0b83e">Draft: low BW</text>
+      </svg>
+      <div class="figcap">Standard autoregressive decode creates a smooth, predictable bandwidth load on HBM. Speculative decoding alternates between low-bandwidth draft steps and high-bandwidth verify spikes. The verify spike can be γ× higher than the draft step bandwidth. This bursty profile is harder for memory schedulers to optimize, and can cause queuing delays at the HBM bandwidth boundary when multiple sessions are in the verify phase simultaneously.</div>
+    </div>
+  </section>
+
+  <!-- SECTION 5 -->
+  <section id="draft-residency">
+    <h2>5. Draft model residency strategy</h2>
+
+    <p>The draft model's weights are always-resident throughout speculative serving — you cannot page them out between draft and verify because the draft step and verify step happen in rapid alternation. This creates a residency commitment that does not exist in standard decode: a fixed additional HBM allocation for the draft model that reduces the space available for KV caches, which in turn reduces maximum concurrency.</p>
+
+    <p>There are three deployment strategies for the draft model's weights, each with different memory tradeoffs:</p>
+
+    <div class="dtable">
+      <div class="dt-head cols-3">
+        <span>Strategy</span>
+        <span>Memory tradeoff</span>
+        <span>When it wins</span>
+      </div>
+      <div class="dt-row cols-3">
+        <div class="label" style="color:var(--accent)">Co-resident (same GPU)</div>
+        <div class="cell">Draft + target weights both in HBM. Fastest draft step; maximum KV pressure.</div>
+        <div class="cell">High acceptance rate, short context, modest concurrency</div>
+      </div>
+      <div class="dt-row cols-3">
+        <div class="label" style="color:var(--accent2)">Draft on separate GPU</div>
+        <div class="cell">Draft weights on dedicated GPU. No co-occupancy; add NVLink round-trip per draft step.</div>
+        <div class="cell">Long context, many sessions, cost-insensitive deployments</div>
+      </div>
+      <div class="dt-row cols-3">
+        <div class="label" style="color:var(--accent3)">Draft from DRAM (paged)</div>
+        <div class="cell">Draft weights in host DRAM; page into HBM for draft step only. Cheapest HBM cost; slowest draft.</div>
+        <div class="cell">Memory-constrained serving where draft acceleration is marginal</div>
+      </div>
+      <div class="dt-row cols-3">
+        <div class="label" style="color:var(--accent5)">Draft-free (Medusa-style)</div>
+        <div class="cell">Draft heads attached to target model; no separate weights. Lower overhead; less flexibility.</div>
+        <div class="cell">When draft model architecture closely mirrors target distribution</div>
+      </div>
+    </div>
+
+    <p>The co-resident strategy is most common in published benchmarks because it gives the cleanest speedup numbers. But those benchmarks typically run at low concurrency on long-idle GPUs — the exact conditions where HBM pressure is least visible. Production serving under real concurrency pressure often favors the separate-GPU or draft-free approaches to recover batch size.</p>
+  </section>
+
+  <!-- SECTION 6 -->
+  <section id="acceptance-rate">
+    <h2>6. Acceptance rate as a memory scheduling signal</h2>
+
+    <p>The acceptance rate α is the most-cited metric in speculative decoding literature because it directly determines the expected tokens-per-step gain. But α is also a memory signal: when α drops, the system executes more rollbacks, holds speculative KV pages for longer on average, and wastes verify-phase bandwidth on tokens that will be discarded.</p>
+
+    <p>A memory-aware serving stack should monitor α per session and adjust speculation parameters dynamically:</p>
+
+    <ul>
+      <li><strong>When α is high (>0.85):</strong> increase γ, keep the draft model co-resident, allow longer speculative windows. The memory cost is justified by the acceptance revenue.</li>
+      <li><strong>When α is moderate (0.70–0.85):</strong> hold γ steady. The speedup is real but the memory overhead is meaningful. Consider reducing concurrent sessions if HBM is tight.</li>
+      <li><strong>When α drops below 0.70:</strong> reduce γ or suspend speculative decoding for that session. The rollback overhead and speculative KV holding cost may exceed the gains. Fall back to standard autoregressive decode.</li>
+    </ul>
+
+    <div class="callout callout-green">
+      <strong>Key insight:</strong> acceptance rate is not just a throughput signal. It is a memory policy signal. Low acceptance means the system is paying memory cost — speculative KV holds, rollback bandwidth, fragmentation — for benefits that are not materializing. A scheduler that ties α to admission control and γ adjustment manages memory far better than one that treats speculation as all-or-nothing.
+    </div>
+
+    <div class="fig">
+      <div class="fig-title">Fig 4 — Effective throughput vs. HBM pressure across acceptance rates</div>
+      <svg viewBox="0 0 760 240" xmlns="http://www.w3.org/2000/svg" role="img">
+        <title>Chart showing effective throughput gain versus HBM overhead across acceptance rate values for speculative decoding</title>
+
+        <!-- Axes -->
+        <line x1="80" y1="200" x2="700" y2="200" stroke="rgba(255,255,255,.2)" stroke-width="1"/>
+        <line x1="80" y1="30" x2="80" y2="200" stroke="rgba(255,255,255,.2)" stroke-width="1"/>
+
+        <!-- X axis labels: acceptance rate -->
+        <text x="390" y="225" text-anchor="middle" font-family="DM Mono,monospace" font-size="11" fill="#3d5878">Acceptance rate α →</text>
+        <text x="110" y="216" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3d5878">0.5</text>
+        <text x="225" y="216" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3d5878">0.6</text>
+        <text x="340" y="216" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3d5878">0.7</text>
+        <text x="455" y="216" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3d5878">0.8</text>
+        <text x="570" y="216" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3d5878">0.9</text>
+        <text x="680" y="216" text-anchor="middle" font-family="DM Mono,monospace" font-size="10" fill="#3d5878">1.0</text>
+
+        <!-- Grid lines -->
+        <line x1="80" y1="150" x2="700" y2="150" stroke="rgba(255,255,255,.04)" stroke-width="1"/>
+        <line x1="80" y1="100" x2="700" y2="100" stroke="rgba(255,255,255,.04)" stroke-width="1"/>
+        <line x1="80" y1="50" x2="700" y2="50" stroke="rgba(255,255,255,.04)" stroke-width="1"/>
+
+        <!-- Throughput gain curve (green, rising) -->
+        <polyline points="80,185 110,180 225,168 340,148 455,118 570,80 680,42" fill="none" stroke="#5de8a8" stroke-width="2.5"/>
+        <text x="688" y="38" font-family="DM Mono,monospace" font-size="9" fill="#5de8a8">Throughput gain</text>
+
+        <!-- HBM overhead curve (orange, high then falling) -->
+        <polyline points="80,55 110,60 225,78 340,100 455,120 570,138 680,145" fill="none" stroke="#f06080" stroke-width="2.5"/>
+        <text x="688" y="141" font-family="DM Mono,monospace" font-size="9" fill="#f06080">HBM overhead</text>
+
+        <!-- Break-even zone -->
+        <line x1="340" y1="30" x2="340" y2="200" stroke="rgba(240,184,62,.4)" stroke-width="1.5" stroke-dasharray="5,3"/>
+        <text x="344" y="46" font-family="DM Mono,monospace" font-size="10" fill="#f0b83e">Break-even</text>
+        <text x="344" y="58" font-family="DM Mono,monospace" font-size="10" fill="#f0b83e">~α = 0.70</text>
+
+        <!-- Zones -->
+        <rect x="80" y="30" width="260" height="170" rx="0" fill="rgba(248,113,113,.04)"/>
+        <text x="160" y="50" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#f06080">Not worth it</text>
+        <rect x="340" y="30" width="360" height="170" rx="0" fill="rgba(93,232,168,.03)"/>
+        <text x="520" y="50" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#5de8a8">Worth it</text>
+      </svg>
+      <div class="figcap">Below α ≈ 0.70, HBM overhead from speculative decoding (rollbacks, speculative KV holds, fragmentation) exceeds the throughput benefit. Above 0.85, the throughput gain accelerates sharply and the memory cost is clearly justified. The break-even point is where adaptive γ adjustment matters most: reduce γ when α drops toward the threshold rather than waiting for it to fall below.</div>
+    </div>
+  </section>
+
+  <!-- SECTION 7 -->
+  <section id="scheduler">
+    <h2>7. Why this is a scheduler problem</h2>
+
+    <p>The memory challenges in speculative decoding do not solve themselves — they require the serving scheduler to understand speculation mechanics explicitly. A scheduler that treats speculative and non-speculative sessions identically will over-allocate concurrency, trigger KV evictions that kill acceptance rate, and end up with worse throughput than naive autoregressive decode.</p>
+
+    <p>The scheduling decisions that matter:</p>
+
+    <div class="pipeline">
+      <div class="pipe-step">
+        <div class="pipe-num">01</div>
+        <div class="pipe-body">
+          <h5>Per-session speculation eligibility</h5>
+          <p>Not every session benefits from speculation. Sessions with low acceptance rate (monitored per-session), very short remaining context, or active prefix-sharing should fall back to standard decode. The scheduler must track α per session and toggle speculation dynamically.</p>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">02</div>
+        <div class="pipe-body">
+          <h5>Verify-phase batching discipline</h5>
+          <p>Running many verify passes simultaneously causes bandwidth spikes that compete with draft generation for other sessions. The scheduler should stagger verify calls to smooth the bandwidth profile, or batch them deliberately to maximize GPU utilization during the verify burst rather than spreading them across the critical path of unrelated sessions.</p>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">03</div>
+        <div class="pipe-body">
+          <h5>Speculative KV page admission control</h5>
+          <p>The scheduler must track how many "pending speculative pages" — KV allocations for unverified positions — are outstanding at any time. When the budget nears the HBM limit, it should reduce γ or pause new draft steps rather than allow speculative page accumulation to crowd out committed KV pages from other sessions.</p>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">04</div>
+        <div class="pipe-body">
+          <h5>Rollback-aware KV page cleanup</h5>
+          <p>After each verify step, the scheduler needs to release rejected speculative pages promptly and compact the KV allocator's free list if fragmentation has accumulated. Deferred cleanup leaves speculative pages occupying HBM that should be available to new requests. This is the same fragmentation problem the HBM Fragmentation Guard addressed, now specifically induced by rollback patterns.</p>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-num">05</div>
+        <div class="pipe-body">
+          <h5>Draft model weight tier management</h5>
+          <p>Under high load, the draft model's weights should be eligible for demotion to host DRAM if concurrency pressure makes the speculation overhead negative. The scheduler should re-activate draft serving when load drops and HBM pressure relaxes. This is a weight orchestration decision, not just a static deployment choice.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 8 -->
+  <section id="tree-speculation">
+    <h2>8. Tree speculation makes the memory problem harder</h2>
+
+    <p>Standard speculative decoding generates a single linear draft sequence. Tree-based speculation — where the draft model generates multiple branching candidate sequences simultaneously — amplifies throughput gains further but multiplies the memory cost.</p>
+
+    <p>With a beam tree of branching factor b and depth γ, the number of speculative KV pages held pending grows as O(b × γ). A beam of 4 with depth 8 means 32 simultaneous speculative extensions per session, each requiring KV state across all layers. At long context, this can consume several gigabytes per session even before the target model's own KV cache is counted.</p>
+
+    <div class="callout callout-amber">
+      <strong>Tree speculation at scale:</strong> for tree-based schemes (EAGLE, Hydra, SpecTree), the memory policy question becomes even more acute. The scheduler must manage a tree of speculative KV pages with different acceptance probabilities per branch, decide which branches to prune early on memory pressure, and handle the fragmentation pattern left by branch-level rollbacks. This is a materially harder scheduling problem than linear speculation.
+    </div>
+  </section>
+
+  <!-- SECTION 9 -->
+  <section id="systems-view">
+    <h2>9. The systems view: what actually determines whether speculation pays off</h2>
+
+    <p>Published speculative decoding papers almost always measure speedup on isolated, single-session benchmarks with high acceptance rates and fresh GPUs. That is not what production serving looks like.</p>
+
+    <p>In production, speculative decoding pays off when and only when:</p>
+
+    <ol>
+      <li>The acceptance rate is consistently above the break-even threshold (~0.70) for the actual production input distribution — not the curated benchmark distribution.</li>
+      <li>The additional HBM pressure from dual KV caches, speculative pages, and draft weights does not reduce maximum concurrency below the level that saturates the GPU's compute utilization.</li>
+      <li>The verify-phase bandwidth spikes are absorbed without queuing delays on other sessions in the batch.</li>
+      <li>The scheduler actively manages γ, speculation eligibility, and speculative page cleanup rather than treating speculation as a static configuration.</li>
+    </ol>
+
+    <p>When all four conditions hold, speculative decoding compounds with other optimizations — sparse attention, KV quantization, prefill offload — to produce very significant throughput gains. When they do not hold, it reduces effective concurrency and may produce negative speedup relative to naive autoregressive decode.</p>
+
+    <div class="pq">The teams that will capture the full value of speculative decoding are not the ones who implement the best draft model. They are the ones who build the memory scheduler that makes it possible to run speculation safely at real serving concurrency.</div>
+  </section>
+
+  <!-- SECTION 10 -->
+  <section id="what-next">
+    <h2>10. What the right architecture looks like</h2>
+
+    <p>A well-designed speculative serving system has several properties that go beyond the academic paper description:</p>
+
+    <div class="twocol">
+      <div class="pbox g">
+        <h4>Memory-aware speculation policy</h4>
+        <p>γ is not a constant. It adapts per-session based on acceptance rate, current HBM pressure, and concurrent verify-phase count. The policy treats speculation as a resource-consuming optimization, not a free speedup.</p>
+      </div>
+      <div class="pbox a">
+        <h4>Speculative KV page accounting</h4>
+        <p>The allocator tracks draft-speculative pages separately from committed pages. Speculative pages are tagged with their verification deadline, released immediately on rollback, and counted against a global speculation budget.</p>
+      </div>
+      <div class="pbox y">
+        <h4>Draft weight tier control</h4>
+        <p>Draft model weights are treated as a high-priority, always-warm resident under normal conditions, but are eligible for DRAM demotion when batch size is constrained by HBM. Re-activation is triggered by throughput degradation signal.</p>
+      </div>
+      <div class="pbox r">
+        <h4>Verify-phase schedule coordination</h4>
+        <p>Verify passes are scheduled to avoid simultaneous bandwidth spikes across multiple sessions. Either staggered (smooth bandwidth) or batched-together (minimize total verify time) depending on whether throughput or latency is the primary objective.</p>
+      </div>
+    </div>
+
+    <div class="callout callout-green">
+      <strong>The connection to the broader series:</strong> speculative decoding is another instance of the pattern this writing series keeps returning to — a technique that appears to solve a compute problem but really creates a memory orchestration problem. Sparse attention, KV tiering, weight streaming, and now speculative decoding all follow the same pattern: once the arithmetic is cheap enough, memory policy becomes the discriminating factor between systems that achieve the theoretical benefit and systems that do not.
+    </div>
+
+    <div class="footer-note">
+      <p>Published April 2026. This essay is part of a series on AI inference memory systems. Related essays: <em>The Memory Scheduler Is the New Critical Path in AI Inference</em>, <em>HBM Fragmentation Guard</em>, <em>Memory-Orchestrated Sparse Serving</em>. The analysis focuses on serving-scale production systems; single-session benchmark numbers often do not reflect the memory pressure dynamics described here.</p>
+    </div>
+  </section>
+
+</article>
+
+<aside class="sticky-rail">
+  <nav class="toc">
+    <div class="toc-hd">In this essay</div>
+    <a href="#framing">1. The framing everyone uses</a>
+    <a href="#dual-kv">2. The dual KV cache problem</a>
+    <a href="#rollback">3. Rollback and memory cost</a>
+    <a href="#verify-bandwidth">4. Verify-phase bandwidth spikes</a>
+    <a href="#draft-residency">5. Draft model residency</a>
+    <a href="#acceptance-rate">6. Acceptance rate as memory signal</a>
+    <a href="#scheduler">7. Why this is a scheduler problem</a>
+    <a href="#tree-speculation">8. Tree speculation</a>
+    <a href="#systems-view">9. The systems view</a>
+    <a href="#what-next">10. The right architecture</a>
+  </nav>
+  <div class="side-card">
+    <div class="lbl">Series</div>
+    <p>AI Runtime · Memory Scheduling · Inference Systems. Part of the memory-policy series alongside the Memory Scheduler, HBM Fragmentation Guard, and Sparse Serving essays.</p>
+  </div>
+  <div class="side-card">
+    <div class="lbl">Key claim</div>
+    <p>Speculative decoding shifts the bottleneck from arithmetic to memory. The draft/verify split creates dual KV pressure, rollback fragmentation, and verify-phase bandwidth spikes that require explicit scheduler management at production concurrency.</p>
+  </div>
+</aside>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-inner">
+      <a href="https://manishklach.github.io/index.html">Home</a>
+      <span>·</span>
+      <a href="https://manishklach.github.io/writings.html">← Back to Writings</a>
+      <span>·</span>
+      <span>© 2026 <a href="https://github.com/manishklach" rel="noopener noreferrer" target="_blank">Manish KL</a></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  const bar = document.getElementById('rdbar');
+  window.addEventListener('scroll', () => {
+    const h = document.documentElement;
+    bar.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+  }, { passive: true });
+</script>
+</body>
+</html>
