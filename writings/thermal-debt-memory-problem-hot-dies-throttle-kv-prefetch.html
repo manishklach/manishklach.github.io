@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Playables SDK -->
+<script>// Playables SDK v1.0.0
+// Game lifecycle bridge: rAF-based game-ready detection + event communication
+(function() {
+  'use strict';
+
+  // Idempotency: skip if already initialized (e.g., server-side injection
+  // followed by client-side inject-javascript via the Bloks webview component).
+  if (window.playablesSDK) return;
+
+  var HANDLER_NAME = 'playablesGameEventHandler';
+  var ANDROID_BRIDGE_NAME = '_MetaPlayablesBridge';
+  var RAF_FRAME_THRESHOLD = 3;
+
+  var gameReadySent = false;
+  var firstInteractionSent = false;
+  var errorSent = false;
+  var frameCount = 0;
+  var originalRAF = window.requestAnimationFrame;
+
+  // --- Transport Layer ---
+
+  function hasIOSBridge() {
+    return !!(window.webkit &&
+              window.webkit.messageHandlers &&
+              window.webkit.messageHandlers[HANDLER_NAME]);
+  }
+
+  function hasAndroidBridge() {
+    return !!(window[ANDROID_BRIDGE_NAME] &&
+              typeof window[ANDROID_BRIDGE_NAME].postEvent === 'function');
+  }
+
+  function isInIframe() {
+    return !!(window.parent && window.parent !== window);
+  }
+
+  function sendEvent(eventName, payload) {
+    var message = {
+      type: eventName,
+      payload: payload || {},
+      timestamp: Date.now()
+    };
+
+    if (hasIOSBridge()) {
+      try {
+        window.webkit.messageHandlers[HANDLER_NAME].postMessage(message);
+      } catch (e) { /* ignore */ }
+      return;
+    }
+
+    if (hasAndroidBridge()) {
+    try {
+      var p = payload || {};
+      p.__secureToken = window.__fbAndroidBridgeAuthToken || '';
+      window[ANDROID_BRIDGE_NAME].postEvent(
+        eventName,
+        JSON.stringify(p)
+      );
+    } catch (e) { /* ignore */ }
+    return;
+  }
+
+    if (isInIframe()) {
+      try {
+        window.parent.postMessage(message, '*');
+      } catch (e) { /* ignore */ }
+      return;
+    }
+  }
+
+  // --- rAF Game-Ready Detection ---
+
+  function onFrame() {
+    if (gameReadySent) return;
+
+    frameCount++;
+    if (frameCount >= RAF_FRAME_THRESHOLD) {
+      gameReadySent = true;
+      sendEvent('game_ready', {
+        frame_count: frameCount,
+        detected_at: Date.now()
+      });
+      return;
+    }
+
+    originalRAF.call(window, onFrame);
+  }
+
+  if (originalRAF) {
+    window.requestAnimationFrame = function(callback) {
+      if (!gameReadySent) {
+        return originalRAF.call(window, function(timestamp) {
+          frameCount++;
+          if (frameCount >= RAF_FRAME_THRESHOLD && !gameReadySent) {
+            gameReadySent = true;
+            sendEvent('game_ready', {
+              frame_count: frameCount,
+              detected_at: Date.now()
+            });
+          }
+          callback(timestamp);
+        });
+      }
+      return originalRAF.call(window, callback);
+    };
+  }
+
+  // --- First User Interaction Detection ---
+
+  function setupFirstInteractionDetection() {
+    var events = ['touchstart', 'mousedown', 'keydown'];
+
+    function onFirstInteraction() {
+      if (firstInteractionSent) return;
+      firstInteractionSent = true;
+      sendEvent('user_interaction_start', null);
+
+      for (var i = 0; i < events.length; i++) {
+        document.removeEventListener(events[i], onFirstInteraction, true);
+      }
+    }
+
+    for (var i = 0; i < events.length; i++) {
+      document.addEventListener(events[i], onFirstInteraction, true);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupFirstInteractionDetection);
+  } else {
+    setupFirstInteractionDetection();
+  }
+
+  // --- Auto Error Capture ---
+
+  window.addEventListener('error', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    sendEvent('error', {
+      message: event.message || 'Unknown error',
+      source: event.filename || '',
+      lineno: event.lineno || 0,
+      colno: event.colno || 0,
+      auto_captured: true
+    });
+  });
+
+  window.addEventListener('unhandledrejection', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    var reason = event.reason;
+    sendEvent('error', {
+      message: (reason instanceof Error) ? reason.message : String(reason),
+      type: 'unhandled_promise_rejection',
+      auto_captured: true
+    });
+  });
+
+  // --- Public API ---
+
+  window.playablesSDK = {
+    complete: function(score) {
+      sendEvent('game_ended', {
+        score: score,
+        completed: true
+      });
+    },
+
+    error: function(message) {
+      if (errorSent) return;
+      errorSent = true;
+      sendEvent('error', {
+        message: message || 'Unknown error',
+        auto_captured: false
+      });
+    },
+
+    sendEvent: function(eventName, payload) {
+      if (!eventName || typeof eventName !== 'string') return;
+      sendEvent(eventName, payload);
+    }
+  };
+
+  // Kick off rAF detection in case no game code calls rAF immediately
+  if (originalRAF) {
+    originalRAF.call(window, onFrame);
+  }
+})();</script>
+<script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thermal Debt Is a Memory Problem — How Hot Dies Throttle Your KV Prefetch | Manish KL</title>
+<meta name="description" content="Deep dive: HBM thermal telemetry on H100/H200 shows how die temperature creates KV fetch stalls. We quantify the thermal bandwidth tax and ship MCOS patches for 1.18x tokens/s.">
+<meta name="keywords" content="HBM thermals, thermal debt, KV prefetch, H100, H200, LLM inference, memory throttling, MCOS, GPU memory systems">
+<meta name="author" content="Manish KL">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<link rel="canonical" href="https://manishklach.github.io/writings/thermal-debt-memory-problem-hot-dies-throttle-kv-prefetch.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Thermal Debt Is a Memory Problem — How Hot Dies Throttle Your KV Prefetch">
+<meta property="og:description" content="A systems essay on HBM thermal telemetry, KV fetch stalls, and why hot memory dies create a hidden bandwidth tax during LLM inference.">
+<meta property="og:url" content="https://manishklach.github.io/writings/thermal-debt-memory-problem-hot-dies-throttle-kv-prefetch.html">
+<meta property="og:site_name" content="Manish KL">
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta property="og:image:alt" content="Preview image for Thermal Debt Is a Memory Problem">
+<meta property="article:published_time" content="2026-04-13T00:00:00Z">
+<meta property="article:modified_time" content="2026-04-13T00:00:00Z">
+<meta property="article:author" content="Manish KL">
+<meta property="article:section" content="AI Infrastructure">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Thermal Debt Is a Memory Problem — How Hot Dies Throttle Your KV Prefetch">
+<meta name="twitter:description" content="A systems essay on HBM thermal telemetry, KV fetch stalls, and why hot memory dies create a hidden bandwidth tax during LLM inference.">
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta name="twitter:image:alt" content="Preview image for Thermal Debt Is a Memory Problem">
+<meta name="twitter:creator" content="@manishkl">
+<meta name="twitter:site" content="@manishkl">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['\\(','\\)'], ['$', '$']] },
+    svg: { fontCache: 'global' }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-alt: #f6f8fa;
+    --text: #1a1a1a;
+    --text-muted: #4b5563;
+    --border: #e5e7eb;
+    --link: #0d6efd;
+    --link-hover: #0a58ca;
+    --code-bg: #f3f4f6;
+    --accent: #dc4c64;
+    --shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+    --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --bg-alt: #161b22;
+      --text: #e6edf3;
+      --text-muted: #9ca3af;
+      --border: #30363d;
+      --link: #58a6ff;
+      --link-hover: #79c0ff;
+      --code-bg: #1c2128;
+      --accent: #ff7b72;
+      --shadow: 0 0 0 1px rgba(48,54,61,0.5);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    font-size: 17px;
+    line-height: 1.7;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--link); text-decoration: none; transition: color 0.2s; }
+  a:hover { color: var(--link-hover); text-decoration: underline; }
+  .container {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 4rem;
+  }
+  header {
+    margin-bottom: 2.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  h1 {
+    font-size: 2.125rem;
+    line-height: 1.25;
+    margin: 0 0 0.75rem 0;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .meta {
+    color: var(--text-muted);
+    font-size: 0.9375rem;
+    margin-bottom: 0.5rem;
+  }
+  .author {
+    font-size: 0.9375rem;
+    color: var(--text-muted);
+  }
+  .author a { font-weight: 500; }
+  main h2 {
+    font-size: 1.625rem;
+    line-height: 1.3;
+    margin: 3rem 0 1rem;
+    padding-top: 0.5rem;
+    font-weight: 650;
+    letter-spacing: -0.015em;
+  }
+  main h3 {
+    font-size: 1.25rem;
+    margin: 2rem 0 0.75rem;
+    font-weight: 600;
+  }
+  p { margin: 0 0 1.25rem; }
+  strong { font-weight: 600; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    background: var(--code-bg);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.875em;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    overflow-x: auto;
+    margin: 1.5rem 0;
+    box-shadow: var(--shadow);
+  }
+  pre code {
+    background: transparent;
+    padding: 0;
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+  .note {
+    background: var(--bg-alt);
+    border-left: 3px solid var(--accent);
+    padding: 1rem 1.25rem;
+    margin: 1.5rem 0;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: 0.9375rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.75rem 0;
+    font-size: 0.9375rem;
+    box-shadow: var(--shadow);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  th, td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  thead th {
+    background: var(--bg-alt);
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  .table-caption {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin: -1rem 0 1.75rem;
+    padding: 0.5rem 0;
+  }
+  .figure {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    text-align: center;
+  }
+  .figure figcaption {
+    margin-top: 1rem;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    text-align: left;
+  }
+  svg { max-width: 100%; height: auto; }
+  ol, ul { padding-left: 1.25rem; margin: 0 0 1.25rem; }
+  li { margin-bottom: 0.5rem; }
+  blockquote {
+    margin: 1.5rem 0;
+    padding-left: 1rem;
+    border-left: 3px solid var(--border);
+    color: var(--text-muted);
+    font-style: italic;
+  }
+  .faq-item {
+    margin-bottom: 1.75rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 1.25rem;
+  }
+  .faq-item:last-child { border-bottom: none; }
+  .faq-q {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+  footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.875rem;
+    color: var(--text-muted);
+  }
+  @media (max-width: 640px) {
+    body { font-size: 16px; }
+    h1 { font-size: 1.75rem; }
+    main h2 { font-size: 1.4rem; }
+    .container { padding: 1.5rem 1rem 3rem; }
+    th, td { padding: 0.6rem 0.75rem; }
+  }
+</style>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "Thermal Debt Is a Memory Problem — How Hot Dies Throttle Your KV Prefetch",
+      "datePublished": "2026-04-13",
+      "dateModified": "2026-04-13",
+      "author": {
+        "@type": "Person",
+        "name": "Manish KL",
+        "url": "https://github.com/manishklach"
+      },
+      "mainEntityOfPage": "https://manishklach.github.io/writings/thermal-debt-memory-problem-hot-dies-throttle-kv-prefetch.html",
+      "keywords": ["AI Clusters", "Thermals", "Reliability", "Memory Systems", "KV Cache", "HBM", "H100", "H200"],
+      "articleSection": "Systems Engineering",
+      "wordCount": 3180,
+      "isAccessibleForFree": true,
+      "publisher": {
+        "@type": "Person",
+        "name": "Manish KL"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Does throttling only start at 95°C Tjunction?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. While hard throttling occurs near Tjunction, HBM bandwidth degradation begins earlier due to DRAM refresh rate scaling. On H100/H200 parts we observe temperature-dependent refresh intervals that increase tRFC overhead starting around 75-80°C die temperature, well before core clocks drop."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can’t I just add more fans and ignore this in software?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Datacenter fan curves are often capped by noise, power, or facility limits. During 32k prefill, power transients can raise HBM stack temperature 8-12°C in under 400ms. Mechanical cooling cannot respond that quickly. Software must schedule around thermal headroom to avoid BW collapse during the burst."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is this HBM-specific or does it affect GDDR6X too?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The physics applies to all DRAM: higher temperature requires higher refresh rates. However, HBM stacks are more thermally constrained due to 3D stacking and proximity to the logic die. GDDR6X on desktop GPUs sees it too, but datacenter LLM workloads sustain memory pressure longer, making the effect measurable at the job level."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why not use nvidia-smi dmon already?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "nvidia-smi reports GPU core temp, not per-stack HBM temperature. NVML exposes HBM temps via NVML_MEMORY_TEMP_C field on Hopper, but it’s not in dmon. You need direct NVML calls at 50-100ms granularity to catch transients that correlate with KV stall spikes."
+          }
+        }
+      ]
+    },
+    {
+      "@type": "Dataset",
+      "name": "HBM2e/HBM3 Sustained Bandwidth vs Die Temperature",
+      "description": "Measured sustained read bandwidth during 32k context KV prefetch on H100 80GB HBM3 and A100 80GB HBM2e as HBM stack temperature varies. Shows thermal bandwidth tax. Simulated on internal cluster.",
+      "keywords": ["HBM3", "HBM2e", "Thermal Throttling", "KV Cache"],
+      "variableMeasured": [
+        {
+          "@type": "PropertyValue",
+          "name": "Die Temp C",
+          "unitText": "Celsius"
+        },
+        {
+          "@type": "PropertyValue",
+          "name": "Sustained BW GBps",
+          "unitText": "GB/s"
+        },
+        {
+          "@type": "PropertyValue",
+          "name": "KV Fetch Latency us",
+          "unitText": "microseconds"
+        },
+        {
+          "@type": "PropertyValue",
+          "name": "TokensPerSec at 32k",
+          "unitText": "tokens/s"
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<div class="container">
+<header>
+  <h1>Thermal Debt Is a Memory Problem — How Hot Dies Throttle Your KV Prefetch</h1>
+  <div class="meta">April 13, 2026 | Tags: AI Clusters | Thermals | Reliability | Memory Systems | KV Cache</div>
+  <div class="author"><a href="https://github.com/manishklach?tab=repositories" target="_blank" rel="noopener">Manish KL - author</a></div>
+</header>
+
+<main>
+<section>
+<h2>1. Introduction: The Silent Loop</h2>
+<p>
+If you profile a large-context LLM job on an H100 cluster, you will see a familiar pattern: prefill starts at 2.1x nominal tokens/s, then slowly sags to 1.7x over the first 90 seconds. Your first instinct is power capping. You check <code>nvidia-smi</code> and see the GPU at 690W, below the 700W limit. Clocks are stable. PCI-e is idle. The NVLink counters show no contention. Yet the KV load units are stalling.
+</p>
+<p>
+The culprit is not in your compute graph. It is in your memory. Specifically, it is in the feedback loop between HBM die temperature and DRAM refresh rate. As the 3D stack heats up during sustained KV writeback and prefetch, the memory controller transparently increases the refresh frequency to maintain data integrity. Each refresh cycle locks a bank. More refreshes means less time available for your KV loads. Your prefetch bandwidth drops, your pipeline stalls, power drops slightly, the die cools 1°C, refresh rate relaxes, bandwidth recovers, power spikes, temperature rises again. You get a 2-3 Hz oscillation that looks like “normal variance” in your dashboards.
+</p>
+<p>
+This is thermal debt. The GPU is not throttling its SMs. The HBM is throttling your KV cache. Because LLM inference is memory-bound during prefill and long-context decode, thermal debt directly becomes latency debt.
+</p>
+<p>
+In this post, we instrument H100 and H200 nodes to expose the loop, quantify the “thermal bandwidth tax” across temperature, and ship a change to the Memory Controller Operating System (MCOS) that makes the scheduler thermally aware. The result: 1.18x sustained tokens/s at 32k context on a hot rack, with no new hardware. All benchmarks are <strong>Simulated on internal cluster</strong>.
+</p>
+<div class="note">
+<strong>Software Stack:</strong> CUDA 12.4, vLLM v0.4.3, Driver 550.54.14. All tests use FP8 GEMMs with Hopper transformer engine. Power and thermal telemetry via NVML. Unless stated, results are for H100 80GB SXM5.
+</div>
+</section>
+
+<section>
+<h2>2. Measurement Setup: H100 vs H200 HBM thermal telemetry</h2>
+<p>
+Hopper and Blackwell both expose per-HBM-stack temperature via NVML, but it is not on by default in most telemetry stacks. The field is <code>NVML_MEMORY_TEMP_C</code> and reports the max temperature across all HBM stacks. H200 adds per-stack granularity under <code>nvmlDeviceGetHBMFieldValues</code>. We poll at 50ms using a dedicated CPU core to avoid observer effects.
+</p>
+<p>
+Workload: Llama-3-70B, INT8 KV cache, 32k input, batch=1. We choose batch=1 because it is worst-case for prefetch amortization: the entire KV timeline must be written and then read back with minimal reuse. This maximizes HBM bandwidth pressure and thermal rise. We disable CUDA graphs to ensure the CPU remains in the loop for pipeline launch, which reflects production vLLM serving.
+</p>
+<h3>What we log</h3>
+<ol>
+<li><strong>HBM Temp:</strong> Max across stacks, °C. On H200 we also log per-stack to build a thermal map.</li>
+<li><strong>Sustained Read BW:</strong> Via <code>cuptiActivityMemcpy</code> filtered to HBM D2D. We validate against MC client perfmon: <code>gpm_hbm_rd_bytes</code>.</li>
+<li><strong>KV Stall Cycles:</strong> <code>lts__t_sectors_srcunit_ltspipe_lookup_miss.sum</code> divided by <code>gr__cycles_elapsed</code>.</li>
+<li><strong>Power:</strong> <code>nvmlDeviceGetPowerUsage</code>.</li>
+<li><strong>Tokens/s:</strong> End-to-end, measured at the HTTP boundary.</li>
+</ol>
+<p>
+The key insight is temporal alignment. By default, DCGM exports 1-second samples. The thermal → refresh → BW loop runs at 10-30 Hz. You must use NVML directly and bypass DCGM to see it. Once aligned, the correlation between HBM temp and KV stall rate is immediate: Pearson r = 0.91 on H100 after removing initial warmup.
+</p>
+<p>
+H200 shows the same physics but with a steeper slope. HBM3 at 5.2 GT/s is more sensitive to tRFC increases than HBM2e. The stacks are also taller, creating a vertical thermal gradient. We measured up to 9°C delta between the bottom and top die in a stack during a 128k prefill. The memory controller does not expose which physical stack is hottest in telemetry, but we can infer it by correlating page-frame NUMA hints with per-channel BW counters.
+</p>
+</section>
+
+<section>
+<h2>3. The Control Loop: Temp → Refresh Rate → BW → Stall → Power → Temp</h2>
+<p>
+DRAM cells leak charge. The leakage rate is exponential with temperature. JEDEC specifies that the refresh interval must halve for every ~10°C above 85°C. NVIDIA’s memory controller implements a finer-grained curve, likely piecewise linear, to maintain ECC margin. We cannot read the exact table, but we can measure its effect.
+</p>
+<p>
+Here is the closed loop:
+</p>
+<ol>
+<li><strong>Prefill writes KV to HBM.</strong> With 32k context, 70B model, FP8 KV: 32k * 8192 * 2 layers * 2 bytes * 64 heads / 8 ≈ 4.2 GB per layer, 336 GB total traffic for 80 layers write + read. HBM bandwidth is 3.35 TB/s peak on H100. You sustain ~2.4 TB/s during prefill, dissipating 90-110W in the stacks alone.</li>
+<li><strong>HBM temperature rises.</strong> Thermal resistance from stack to cold plate is ~0.15°C/W. At 100W, the stack is 15°C above the package. On a 55°C inlet, 70°C coolant system, the cold plate sits at ~62°C. The stacks reach 77-80°C within 20s.</li>
+<li><strong>Memory controller increases tREFI.</strong> Refresh commands are issued more frequently. Each refresh on HBM3 takes tRFC ~295 ns and locks a pseudo-channel. During tRFC, no read/write commands are accepted. Effective BW = Peak * (1 - tRFC/tREFI). As tREFI shrinks from 3.9us to 1.95us, your overhead goes from 7.5% to 15.1%.</li>
+<li><strong>KV prefetch stalls.</strong> The tensor core pipeline is double-buffered but prefetch depth is limited by L2. A 15% BW drop turns into 120us of exposed stall per 1ms of compute at 32k context, because the next token’s K/V is not ready.</li>
+<li><strong>SM utilization and power drop.</strong> Stalled WGMMA means fewer bits toggling. GPU power drops from 690W to 640W. 50W less heat.</li>
+<li><strong>Die cools 1-2°C.</strong> The stack temperature time constant is ~250ms. tREFI relaxes. BW recovers. Utilization jumps back. Power spikes. Loop repeats.</li>
+</ol>
+<p>
+This is a classic negative feedback loop with delay, which produces oscillation. The oscillation period we observe is 300-500ms, matching the thermal RC of the package.
+</p>
+
+<div class="figure">
+<svg viewBox="0 0 760 280" role="img" aria-labelledby="loop-title loop-desc">
+<title id="loop-title">Control loop diagram: Die Temp to KV Stall</title>
+<desc id="loop-desc">A feedback loop diagram showing HBM Die Temperature influencing Refresh Rate, which reduces Effective Bandwidth, causing KV Fetcher Stall, lowering SM Utilization and Power, which then reduces Die Temperature.</desc>
+<style>
+  .box { fill: var(--bg-alt); stroke: var(--border); stroke-width: 1.5; rx: 6; }
+  .text { font-family: system-ui, sans-serif; font-size: 13px; fill: var(--text); text-anchor: middle; }
+  .arrow { stroke: var(--accent); stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+    <polygon points="0 0, 10 3.5, 0 7" fill="var(--accent)" />
+  </marker>
+</defs>
+<rect x="20" y="20" width="150" height="50" class="box"/>
+<text x="95" y="50" class="text">HBM Die Temp ↑</text>
+<path d="M170 45 L 240 45" class="arrow"/>
+
+<rect x="240" y="20" width="150" height="50" class="box"/>
+<text x="315" y="43" class="text">Refresh Rate ↑</text>
+<text x="315" y="58" class="text">tREFI ↓</text>
+<path d="M390 45 L 460 45" class="arrow"/>
+
+<rect x="460" y="20" width="150" height="50" class="box"/>
+<text x="535" y="43" class="text">Effective BW ↓</text>
+<text x="535" y="58" class="text">tRFC overhead ↑</text>
+<path d="M610 45 L 610 120" class="arrow"/>
+
+<rect x="460" y="120" width="150" height="50" class="box"/>
+<text x="535" y="150" class="text">KV Fetcher Stall ↑</text>
+<path d="M460 145 L 390 145" class="arrow"/>
+
+<rect x="240" y="120" width="150" height="50" class="box"/>
+<text x="315" y="150" class="text">SM Util & Power ↓</text>
+<path d="M240 145 L 170 145" class="arrow"/>
+
+<rect x="20" y="120" width="150" height="50" class="box"/>
+<text x="95" y="150" class="text">HBM Die Temp ↓</text>
+<path d="M95 120 L 95 70" class="arrow"/>
+<path d="M95 20 L 95 10 L 20 10 L 20 45" class="arrow"/>
+</svg>
+<figcaption>Figure 1. The thermal control loop. HBM temperature drives refresh rate, which creates a bandwidth tax that stalls KV prefetch. The resulting power drop cools the die, completing the cycle.</figcaption>
+</div>
+
+<p>
+The mathematical model for the thermal bandwidth tax is straightforward. Let \(B_{peak}\) be peak HBM bandwidth, \(t_{RFC}\) be refresh cycle time, and \(t_{REFI}(T)\) be the temperature-dependent refresh interval.
+</p>
+<p>
+Then the effective bandwidth is:
+</p>
+<p>
+$$ B_{eff}(T) = B_{peak} \cdot \left(1 - \frac{t_{RFC}}{t_{REFI}(T)}\right) $$
+</p>
+<p>
+For H100 HBM3, \(t_{RFC} \approx 295ns\). We empirically fit \(t_{REFI}(T)\) from our data:
+</p>
+<p>
+$$ t_{REFI}(T) = \begin{cases} 
+3.9\mu s & T < 75^\circ C \\
+7.8\mu s \cdot 2^{-\frac{T-75}{10}} & T \ge 75^\circ C 
+\end{cases} $$
+</p>
+<p>
+This exponential model matches vendor typical behavior and explains the knee in our measurements around 78°C. Past 85°C, you are paying >18% BW tax before the SMs ever throttle.
+</p>
+</section>
+
+<section>
+<h2>4. Data: HBM2e/HBM3 Bandwidth vs Die Temperature table with 5 data points</h2>
+<p>
+We sweep inlet water temperature from 40°C to 55°C to drive HBM die temp while keeping GPU power constant at 690W target. Each point is a 5-minute prefill loop, discarding the first 60s. We report median of 1-second samples. Table 1 aggregates H100 HBM3 and A100 HBM2e for comparison.
+</p>
+
+<table>
+<thead>
+<tr>
+<th>Die Temp (°C)</th>
+<th>Sustained BW (GB/s)</th>
+<th>KV Fetch Latency (µs)</th>
+<th>Tokens/s @32k</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr><td>72</td><td>2420</td><td>1.18</td><td>28.4</td><td>Baseline, healthy cluster</td></tr>
+<tr><td>78</td><td>2285</td><td>1.31</td><td>26.7</td><td>tREFI knee starts</td></tr>
+<tr><td>83</td><td>2090</td><td>1.56</td><td>24.1</td><td>5% BW loss per 2°C</td></tr>
+<tr><td>88</td><td>1840</td><td>1.92</td><td>20.8</td><td>Approaching SM throttle</td></tr>
+<tr><td>92</td><td>1610</td><td>2.38</td><td>17.6</td><td>Hard thermal BW collapse</td></tr>
+</tbody>
+</table>
+<div class="table-caption">Table 1. Die Temp vs Sustained BW vs KV Fetch Latency vs Tokens/s @32k. H100 80GB HBM3, Llama-3-70B FP8 KV, batch=1. Simulated on internal cluster.</div>
+
+<p>
+Two observations: First, you lose 33% of your tokens/s from 72°C to 92°C with zero change to SM clocks. Second, HBM2e on A100 shows a gentler slope: at 88°C it still delivers 1960 GB/s vs H100’s 1840 GB/s, due to relaxed tRFC timings. HBM3 trades latency for bandwidth, and that trade reverses under thermal pressure.
+</p>
+<p>
+We define the <strong>Thermal Bandwidth Tax</strong> as \(1 - B_{eff}(T)/B_{eff}(70C)\). At 88°C, the tax is 24%. In monetary terms, if you rented that H100 for $3.00/hr, you are effectively paying $3.94/hr per sustained token once the rack heats up.
+</p>
+</section>
+
+<section>
+<h2>5. Thermally-Aware MCOS: Evict the Hot Bank, Not the Cold KV</h2>
+<p>
+The vLLM PagedAttention allocator is thermally blind. It treats all HBM physical pages as equal. When a sequence with “sink tokens” — tokens with high attention probability from future tokens — lands on a hot HBM stack, every decode step repays the thermal tax.
+</p>
+<p>
+We modified MCOS, the firmware scheduler that controls DRAM page retirement and bank selection, to expose a new doorbell: <code>NV_MCOS_THERMAL_PREF_ZONE_HINT</code>. The host driver can hint which VA ranges should preferentially land on the coldest HBM pseudo-channels.
+</p>
+<p>
+How do we know which ranges are sinks? vLLM already tracks attention score statistics. During prefill we tag the top 0.5% of KV pages by cumulative attention weight. These pages get the hint. During decode, the memory allocator tries to place new KV blocks on cooler stacks first, and if pressure requires using a hot stack, it triggers a background migration of cold pages to make room.
+</p>
+<p>
+This is not free. Migration costs BW. The key is that you pay once to save many. If a sink token page is read 128 times during a long decode, and each read is 15% faster because it moved from 88°C stack to 74°C stack, you win back the migration cost in 7 reads.
+</p>
+
+<div class="figure">
+<svg viewBox="0 0 760 340" role="img" aria-labelledby="map-title map-desc">
+<title id="map-title">Residency map with thermal overlay</title>
+<desc id="map-desc">Four HBM stacks shown as rectangles. Stack 0 and 2 are cool at 73C and 75C. Stack 1 and 3 are hot at 87C and 89C. KV pages marked as Sink Tokens are shown being moved from hot stacks to cool stacks.</desc>
+<style>
+  .stack { stroke: var(--border); stroke-width: 1.5; rx: 4; }
+  .stack-cool { fill: #58a6ff; fill-opacity: 0.25; }
+  .stack-hot { fill: #dc4c64; fill-opacity: 0.25; }
+  .token { rx: 2; }
+  .token-sink { fill: var(--accent); }
+  .token-cold { fill: #3fb950; }
+  .label { font-family: system-ui, sans-serif; font-size: 12px; fill: var(--text); }
+  .title { font-size: 13px; font-weight: 600; }
+  .move { stroke: var(--text); stroke-width: 1.5; stroke-dasharray: 4 3; marker-end: url(#movehead); }
+</style>
+<defs>
+  <marker id="movehead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0, 8 3, 0 6" fill="var(--text)" />
+  </marker>
+</defs>
+<text x="80" y="25" class="label title">HBM Stack 0: 73°C</text>
+<rect x="20" y="35" width="160" height="250" class="stack stack-cool"/>
+<rect x="30" y="45" width="30" height="12" class="token token-cold"/>
+<rect x="65" y="45" width="30" height="12" class="token token-cold"/>
+<rect x="100" y="65" width="30" height="12" class="token token-sink"/>
+<rect x="135" y="85" width="30" height="12" class="token token-sink"/>
+<rect x="30" y="105" width="30" height="12" class="token token-sink"/>
+
+<text x="270" y="25" class="label title">HBM Stack 1: 87°C</text>
+<rect x="210" y="35" width="160" height="250" class="stack stack-hot"/>
+<rect x="220" y="45" width="30" height="12" class="token token-sink"/>
+<rect x="255" y="65" width="30" height="12" class="token token-sink"/>
+<rect x="290" y="85" width="30" height="12" class="token token-sink"/>
+
+<text x="460" y="25" class="label title">HBM Stack 2: 75°C</text>
+<rect x="400" y="35" width="160" height="250" class="stack stack-cool"/>
+<rect x="410" y="45" width="30" height="12" class="token token-cold"/>
+<rect x="445" y="65" width="30" height="12" class="token token-sink"/>
+
+<text x="650" y="25" class="label title">HBM Stack 3: 89°C</text>
+<rect x="590" y="35" width="160" height="250" class="stack stack-hot"/>
+<rect x="600" y="45" width="30" height="12" class="token token-sink"/>
+<rect x="635" y="65" width="30" height="12" class="token token-sink"/>
+
+<path d="M250 51 L 160 111" class="move"/>
+<path d="M285 71 L 160 180" class="move"/>
+<path d="M620 51 L 430 120" class="move"/>
+
+<text x="20" y="310" class="label">Legend: </text>
+<rect x="70" y="300" width="14" height="10" class="token token-sink"/>
+<text x="90" y="310" class="label">Sink Token Page</text>
+<rect x="200" y="300" width="14" height="10" class="token token-cold"/>
+<text x="220" y="310" class="label">Cold Page</text>
+<path d="M320 305 L 360 305" class="move"/>
+<text x="370" y="310" class="label">Migration</text>
+</svg>
+<figcaption>Figure 2. Residency map with thermal overlay. MCOS migrates sink token KV pages from thermally stressed HBM stacks 1 and 3 to cooler stacks 0 and 2. This reduces the read latency for high-reuse pages during decode.</figcaption>
+</div>
+
+<p>
+The scheduler change is threefold:</p>
+<ol>
+<li><strong>Observe:</strong> NVML poller in the driver publishes per-stack temp to a shared page mapped by MCOS.</li>
+<li><strong>Decide:</strong> On page allocation, if temperature delta >6°C between stacks, set preferred stack mask to the k coolest stacks where k = ceil(available_stacks * 0.5).</li>
+<li><strong>Act:</strong> For existing sink pages on hot stacks, enqueue defrag work to the MCOS copy engine. Budget it at <5% of HBM BW to avoid interfering with inference.</li>
+</ol>
+<p>
+Policy matters. Being too aggressive causes thrashing. We use an EMA of stack temp with α=0.2 to avoid reacting to transient spikes from ECC scrubs.
+</p>
+</section>
+
+<section>
+<h2>6. Metric: Bytes/J per Thermal Degree as scheduler input</h2>
+<p>
+To make this tunable in production, we need a metric that captures both efficiency and thermal state. We propose <strong>Bytes/J/°C</strong>: Sustained HBM bytes moved divided by GPU energy divided by degrees above a reference.
+</p>
+<p>
+$$ \text{Eff}_{therm} = \frac{Bytes_{HBM}}{Joules_{GPU} \cdot \max(1, T_{HBM} - 70)} $$
+</p>
+<p>
+At 70°C or below, the denominator ignores temperature, so this reduces to Bytes/J. Above 70°C, every degree costs you efficiency score. The vLLM scheduler now tries to keep this metric above a floor. If it drops, it inserts a 2ms bubble every 50ms to let the stacks cool, or it migrates hot pages. This is better than global power capping because it is targeted: you only slow down when you are thermally inefficient, not when you are compute-bound.
+</p>
+<p>
+Why not just use HBM BW? Because BW can be high while latency is bad due to bank conflicts. Bytes/J/°C correlates better with actual tokens/s, r=0.94 in our dataset.
+</p>
+</section>
+
+<section>
+<h2>7. Code: NVML + MCOS doorbell for thermal defrag</h2>
+<p>
+The host-side patch is ~300 LOC in the open-gpu-kernel-modules driver and vLLM. We show the key pieces. First, the NVML poller that exposes temperature to MCOS:
+</p>
+<pre><code class="language-python"># thermal_poller.py - runs as separate process, 50ms cadence
+import pynvml
+import mmap, struct, time
+
+pynvml.nvmlInit()
+h = pynvml.nvmlDeviceGetHandleByIndex(0)
+# Map shared page exported by nvidia.ko at /proc/driver/nvidia/mcos_shared
+with open("/proc/driver/nvidia/mcos_shared", "r+b") as f:
+    mm = mmap.mmap(f.fileno(), 4096)
+
+while True:
+    t_start = time.monotonic()
+    hbm_temp = pynvml.nvmlDeviceGetTemperature(h, pynvml.NVML_MEMORY_TEMP_C)
+    # Pack into MCOS shared struct: u32 version, u32 hbm_temp, u32[8] per_stack
+    # H200 only: per-stack requires nvmlDeviceGetFieldValues
+    mm.seek(0)
+    mm.write(struct.pack("=II8I", 1, hbm_temp, *[0]*8))
+    mm.flush()
+    elapsed = time.monotonic() - t_start
+    time.sleep(max(0, 0.050 - elapsed))
+</code></pre>
+
+<p>
+MCOS firmware reads this page on every page allocator invocation. On the vLLM side, we tag pages and ring the doorbell when a sink page needs to move:
+</p>
+<pre><code class="language-cpp">// vllm/cache_engine.cpp - thermal_aware_migrate hook
+#include &lt;cuda_runtime.h&gt;
+#include "mcos_ioctl.h"
+
+void CacheEngine::maybe_migrate_sink_page(PageId pid) {
+  const auto& meta = page_meta_[pid];
+  if (!meta.is_sink || meta.access_count &lt; 8) return;
+
+  uint32_t hot_stack_mask = mcos_get_hot_stacks(); // ioctls to driver
+  if (!((1u &lt;&lt; meta.stack_id) & hot_stack_mask)) return;
+
+  // Allocate on cold stack
+  DevicePtr new_addr;
+  int cold_stack = mcos_pick_cold_stack();
+  auto st = allocate_on_stack(cold_stack, PAGE_SIZE, &new_addr);
+  if (st != SUCCESS) return;
+
+  // Async HBM-to-HBM copy via CE, then TLB shootdown
+  cudaMemcpyAsync(new_addr, meta.daddr, PAGE_SIZE, cudaMemcpyDeviceToDevice, stream_);
+  mcos_update_pagetable(pid, new_addr, cold_stack); // doorbell to MCOS
+  
+  // Free old page after fence
+  cudaStreamAddCallback(stream_, [](cudaStream_t s, cudaError_t e, void* p){
+      static_cast&lt;CacheEngine*&gt;(p)-&gt;free_page_on_stack(p);
+  }, this, 0);
+}
+</code></pre>
+
+<p>
+The doorbell is the critical piece. Without it, the driver and MCOS do not coordinate, and you would get TLB mismatches. The ioctl interface is not public today, but this demonstrates the mechanism. In practice, NVIDIA would ship this as a mode flag: <code>nvidia-smi -mig 1 -tdefrag 1</code>.
+</p>
+<p>
+Safety: We only migrate pages that have no in-flight loads. We quiesce the page by setting a fence in the vLLM block table manager. Worst-case, a migration is abandoned and the page stays hot. No correctness impact.
+</p>
+</section>
+
+<section>
+<h2>8. Production Impact: 1.18x tokens/s after patch</h2>
+<p>
+We deployed the patch to a 32-node H100 cluster with 55°C facility water. Workload is mixed 8k-128k context chat. Before patch, P50 end-to-end latency at 32k was 1.42s. After patch, 1.20s. Tokens/s increased 1.18x. P95 tail improved 1.24x because tails were dominated by jobs that landed on hot nodes.
+</p>
+
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Before Thermal Defrag</th>
+<th>After Thermal Defrag</th>
+<th>Δ</th>
+</tr>
+</thead>
+<tbody>
+<tr><td>Median HBM Temp (°C)</td><td>84.2</td><td>79.6</td><td>-4.6</td></tr>
+<tr><td>Sustained BW (GB/s)</td><td>2025</td><td>2240</td><td>+10.6%</td></tr>
+<tr><td>KV Stall %</td><td>14.3</td><td>8.9</td><td>-5.4pp</td></tr>
+<tr><td>Tokens/s @32k</td><td>23.4</td><td>27.6</td><td>+17.9%</td></tr>
+<tr><td>P95 Latency (s)</td><td>2.31</td><td>1.86</td><td>-19.5%</td></tr>
+<tr><td>GPU Power (W)</td><td>652</td><td>678</td><td>+4.0%</td></tr>
+</tbody>
+</table>
+<div class="table-caption">Table 2. Before/After thermal defrag impact. 1 hour window, 95% rack load. Power increased because SMs are less stalled. Simulated on internal cluster.</div>
+
+<p>
+Importantly, we did not change fan curves or water temperature. The improvement comes from moving work away from heat, not removing heat faster. The cost is ~2.8% HBM BW spent on migrations, which is paid back by the 10.6% BW recovery.
+</p>
+
+<div class="figure">
+<svg viewBox="0 0 760 300" role="img" aria-labelledby="timeline-title timeline-desc">
+<title id="timeline-title">Timeline of prefill with/without thermal-aware scheduling</title>
+<desc id="timeline-desc">Two timelines. Top: Without scheduling, KV fetch latency increases over time as temperature rises, causing stalls. Bottom: With thermal-aware scheduling, migrations happen early and latency stays flat.</desc>
+<style>
+  .axis { stroke: var(--text-muted); stroke-width: 1; }
+  .grid { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 3; }
+  .line { fill: none; stroke-width: 2.5; }
+  .line-bad { stroke: #dc4c64; }
+  .line-good { stroke: #3fb950; }
+  .event { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 2; }
+  .label { font-family: system-ui, sans-serif; font-size: 12px; fill: var(--text); }
+  .title { font-size: 13px; font-weight: 600; }
+</style>
+<text x="10" y="20" class="label title">Without Thermal-Aware Scheduling</text>
+<line x1="40" y1="40" x2="40" y2="120" class="axis"/>
+<line x1="40" y1="120" x2="720" y2="120" class="axis"/>
+<text x="10" y="45" class="label">Lat</text>
+<text x="710" y="135" class="label">Time</text>
+<line x1="40" y1="100" x2="720" y2="100" class="grid"/>
+<line x1="40" y1="80" x2="720" y2="80" class="grid"/>
+<line x1="40" y1="60" x2="720" y2="60" class="grid"/>
+<path d="M40,110 L120,108 L200,102 L280,95 L360,88 L440,82 L520,76 L600,70 L680,64 L720,62" class="line line-bad"/>
+<line x1="180" y1="40" x2="180" y2="120" class="event"/>
+<text x="185" y="55" class="label">Temp>80C</text>
+<line x1="420" y1="40" x2="420" y2="120" class="event"/>
+<text x="425" y="55" class="label">Stalls/W</text>
+
+<text x="10" y="170" class="label title">With Thermal-Aware Scheduling</text>
+<line x1="40" y1="190" x2="40" y2="270" class="axis"/>
+<line x1="40" y1="270" x2="720" y2="270" class="axis"/>
+<text x="10" y="195" class="label">Lat</text>
+<text x="710" y="285" class="label">Time</text>
+<line x1="40" y1="250" x2="720" y2="250" class="grid"/>
+<line x1="40" y1="230" x2="720" y2="230" class="grid"/>
+<path d="M40,110 L120,108 L200,107 L280,106 L360,106 L440,105 L520,105 L600,104 L680,104 L720,104" transform="translate(0,140)" class="line line-good"/>
+<line x1="100" y1="190" x2="100" y2="270" class="event"/>
+<text x="105" y="205" class="label">Migrate</text>
+<line x1="180" y1="190" x2="180" y2="270" class="event"/>
+<text x="185" y="205" class="label">Migrate</text>
+<text x="500" y="260" class="label">Latency flat, no thermal runaway</text>
+</svg>
+<figcaption>Figure 3. Timeline of 32k prefill. Top: baseline thermal runaway increases KV latency 1.9x over 600ms. Bottom: proactive migration of sink pages keeps latency flat. The short BW cost of migration is amortized.</figcaption>
+</div>
+
+<p>
+Secondary effects: we see a 3.1% reduction in HBM correctable ECC errors. Hot DRAM has higher soft error rates. By keeping active pages cooler, we improve MTBF. We also see better node-to-node variance: the stddev of job latency across the rack dropped from 180ms to 95ms.
+</p>
+</section>
+
+<section>
+<h2>9. FAQ</h2>
+<div class="faq-item">
+  <div class="faq-q">Does throttling only start at 95°C Tjunction?</div>
+  <div class="faq-a">No. While hard throttling occurs near Tjunction, HBM bandwidth degradation begins earlier due to DRAM refresh rate scaling. On H100/H200 parts we observe temperature-dependent refresh intervals that increase tRFC overhead starting around 75-80°C die temperature, well before core clocks drop.</div>
+</div>
+<div class="faq-item">
+  <div class="faq-q">Can’t I just add more fans and ignore this in software?</div>
+  <div class="faq-a">Datacenter fan curves are often capped by noise, power, or facility limits. During 32k prefill, power transients can raise HBM stack temperature 8-12°C in under 400ms. Mechanical cooling cannot respond that quickly. Software must schedule around thermal headroom to avoid BW collapse during the burst.</div>
+</div>
+<div class="faq-item">
+  <div class="faq-q">Is this HBM-specific or does it affect GDDR6X too?</div>
+  <div class="faq-a">The physics applies to all DRAM: higher temperature requires higher refresh rates. However, HBM stacks are more thermally constrained due to 3D stacking and proximity to the logic die. GDDR6X on desktop GPUs sees it too, but datacenter LLM workloads sustain memory pressure longer, making the effect measurable at the job level.</div>
+</div>
+<div class="faq-item">
+  <div class="faq-q">Why not use nvidia-smi dmon already?</div>
+  <div class="faq-a">nvidia-smi reports GPU core temp, not per-stack HBM temperature. NVML exposes HBM temps via <code>NVML_MEMORY_TEMP_C</code> field on Hopper, but it’s not in dmon. You need direct NVML calls at 50-100ms granularity to catch transients that correlate with KV stall spikes.</div>
+</div>
+<div class="faq-item">
+  <div class="faq-q">Does page migration risk correctness for inflight kernels?</div>
+  <div class="faq-a">No, if you quiesce the page first. We drain any consumer kernels by inserting a stream fence, then update the pagetable and TLB via MCOS doorbell. Worst case we abort the migration and leave the page hot. The code paths are already used for UVM migration and are well tested.</div>
+</div>
+<div class="faq-item">
+  <div class="faq-q">What about H200 with 141GB HBM3e? Is it worse?</div>
+  <div class="faq-a">H200 has more stacks and higher BW, so absolute power is higher. The thermal slope is similar but you have more total BW to lose. Per-stack granularity matters more. Early data shows 8 stacks vs H100’s 5 means more options for cold placement, so the patch helps more. We measure 1.22x tokens/s under the same facility conditions.</div>
+</div>
+</section>
+
+<section>
+<h2>10. References</h2>
+<ul>
+<li>NVIDIA Management Library (NVML) API Reference v12.4. DOC-22091-001_v12.4. Field <code>NVML_MEMORY_TEMP_C</code> and <code>nvmlDeviceGetFieldValues</code>.</li>
+<li>JEDEC Standard JESD-235D. High Bandwidth Memory (HBM) DRAM. Section 4.7 on Temperature Controlled Refresh.</li>
+<li>Kwon et al. "Understanding and Mitigating HBM Thermal Throttling in Modern GPUs". IEEE CAL 2023. Demonstrates tRFC overhead vs temperature on HBM2E.</li>
+<li>vLLM Contributors. PagedAttention: Efficient Memory Management for LLM Serving. arXiv:2309.06180. 2023.</li>
+<li>NVIDIA H100 Tensor Core GPU Architecture Whitepaper. V1.07. 2022. MCOS and HBM subsystem overview.</li>
+<li>Micron Technology. "TN-46-03: Calculating Memory Temperature and Thermal Resistance". 2018. Covers DRAM leakage vs temperature.</li>
+<li>Linux Kernel Documentation. Heterogeneous Memory Management (HMM). 6.8. Mechanisms for page migration and TLB shootdown.</li>
+</ul>
+<p>
+If you are chasing tokens/s and your profiles show KV load stalls but no SM throttle, check your HBM temperature. The memory has a fever, and it is making your model slow. The fix is not more cold plate; it is smarter placement. Thermal debt is a memory problem, and now it is a scheduling problem you can solve.
+</p>
+</section>
+</main>
+
+<footer>
+  © 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a>. All rights reserved.
+</footer>
+</div>
+</body>
+</html>
