@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thermal Debt in AI Clusters: The Silent Degradation Loop Nobody Is Measuring | Manish KL</title>
+<meta name="description" content="A deep systems essay on how thermal accumulation in dense GPU racks creates a silent performance and reliability feedback loop — and why current observability stacks cannot see it until the damage is already done.">
+<meta name="keywords" content="AI cluster thermal management, GPU thermal throttling, data center cooling, HBM temperature, thermal debt, GPU observability, NVLink fabric, inference reliability, rack power density">
+<meta name="author" content="Manish KL">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<link rel="canonical" href="https://manishklach.github.io/writings/thermal-debt-ai-clusters.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Thermal Debt in AI Clusters: The Silent Degradation Loop Nobody Is Measuring">
+<meta property="og:description" content="Dense GPU racks accumulate thermal debt across requests, shifts, and weeks. Current observability stacks see point-in-time temperatures. This essay maps the loop, its failure modes, and what a thermally-aware control plane would actually look like.">
+<meta property="og:url" content="https://manishklach.github.io/writings/thermal-debt-ai-clusters.html">
+<meta property="og:site_name" content="Manish KL">
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta property="og:image:alt" content="Preview image for Thermal Debt in AI Clusters essay">
+<meta property="article:published_time" content="2026-04-12T00:00:00Z">
+<meta property="article:modified_time" content="2026-04-12T00:00:00Z">
+<meta property="article:author" content="Manish KL">
+<meta property="article:section" content="AI Infrastructure">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Thermal Debt in AI Clusters: The Silent Degradation Loop Nobody Is Measuring">
+<meta name="twitter:description" content="A systems essay on thermal debt in dense GPU racks, hidden reliability loss, and the thermally-aware control planes AI clusters need next.">
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta name="twitter:image:alt" content="Preview image for Thermal Debt in AI Clusters essay">
+<meta name="twitter:creator" content="@manishkl">
+<meta name="twitter:site" content="@manishkl">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Thermal Debt in AI Clusters: The Silent Degradation Loop Nobody Is Measuring",
+  "description": "A deep systems essay on how thermal accumulation in dense GPU racks creates a silent performance and reliability feedback loop and why current observability stacks cannot see it until the damage is already done.",
+  "keywords": [
+    "AI cluster thermal management",
+    "GPU thermal throttling",
+    "data center cooling",
+    "HBM temperature",
+    "thermal debt",
+    "GPU observability",
+    "NVLink fabric",
+    "inference reliability",
+    "rack power density"
+  ],
+  "author": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://github.com/manishklach"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  },
+  "datePublished": "2026-04-12",
+  "dateModified": "2026-04-12",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/thermal-debt-ai-clusters.html",
+  "url": "https://manishklach.github.io/writings/thermal-debt-ai-clusters.html",
+  "image": "https://manishklach.github.io/assets/og-image.png",
+  "articleSection": "AI Infrastructure",
+  "inLanguage": "en-US"
+}
+</script>
+<style>
+  :root {
+    --font: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    --text: #1a1a18;
+    --muted: #5c5c58;
+    --subtle: #8a8a85;
+    --border: #e2e0d8;
+    --bg: #fafaf8;
+    --surface: #f4f2ec;
+    --link: #2a52a0;
+    --code-bg: #f0ede6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 18px; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.75;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 6rem;
+  }
+  .nav { font-size: 0.8rem; color: var(--subtle); margin-bottom: 3rem; }
+  .nav a { color: var(--link); text-decoration: none; }
+  .tag-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .tag {
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 8px;
+    color: var(--muted);
+  }
+  h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    margin-bottom: 1.25rem;
+  }
+  .lede {
+    font-size: 1.1rem;
+    color: var(--muted);
+    line-height: 1.65;
+    margin-bottom: 1.5rem;
+    border-left: 3px solid var(--border);
+    padding-left: 1.25rem;
+  }
+  .meta {
+    font-size: 0.8rem;
+    color: var(--subtle);
+    margin-bottom: 3rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 3rem;
+    font-size: 0.85rem;
+  }
+  .toc-title { font-weight: 600; margin-bottom: 0.75rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--subtle); }
+  .toc ol { padding-left: 1.25rem; }
+  .toc li { margin-bottom: 0.3rem; }
+  .toc a { color: var(--link); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  h2 {
+    font-size: 1.45rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    margin-top: 3rem;
+    margin-bottom: 1rem;
+  }
+  h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+  }
+  p { margin-bottom: 1.25rem; }
+  blockquote {
+    border-left: 3px solid var(--text);
+    padding-left: 1.25rem;
+    margin: 1.75rem 0;
+    font-size: 1.05rem;
+    color: var(--muted);
+    font-style: italic;
+  }
+  code {
+    font-family: var(--mono);
+    font-size: 0.82em;
+    background: var(--code-bg);
+    border-radius: 3px;
+    padding: 1px 5px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.25rem;
+    overflow-x: auto;
+    margin: 1.5rem 0;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.6;
+  }
+  .diagram-wrap {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    padding: 1.5rem 1rem;
+    margin: 2rem 0;
+    overflow-x: auto;
+  }
+  .diagram-caption {
+    font-size: 0.8rem;
+    color: var(--subtle);
+    text-align: center;
+    margin-top: 0.75rem;
+    line-height: 1.4;
+  }
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    margin: 1.75rem 0;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+  .callout strong { color: var(--text); }
+  ul, ol { padding-left: 1.5rem; margin-bottom: 1.25rem; }
+  li { margin-bottom: 0.4rem; }
+  a { color: var(--link); }
+  .section-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 3rem 0;
+  }
+  .footnote {
+    font-size: 0.8rem;
+    color: var(--subtle);
+    border-top: 1px solid var(--border);
+    padding-top: 1.5rem;
+    margin-top: 4rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+    margin: 1.5rem 0;
+  }
+  th {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 2px solid var(--border);
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  @media (max-width: 600px) {
+    html { font-size: 16px; }
+    h1 { font-size: 1.75rem; }
+    body { padding: 2rem 1.25rem 4rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="https://manishklach.github.io/index.html">Home</a> ·
+  <a href="https://manishklach.github.io/writings.html">← Back to writings</a>
+</div>
+
+<div class="tag-row">
+  <span class="tag">AI Clusters</span>
+  <span class="tag">Thermal Management</span>
+  <span class="tag">GPU Reliability</span>
+  <span class="tag">Observability</span>
+  <span class="tag">Inference Systems</span>
+</div>
+
+<h1>Thermal Debt in AI Clusters: The Silent Degradation Loop Nobody Is Measuring</h1>
+
+<p class="lede">Dense GPU racks do not fail suddenly. They degrade. Thermal energy accumulates across requests, across shifts, across weeks — in the substrate, in the power delivery, in the packaging. Current observability stacks measure point-in-time temperatures and call the cluster healthy. This essay maps the degradation loop, its failure modes, and what a thermally-aware control plane would need to know.</p>
+
+<div class="meta">Manish KL · April 2026 · ~19 min read · Systems Essay</div>
+
+<div class="toc">
+  <div class="toc-title">Contents</div>
+  <ol>
+    <li><a href="#why-now">The problem with point-in-time temperature</a></li>
+    <li><a href="#thermal-debt-defined">Thermal debt defined</a></li>
+    <li><a href="#accumulation-mechanisms">How debt accumulates in a GPU rack</a></li>
+    <li><a href="#hbm-substrate">The HBM substrate problem</a></li>
+    <li><a href="#degradation-loop">The degradation feedback loop</a></li>
+    <li><a href="#fabric-failure">Fabric failure as a thermal downstream</a></li>
+    <li><a href="#observability-gap">The observability gap</a></li>
+    <li><a href="#what-a-control-plane-needs">What a thermally-aware control plane needs</a></li>
+    <li><a href="#scheduling-implications">Scheduling implications</a></li>
+    <li><a href="#close">Final thought</a></li>
+  </ol>
+</div>
+
+<h2 id="why-now">The problem with point-in-time temperature</h2>
+
+<p>When a GPU cluster exhibits a reliability problem, the first thing operators do is look at temperature dashboards. They check GPU die temperature, inlet air temperature, coolant temperature at the manifold, and power draw. If everything looks within spec at that moment, the cluster gets a green status and the problem is filed as intermittent.</p>
+
+<p>This is the wrong way to reason about thermal state. A GPU can be at 65°C right now while having been at 85°C for the previous six hours, during which its HBM3 stack was operating at the edge of its thermal envelope, its package solder joints were cycling through repeated expansion and contraction, and its power delivery components were running at sustained high current density. The dashboard reports healthy. The device is not healthy.</p>
+
+<p>The distinction between current temperature and accumulated thermal history is not academic. It determines how a device will behave for the next six hours. It determines how many thermal cycles remain before a solder bump in the CoWoS substrate begins to develop a crack. It determines whether the NVLink connectors in the tray are slowly oxidizing at their mating surfaces. None of that is visible in a point-in-time temperature reading.</p>
+
+<blockquote>Thermal state is not a scalar. It is a history. And current observability stacks throw away the history.</blockquote>
+
+<p>This essay is about why that matters for inference infrastructure specifically, what the accumulation mechanisms actually are in a dense GPU rack, and what a control plane that understood thermal debt would need to do differently.</p>
+
+<h2 id="thermal-debt-defined">Thermal debt defined</h2>
+
+<p>Thermal debt is the accumulated gap between the heat generated by a system over time and the heat that has been dissipated. In a perfectly steady-state system, generation equals dissipation and debt is zero. In practice, systems never operate in perfect steady state — power draw spikes during prefill, cooling capacity varies with ambient conditions and coolant flow, and the thermal mass of the components introduces lag between heat generation and observable temperature change.</p>
+
+<p>Every moment in which heat generation exceeds dissipation adds to the thermal debt. Every moment in which dissipation exceeds generation draws it down. The net integral over time is what determines the actual thermal stress on the components.</p>
+
+<pre>thermal_debt(t) = ∫₀ᵗ [P_gen(τ) - P_dissipated(τ)] dτ
+
+where P_gen is instantaneous power draw
+      P_dissipated is cooling capacity at that moment
+      positive debt = accumulated thermal stress</pre>
+
+<p>The thermal mass of a component is what governs how quickly debt translates into temperature elevation. A thin die heats up quickly; a thick copper heatspreader with a large thermal mass buffers the temperature against short-duration spikes. But buffering does not eliminate the debt — it defers the temperature elevation. When the thermal mass saturates, the temperature catches up to the accumulated debt, and the device enters a high-temperature regime that may persist long after the power spike has ended.</p>
+
+<p>In a dense AI GPU rack, this plays out at multiple timescales simultaneously. At the millisecond scale, prefill bursts create instantaneous thermal spikes. At the second-to-minute scale, consecutive long-context inference requests can prevent the die from returning to baseline between jobs. At the hour-to-shift scale, ambient temperature rise in the rack aisle degrades cooling efficiency and raises the baseline for everything. At the week-to-month scale, repeated thermal cycling causes physical degradation of packaging structures.</p>
+
+<h2 id="accumulation-mechanisms">How debt accumulates in a GPU rack</h2>
+
+<p>The accumulation mechanisms in a modern GPU rack are layered and interact in ways that are not obvious from examining any single component in isolation.</p>
+
+<h3>Prefill-decode asymmetry</h3>
+
+<p>The most immediate accumulation source is the power asymmetry between prefill and decode in transformer inference. Prefill is compute-bound — the GPU runs at near-peak utilization, driving power draw to TDP or beyond. Decode is memory-bound — the GPU cycles through long sequences of high-bandwidth memory reads while running at far lower arithmetic utilization and lower power.</p>
+
+<p>This means every request that starts with a long prefill phase creates a short, intense thermal spike followed by a long, moderate decode phase. The spike is short enough that the die temperature does not fully normalize before the next request arrives. Across a batch of requests, the baseline temperature climbs. In a serving system running continuous batching with back-to-back prefill injections, the thermal floor for the die never returns to idle levels during the shift.</p>
+
+<h3>Row and aisle thermal gradients</h3>
+
+<p>At the rack level, thermal debt accumulates heterogeneously. The GPU trays at the top of a rack receive inlet air that has already been heated by the trays below it. The GPUs in those top positions run consistently hotter than their physically identical counterparts at the bottom of the rack, for no reason other than position. Over time, those top-position GPUs accumulate more thermal cycles, degrade faster, and fail at higher rates — but the fleet management system sees them as identical hardware with identical health profiles because it does not track thermal history per position.</p>
+
+<h3>Coolant temperature drift</h3>
+
+<p>In liquid-cooled installations, coolant temperature at the supply manifold is typically regulated to a setpoint, but in practice the actual coolant temperature at the cold plate on any given GPU depends on the length of the coolant path, the flow resistance of the loop, and the heat being deposited by all the upstream components. A coolant loop serving 16 GPUs in a tray will deliver noticeably warmer coolant to the last GPU on the loop than to the first. That last GPU will run hotter under identical workload, accumulate thermal debt faster, and experience more packaging stress.</p>
+
+<h3>Power delivery thermal loading</h3>
+
+<p>The thermal debt in a GPU rack is not confined to the GPU die itself. The voltage regulators (VRMs) that step down rack power to the voltages required by the GPU operate at high current density and generate significant heat. Under heavy AI workloads, VRM junction temperatures can approach their thermal limits even when the GPU itself is within spec. VRM thermal degradation causes voltage regulation quality to degrade over time — which introduces noise into the GPU's power rails, which can cause subtle timing errors and reliability issues that are extremely difficult to attribute to a thermal root cause after the fact.</p>
+
+<h2 id="hbm-substrate">The HBM substrate problem</h2>
+
+<p>The most serious thermal debt accumulation in a modern AI GPU is in the HBM3 stack and the CoWoS interposer that connects it to the GPU die.</p>
+
+<p>HBM memory stacks are assembled by bonding multiple DRAM dies on top of each other using through-silicon vias and micro-bumps. The resulting 3D stack has very limited thermal conductivity in the vertical direction. Heat generated by the bottom DRAM die (which is closest to the interposer) must travel upward through multiple dies before it can be conducted to the cooling solution, or horizontally out through the stack edges. This means the bottom dies in the HBM stack run significantly hotter than temperature sensors typically measure — those sensors are usually located on the top of the stack or on the interposer, not inside the stack where the highest temperatures occur.</p>
+
+<blockquote>The temperature you measure on an HBM stack is not the temperature where the damage is happening. The hottest point is inside the stack, beyond the reach of surface sensors.</blockquote>
+
+<p>The CoWoS interposer connecting the HBM stacks to the GPU die has a different coefficient of thermal expansion from the silicon stacks above it and the organic substrate below it. Every thermal cycle — every time the system heats up and cools down — the interposer and its neighbors expand and contract by slightly different amounts. Over thousands of cycles, this differential expansion drives shear stress into the micro-bump connections between the HBM stack and the interposer. Those micro-bumps are only 40-50 microns in diameter. The accumulated shear stress eventually causes them to crack.</p>
+
+<p>The failure mode when micro-bump connections begin to degrade is not an immediate hard failure. It is a progressive increase in resistance at those connection points, which causes elevated heating at the affected bumps, which accelerates the degradation further — a positive feedback loop that runs below the detection threshold of any current monitoring system until the connection fails entirely.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Component</th>
+      <th>Primary thermal stress mechanism</th>
+      <th>Observable before failure?</th>
+      <th>Current monitoring coverage</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>GPU die (GPC/SM)</td>
+      <td>Junction temperature, hotspot cycling</td>
+      <td>Yes — die temp sensors</td>
+      <td>Good (NVML, DCGM)</td>
+    </tr>
+    <tr>
+      <td>HBM stack (internal dies)</td>
+      <td>Internal vertical thermal gradient, stack hotspots</td>
+      <td>Partially — top-of-stack only</td>
+      <td>Weak (surface sensors miss internal temps)</td>
+    </tr>
+    <tr>
+      <td>CoWoS micro-bumps</td>
+      <td>Differential CTE shear, accumulated cycle count</td>
+      <td>No — resistance increase is sub-threshold until failure</td>
+      <td>None in production</td>
+    </tr>
+    <tr>
+      <td>VRM components</td>
+      <td>Junction temperature, electromigration under sustained current</td>
+      <td>Partially — output ripple changes</td>
+      <td>Weak (rarely monitored)</td>
+    </tr>
+    <tr>
+      <td>NVLink connectors</td>
+      <td>Oxidation at mating surfaces from thermal cycling</td>
+      <td>Partially — error rate increases before failure</td>
+      <td>Moderate (link error counters)</td>
+    </tr>
+    <tr>
+      <td>PCB traces (power delivery)</td>
+      <td>Electrothermal fatigue under high sustained current</td>
+      <td>No</td>
+      <td>None</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="degradation-loop">The degradation feedback loop</h2>
+
+<p>What makes thermal debt particularly dangerous in AI serving infrastructure is that the accumulation mechanisms are not independent — they form a closed feedback loop where degradation from one component creates additional thermal stress on adjacent components.</p>
+
+<div class="diagram-wrap">
+<svg width="100%" viewBox="0 0 680 420" role="img">
+<title>Thermal debt degradation feedback loop in a GPU rack</title>
+<desc>Diagram showing the circular feedback loop: sustained high utilization causes heat buildup, which causes HBM internal temperature elevation, which causes CoWoS micro-bump stress accumulation, which increases contact resistance, which increases localized heating, which returns to worsen HBM temperature. Secondary loops show VRM degradation and NVLink oxidation feeding back into throttling which reduces throughput and increases time-at-high-temperature.</desc>
+<defs>
+  <marker id="arrloop" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#c04828" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arrsec" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#888" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arramb" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#BA7517" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- Main loop boxes (arranged in a rough cycle) -->
+<!-- Box 1: Sustained utilization (top-center) -->
+<rect x="230" y="20" width="220" height="54" rx="6" fill="#fff0ec" stroke="#c04828" stroke-width="1.2"/>
+<text x="340" y="43" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#c04828" font-weight="600">Sustained high utilization</text>
+<text x="340" y="61" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">prefill bursts, continuous batching</text>
+
+<!-- Box 2: Heat buildup (right) -->
+<rect x="520" y="130" width="145" height="54" rx="6" fill="#fff0ec" stroke="#c04828" stroke-width="1.2"/>
+<text x="592" y="153" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#c04828" font-weight="600">Heat buildup</text>
+<text x="592" y="169" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">die temp rises, thermal mass saturates</text>
+
+<!-- Box 3: HBM internal temp elevation (right-lower) -->
+<rect x="480" y="255" width="185" height="54" rx="6" fill="#faeeda" stroke="#BA7517" stroke-width="1.2"/>
+<text x="572" y="278" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#854F0B" font-weight="600">HBM internal elevation</text>
+<text x="572" y="294" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">stack hotspots exceed surface readings</text>
+
+<!-- Box 4: CoWoS micro-bump stress (bottom-center) -->
+<rect x="220" y="340" width="240" height="54" rx="6" fill="#faeeda" stroke="#BA7517" stroke-width="1.2"/>
+<text x="340" y="363" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#854F0B" font-weight="600">CoWoS micro-bump stress</text>
+<text x="340" y="379" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">CTE differential cycling, crack formation</text>
+
+<!-- Box 5: Increased contact resistance (left-lower) -->
+<rect x="20" y="255" width="185" height="54" rx="6" fill="#faeeda" stroke="#BA7517" stroke-width="1.2"/>
+<text x="112" y="278" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#854F0B" font-weight="600">Contact resistance rise</text>
+<text x="112" y="294" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">localized heating at degraded bumps</text>
+
+<!-- Box 6: Thermal throttling (left) -->
+<rect x="15" y="130" width="165" height="54" rx="6" fill="#fff0ec" stroke="#c04828" stroke-width="1.2"/>
+<text x="97" y="153" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#c04828" font-weight="600">Thermal throttling</text>
+<text x="97" y="169" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">clock reduction, lower throughput</text>
+
+<!-- Loop arrows (clockwise) -->
+<!-- 1→2: top-right -->
+<path d="M450 47 C500 47, 530 90, 545 130" fill="none" stroke="#c04828" stroke-width="1" marker-end="url(#arrloop)"/>
+<!-- 2→3: right-down -->
+<path d="M592 184 L592 255" fill="none" stroke="#c04828" stroke-width="1" marker-end="url(#arrloop)"/>
+<!-- 3→4: right to bottom -->
+<path d="M510 305 C450 320, 400 330, 400 340" fill="none" stroke="#c04828" stroke-width="1" marker-end="url(#arrloop)"/>
+<!-- 4→5: bottom to left -->
+<path d="M280 365 C220 365, 165 330, 155 310" fill="none" stroke="#c04828" stroke-width="1" marker-end="url(#arrloop)"/>
+<!-- 5→6: left-up -->
+<path d="M112 255 L112 184" fill="none" stroke="#c04828" stroke-width="1" marker-end="url(#arrloop)"/>
+<!-- 6→1: throttle feeds back into longer time-at-temp -->
+<path d="M135 130 C135 80, 200 50, 230 47" fill="none" stroke="#c04828" stroke-width="1" marker-end="url(#arrloop)"/>
+
+<!-- "AMPLIFIES" center label -->
+<text x="340" y="200" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" fill="#c04828" font-weight="700">↻ AMPLIFIES</text>
+<text x="340" y="218" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">each degradation mode feeds the next</text>
+
+<!-- Secondary loop: NVLink oxidation -->
+<rect x="540" y="45" width="125" height="46" rx="5" fill="#f8f6f0" stroke="#888" stroke-width="0.8"/>
+<text x="602" y="64" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#5c5c58" font-weight="500">NVLink oxidation</text>
+<text x="602" y="80" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9" fill="#888">retransmits → longer decode</text>
+
+<path d="M540 68 L517 68 C510 68, 510 100, 540 135" fill="none" stroke="#888" stroke-width="0.8" stroke-dasharray="3 2" marker-end="url(#arrsec)"/>
+
+</svg>
+<div class="diagram-caption"><strong>Figure 1.</strong> The thermal debt feedback loop in a GPU inference rack. Each stage in the loop amplifies the next: sustained utilization drives heat buildup, which elevates HBM internal temperatures beyond surface-measurable levels, which cycles stress into CoWoS micro-bump connections, which raises contact resistance and localized heating, which eventually drives throttling — which, ironically, increases time-at-high-temperature per request because fewer tokens per second are generated.</div>
+</div>
+
+<p>The most pernicious element of the loop is the feedback from throttling back into thermal accumulation. When a GPU throttles under thermal pressure, it reduces clock frequency to lower power draw and reduce heat generation. This works at the millisecond scale. But at the request scale, throttling means each inference step takes longer. A 128K context decode step that takes 100ms at nominal clock takes 135ms under throttle. That means the GPU spends 35% more time per token in a high-thermal state, because the job duration has increased. The time-at-temperature integral goes up even though the instantaneous temperature goes down. Thermal debt accumulates faster under throttle than it would have if the same request had been processed at full speed and released the GPU sooner.</p>
+
+<h2 id="fabric-failure">Fabric failure as a thermal downstream</h2>
+
+<p>Thermal debt in the GPU die creates a downstream failure mode in the NVLink fabric that is rarely analyzed as a thermal consequence.</p>
+
+<p>NVLink connectors operate at extremely high data rates — NVLink 4.0 runs at 100 Gb/s per lane, and modern GPU systems have multiple links active simultaneously. At these frequencies, the signal integrity of each link is sensitive to the quality of the mating surfaces at the connector. Thermal cycling causes the connector housing to expand and contract, and if the thermal cycles are large enough or frequent enough, the mating force at the contact points can decrease over time as the mechanical spring elements in the connector relax.</p>
+
+<p>Reduced mating force means increased contact resistance, which means signal degradation at the affected pins. The NVLink protocol handles this gracefully at first — it detects CRC errors and retransmits. But retransmissions increase the effective latency of fabric transfers, which adds to the tail latency of any operation that requires cross-GPU communication. In a multi-GPU inference setup, that means all-reduce operations during distributed inference, KV cache transfers in disaggregated serving, and checkpoint operations all start taking longer — not by a lot, but by an amount that is correlated with thermal history in a way that current attribution tools will not detect.</p>
+
+<p>The symptom is a rack that was meeting latency SLAs in January and is missing them in July, without any identifiable hardware failure having occurred. The thermal debt accumulated over six months of production serving has been silently eroding the fabric's effective bandwidth, and the observability stack shows everything as healthy because no link has failed — they are just slow.</p>
+
+<h2 id="observability-gap">The observability gap</h2>
+
+<p>The gap between what AI cluster observability stacks currently measure and what would be needed to track thermal debt is wide. It is not a gap in instrumentation resolution — modern GPU drivers and management tools like NVIDIA DCGM expose a rich set of metrics. It is a gap in the <em>questions being asked</em> of those metrics.</p>
+
+<p>Current monitoring approaches treat temperature as a threshold signal: is the current temperature above the alarm threshold? If yes, take action. If no, mark healthy. This is appropriate for detecting acute thermal events — a coolant leak, a fan failure, a workload that is dramatically exceeding TDP. It is completely inappropriate for detecting accumulated thermal stress, because accumulated stress is a function of the integral of temperature over time, not the current value.</p>
+
+<div class="callout">
+  <strong>The question current systems ask:</strong> Is the GPU hot right now?<br>
+  <strong>The question that matters:</strong> How much thermal cycling has this GPU accumulated since its last cooldown? What is the running integral of time-above-threshold for the HBM stack? How many CoWoS thermal cycles has this device experienced, and what fraction of its cycle budget has been consumed?
+</div>
+
+<p>A second gap is in physical location granularity. When a DCGM alert fires for GPU temperature, the alert refers to the temperature at a specific sensor location — usually the die hotspot sensor or the memory temperature sensor. It does not refer to the temperature inside the HBM stack, or the temperature at the CoWoS interposer, or the temperature at the junction between the VRM and its heatsink. Those temperatures can differ from the monitored sensor by 10-20°C under load, and they are the temperatures that matter for degradation mechanisms.</p>
+
+<p>The third gap is temporal: observability systems that aggregate metrics at one-minute granularity will miss sub-minute thermal spikes entirely. A prefill burst that drives the die to 90°C for 800ms before the thermal mass absorbs the spike will not appear in a 60-second averaged metric. But 800ms at 90°C is a real thermal event that contributes to thermal debt and cycling stress, even if it never appears in any dashboard.</p>
+
+<h2 id="what-a-control-plane-needs">What a thermally-aware control plane needs</h2>
+
+<p>Building a control plane that can manage thermal debt requires a different kind of telemetry pipeline than current systems provide. The required capabilities are:</p>
+
+<h3>Thermal integral tracking per device</h3>
+
+<p>For each GPU in the cluster, the control plane should maintain a running integral of time-above-threshold for the key monitored parameters — die hotspot, HBM temperature, VRM junction temperature — with a sliding window of at least 24 hours. This integral is the closest available proxy for thermal debt accumulation and can be computed from existing telemetry sources with a simple aggregation step.</p>
+
+<p>The specific threshold matters less than the consistency of its application. Pick a value — say, 75°C for die temperature — and track the cumulative minutes-above-threshold per device per day. A device that has been above 75°C for 400 minutes today has accumulated twice the thermal debt of a device that has been above 75°C for 200 minutes, and the scheduler should treat them differently.</p>
+
+<h3>Thermal cycle counting</h3>
+
+<p>Packaging fatigue is driven by cycle count, not absolute temperature. A device that has experienced 10,000 thermal cycles between 40°C and 80°C is in a different state than a device that has experienced 1,000 such cycles, even if both devices are at 65°C right now. The control plane should track thermal cycle counts — each time the device crosses the threshold on the way up is one cycle — and use that count as a degradation proxy in scheduling decisions.</p>
+
+<h3>Sub-minute telemetry for thermal spike detection</h3>
+
+<p>Detecting the prefill burst thermal events that contribute to thermal debt requires telemetry at sub-minute resolution. Five-second sampling is a reasonable starting point — it will catch the envelope of most prefill spikes without overwhelming the telemetry infrastructure with per-second data for a large fleet.</p>
+
+<h3>Positional thermal profiling</h3>
+
+<p>The control plane should maintain a thermal profile not just per device but per rack position. A device that is persistently hotter than its nominal thermal peers at the same utilization level is either in a disadvantaged rack position, in a degraded cooling zone, or beginning to develop a thermal resistance problem at the die/heatspreader interface. That signal should influence placement decisions for high-priority workloads.</p>
+
+<div class="diagram-wrap">
+<svg width="100%" viewBox="0 0 680 310" role="img">
+<title>Thermally-aware control plane architecture</title>
+<desc>Architecture diagram showing telemetry collection from GPU devices at sub-minute resolution flowing into a thermal debt aggregator, which maintains per-device running integrals and cycle counts, feeding into a thermal-aware scheduler that adjusts workload placement, throttle headroom, and preventive maintenance signals.</desc>
+<defs>
+  <marker id="arrcp" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#888" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arrblue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#185FA5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- GPU devices (left column) -->
+<rect x="20" y="20" width="140" height="46" rx="5" fill="#f8f6f0" stroke="#c5c2b8" stroke-width="0.8"/>
+<text x="90" y="41" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#444" font-weight="500">GPU device telemetry</text>
+<text x="90" y="57" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">5s sampling, die + HBM + VRM</text>
+
+<rect x="20" y="82" width="140" height="46" rx="5" fill="#f8f6f0" stroke="#c5c2b8" stroke-width="0.8"/>
+<text x="90" y="103" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#444" font-weight="500">NVLink error counters</text>
+<text x="90" y="119" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">retransmit rate, link errors</text>
+
+<rect x="20" y="144" width="140" height="46" rx="5" fill="#f8f6f0" stroke="#c5c2b8" stroke-width="0.8"/>
+<text x="90" y="165" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#444" font-weight="500">Coolant / inlet sensors</text>
+<text x="90" y="181" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">rack-positional thermal profile</text>
+
+<rect x="20" y="206" width="140" height="46" rx="5" fill="#f8f6f0" stroke="#c5c2b8" stroke-width="0.8"/>
+<text x="90" y="227" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#444" font-weight="500">Power rail monitoring</text>
+<text x="90" y="243" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">VRM ripple, supply transients</text>
+
+<!-- Thermal debt aggregator (center) -->
+<rect x="200" y="50" width="200" height="180" rx="8" fill="#fef3ee" stroke="#e8bba0" stroke-width="1.2"/>
+<text x="300" y="78" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#c04828" font-weight="600">Thermal debt aggregator</text>
+<text x="300" y="100" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">per-device integral tracking</text>
+<text x="300" y="118" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">thermal cycle counting</text>
+<text x="300" y="136" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">positional hotspot classification</text>
+<text x="300" y="154" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">degradation score per device</text>
+<text x="300" y="172" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">time-above-threshold rolling sum</text>
+<text x="300" y="190" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">fabric health correlation</text>
+<text x="300" y="210" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">maintenance signal scoring</text>
+
+<!-- Arrows from devices to aggregator -->
+<line x1="160" y1="43" x2="198" y2="140" stroke="#888" stroke-width="0.8" marker-end="url(#arrcp)"/>
+<line x1="160" y1="105" x2="198" y2="140" stroke="#888" stroke-width="0.8" marker-end="url(#arrcp)"/>
+<line x1="160" y1="167" x2="198" y2="160" stroke="#888" stroke-width="0.8" marker-end="url(#arrcp)"/>
+<line x1="160" y1="229" x2="198" y2="190" stroke="#888" stroke-width="0.8" marker-end="url(#arrcp)"/>
+
+<!-- Thermal-aware scheduler (right) -->
+<rect x="440" y="50" width="220" height="180" rx="8" fill="#e6f1fb" stroke="#185FA5" stroke-width="1"/>
+<text x="550" y="78" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#185FA5" font-weight="600">Thermal-aware scheduler</text>
+<text x="550" y="100" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">workload placement by debt score</text>
+<text x="550" y="118" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">throttle headroom estimation</text>
+<text x="550" y="136" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">preemptive cooldown scheduling</text>
+<text x="550" y="154" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">high-debt device demotion</text>
+<text x="550" y="172" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">maintenance signal routing</text>
+<text x="550" y="190" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">positional load balancing</text>
+<text x="550" y="210" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">SLA impact estimation</text>
+
+<!-- Arrow from aggregator to scheduler -->
+<line x1="400" y1="140" x2="438" y2="140" stroke="#185FA5" stroke-width="1.2" marker-end="url(#arrblue)"/>
+
+<!-- Outputs (below scheduler) -->
+<rect x="440" y="258" width="98" height="38" rx="5" fill="#f4f2ec" stroke="#c5c2b8" stroke-width="0.8"/>
+<text x="489" y="276" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#444" font-weight="500">Admission policy</text>
+<text x="489" y="290" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9" fill="#888">reject or defer hot device</text>
+
+<rect x="560" y="258" width="98" height="38" rx="5" fill="#f4f2ec" stroke="#c5c2b8" stroke-width="0.8"/>
+<text x="609" y="276" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#444" font-weight="500">Maint. signal</text>
+<text x="609" y="290" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9" fill="#888">flag before hard failure</text>
+
+<line x1="510" y1="230" x2="489" y2="258" stroke="#888" stroke-width="0.7" marker-end="url(#arrcp)"/>
+<line x1="565" y1="230" x2="609" y2="258" stroke="#888" stroke-width="0.7" marker-end="url(#arrcp)"/>
+</svg>
+<div class="diagram-caption"><strong>Figure 2.</strong> Architecture of a thermally-aware control plane. Telemetry from GPU devices, NVLink counters, coolant sensors, and power rails feeds a thermal debt aggregator that maintains running integrals, cycle counts, and per-device degradation scores. The thermal-aware scheduler consumes these scores to make placement, demotion, cooldown, and maintenance decisions before failures occur.</div>
+</div>
+
+<h2 id="scheduling-implications">Scheduling implications</h2>
+
+<p>Once a control plane has thermal debt scores per device, a range of scheduling interventions become possible that are not in the design space of current serving systems.</p>
+
+<p>The most immediate intervention is <em>thermal-debt-aware placement</em>. When a new high-priority request arrives, route it to the device with the lowest current thermal debt score, not simply the least-loaded device by utilization. A device at 60% utilization with a high debt score may deliver worse latency over the next hour than a device at 70% utilization with a low debt score, because the high-debt device is closer to a throttle event.</p>
+
+<p>A second intervention is <em>preemptive cooldown scheduling</em>. If a device's thermal debt score is high but no throttle event has occurred yet, the scheduler can choose to stop routing new requests to that device for a short window — say, five minutes — allowing it to cool down and pay down thermal debt before the throttle event occurs and forces a longer recovery. Five minutes of planned light load is cheaper than the latency impact of an unplanned throttle event during a high-value request.</p>
+
+<p>The third intervention is <em>maintenance signal generation ahead of hard failure</em>. If a device's thermal cycle count is approaching a modeled fatigue limit for its packaging generation, the control plane can flag it for preventive maintenance before it fails in production. This requires building thermal cycle budget models for the specific packaging technology in use — those models exist in the reliability literature for CoWoS and similar interposer technologies — and integrating them into the fleet management system.</p>
+
+<h2 id="close">Final thought</h2>
+
+<p>AI infrastructure discussions tend to focus on the things that can be benchmarked and graphed in real time: tokens per second, latency percentiles, GPU utilization, memory bandwidth. Thermal debt is none of those things. It accumulates silently, degrades performance gradually, and fails hardware in ways that are difficult to attribute after the fact. That is precisely why it tends to stay invisible until the cluster is already in trouble.</p>
+
+<p>The observability gap here is not a hard problem. The sensor data exists. The telemetry infrastructure exists. What is missing is the conceptual layer that frames temperature as a history rather than a current value, and that treats accumulated thermal cycles as a resource that gets consumed over a device's lifetime rather than an event that either happens or does not.</p>
+
+<p>Dense AI racks are operating at power densities that would have been considered aggressive in a high-performance computing context five years ago. The packaging technologies that make that density possible — CoWoS interposers, HBM3 stacks, high-current VRMs — all have known thermal cycle fatigue limits that are being tested by continuous heavy inference workloads. The clusters that manage this well will not be the ones that buy the most cooling infrastructure. They will be the ones whose schedulers understand that every request they run today is spending a fraction of the cluster's thermal budget — and that budget needs to be tracked, managed, and replenished deliberately, not discovered empty after the first wave of unexpected hardware failures.</p>
+
+<hr class="section-divider">
+
+<div class="footnote">
+  <p>Manish KL writes about AI infrastructure, memory systems, and accelerator architecture. Related essays: <a href="https://manishklach.github.io/writings/beyond-fault-tolerant-parallelism-ai-cluster-reliability.html">AI Cluster Reliability Beyond Fault-Tolerant Parallelism</a> · <a href="https://manishklach.github.io/writings/ai-cluster-failure-seams.html">The Next AI Cluster Failure Won't Look Like a GPU Failure</a> · <a href="https://manishklach.github.io/writings/how-to-measure-gpu-underutilization-on-nvidia-h100-and-h200.html">How to Measure GPU Underutilization on H100 and H200</a></p>
+  <p>&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a></p>
+</div>
+
+</body>
+</html>
