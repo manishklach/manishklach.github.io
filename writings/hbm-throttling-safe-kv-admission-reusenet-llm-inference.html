@@ -349,39 +349,63 @@
         background: var(--code-bg);
         color: var(--code-text);
         border-radius: 0.75rem;
-        padding: 1.5rem;
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        padding: 2.75rem 1.5rem 1.5rem;
         overflow-x: auto;
         margin: 2rem 0;
         box-shadow: var(--shadow-lg);
         position: relative;
+        -webkit-overflow-scrolling: touch;
+        tab-size: 4;
     }
 
     .code-block::before {
-        content: '';
+        content: 'Code';
         position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 2.5rem;
-        background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 100%);
-        border-radius: 0.75rem 0.75rem 0 0;
+        top: 0.85rem;
+        right: 1rem;
+        font-family: 'Inter', sans-serif;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #94a3b8;
         pointer-events: none;
     }
 
     .code-block code {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 0.875rem;
-        line-height: 1.7;
+        font-size: 0.9rem;
+        line-height: 1.8;
         display: block;
+        white-space: pre;
+        word-break: normal;
+        min-width: max-content;
+        font-variant-ligatures: none;
+    }
+
+    .code-block::-webkit-scrollbar {
+        height: 10px;
+    }
+
+    .code-block::-webkit-scrollbar-track {
+        background: rgba(15, 23, 42, 0.45);
+        border-radius: 999px;
+    }
+
+    .code-block::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.45);
+        border-radius: 999px;
     }
 
     .inline-code {
         font-family: 'JetBrains Mono', monospace;
         background: var(--bg-tertiary);
-        padding: 0.125rem 0.375rem;
-        border-radius: 0.25rem;
+        padding: 0.16rem 0.42rem;
+        border-radius: 0.35rem;
+        border: 1px solid var(--border);
         font-size: 0.875em;
-        color: var(--accent);
+        color: #0f172a;
     }
 
     .table-container {
@@ -785,8 +809,7 @@
                             Direct NVML queries at 100ms intervals. Latency of DCGM is too high for admission control.
                         </p>
 
-                        <div class="code-block">
-<code>import pynvml
+                        <pre class="code-block"><code>import pynvml
 import time
 
 pynvml.nvmlInit()
@@ -813,8 +836,7 @@ def get_hbm_metrics():
         'mem_used_gb': mem_info.used / 1e9,
         'mem_total_gb': mem_info.total / 1e9,
         'is_throttled': is_thermal_throttle
-    }</code>
-                        </div>
+    }</code></pre>
 
                         <h3>2.2 Predictive Headroom</h3>
                         <p>
@@ -891,8 +913,7 @@ def get_hbm_metrics():
                             The scheduler runs every 10ms and considers waiting requests in priority order. For each request, compute marginal thermal impact:
                         </p>
 
-                        <div class="code-block">
-<code>def can_admit_sequence(seq, hbm_state):
+                        <pre class="code-block"><code>def can_admit_sequence(seq, hbm_state):
     # Estimate bandwidth for this seq during decode
     # BW = 2 * num_layers * num_kv_heads * head_dim * seq_len * dtype_size
     bytes_per_token = 2 * 80 * 8 * 128 * 2  # Llama-70B: 2.62 MB/token
@@ -918,8 +939,7 @@ def get_hbm_metrics():
     if hbm_state.mem_used_gb + seq.num_blocks * 2 / 1024 > hbm_state.mem_total_gb * 0.96:
         return False, "capacity"
     
-    return True, "admit"</code>
-                        </div>
+    return True, "admit"</code></pre>
 
                         <h3>3.2 Backpressure to Prefill</h3>
                         <p>
@@ -1009,8 +1029,7 @@ def get_hbm_metrics():
                             A 3-layer MLP with LeakyReLU. Total parameters: 298K, 1.2 MB fp16. Inference latency: 0.8μs per block on H100, batched to 2048 blocks per kernel launch.
                         </p>
 
-                        <div class="code-block">
-<code>import torch.nn as nn
+                        <pre class="code-block"><code>import torch.nn as nn
 
 class ReuseNet(nn.Module):
     def __init__(self):
@@ -1030,8 +1049,7 @@ class ReuseNet(nn.Module):
         return self.net(x)  # [batch_blocks, 1] = P(reuse)
 
 # Fused kernel collects features during attention
-# Overhead: 0.8% of FlashAttention-2 time</code>
-                        </div>
+# Overhead: 0.8% of FlashAttention-2 time</code></pre>
 
                         <h3>4.3 Integration with PagedAttention</h3>
                         <p>
@@ -1192,8 +1210,7 @@ class ReuseNet(nn.Module):
                         </p>
 
                         <h3>7.1 Scheduler Changes</h3>
-                        <div class="code-block">
-<code># vllm/core/scheduler.py
+                        <pre class="code-block"><code># vllm/core/scheduler.py
 
 class Scheduler:
     def __init__(self, ...):
@@ -1224,16 +1241,14 @@ class Scheduler:
                 self.waiting.appendleft(seq)  # Retry next tick
         
         scheduled.new_seqs = admitted
-        return scheduled</code>
-                        </div>
+        return scheduled</code></pre>
 
                         <h3>7.2 Block Manager Changes</h3>
                         <p>
                             Every 8 steps, run ReuseNet and evict low-score blocks:
                         </p>
 
-                        <div class="code-block">
-<code># vllm/block_manager.py
+                        <pre class="code-block"><code># vllm/block_manager.py
 
 def maybe_evict_blocks(self, step: int):
     if step % 8 != 0:
@@ -1253,8 +1268,7 @@ def maybe_evict_blocks(self, step: int):
     evict_mask = (scores < 0.15) & (scores <= thresh)
     
     num_evicted = self.evict_blocks_to_cpu(evict_mask)
-    self.metrics.reuse_net_evicted.add(num_evicted)</code>
-                        </div>
+    self.metrics.reuse_net_evicted.add(num_evicted)</code></pre>
 
                         <div class="callout">
                             <div class="callout-title">
