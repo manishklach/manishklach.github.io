@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0'>
+<title>The Storage Geometry of a 100,000-GPU Cluster: How Much NAND Does AI Actually Need? | Manish KL</title>
+<meta name="description" content="A systems essay on the storage geometry of large-scale AI clusters. From per-node NVMe configurations to petabyte-scale checkpoint reservoirs, an accounting of how much flash a modern hyperscale AI deployment actually consumes.">
+<meta name="keywords" content="AI cluster storage, NAND capacity, NVMe, GPU cluster, checkpoint storage, petabyte, E1.S, E3.S, DGX, QLC, TLC, NAND demand, AI infrastructure">
+<meta name="author" content="Manish KL">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#08110f">
+<link rel="canonical" href="https://manishklach.github.io/writings/storage-geometry-100k-gpu-cluster-nand-demand.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="The Storage Geometry of a 100,000-GPU Cluster: How Much NAND Does AI Actually Need?">
+<meta property="og:description" content="A full accounting of flash capacity in AI clusters — from 15 TB per node to petabyte-scale checkpoint reservoirs.">
+<meta property="og:url" content="https://manishklach.github.io/writings/storage-geometry-100k-gpu-cluster-nand-demand.html">
+<meta property="og:site_name" content="Manish KL">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="How Much NAND Does a 100K-GPU Cluster Need?">
+<meta name="twitter:description" content="From per-node E1.S to petabyte checkpoint lakes — a full accounting of flash in AI infrastructure.">
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta name="twitter:site" content="@manishkl_">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"The Storage Geometry of a 100,000-GPU Cluster","description":"A systems essay on storage capacity in large-scale AI clusters.","datePublished":"2026-04-14","dateModified":"2026-04-14","author":{"@type":"Person","name":"Manish KL","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"Manish KL"},"mainEntityOfPage":"https://manishklach.github.io/writings/storage-geometry-100k-gpu-cluster-nand-demand.html","keywords":["AI cluster","NAND capacity","NVMe","checkpoint storage","petabyte","DGX","QLC","TLC"]}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#08110f;--bg2:#0f1d18;--surface:rgba(10,18,24,.82);--line:rgba(142,175,171,.14);--text:#d4e4e0;--muted:#8ea59f;--strong:#f5fbf8;--accent:#82f0a1;--accent2:#83bcff;--accent3:#d2a8ff;--warn:#f7c973;--danger:#ff879a;--maxw:980px;--mono:'JetBrains Mono',monospace;--display:'Fraunces',serif;--body:'Inter',sans-serif;--shadow:0 24px 80px rgba(0,0,0,.36)}*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{color:var(--text);font-family:var(--body);font-size:17px;line-height:1.84;background:radial-gradient(circle at top,rgba(130,240,161,.11),transparent 34%),radial-gradient(circle at 88% 14%,rgba(131,188,255,.10),transparent 23%),radial-gradient(circle at 7% 80%,rgba(210,168,255,.07),transparent 25%),linear-gradient(180deg,#08110f 0%,#091412 45%,#08100e 100%);background-attachment:fixed}a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}.wrap{width:min(var(--maxw),calc(100vw - 40px));margin:0 auto}.site-header{position:sticky;top:0;z-index:100;padding:14px 0;border-bottom:1px solid var(--line);background:rgba(6,13,12,.76);backdrop-filter:blur(18px)}.nav{display:flex;justify-content:space-between;align-items:center;gap:20px}.brand{font-family:var(--display);font-weight:700;font-size:1rem;color:var(--strong)}.back-link{font-size:13px;color:var(--muted)}.back-link:hover{color:var(--accent);text-decoration:none}.hero{padding:72px 0 38px}.eyebrow{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;border:1px solid rgba(130,240,161,.22);background:rgba(130,240,161,.08);font-family:var(--mono);font-size:11px;color:#c5f7d3;letter-spacing:.07em;margin-bottom:26px}.pulse{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 2s ease-in-out infinite}@keyframes pulse{0%,100%{box-shadow:0 0 0 4px rgba(130,240,161,.15)}50%{box-shadow:0 0 0 8px rgba(130,240,161,.03)}}h1{font-family:var(--display);font-weight:700;font-size:clamp(2.75rem,5.8vw,4.9rem);line-height:.98;letter-spacing:-.045em;color:var(--strong);margin-bottom:20px;max-width:16ch;text-wrap:balance}.dek{font-size:clamp(1.05rem,1.8vw,1.2rem);color:#b3c7c2;max-width:720px;line-height:1.76}.meta{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;color:var(--muted);font-family:var(--mono);font-size:11px;margin-top:28px;padding-top:22px;border-top:1px solid var(--line)}.meta-tag{color:#c5f7d3}.abstract{margin:38px 0;padding:26px 30px;border:1px solid rgba(130,240,161,.16);border-radius:22px;background:linear-gradient(180deg,rgba(14,24,22,.84),rgba(10,18,16,.9));box-shadow:var(--shadow);position:relative;overflow:hidden}.abstract::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:linear-gradient(180deg,var(--accent),var(--accent2))}.abstract-label{font-family:var(--mono);font-size:10px;color:#c5f7d3;letter-spacing:.14em;text-transform:uppercase;margin-bottom:12px}.abstract p{font-size:.98rem;color:#bdd0cb;line-height:1.8}.abstract strong{color:var(--accent);font-weight:600}.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:34px 0}.kpi{border:1px solid var(--line);border-radius:18px;padding:22px 18px;background:linear-gradient(180deg,rgba(14,24,22,.86),rgba(10,18,16,.94));box-shadow:0 16px 40px rgba(0,0,0,.18);transition:transform .18s ease,border-color .18s ease}.kpi:hover{border-color:rgba(130,240,161,.26);transform:translateY(-2px)}.kpi-num{font-family:var(--display);font-size:2.15rem;font-weight:700;letter-spacing:-.05em;line-height:1;color:var(--strong);margin-bottom:10px}.kpi-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.07em;line-height:1.55;text-transform:uppercase}article h2{font-family:var(--display);font-weight:650;font-size:clamp(1.72rem,3vw,2.28rem);color:var(--strong);letter-spacing:-.035em;margin:62px 0 16px;line-height:1.13}article h2::before{content:'//';font-family:var(--mono);font-size:.65em;color:var(--accent);margin-right:10px;opacity:.72}article h3{font-family:var(--display);font-weight:600;font-size:1.28rem;color:var(--strong);letter-spacing:-.02em;margin:34px 0 12px}article p{font-size:1.03rem;color:#c3d4d0;margin-bottom:20px;line-height:1.88}blockquote{margin:34px 0;padding:22px 26px;border-left:3px solid var(--accent);background:linear-gradient(90deg,rgba(130,240,161,.10),rgba(130,240,161,.03));border-radius:0 16px 16px 0;font-family:var(--display);font-style:normal;font-size:1.14rem;color:#e2f4ea}.callout{margin:30px 0;padding:20px 24px;border:1px solid rgba(131,188,255,.16);border-radius:18px;background:linear-gradient(180deg,rgba(131,188,255,.08),rgba(131,188,255,.03));font-size:.98rem;color:#bfd3dc}.callout strong{color:var(--accent2)}.callout-warn{border-color:rgba(247,201,115,.20);background:linear-gradient(180deg,rgba(247,201,115,.08),rgba(247,201,115,.02))}.callout-warn strong{color:var(--warn)}ul{padding-left:0;list-style:none}ul li{margin:12px 0;padding-left:22px;position:relative;font-size:1rem;color:#c3d4d0}ul li::before{content:'→';position:absolute;left:0;color:var(--accent);font-family:var(--mono)}code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid rgba(130,240,161,.14);border-radius:8px;padding:2px 7px;font-size:.88em;color:#c5f7d3}.table-wrap{margin:30px 0;overflow-x:auto;border:1px solid var(--line);border-radius:20px;background:linear-gradient(180deg,rgba(14,24,22,.88),rgba(10,18,16,.95));box-shadow:var(--shadow)}table{width:100%;min-width:560px;border-collapse:collapse}th{padding:15px 18px;text-align:left;background:rgba(130,240,161,.06);color:var(--strong);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--line)}td{padding:15px 18px;color:#c3d4d0;font-size:.95rem;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:none}tr:hover td{background:rgba(130,240,161,.025)}.figure{margin:38px 0 42px}.figure-inner{border:1px solid var(--line);border-radius:24px;overflow:hidden;background:rgba(6,12,11,.96);box-shadow:var(--shadow)}.figcap{margin-top:12px;color:var(--muted);font-family:var(--mono);font-size:12px;padding-left:6px}.figcap strong{color:#c5f7d3}.footer-note{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:11px}.essay-copyright{margin-top:16px;color:var(--muted);font-size:.95em}.essay-copyright a{color:inherit;font-weight:600;text-decoration:none}.essay-copyright a:hover{text-decoration:underline}@media(max-width:768px){body{font-size:16px}.kpi-grid{grid-template-columns:1fr 1fr}h1{max-width:none}.hero{padding-top:56px}}@media(max-width:480px){.wrap{width:min(var(--maxw),calc(100vw - 24px))}.kpi-grid{grid-template-columns:1fr}.abstract,.callout,blockquote{padding-left:18px;padding-right:18px}}
+</style>
+</head>
+<body>
+<header class='site-header'><div class='wrap'><div class='nav'><div class='brand'>Manish KL</div><a class='back-link' href='https://manishklach.github.io/writings.html'>← writings</a></div></div></header>
+
+<div class='wrap'>
+<section class='hero'>
+  <div class='eyebrow'><span class='pulse'></span> AI Infrastructure · Storage Architecture · Capacity Planning</div>
+  <h1>The Storage Geometry of a 100,000-GPU Cluster</h1>
+  <p class='dek'>How much NAND does AI actually need? A full accounting — from per-node E1.S drives to petabyte-scale checkpoint reservoirs, dataset lakes, and the NAND supply pressure that hyperscale AI is creating.</p>
+  <div class='meta'>
+    <span>By Manish KL</span>
+    <span class='meta-tag'>April 2026</span>
+    <span>~15 min read</span>
+    <span>Technical Essay</span>
+  </div>
+  <div class='abstract'>
+    <div class='abstract-label'>Abstract</div>
+    <p>When Meta, Google, or xAI builds a 100,000-GPU training cluster, the GPU count makes headlines. The <strong>storage behind it</strong> does not. But these clusters consume staggering quantities of NAND flash — 1.5+ exabytes of local NVMe alone, plus multi-exabyte networked flash for checkpoints, datasets, and model repositories. This essay provides a bottom-up accounting of flash capacity in a representative hyperscale AI deployment, traces where the capacity actually goes, and examines how AI-driven NAND demand is reshaping the global flash supply chain.</p>
+  </div>
+</section>
+
+<div class='kpi-grid'>
+  <div class='kpi'><div class='kpi-num'>1.5 EB</div><div class='kpi-label'>local NVMe in a 100K-GPU cluster (15 TB/node × 100K)</div></div>
+  <div class='kpi'><div class='kpi-num'>~50 PB</div><div class='kpi-label'>checkpoint storage for a single large training run</div></div>
+  <div class='kpi'><div class='kpi-num'>$73B+</div><div class='kpi-label'>global NAND market projected for 2025, AI as primary growth driver</div></div>
+  <div class='kpi'><div class='kpi-num'>321</div><div class='kpi-label'>NAND layers in SK Hynix's latest QLC dies for high-density AI storage</div></div>
+</div>
+
+<article>
+
+<h2>The bottom-up accounting</h2>
+<p>Let's build the storage budget for a hypothetical 100,000-GPU cluster based on DGX GB200 architecture. This is a simplified but representative model of what hyperscale AI deployments actually look like in 2026.</p>
+
+<div class='table-wrap'><table>
+<thead><tr><th>Storage Tier</th><th>Per Node</th><th>Per 1,000 GPUs</th><th>Per 100,000 GPUs</th><th>NAND Type</th></tr></thead>
+<tbody>
+<tr><td><strong>Local NVMe (hot)</strong></td><td>15.4 TB</td><td>3.9 PB</td><td>385 PB</td><td>TLC (high endurance)</td></tr>
+<tr><td><strong>Local NVMe (warm staging)</strong></td><td>~30 TB (optional)</td><td>7.5 PB</td><td>750 PB</td><td>TLC/QLC mixed</td></tr>
+<tr><td><strong>Networked flash (checkpoints)</strong></td><td>shared</td><td>~5 PB</td><td>~500 PB</td><td>QLC (capacity-optimized)</td></tr>
+<tr><td><strong>Dataset lake (flash tier)</strong></td><td>shared</td><td>~10 PB</td><td>~1 EB</td><td>QLC (read-optimized)</td></tr>
+<tr><td><strong>Model repository</strong></td><td>shared</td><td>~0.5 PB</td><td>~50 PB</td><td>QLC</td></tr>
+</tbody>
+</table></div>
+
+<div class='callout'>
+  <strong>Total NAND footprint:</strong> A 100,000-GPU cluster consumes approximately <code>2.5–3 exabytes</code> of NAND flash across all tiers. At current enterprise SSD pricing ($0.08–0.15/GB), the flash bill alone is <strong>$200–450 million</strong> — a figure that is rarely discussed alongside the GPU cost.
+</div>
+
+<h2>Where the capacity goes</h2>
+
+<h3>Local NVMe: the latency-bounded staging layer</h3>
+<p>Each DGX GB200 compute tray ships with 4× 3.84 TB E1.S NVMe drives — approximately 15.4 TB of local flash. In a 100,000-GPU cluster with ~25,000 compute trays, this totals <strong>385 PB of local NVMe</strong>. This capacity serves the latency-sensitive roles: checkpoint absorption, KV-cache offload, weight staging, and dataset hydration.</p>
+<p>At scale, operators increasingly add a second tier of warm staging — 4× 7.68 TB or 8× 7.68 TB drives per node — for model swapping and multi-model inference. This can push per-node local flash to 30–60 TB, and total cluster local flash toward 750 PB–1.5 EB.</p>
+
+<h3>Checkpoint storage: the write-heavy reservoir</h3>
+<p>A 405B model checkpoint at full optimizer state is ~3.2 TB. During a training run that checkpoints every 15 minutes, the cluster generates approximately <strong>13 TB of checkpoint data per hour</strong>. Over a 90-day training run, that is ~28 PB of cumulative checkpoint writes — though older checkpoints are pruned, so the steady-state reservoir is typically 5–10 most recent checkpoints (16–32 PB).</p>
+<p>Checkpoint storage is typically served by a high-performance parallel file system (VAST, Weka, GPFS) backed by all-flash NVMe arrays. These systems require high sequential write bandwidth (to absorb checkpoint bursts) and high sequential read bandwidth (to recover from failures). The NAND underneath is typically QLC for cost efficiency, with TLC caching for write burst absorption.</p>
+
+<h3>The dataset lake</h3>
+<p>Training datasets for frontier models range from 10–100+ TB of tokenized data. Multi-modal training (text + images + video + code) pushes this toward petabyte scale. The flash tier of the dataset lake serves hot partitions — the data being actively consumed by the current training epoch — while cold partitions reside on object storage (S3, GCS) or tape.</p>
+
+<!-- DIAGRAM 1: Storage Stack -->
+<div class='figure'>
+  <div class='figure-inner'>
+    <svg viewBox='0 0 960 360' xmlns='http://www.w3.org/2000/svg'>
+      <rect width='960' height='360' fill='rgba(5,8,16,0.98)'/>
+      <text x='480' y='32' text-anchor='middle' font-family='Syne, sans-serif' font-weight='700' font-size='17' fill='#edf3ff'>Storage Stack of a 100K-GPU Cluster</text>
+      <text x='480' y='52' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#607090'>total NAND footprint: ~2.5–3 exabytes</text>
+
+      <!-- Local NVMe -->
+      <rect x='40' y='75' width='400' height='55' rx='10' fill='rgba(91,232,122,0.1)' stroke='rgba(91,232,122,0.3)' stroke-width='2'/>
+      <text x='50' y='100' font-family='IBM Plex Mono, monospace' font-size='11' fill='#5be87a' font-weight='600'>LOCAL NVMe (per-node)</text>
+      <text x='350' y='100' text-anchor='end' font-family='IBM Plex Mono, monospace' font-size='10' fill='#5be87a'>385 PB – 1.5 EB</text>
+      <text x='350' y='118' text-anchor='end' font-family='IBM Plex Mono, monospace' font-size='8' fill='#607090'>TLC, E1.S/E3.S, 15–60 TB/node</text>
+
+      <!-- Checkpoint -->
+      <rect x='40' y='140' width='300' height='55' rx='10' fill='rgba(131,188,255,0.08)' stroke='rgba(131,188,255,0.2)'/>
+      <text x='50' y='165' font-family='IBM Plex Mono, monospace' font-size='11' fill='#83bcff' font-weight='600'>CHECKPOINT RESERVOIR</text>
+      <text x='280' y='165' text-anchor='end' font-family='IBM Plex Mono, monospace' font-size='10' fill='#83bcff'>~500 PB</text>
+      <text x='280' y='183' text-anchor='end' font-family='IBM Plex Mono, monospace' font-size='8' fill='#607090'>QLC + TLC cache, parallel FS</text>
+
+      <!-- Dataset lake -->
+      <rect x='40' y='205' width='350' height='55' rx='10' fill='rgba(210,168,255,0.08)' stroke='rgba(210,168,255,0.18)'/>
+      <text x='50' y='230' font-family='IBM Plex Mono, monospace' font-size='11' fill='#d2a8ff' font-weight='600'>DATASET LAKE (flash tier)</text>
+      <text x='330' y='230' text-anchor='end' font-family='IBM Plex Mono, monospace' font-size='10' fill='#d2a8ff'>~1 EB</text>
+      <text x='330' y='248' text-anchor='end' font-family='IBM Plex Mono, monospace' font-size='8' fill='#607090'>QLC, read-optimized, NVMe-oF</text>
+
+      <!-- Model repo -->
+      <rect x='40' y='270' width='140' height='55' rx='10' fill='rgba(247,201,115,0.06)' stroke='rgba(247,201,115,0.15)'/>
+      <text x='50' y='295' font-family='IBM Plex Mono, monospace' font-size='11' fill='#f7c973' font-weight='600'>MODEL REPO</text>
+      <text x='140' y='295' text-anchor='end' font-family='IBM Plex Mono, monospace' font-size='10' fill='#f7c973'>~50 PB</text>
+      <text x='140' y='313' text-anchor='end' font-family='IBM Plex Mono, monospace' font-size='8' fill='#607090'>versioned weights</text>
+
+      <!-- Right: summary -->
+      <rect x='500' y='75' width='420' height='250' rx='14' fill='rgba(10,18,30,0.7)' stroke='rgba(131,188,255,0.15)'/>
+      <text x='710' y='105' text-anchor='middle' font-family='Syne, sans-serif' font-weight='700' font-size='14' fill='#edf3ff'>The Numbers at Scale</text>
+
+      <text x='530' y='140' font-family='IBM Plex Mono, monospace' font-size='10' fill='#5be87a'>Total NAND:</text>
+      <text x='720' y='140' font-family='IBM Plex Mono, monospace' font-size='10' fill='#edf3ff'>~2.5–3 EB</text>
+
+      <text x='530' y='165' font-family='IBM Plex Mono, monospace' font-size='10' fill='#83bcff'>Flash cost:</text>
+      <text x='720' y='165' font-family='IBM Plex Mono, monospace' font-size='10' fill='#edf3ff'>$200–450M</text>
+
+      <text x='530' y='190' font-family='IBM Plex Mono, monospace' font-size='10' fill='#d2a8ff'>Daily writes (training):</text>
+      <text x='720' y='190' font-family='IBM Plex Mono, monospace' font-size='10' fill='#edf3ff'>~300 TB/day (checkpoints)</text>
+
+      <text x='530' y='215' font-family='IBM Plex Mono, monospace' font-size='10' fill='#f7c973'>Drive replacements:</text>
+      <text x='720' y='215' font-family='IBM Plex Mono, monospace' font-size='10' fill='#edf3ff'>~2,000–5,000/year</text>
+
+      <text x='530' y='240' font-family='IBM Plex Mono, monospace' font-size='10' fill='#ff879a'>Power (storage):</text>
+      <text x='720' y='240' font-family='IBM Plex Mono, monospace' font-size='10' fill='#edf3ff'>~2–5 MW</text>
+
+      <text x='530' y='265' font-family='IBM Plex Mono, monospace' font-size='10' fill='#9ab5cf'>NAND type mix:</text>
+      <text x='720' y='265' font-family='IBM Plex Mono, monospace' font-size='10' fill='#edf3ff'>~30% TLC / 70% QLC</text>
+
+      <text x='530' y='295' font-family='IBM Plex Mono, monospace' font-size='10' fill='#9ab5cf'>Flash as % of total TCO:</text>
+      <text x='720' y='295' font-family='IBM Plex Mono, monospace' font-size='10' fill='#edf3ff'>~3–8%</text>
+    </svg>
+  </div>
+  <div class='figcap'><strong>Figure 1.</strong> Storage stack of a 100K-GPU AI cluster. Local NVMe dominates capacity by count; the dataset lake dominates by volume. Total NAND footprint approaches 3 exabytes.</div>
+</div>
+
+<h2>The NAND supply pressure</h2>
+<p>A single 100,000-GPU cluster consuming 2.5–3 EB of NAND represents a significant fraction of global NAND production. The global NAND market produced approximately 350–400 EB of raw capacity in 2025, with enterprise SSD shipments accounting for about 30–40% of that. Three or four hyperscale AI clusters of this size would consume 7–12 EB — or 5–8% of total global enterprise NAND supply.</p>
+<p>This concentration of demand is already reshaping the NAND market. SK Hynix, Samsung, and Kioxia have shifted manufacturing priorities toward high-density enterprise QLC (321-layer and beyond) specifically to serve AI capacity needs. The enterprise SSD product lines are bifurcating into "AI-optimized" (read-heavy, high-IOPS, moderate endurance) and "general enterprise" (balanced read/write, standard endurance) — a segmentation driven entirely by the distinctive access patterns of AI workloads.</p>
+
+<h2>The form factor evolution</h2>
+<p>AI cluster storage is driving a form factor transition from the legacy 2.5" U.2 and M.2 drives toward the E1.S and E3.S EDSFF (Enterprise and Data Center SSD Form Factor) standards:</p>
+
+<div class='table-wrap'><table>
+<thead><tr><th>Form Factor</th><th>Typical Capacity</th><th>Thermal Design</th><th>Key Advantage for AI</th></tr></thead>
+<tbody>
+<tr><td><strong>M.2 2280</strong></td><td>1–4 TB</td><td>Passive (board-mounted)</td><td>Boot drives only; too slow for data path</td></tr>
+<tr><td><strong>U.2 (2.5")</strong></td><td>4–30 TB</td><td>Air-cooled chassis</td><td>Legacy; used in DGX H100. High-capacity but poor thermal density</td></tr>
+<tr><td><strong>E1.S</strong></td><td>4–16 TB</td><td>Hot-swap, direct airflow</td><td>DGX GB200 standard. Excellent thermal management, hot-swappable</td></tr>
+<tr><td><strong>E3.S</strong></td><td>8–64 TB</td><td>Direct-attach, liquid-cooling compatible</td><td>Next-gen AI: higher capacity, designed for 50–100 kW rack densities</td></tr>
+</tbody>
+</table></div>
+
+<p>The transition to E1.S and E3.S is driven by thermal necessity: AI racks at 50–100 kW density cannot provide sufficient airflow for 2.5" drives deep inside the chassis. E1.S and E3.S drives are designed with direct-airflow or conduction-cooling paths that maintain NAND operating temperatures below 85°C even in high-density, liquid-cooled configurations.</p>
+
+<h2>The 256 TB drive and what it means</h2>
+<p>Samsung's PM1763 — a PCIe Gen 5 E3.S drive shipping in 2026 — offers up to 256 TB in a single drive, with 512 TB Gen 6 variants planned for 2027. SK Hynix is demonstrating 245 TB eSSD prototypes using 321-layer QLC NAND. These capacities were unthinkable five years ago and are being driven almost entirely by AI demand.</p>
+<p>A single 256 TB drive can hold approximately 160 copies of a 70B model at fp16, or the complete checkpoint history of a 405B training run. At scale, this means a checkpoint reservoir that previously required 100+ drives can be served by a handful. The implications for rack density, cabling, and failure domains are significant.</p>
+
+<div class='callout callout-warn'>
+  <strong>The concentration risk:</strong> A single 256 TB drive failure loses 256 TB of data. The mean time to rebuild a 256 TB RAID set at NVMe speeds (~7 GB/s) is approximately 10 hours — during which the array is vulnerable to a second failure. AI storage architects must balance capacity per drive against rebuild time and failure-domain isolation.
+</div>
+
+<h2>Where this is heading</h2>
+<p>By 2028, a 500,000-GPU "frontier cluster" will likely require 10–15 EB of total NAND capacity — approaching 3–4% of projected global annual NAND production. This creates genuine supply-chain exposure: a single hyperscaler's cluster build can measurably tighten the global NAND market, driving price increases that ripple through consumer electronics, enterprise IT, and automotive sectors.</p>
+<p>The storage industry's response is threefold: higher-density NAND (300+ layer V-NAND with QLC and PLC/5-bit-per-cell), AI-optimized SSD controllers (100M+ IOPS, GPUDirect Storage support, direct GPU-to-flash data paths), and new memory tiers (HBF, CXL-attached flash) that blur the line between storage and memory. The GPU gets the headlines, but the NAND gets the purchase orders.</p>
+
+<blockquote>AI clusters are the largest concentrated consumers of NAND flash in history. The GPU determines what work gets done. The flash determines whether the GPU stays fed. Increasingly, the binding constraint is the SSD.</blockquote>
+
+<div class='footer-note'>
+  <code>storage-geometry-100k-gpu-cluster-nand-demand.html</code> · April 2026 · <a href='https://manishklach.github.io/writings.html'>← All writings</a>
+</div>
+<div class="essay-copyright">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a>. All rights reserved.</div>
+</article>
+</div>
+</body>
+</html>
