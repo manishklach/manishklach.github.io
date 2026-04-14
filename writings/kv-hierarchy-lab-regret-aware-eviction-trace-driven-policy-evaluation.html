@@ -228,6 +228,7 @@ tr:hover td { background: rgba(130,240,161,0.025); }
 <h2>Why eviction policy matters for long-context inference</h2>
 <p>Modern long-context inference systems — serving 128K–1M token sequences — face a fundamental resource problem. KV caches grow linearly with sequence length and must be served from the memory tier closest to the accelerator. When they exceed fast-tier capacity, something must move. The question is <em>what</em>, and the answer to "what" determines both latency and bandwidth cost.</p>
 <p>Most serving stacks use LRU or simple frequency-based eviction. These work well when the working set fits comfortably, but collapse under pressure. Adversarial access patterns — retrieval bursts that revisit recently-evicted pages, multi-turn conversations that alternate hot-and-cold segments — expose the weakness of stateless eviction: the system has no memory of its own mistakes.</p>
+<p>Recent work increasingly explores eviction strategies that go beyond recency and frequency. Attention-score-guided retention, learned reuse predictors, and future-aware cache management all attempt to reason about <em>which</em> KV entries will matter later. Regret-aware eviction sits in this design space as a deliberately lightweight heuristic: rather than predicting future access with a learned model, it uses the observable signal of fast re-access after eviction as a cheap proxy for future miss cost. It is not state-of-the-art predictive caching — it is a minimal mechanism for learning from eviction mistakes without requiring attention-pattern analysis or model introspection.</p>
 
 <blockquote>The goal is not to "solve KV cache inference" in one repo. The goal is to provide a trace-driven, reproducible policy evaluation framework that systems engineers can extend, question, and calibrate.</blockquote>
 
@@ -310,6 +311,10 @@ tr:hover td { background: rgba(130,240,161,0.025); }
 
 <h2>The regret-aware eviction mechanism</h2>
 <p>The core idea is simple: <strong>if a page is re-accessed shortly after being evicted, the original eviction was probably wrong</strong>. The policy remembers this mistake and uses it to protect that page from future eviction.</p>
+
+<h3>The intuition</h3>
+<p>Every eviction is a bet. The policy bets that the evicted page won't be needed soon. When that bet fails — the page is re-accessed shortly after removal, forcing a costly re-promotion from a slower tier — the system pays a transfer and latency penalty that could have been avoided. Regret-aware eviction treats these failures as <em>evidence</em>. A fast re-access after eviction approximates the downstream cost of that eviction decision: the shorter the gap between eviction and re-access, the higher the "regret" — and the more the policy should resist evicting that page again in the future.</p>
+<p>This is not a prediction of future access. It is closer to a <em>feedback signal</em>: the policy observes its own mistakes and adjusts. In reinforcement-learning terms, regret acts as a lightweight reward signal that biases the eviction scoring function toward protecting pages with demonstrated re-access demand. The mechanism is deliberately reactive rather than predictive — no model weights, no attention-score inspection, no external signals beyond the trace itself.</p>
 
 <h3>How it works</h3>
 <ul>
@@ -413,17 +418,21 @@ tr:hover td { background: rgba(130,240,161,0.025); }
 <p>Under adversarial pressure, longer horizons (64 steps) consistently outperformed short horizons (8 steps) at the same weight. This makes intuitive sense: the adversarial workload revisits pages at gaps of 12–20 steps. A horizon of 8 simply cannot see those returns, so no regret is accumulated and the policy degrades to frequency+recency.</p>
 
 <h2>Results: where regret fails</h2>
+<p>Documenting failure cases is as important as documenting wins. The ablation reveals three distinct failure modes, each illuminating a different structural limitation of the regret mechanism.</p>
 
-<h3>Periodic reuse: complete structural failure</h3>
-<p>On <code>periodic_reuse</code> under both capacity levels, <strong>every regret-aware variant performed identically to LRU</strong> — 0% fast-tier hit rate, 640 misses, identical bytes moved. The periodic structure rotates through pages in a fixed cycle that completely overwhelms the fast tier. No finite regret horizon can adapt to a deterministic sweep that always exceeds capacity.</p>
-<p>Only <code>cost_aware</code> (which penalizes large pages, allowing more small pages to fit) salvaged any hits there — achieving 12.5% hit rate under constrained capacity.</p>
+<h3>Failure mode 1: deterministic sweeps (periodic reuse)</h3>
+<p>On <code>periodic_reuse</code> under both capacity levels, <strong>every regret-aware variant performed identically to LRU</strong> — 0% fast-tier hit rate, 640 misses, identical bytes moved. The periodic structure rotates through pages in a fixed cycle that completely overwhelms the fast tier. No finite regret horizon can adapt to a deterministic sweep that always exceeds capacity. Regret accumulates on every page equally, so the signal becomes uniform noise rather than a useful ranking.</p>
+<p>Only <code>cost_aware</code> (which penalizes large pages, allowing more small pages to fit) salvaged any hits — achieving 12.5% hit rate under constrained capacity. This is significant: the only policy that helped was the one operating on a <em>different signal dimension entirely</em> (page size), not a smarter version of temporal reasoning.</p>
+
+<h3>Failure mode 2: overprotection under extreme pressure</h3>
+<p>High regret weights can backfire. Under constrained capacity on <code>chat_continuation</code>, the <code>w=1.0</code> variants achieved only 53% hit rate versus LRU's 66%. What happened? With low fast-tier budget and aggressive regret anchoring, the policy overprotected a handful of previously-important pages that were no longer being accessed, preventing their eviction and blocking newer, genuinely hot pages from entering the fast tier. Stronger weights (<code>w=12.0</code>) partially corrected this by also boosting the frequency component, but the lesson is clear: regret without decay calibration can ossify the cache.</p>
 
 <div class='callout callout-warn'>
-  <strong>Honest finding:</strong> Regret logic adds zero value on structurally periodic traces. This is not a bug — it reveals a genuine limitation of the mechanism. Regret is a reactive signal; it cannot anticipate deterministic sweeps that exceed memory capacity regardless of eviction ordering.
+  <strong>Honest finding:</strong> Regret is a reactive signal — it cannot anticipate deterministic sweeps that exceed capacity, and it can overprotect stale pages when miscalibrated. These are not bugs; they are structural limitations of any feedback-only mechanism operating without predictive capability.
 </div>
 
-<h3>Chat continuation under medium capacity</h3>
-<p>On purely recency-heavy traces where the working set fits comfortably, LRU achieved <code>0.23 ms</code> latency versus regret-aware's <code>0.25 ms</code>. The regret mechanism added slight overhead without benefit — there are simply no regret-inducing eviction-then-re-access patterns in a well-fitting recency workload. Under constrained capacity where the working set no longer fits, regret-aware variants with high weights (<code>w=12.0</code>) did recover and approach LRU's hit rate.</p>
+<h3>Failure mode 3: no eviction pressure (chat continuation, medium)</h3>
+<p>On purely recency-heavy traces where the working set fits comfortably, LRU achieved <code>0.23 ms</code> latency versus regret-aware's <code>0.25 ms</code>. The regret mechanism added slight overhead without benefit — there are simply no regret-inducing eviction-then-re-access patterns when pages rarely get evicted. This is the most benign failure: the policy defaults to recency-like behavior with a small constant-time overhead per access. Under constrained capacity where the working set no longer fits, regret-aware variants with high weights (<code>w=12.0</code>) did recover and approach LRU's hit rate.</p>
 
 <!-- DIAGRAM 3: Ablation results -->
 <div class='figure'>
@@ -474,16 +483,19 @@ tr:hover td { background: rgba(130,240,161,0.025); }
 </div>
 
 <h2>What the baselines teach</h2>
-<p>The comparison with LRU and cost_aware is not about declaring a winner — it is about understanding <em>what each policy is good at</em>.</p>
+<p>Every eviction heuristic answers a different question about a page's value. The comparison is not about declaring a winner — it is about understanding what <em>signal</em> each policy uses and what it is structurally blind to.</p>
 
 <div class='table-wrap'><table>
-<thead><tr><th>Policy</th><th>Strength</th><th>Weakness</th></tr></thead>
+<thead><tr><th>Policy</th><th>Primary Signal</th><th>What It Captures</th><th>Structural Blindspot</th></tr></thead>
 <tbody>
-<tr><td><code>lru</code></td><td>Lowest overhead; optimal when working set fits</td><td>No memory of mistakes; thrashes under adversarial pressure</td></tr>
-<tr><td><code>cost_aware</code></td><td>Size-penalizing; salvages hits when small pages survive</td><td>Does not learn from eviction outcomes</td></tr>
-<tr><td><code>regret_aware</code></td><td>Adapts to eviction mistakes in real-time</td><td>Adds nothing on periodic or well-fitting workloads; unbounded state growth in long traces</td></tr>
+<tr><td><code>lru</code></td><td>Last access time</td><td>Temporal locality; optimal when the working set fits in fast tier</td><td>No memory of past mistakes; blind to page size; thrashes when capacity is tight</td></tr>
+<tr><td><code>heavy_hitter</code></td><td>Access frequency</td><td>Long-term popularity; protects consistently hot pages</td><td>Slow to adapt to phase changes; frequency ≠ future reuse</td></tr>
+<tr><td><code>cost_aware</code></td><td>Frequency + recency + page size</td><td>Multi-signal composite; penalizes large pages, keeping more small ones resident</td><td>Does not learn from eviction outcomes; fixed weight balance</td></tr>
+<tr><td><code>regret_aware</code></td><td>Frequency + recency + <strong>eviction feedback</strong></td><td>Adapts to its own mistakes in real-time; anchors pages with demonstrated re-access demand</td><td>Reactive only — cannot help on deterministic sweeps; adds state overhead; neutral when no evictions occur</td></tr>
 </tbody>
 </table></div>
+
+<p>The key distinction is that LRU, heavy_hitter, and cost_aware operate on <em>access statistics alone</em> — they never observe the consequences of their eviction decisions. Regret-aware eviction closes that feedback loop: it watches what happens <em>after</em> an eviction and adjusts accordingly. This is the mechanism's entire contribution — and also its limitation, since the feedback is only useful when evictions are both frequent and consequential.</p>
 
 <h2>Quantization changes the game</h2>
 <p>One of the most important findings from the default sweep — not the ablation — is that <strong>quantization often dominates policy differences</strong>. Under the same small tier budget, switching from <code>fp16</code> to <code>int4</code> on a RAG burst workload raised overall hit rate from 0.459 to 0.771 and reduced bytes moved by 93.9%. No policy tuning produces that kind of gain.</p>
@@ -508,6 +520,15 @@ tr:hover td { background: rgba(130,240,161,0.025); }
   <li><strong>No oracle baseline.</strong> A Bélády (optimal offline) comparison would bound how much of the achievable gap over LRU the regret-aware policy actually captures. This is future work.</li>
   <li><strong>No real runtime integration.</strong> The harness is designed for eventual vLLM trace ingestion, but that is v0.2 roadmap material, not a current capability.</li>
 </ul>
+
+<h2>Where this leads</h2>
+<p>The ablation results are honest about what regret-aware eviction can and cannot do on synthetic traces. The more interesting questions are about what comes next — and they branch in several directions.</p>
+<p><strong>From synthetic to real traces.</strong> The most immediate credibility gap is the absence of runtime trace ingestion. Synthetic generators produce structurally clean access patterns; real serving traces carry correlation structures, phase transitions, and tail behaviors that no generator captures faithfully. The harness is designed for eventual replay of production traces (e.g., from vLLM's PagedAttention scheduler), and that is the clearest next step toward validating whether regret signals survive contact with real workloads.</p>
+<p><strong>Oracle upper bounds.</strong> Without a Bélády (optimal offline) baseline, it is impossible to know whether the observed 6.6% latency improvement captures 10% or 80% of the achievable gap over LRU. Adding an offline oracle would transform the results from "regret-aware is better than LRU" into "regret-aware captures X% of the available headroom" — a far more informative statement for policy design.</p>
+<p><strong>Hybrid and compression-aware policies.</strong> The finding that quantization often dominates policy differences suggests that the next generation of eviction logic should be <em>compression-aware</em>: deciding not just whether to evict a page, but whether to demote, compress, or recompute it. A policy that can choose between "keep at fp16 in tier 0," "compress to int4 and keep," or "evict and pay the re-promotion cost" would operate on a richer action space than pure eviction. Regret signals could naturally extend to that setting — tracking not just eviction regret, but compression regret.</p>
+<p><strong>The limits of trace-driven simulation.</strong> Finally, it is worth acknowledging that even with perfect traces and calibrated tier models, simulation cannot fully substitute for runtime integration. Transfer costs depend on bandwidth contention, compute overlap, and scheduling context that a synchronous simulator does not model. The harness is useful for <em>comparing</em> policies under controlled conditions and <em>generating</em> hypotheses about where regret signals help — but confirming those hypotheses requires measurement in a real serving stack.</p>
+
+<blockquote>The interesting question is not whether regret-aware eviction is the best KV-cache policy. It is whether the broader idea — that eviction policies should observe the consequences of their own decisions — leads to meaningfully better memory systems. This repo is one small, reproducible experiment in that direction.</blockquote>
 
 <h2>Repository</h2>
 <p>The full harness, all policies, ablation scripts, committed artifacts, and tests are available on GitHub:</p>
