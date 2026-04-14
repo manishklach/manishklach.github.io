@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0'>
+<title>Inference Batch Geometry: Why the Shape of a Batch Determines Its Memory Cost More Than Its Size | Manish KL</title>
+<meta name="description" content="A systems essay on why batch size is a misleading scalar. The memory cost of an inference batch depends on its geometry — the distribution of sequence lengths, generation phases, and quantization formats within it.">
+<meta name="keywords" content="batch geometry, inference batching, KV cache, memory cost, continuous batching, LLM serving, HBM, prefill decode, batch heterogeneity, memory systems">
+<meta name="author" content="Manish KL">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#08110f">
+<link rel="canonical" href="https://manishklach.github.io/writings/inference-batch-geometry-memory-cost.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Inference Batch Geometry: Why Shape Determines Memory Cost More Than Size">
+<meta property="og:description" content="Batch size is a number. Batch geometry is a distribution. The memory system doesn't see the number — it sees the distribution.">
+<meta property="og:url" content="https://manishklach.github.io/writings/inference-batch-geometry-memory-cost.html">
+<meta property="og:site_name" content="Manish KL">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Inference Batch Geometry: Shape > Size for Memory Cost">
+<meta name="twitter:description" content="Same batch size, 10× different memory cost. A systems essay on why batch geometry matters more than batch count.">
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta name="twitter:site" content="@manishkl_">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Inference Batch Geometry: Why the Shape of a Batch Determines Its Memory Cost More Than Its Size","description":"A systems essay on batch geometry and memory cost in LLM inference.","datePublished":"2026-04-14","dateModified":"2026-04-14","author":{"@type":"Person","name":"Manish KL","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"Manish KL","url":"https://manishklach.github.io/"},"mainEntityOfPage":"https://manishklach.github.io/writings/inference-batch-geometry-memory-cost.html","url":"https://manishklach.github.io/writings/inference-batch-geometry-memory-cost.html","image":"https://manishklach.github.io/assets/og-image.png","keywords":["batch geometry","inference batching","KV cache","memory cost","LLM serving","HBM","prefill decode"]}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#08110f;--bg2:#0f1d18;--surface:rgba(10,18,24,.82);--surface-strong:rgba(10,18,24,.94);--line:rgba(142,175,171,.14);--text:#d4e4e0;--muted:#8ea59f;--strong:#f5fbf8;--accent:#82f0a1;--accent2:#83bcff;--accent3:#d2a8ff;--warn:#f7c973;--danger:#ff879a;--maxw:980px;--mono:'JetBrains Mono',monospace;--display:'Fraunces',serif;--body:'Inter',sans-serif;--shadow:0 24px 80px rgba(0,0,0,.36)}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{color:var(--text);font-family:var(--body);font-size:17px;line-height:1.84;background:radial-gradient(circle at top,rgba(130,240,161,.11),transparent 34%),radial-gradient(circle at 88% 14%,rgba(131,188,255,.10),transparent 23%),radial-gradient(circle at 7% 80%,rgba(210,168,255,.07),transparent 25%),linear-gradient(180deg,#08110f 0%,#091412 45%,#08100e 100%);background-attachment:fixed}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}.wrap{width:min(var(--maxw),calc(100vw - 40px));margin:0 auto}
+.site-header{position:sticky;top:0;z-index:100;padding:14px 0;border-bottom:1px solid var(--line);background:rgba(6,13,12,.76);backdrop-filter:blur(18px)}.nav{display:flex;justify-content:space-between;align-items:center;gap:20px}.brand{font-family:var(--display);font-weight:700;font-size:1rem;color:var(--strong)}.back-link{font-size:13px;color:var(--muted)}.back-link:hover{color:var(--accent);text-decoration:none}
+.hero{padding:72px 0 38px}.eyebrow{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;border:1px solid rgba(130,240,161,.22);background:rgba(130,240,161,.08);font-family:var(--mono);font-size:11px;color:#c5f7d3;letter-spacing:.07em;margin-bottom:26px}.pulse{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 2s ease-in-out infinite}@keyframes pulse{0%,100%{box-shadow:0 0 0 4px rgba(130,240,161,.15)}50%{box-shadow:0 0 0 8px rgba(130,240,161,.03)}}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(2.75rem,5.8vw,4.9rem);line-height:.98;letter-spacing:-.045em;color:var(--strong);margin-bottom:20px;max-width:16ch;text-wrap:balance}.dek{font-size:clamp(1.05rem,1.8vw,1.2rem);color:#b3c7c2;max-width:720px;line-height:1.76}.meta{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;color:var(--muted);font-family:var(--mono);font-size:11px;margin-top:28px;padding-top:22px;border-top:1px solid var(--line)}.meta-tag{color:#c5f7d3}
+.abstract{margin:38px 0;padding:26px 30px;border:1px solid rgba(130,240,161,.16);border-radius:22px;background:linear-gradient(180deg,rgba(14,24,22,.84),rgba(10,18,16,.9));box-shadow:var(--shadow);position:relative;overflow:hidden}.abstract::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:linear-gradient(180deg,var(--accent),var(--accent2))}.abstract-label{font-family:var(--mono);font-size:10px;color:#c5f7d3;letter-spacing:.14em;text-transform:uppercase;margin-bottom:12px}.abstract p{font-size:.98rem;color:#bdd0cb;line-height:1.8}.abstract strong{color:var(--accent);font-weight:600}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:34px 0}.kpi{border:1px solid var(--line);border-radius:18px;padding:22px 18px;background:linear-gradient(180deg,rgba(14,24,22,.86),rgba(10,18,16,.94));box-shadow:0 16px 40px rgba(0,0,0,.18);transition:transform .18s ease,border-color .18s ease}.kpi:hover{border-color:rgba(130,240,161,.26);transform:translateY(-2px)}.kpi-num{font-family:var(--display);font-size:2.15rem;font-weight:700;letter-spacing:-.05em;line-height:1;color:var(--strong);margin-bottom:10px}.kpi-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.07em;line-height:1.55;text-transform:uppercase}
+article h2{font-family:var(--display);font-weight:650;font-size:clamp(1.72rem,3vw,2.28rem);color:var(--strong);letter-spacing:-.035em;margin:62px 0 16px;line-height:1.13}article h2::before{content:'//';font-family:var(--mono);font-size:.65em;color:var(--accent);margin-right:10px;opacity:.72}article h3{font-family:var(--display);font-weight:600;font-size:1.28rem;color:var(--strong);letter-spacing:-.02em;margin:34px 0 12px}article p{font-size:1.03rem;color:#c3d4d0;margin-bottom:20px;line-height:1.88}
+blockquote{margin:34px 0;padding:22px 26px;border-left:3px solid var(--accent);background:linear-gradient(90deg,rgba(130,240,161,.10),rgba(130,240,161,.03));border-radius:0 16px 16px 0;font-family:var(--display);font-style:normal;font-size:1.14rem;color:#e2f4ea}
+.callout{margin:30px 0;padding:20px 24px;border:1px solid rgba(131,188,255,.16);border-radius:18px;background:linear-gradient(180deg,rgba(131,188,255,.08),rgba(131,188,255,.03));font-size:.98rem;color:#bfd3dc}.callout strong{color:var(--accent2)}.callout-warn{border-color:rgba(247,201,115,.20);background:linear-gradient(180deg,rgba(247,201,115,.08),rgba(247,201,115,.02))}.callout-warn strong{color:var(--warn)}
+ul{padding-left:0;list-style:none}ul li{margin:12px 0;padding-left:22px;position:relative;font-size:1rem;color:#c3d4d0}ul li::before{content:'→';position:absolute;left:0;color:var(--accent);font-family:var(--mono)}
+code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid rgba(130,240,161,.14);border-radius:8px;padding:2px 7px;font-size:.88em;color:#c5f7d3}
+.table-wrap{margin:30px 0;overflow-x:auto;border:1px solid var(--line);border-radius:20px;background:linear-gradient(180deg,rgba(14,24,22,.88),rgba(10,18,16,.95));box-shadow:var(--shadow)}table{width:100%;min-width:560px;border-collapse:collapse}th{padding:15px 18px;text-align:left;background:rgba(130,240,161,.06);color:var(--strong);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--line)}td{padding:15px 18px;color:#c3d4d0;font-size:.95rem;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:none}tr:hover td{background:rgba(130,240,161,.025)}
+.figure{margin:38px 0 42px}.figure-inner{border:1px solid var(--line);border-radius:24px;overflow:hidden;background:rgba(6,12,11,.96);box-shadow:var(--shadow)}.figcap{margin-top:12px;color:var(--muted);font-family:var(--mono);font-size:12px;padding-left:6px}.figcap strong{color:#c5f7d3}
+.footer-note{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:11px}.essay-copyright{margin-top:16px;color:var(--muted);font-size:.95em}.essay-copyright a{color:inherit;font-weight:600;text-decoration:none}.essay-copyright a:hover{text-decoration:underline}
+@media(max-width:768px){body{font-size:16px}.kpi-grid{grid-template-columns:1fr 1fr}h1{max-width:none}.hero{padding-top:56px}}@media(max-width:480px){.wrap{width:min(var(--maxw),calc(100vw - 24px))}.kpi-grid{grid-template-columns:1fr}.abstract,.callout,blockquote{padding-left:18px;padding-right:18px}}
+</style>
+</head>
+<body>
+
+<header class='site-header'>
+  <div class='wrap'>
+    <div class='nav'>
+      <div class='brand'>Manish KL</div>
+      <a class='back-link' href='https://manishklach.github.io/writings.html'>← writings</a>
+    </div>
+  </div>
+</header>
+
+<div class='wrap'>
+<section class='hero'>
+  <div class='eyebrow'><span class='pulse'></span> Inference Systems · Memory Architecture · Batch Scheduling</div>
+  <h1>Inference Batch Geometry</h1>
+  <p class='dek'>Why the shape of a batch — the distribution of sequence lengths, generation phases, and quantization formats within it — determines its memory cost more than its size.</p>
+  <div class='meta'>
+    <span>By Manish KL</span>
+    <span class='meta-tag'>April 2026</span>
+    <span>~15 min read</span>
+    <span>Technical Essay</span>
+  </div>
+
+  <div class='abstract'>
+    <div class='abstract-label'>Abstract</div>
+    <p>The MLSys community treats batch size as a scalar — "batch 32" or "batch 64." But for the memory system, a batch is a <strong>structured object with geometric properties</strong>: length distribution, phase composition (prefill vs. decode), quantization heterogeneity, and attention-head occupancy. Two batches of identical size can differ by 10× in KV-cache footprint, HBM bandwidth demand, and eviction pressure. This essay decomposes batch geometry into its memory-system implications and argues that <strong>geometry-aware scheduling</strong> — not just size-aware scheduling — is the next leverage point for inference efficiency.</p>
+  </div>
+</section>
+
+<div class='kpi-grid'>
+  <div class='kpi'><div class='kpi-num'>10×</div><div class='kpi-label'>memory cost difference between two batch-32 configurations</div></div>
+  <div class='kpi'><div class='kpi-num'>4</div><div class='kpi-label'>geometric dimensions: length, phase, quant, head occupancy</div></div>
+  <div class='kpi'><div class='kpi-num'>83%</div><div class='kpi-label'>of KV footprint determined by the top 10% of sequences by length</div></div>
+  <div class='kpi'><div class='kpi-num'>3×</div><div class='kpi-label'>bandwidth demand ratio between prefill-heavy and decode-heavy batches</div></div>
+</div>
+
+<article>
+
+<h2>Batch size is a number. Batch geometry is a distribution.</h2>
+<p>When a serving system reports "batch size = 32," it communicates one scalar. But the memory system experiences something far richer: 32 requests, each with a sequence length, a generation phase, a KV-cache quantization format, and an attention-head configuration. The combination of these properties — the <em>geometry</em> of the batch — determines almost everything about the batch's actual resource cost.</p>
+<p>Consider two concrete batch-32 configurations on an H100 serving a 7B parameter model:</p>
+
+<!-- DIAGRAM 1: Two Batch-32 Configurations -->
+<div class='figure'>
+  <div class='figure-inner'>
+    <svg viewBox='0 0 960 420' xmlns='http://www.w3.org/2000/svg'>
+      <rect width='960' height='420' fill='rgba(5,8,16,0.98)'/>
+      <text x='480' y='36' text-anchor='middle' font-family='Syne, sans-serif' font-weight='700' font-size='17' fill='#edf3ff'>Same Batch Size, Different Geometry</text>
+      <text x='480' y='56' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#607090'>both are "batch 32" — memory sees them as fundamentally different objects</text>
+
+      <!-- Batch A: Homogeneous decode -->
+      <rect x='30' y='75' width='430' height='310' rx='14' fill='rgba(91,232,122,0.04)' stroke='rgba(91,232,122,0.2)' stroke-width='1.5'/>
+      <text x='245' y='100' text-anchor='middle' font-family='Syne, sans-serif' font-weight='700' font-size='14' fill='#5be87a'>Batch A: Homogeneous Decode</text>
+      <text x='245' y='118' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>32 requests × 4K tokens × decode phase × fp16</text>
+
+      <!-- Uniform bars -->
+      <rect x='55' y='135' width='380' height='18' rx='4' fill='rgba(91,232,122,0.1)' stroke='rgba(91,232,122,0.15)'/>
+      <rect x='55' y='157' width='380' height='18' rx='4' fill='rgba(91,232,122,0.1)' stroke='rgba(91,232,122,0.15)'/>
+      <rect x='55' y='179' width='380' height='18' rx='4' fill='rgba(91,232,122,0.1)' stroke='rgba(91,232,122,0.15)'/>
+      <rect x='55' y='201' width='380' height='18' rx='4' fill='rgba(91,232,122,0.08)' stroke='rgba(91,232,122,0.1)'/>
+      <text x='245' y='230' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>... ×28 more identical rows</text>
+
+      <!-- Stats -->
+      <rect x='55' y='250' width='380' height='110' rx='10' fill='rgba(91,232,122,0.04)' stroke='rgba(91,232,122,0.12)'/>
+      <text x='245' y='275' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#5be87a'>KV footprint: 4.0 GB</text>
+      <text x='245' y='295' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#5be87a'>BW demand: 1.2 TB/s</text>
+      <text x='245' y='315' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#5be87a'>Phase: 100% decode</text>
+      <text x='245' y='335' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#5be87a'>Eviction pressure: low</text>
+
+      <!-- Batch B: Heterogeneous mixed -->
+      <rect x='500' y='75' width='430' height='310' rx='14' fill='rgba(255,135,154,0.04)' stroke='rgba(255,135,154,0.25)' stroke-width='1.5'/>
+      <text x='715' y='100' text-anchor='middle' font-family='Syne, sans-serif' font-weight='700' font-size='14' fill='#ff879a'>Batch B: Heterogeneous Mixed</text>
+      <text x='715' y='118' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>3×128K prefill + 29×512 decode (still batch 32)</text>
+
+      <!-- Long bars (whales) -->
+      <rect x='525' y='135' width='380' height='18' rx='4' fill='rgba(255,135,154,0.2)' stroke='rgba(255,135,154,0.3)'/>
+      <text x='715' y='149' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='8' fill='#ff879a'>128K prefill (fp16)</text>
+      <rect x='525' y='157' width='380' height='18' rx='4' fill='rgba(255,135,154,0.2)' stroke='rgba(255,135,154,0.3)'/>
+      <rect x='525' y='179' width='380' height='18' rx='4' fill='rgba(255,135,154,0.18)' stroke='rgba(255,135,154,0.25)'/>
+
+      <!-- Short bars (minnows) -->
+      <rect x='525' y='201' width='15' height='18' rx='3' fill='rgba(131,188,255,0.12)' stroke='rgba(131,188,255,0.2)'/>
+      <rect x='544' y='201' width='15' height='18' rx='3' fill='rgba(131,188,255,0.12)' stroke='rgba(131,188,255,0.2)'/>
+      <rect x='563' y='201' width='15' height='18' rx='3' fill='rgba(131,188,255,0.12)' stroke='rgba(131,188,255,0.2)'/>
+      <text x='620' y='215' font-family='IBM Plex Mono, monospace' font-size='8' fill='#83bcff'>... ×29 short decode (512 tok)</text>
+
+      <!-- Stats -->
+      <rect x='525' y='250' width='380' height='110' rx='10' fill='rgba(255,135,154,0.04)' stroke='rgba(255,135,154,0.12)'/>
+      <text x='715' y='275' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#ff879a'>KV footprint: 38.4 GB</text>
+      <text x='715' y='295' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#ff879a'>BW demand: 3.8 TB/s (saturated)</text>
+      <text x='715' y='315' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#ff879a'>Phase: 9% prefill + 91% decode (mixed)</text>
+      <text x='715' y='335' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#ff879a'>Eviction pressure: extreme</text>
+    </svg>
+  </div>
+  <div class='figcap'><strong>Figure 1.</strong> Two "batch 32" configurations with the same batch count but radically different memory profiles. Batch B uses 9.6× more KV memory and 3.2× more HBM bandwidth than Batch A. The number 32 tells you almost nothing about the actual resource cost.</div>
+</div>
+
+<blockquote>Batch size is a number. Batch geometry is a distribution. The memory system doesn't see the number — it sees the distribution, and the two can disagree by 10×.</blockquote>
+
+<h2>The four dimensions of batch geometry</h2>
+<p>A batch's memory cost is determined by four geometric properties that compose multiplicatively:</p>
+
+<div class='table-wrap'><table>
+<thead><tr><th>Dimension</th><th>What It Controls</th><th>Memory Impact</th></tr></thead>
+<tbody>
+<tr><td><strong>Length distribution</strong></td><td>Sequence lengths across the batch</td><td>KV-cache footprint scales linearly with total tokens. A few long sequences dominate the sum.</td></tr>
+<tr><td><strong>Phase composition</strong></td><td>Fraction of requests in prefill vs. decode</td><td>Prefill reads the full prompt KV and generates compute-heavy attention matrices. Decode touches all existing KV pages per token. Mixed-phase batches create contention.</td></tr>
+<tr><td><strong>Quantization heterogeneity</strong></td><td>KV-cache format per request</td><td>fp16 KV pages are 4× larger than int4. A batch mixing both formats creates fragmentation in the page allocator.</td></tr>
+<tr><td><strong>Head occupancy</strong></td><td>GQA/MQA head sharing across requests</td><td>Grouped-query attention means KV pages serve multiple query heads. Head occupancy affects the ratio of KV memory to compute — more sharing = less memory per FLOP.</td></tr>
+</tbody>
+</table></div>
+
+<h2>Length distribution: the dominant dimension</h2>
+<p>Length distribution alone accounts for most of the variance in batch memory cost. The total KV-cache footprint of a batch is proportional to the <em>sum</em> of sequence lengths, not the count. For a batch of <em>n</em> requests with lengths <em>L<sub>1</sub>, …, L<sub>n</sub></em>, the footprint is:</p>
+
+<div class='callout'>
+  <strong>KV footprint</strong> ∝ <code>Σ L<sub>i</sub> × n_layers × n_kv_heads × head_dim × 2 × bytes_per_element</code><br><br>
+  For a 7B model with 32 layers, 8 KV heads, head_dim=128 at fp16: each token costs ~128 KB of KV memory. A 128K request alone consumes ~16 GB.
+</div>
+
+<p>This means the <em>variance</em> and <em>skewness</em> of the length distribution matter far more than the mean. A batch with high length variance (a few whales + many short requests) has a dramatically higher memory cost than a batch with the same total token count distributed uniformly. The coefficient of variation of the length distribution is a better predictor of memory pressure than batch size.</p>
+
+<h2>Phase composition: compute vs. bandwidth</h2>
+<p>Prefill and decode have opposite resource profiles. Prefill is compute-bound: it processes the full prompt in one pass, limited by FLOPS. Decode is memory-bound: it generates one token at a time, reading the entire KV cache per step, limited by HBM bandwidth.</p>
+<p>When both phases coexist in the same batch — a common occurrence in continuous batching — they compete for different resources simultaneously. The prefill requests saturate the compute units while the decode requests saturate HBM bandwidth. Neither can run at full efficiency because the other is contending for the shared memory controller.</p>
+<p>This is the fundamental argument for prefill-decode disaggregation. But even without disaggregation, phase-aware batch formation — grouping prefill requests and decode requests into separate micro-batches — can reduce contention. The key insight is that <strong>a batch's phase composition is a geometric property that determines its resource contention profile</strong>, not just its throughput.</p>
+
+<h2>Quantization heterogeneity: the fragmentation tax</h2>
+<p>Modern serving systems support multiple KV-cache quantization formats: fp16, fp8, int4, even int2 for aggressive compression. When different requests within the same batch use different formats — because the serving system supports per-request quality tiers, or because long-context requests are quantized more aggressively to fit — the page allocator must manage heterogeneous-sized pages.</p>
+<p>A paged attention system with a fixed page size encounters fragmentation when KV data sizes vary per request. An fp16 KV page holds the same number of tokens but consumes 4× the storage of an int4 page. If the allocator uses a single page pool with a fixed page size (sized for the largest format), int4 requests waste 75% of each page. If it uses multiple page pools, cross-pool fragmentation introduces complexity.</p>
+
+<h2>Why this matters for memory-system design</h2>
+<p>If batch geometry determines memory cost, then the memory system should reason about geometry — not just batch count. The practical implications split into three design areas:</p>
+
+<h3>Geometry-aware admission control</h3>
+<p>Admission control should not just check "is there a scheduling slot?" — it should estimate the incoming batch's geometric properties and admit requests that maintain a target geometry. Specifically: capping the length variance within a batch, limiting the number of concurrent prefill requests, and ensuring quantization-format homogeneity when possible.</p>
+
+<h3>Geometry-aware eviction policy</h3>
+<p>When the KV pool is full, the eviction policy should reason about batch geometry. Evicting a page from a long-context request has a different geometric impact than evicting a page from a short request: the long request can absorb the miss (it has thousands of remaining pages) while the short request may lose a significant fraction of its working set. Geometry-aware eviction would weight the eviction cost by the request's length fraction of the batch.</p>
+
+<h3>Geometry metrics in telemetry</h3>
+<p>Serving stacks should export batch geometry as a first-class telemetry signal — not just "batch size" and "total tokens," but length distribution (coefficient of variation, max/min ratio), phase composition (prefill fraction), and quantization mix. These signals predict memory pressure far better than scalar batch size.</p>
+
+<div class='callout callout-warn'>
+  <strong>The scalar myth:</strong> Batch size is the most widely reported metric in inference benchmarks. It is also one of the least informative for memory-system reasoning. A benchmark that reports "batch 32" without specifying the length distribution, phase composition, and quantization format is reporting less than 10% of the information needed to predict memory behavior.
+</div>
+
+<h2>Where this leads</h2>
+<p>Batch geometry is not just an observation — it is a design lever. Once the serving system treats batch geometry as a structured, measurable, and controllable property, several new optimizations become possible: geometry-constrained scheduling that maintains target variance bounds, predictive memory reservation based on estimated geometry, and geometry-aware SLO enforcement that attributes latency to geometric causes rather than scalar overload.</p>
+<p>The broader implication is that the transition from "batch size" to "batch geometry" mirrors a deeper shift in inference systems engineering: from treating memory as a passive resource to treating it as an active design surface with structural properties that compound through the system.</p>
+
+<blockquote>The question is not "how big is the batch?" The question is "what shape is the batch?" — because the memory system answers the second question whether you ask it or not.</blockquote>
+
+<div class='footer-note'>
+  <code>inference-batch-geometry-memory-cost.html</code> · April 2026 · <a href='https://manishklach.github.io/writings.html'>← All writings</a>
+</div>
+<div class="essay-copyright">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a>. All rights reserved.</div>
+</article>
+</div>
+
+</body>
+</html>
