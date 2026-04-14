@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0'>
+<title>Why TPUs Have Less HBM Than GPUs — and Why That's a Design Choice, Not a Limitation | Manish KL</title>
+<meta name="description" content="A systems essay on the TPU's deliberate strategy of thin nodes with less per-chip HBM but faster interconnect. NVIDIA bets on fat nodes. Google bets on thin nodes. Both are rational — they optimize for different cost functions.">
+<meta name="keywords" content="TPU, HBM, GPU, memory capacity, ICI, interconnect bandwidth, thin node, fat node, tensor parallelism, model parallelism, Google TPU, NVIDIA, distributed memory">
+<meta name="author" content="Manish KL">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#08110f">
+<link rel="canonical" href="https://manishklach.github.io/writings/tpu-less-hbm-design-choice-not-limitation.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Why TPUs Have Less HBM Than GPUs — and Why That's a Design Choice">
+<meta property="og:description" content="NVIDIA bets on fat nodes with maximum per-GPU memory. Google bets on thin nodes with maximum inter-chip bandwidth. Both are rational.">
+<meta property="og:url" content="https://manishklach.github.io/writings/tpu-less-hbm-design-choice-not-limitation.html">
+<meta property="og:site_name" content="Manish KL">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="TPU: Less HBM Is a Design Choice, Not a Limitation">
+<meta name="twitter:description" content="Fat nodes vs thin nodes. Why Google's less-HBM, more-interconnect strategy is architecturally rational.">
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta name="twitter:site" content="@manishkl_">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Why TPUs Have Less HBM Than GPUs — and Why That's a Design Choice, Not a Limitation","description":"A systems essay on TPU thin-node memory strategy.","datePublished":"2026-04-14","dateModified":"2026-04-14","author":{"@type":"Person","name":"Manish KL","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"Manish KL"},"mainEntityOfPage":"https://manishklach.github.io/writings/tpu-less-hbm-design-choice-not-limitation.html","keywords":["TPU","HBM","thin node","fat node","ICI","interconnect","model parallelism"]}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#08110f;--bg2:#0f1d18;--surface:rgba(10,18,24,.82);--line:rgba(142,175,171,.14);--text:#d4e4e0;--muted:#8ea59f;--strong:#f5fbf8;--accent:#82f0a1;--accent2:#83bcff;--accent3:#d2a8ff;--warn:#f7c973;--danger:#ff879a;--maxw:980px;--mono:'JetBrains Mono',monospace;--display:'Fraunces',serif;--body:'Inter',sans-serif;--shadow:0 24px 80px rgba(0,0,0,.36)}*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{color:var(--text);font-family:var(--body);font-size:17px;line-height:1.84;background:radial-gradient(circle at top,rgba(130,240,161,.11),transparent 34%),radial-gradient(circle at 88% 14%,rgba(131,188,255,.10),transparent 23%),radial-gradient(circle at 7% 80%,rgba(210,168,255,.07),transparent 25%),linear-gradient(180deg,#08110f 0%,#091412 45%,#08100e 100%);background-attachment:fixed}a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}.wrap{width:min(var(--maxw),calc(100vw - 40px));margin:0 auto}.site-header{position:sticky;top:0;z-index:100;padding:14px 0;border-bottom:1px solid var(--line);background:rgba(6,13,12,.76);backdrop-filter:blur(18px)}.nav{display:flex;justify-content:space-between;align-items:center;gap:20px}.brand{font-family:var(--display);font-weight:700;font-size:1rem;color:var(--strong)}.back-link{font-size:13px;color:var(--muted)}.back-link:hover{color:var(--accent);text-decoration:none}.hero{padding:72px 0 38px}.eyebrow{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;border:1px solid rgba(130,240,161,.22);background:rgba(130,240,161,.08);font-family:var(--mono);font-size:11px;color:#c5f7d3;letter-spacing:.07em;margin-bottom:26px}.pulse{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 2s ease-in-out infinite}@keyframes pulse{0%,100%{box-shadow:0 0 0 4px rgba(130,240,161,.15)}50%{box-shadow:0 0 0 8px rgba(130,240,161,.03)}}h1{font-family:var(--display);font-weight:700;font-size:clamp(2.75rem,5.8vw,4.9rem);line-height:.98;letter-spacing:-.045em;color:var(--strong);margin-bottom:20px;max-width:16ch;text-wrap:balance}.dek{font-size:clamp(1.05rem,1.8vw,1.2rem);color:#b3c7c2;max-width:720px;line-height:1.76}.meta{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;color:var(--muted);font-family:var(--mono);font-size:11px;margin-top:28px;padding-top:22px;border-top:1px solid var(--line)}.meta-tag{color:#c5f7d3}.abstract{margin:38px 0;padding:26px 30px;border:1px solid rgba(130,240,161,.16);border-radius:22px;background:linear-gradient(180deg,rgba(14,24,22,.84),rgba(10,18,16,.9));box-shadow:var(--shadow);position:relative;overflow:hidden}.abstract::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:linear-gradient(180deg,var(--accent),var(--accent2))}.abstract-label{font-family:var(--mono);font-size:10px;color:#c5f7d3;letter-spacing:.14em;text-transform:uppercase;margin-bottom:12px}.abstract p{font-size:.98rem;color:#bdd0cb;line-height:1.8}.abstract strong{color:var(--accent);font-weight:600}.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:34px 0}.kpi{border:1px solid var(--line);border-radius:18px;padding:22px 18px;background:linear-gradient(180deg,rgba(14,24,22,.86),rgba(10,18,16,.94));box-shadow:0 16px 40px rgba(0,0,0,.18);transition:transform .18s ease,border-color .18s ease}.kpi:hover{border-color:rgba(130,240,161,.26);transform:translateY(-2px)}.kpi-num{font-family:var(--display);font-size:2.15rem;font-weight:700;letter-spacing:-.05em;line-height:1;color:var(--strong);margin-bottom:10px}.kpi-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.07em;line-height:1.55;text-transform:uppercase}article h2{font-family:var(--display);font-weight:650;font-size:clamp(1.72rem,3vw,2.28rem);color:var(--strong);letter-spacing:-.035em;margin:62px 0 16px;line-height:1.13}article h2::before{content:'//';font-family:var(--mono);font-size:.65em;color:var(--accent);margin-right:10px;opacity:.72}article h3{font-family:var(--display);font-weight:600;font-size:1.28rem;color:var(--strong);letter-spacing:-.02em;margin:34px 0 12px}article p{font-size:1.03rem;color:#c3d4d0;margin-bottom:20px;line-height:1.88}blockquote{margin:34px 0;padding:22px 26px;border-left:3px solid var(--accent);background:linear-gradient(90deg,rgba(130,240,161,.10),rgba(130,240,161,.03));border-radius:0 16px 16px 0;font-family:var(--display);font-style:normal;font-size:1.14rem;color:#e2f4ea}.callout{margin:30px 0;padding:20px 24px;border:1px solid rgba(131,188,255,.16);border-radius:18px;background:linear-gradient(180deg,rgba(131,188,255,.08),rgba(131,188,255,.03));font-size:.98rem;color:#bfd3dc}.callout strong{color:var(--accent2)}.callout-warn{border-color:rgba(247,201,115,.20);background:linear-gradient(180deg,rgba(247,201,115,.08),rgba(247,201,115,.02))}.callout-warn strong{color:var(--warn)}ul{padding-left:0;list-style:none}ul li{margin:12px 0;padding-left:22px;position:relative;font-size:1rem;color:#c3d4d0}ul li::before{content:'→';position:absolute;left:0;color:var(--accent);font-family:var(--mono)}code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid rgba(130,240,161,.14);border-radius:8px;padding:2px 7px;font-size:.88em;color:#c5f7d3}.table-wrap{margin:30px 0;overflow-x:auto;border:1px solid var(--line);border-radius:20px;background:linear-gradient(180deg,rgba(14,24,22,.88),rgba(10,18,16,.95));box-shadow:var(--shadow)}table{width:100%;min-width:560px;border-collapse:collapse}th{padding:15px 18px;text-align:left;background:rgba(130,240,161,.06);color:var(--strong);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--line)}td{padding:15px 18px;color:#c3d4d0;font-size:.95rem;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:none}tr:hover td{background:rgba(130,240,161,.025)}.figure{margin:38px 0 42px}.figure-inner{border:1px solid var(--line);border-radius:24px;overflow:hidden;background:rgba(6,12,11,.96);box-shadow:var(--shadow)}.figcap{margin-top:12px;color:var(--muted);font-family:var(--mono);font-size:12px;padding-left:6px}.figcap strong{color:#c5f7d3}.footer-note{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:11px}.essay-copyright{margin-top:16px;color:var(--muted);font-size:.95em}.essay-copyright a{color:inherit;font-weight:600;text-decoration:none}.essay-copyright a:hover{text-decoration:underline}@media(max-width:768px){body{font-size:16px}.kpi-grid{grid-template-columns:1fr 1fr}h1{max-width:none}.hero{padding-top:56px}}@media(max-width:480px){.wrap{width:min(var(--maxw),calc(100vw - 24px))}.kpi-grid{grid-template-columns:1fr}.abstract,.callout,blockquote{padding-left:18px;padding-right:18px}}
+</style>
+</head>
+<body>
+<header class='site-header'><div class='wrap'><div class='nav'><div class='brand'>Manish KL</div><a class='back-link' href='https://manishklach.github.io/writings.html'>← writings</a></div></div></header>
+<div class='wrap'>
+<section class='hero'>
+  <div class='eyebrow'><span class='pulse'></span> TPU Architecture · Memory Design · Systems Economics</div>
+  <h1>Why TPUs Have Less HBM Than GPUs</h1>
+  <p class='dek'>And why that's a design choice, not a limitation. NVIDIA bets on fat nodes with maximum per-GPU memory. Google bets on thin nodes with maximum inter-chip bandwidth. Both are rational — they optimize for different cost functions.</p>
+  <div class='meta'><span>By Manish KL</span><span class='meta-tag'>April 2026</span><span>~15 min read</span><span>Technical Essay</span></div>
+  <div class='abstract'>
+    <div class='abstract-label'>Abstract</div>
+    <p>An H100 has 80 GB of HBM. A B200 has 192 GB. A TPU v6e (Trillium) has <strong>32 GB</strong> — less than half an H100. This looks like Google shipping inferior hardware. It is not. It is a deliberate architectural bet: TPU pods are designed as <strong>distributed memory systems from the ground up</strong>, where model parallelism across thousands of chips is the default. A single chip does not need to hold the model — the pod does. The ICI interconnect is fast enough (1.2 TB/s on v5p) that cross-chip memory access approaches local HBM speed. Google trades per-chip HBM for more chips at lower per-chip cost, using the torus interconnect to make the aggregate memory feel like a single, very large pool. This is the opposite of NVIDIA's strategy — and it creates a different cost/performance frontier.</p>
+  </div>
+</section>
+
+<div class='kpi-grid'>
+  <div class='kpi'><div class='kpi-num'>32 GB</div><div class='kpi-label'>HBM per TPU v6e chip (Trillium)</div></div>
+  <div class='kpi'><div class='kpi-num'>192 GB</div><div class='kpi-label'>HBM per B200 GPU — 6× more than Trillium</div></div>
+  <div class='kpi'><div class='kpi-num'>851 TB</div><div class='kpi-label'>aggregate HBM in a 8,960-chip v5p pod (95 GB × 8,960)</div></div>
+  <div class='kpi'><div class='kpi-num'>1.2 TB/s</div><div class='kpi-label'>ICI bandwidth per v5p chip — fast enough to make remote memory viable</div></div>
+</div>
+
+<article>
+
+<h2>Fat nodes vs. thin nodes</h2>
+<p>The GPU and TPU ecosystems represent two fundamentally different strategies for distributing memory across a training cluster:</p>
+
+<div class='figure'>
+  <div class='figure-inner'>
+    <svg viewBox='0 0 960 360' xmlns='http://www.w3.org/2000/svg'>
+      <rect width='960' height='360' fill='rgba(5,8,16,0.98)'/>
+      <text x='480' y='32' text-anchor='middle' font-family='Syne, sans-serif' font-weight='700' font-size='17' fill='#edf3ff'>Fat Nodes vs. Thin Nodes: Two Memory Strategies</text>
+
+      <!-- Fat node (GPU) -->
+      <rect x='30' y='60' width='430' height='270' rx='14' fill='rgba(131,188,255,0.04)' stroke='rgba(131,188,255,0.2)'/>
+      <text x='245' y='88' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='12' fill='#83bcff' font-weight='600'>NVIDIA: Fat Nodes</text>
+      <text x='245' y='108' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>maximize per-GPU memory, minimize cross-GPU communication</text>
+
+      <!-- Big GPU boxes -->
+      <rect x='55' y='125' width='90' height='80' rx='10' fill='rgba(131,188,255,0.1)' stroke='rgba(131,188,255,0.2)'/>
+      <text x='100' y='155' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#83bcff'>B200</text>
+      <text x='100' y='172' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='8' fill='#83bcff'>192 GB HBM</text>
+      <text x='100' y='192' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='7' fill='#607090'>4.8 TB/s BW</text>
+
+      <rect x='165' y='125' width='90' height='80' rx='10' fill='rgba(131,188,255,0.1)' stroke='rgba(131,188,255,0.2)'/>
+      <text x='210' y='155' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#83bcff'>B200</text>
+      <text x='210' y='172' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='8' fill='#83bcff'>192 GB HBM</text>
+
+      <rect x='275' y='125' width='90' height='80' rx='10' fill='rgba(131,188,255,0.08)' stroke='rgba(131,188,255,0.15)'/>
+      <text x='320' y='165' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='8' fill='#607090'>×8 per node</text>
+
+      <text x='245' y='236' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#83bcff'>8 GPUs × 192 GB = 1.5 TB per node</text>
+      <text x='245' y='256' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>strategy: fit more model per GPU, reduce parallelism</text>
+      <text x='245' y='276' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>interconnect: NVLink (intra-node) + IB (inter-node)</text>
+      <text x='245' y='296' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#83bcff'>few fat nodes, less communication</text>
+
+      <!-- Thin node (TPU) -->
+      <rect x='500' y='60' width='430' height='270' rx='14' fill='rgba(91,232,122,0.04)' stroke='rgba(91,232,122,0.25)'/>
+      <text x='715' y='88' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='12' fill='#5be87a' font-weight='600'>GOOGLE: Thin Nodes</text>
+      <text x='715' y='108' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>minimize per-chip memory, maximize inter-chip bandwidth</text>
+
+      <!-- Small TPU boxes (many) -->
+      <rect x='525' y='125' width='42' height='38' rx='6' fill='rgba(91,232,122,0.1)' stroke='rgba(91,232,122,0.15)'/>
+      <text x='546' y='148' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='6' fill='#5be87a'>32G</text>
+      <rect x='573' y='125' width='42' height='38' rx='6' fill='rgba(91,232,122,0.1)' stroke='rgba(91,232,122,0.15)'/>
+      <text x='594' y='148' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='6' fill='#5be87a'>32G</text>
+      <rect x='621' y='125' width='42' height='38' rx='6' fill='rgba(91,232,122,0.1)' stroke='rgba(91,232,122,0.15)'/>
+      <text x='642' y='148' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='6' fill='#5be87a'>32G</text>
+      <rect x='669' y='125' width='42' height='38' rx='6' fill='rgba(91,232,122,0.1)' stroke='rgba(91,232,122,0.15)'/>
+      <text x='690' y='148' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='6' fill='#5be87a'>32G</text>
+      <rect x='525' y='170' width='42' height='38' rx='6' fill='rgba(91,232,122,0.08)' stroke='rgba(91,232,122,0.12)'/>
+      <rect x='573' y='170' width='42' height='38' rx='6' fill='rgba(91,232,122,0.08)' stroke='rgba(91,232,122,0.12)'/>
+      <rect x='621' y='170' width='42' height='38' rx='6' fill='rgba(91,232,122,0.06)' stroke='rgba(91,232,122,0.1)'/>
+      <rect x='669' y='170' width='90' height='38' rx='6' fill='rgba(91,232,122,0.04)' stroke='rgba(91,232,122,0.08)'/>
+      <text x='714' y='194' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='7' fill='#607090'>×8,960 chips</text>
+
+      <text x='715' y='236' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#5be87a'>8,960 chips × 95 GB = 851 TB per pod</text>
+      <text x='715' y='256' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>strategy: distribute everything, use interconnect as memory</text>
+      <text x='715' y='276' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>interconnect: ICI 3D torus (1.2 TB/s/chip)</text>
+      <text x='715' y='296' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#5be87a'>many thin nodes, fast communication</text>
+    </svg>
+  </div>
+  <div class='figcap'><strong>Figure 1.</strong> NVIDIA maximizes per-GPU HBM to reduce the need for cross-GPU communication. Google minimizes per-chip HBM and maximizes inter-chip bandwidth, treating the pod's aggregate memory as a single distributed pool.</div>
+</div>
+
+<h2>The economics behind thin nodes</h2>
+<p>HBM is the most expensive component on a modern accelerator. On an H100, HBM accounts for roughly 30–40% of the chip's bill-of-materials cost. On a B200 with 192 GB, the HBM cost is even higher. Every gigabyte of HBM adds ~$10–25 to the chip cost.</p>
+<p>Google's strategy is a cost trade: instead of spending $2,000–4,000 on HBM per chip, spend less on HBM and invest in interconnect bandwidth. The ICI links that connect TPU chips within a pod are custom silicon — but they are cheaper to scale than HBM, because interconnect bandwidth scales with the number of links (wires and fibers), while HBM capacity scales with chip stacking (which has yield and thermal limits).</p>
+
+<div class='callout'>
+  <strong>The cost equation:</strong> For a 405B model (810 GB of weights at fp16), NVIDIA needs 5 B200 GPUs (5 × 192 GB = 960 GB) or 11 H100 GPUs (11 × 80 GB = 880 GB). Google needs ~9 v5p chips (9 × 95 GB = 855 GB) or ~26 v6e chips (26 × 32 GB = 832 GB). The number of chips is similar — but the per-chip cost is different because HBM is the dominant cost driver.
+</div>
+
+<h2>When the interconnect is fast enough, remote memory is local memory</h2>
+<p>The key assumption behind the thin-node strategy is that <strong>ICI bandwidth is fast enough to make cross-chip memory access indistinguishable from local HBM access</strong> for the workloads that matter.</p>
+<p>On a v5p chip, the ICI provides 1.2 TB/s of bidirectional bandwidth — roughly 43% of the chip's HBM bandwidth (2.8 TB/s). For all-reduce operations (which dominate training communication), this ratio is sufficient: the gradient reduction step can proceed at ICI speed without bottlenecking the training loop, because the next forward pass overlaps with the communication.</p>
+<p>For weight shards accessed via tensor parallelism, the ICI latency (~1–2 μs for nearest-neighbor access) is low enough that the MXU can be kept busy while waiting for remote weight tiles — especially with the software-managed memory system's ability to prefetch tiles via DMA.</p>
+
+<h2>What this enables: the pod as a single logical accelerator</h2>
+<p>The practical consequence of the thin-node + fast-interconnect design is that a TPU pod behaves more like a single, very large accelerator than like a cluster of independent machines. The aggregate memory of a v5p pod (851 TB across 8,960 chips) is treated by the XLA compiler as a single distributed memory space. The compiler shards weights, activations, and optimizer state across the pod's chips using GSPMD (Generalized SPMD) partitioning, and generates the ICI communication patterns needed to stitch the computation together.</p>
+<p>This is fundamentally different from the GPU model, where each GPU is programmed independently (via NCCL, DeepSpeed, or Megatron-LM) and the programmer must manually manage parallelism strategies. On a TPU pod, the compiler handles the distribution — the programmer writes single-device code, and XLA partitions it across the pod.</p>
+
+<h2>Where fat nodes genuinely win</h2>
+<p>The thin-node strategy has real limitations, and the GPU fat-node approach is genuinely better in several scenarios:</p>
+<ul>
+  <li><strong>Inference with per-request state:</strong> Inference workloads create per-request KV caches that are not easily shareable across chips. More HBM per chip means more concurrent KV caches, which directly increases inference throughput. This is why NVIDIA's B200 pushed to 192 GB — inference serving benefits enormously from local memory capacity.</li>
+  <li><strong>Small-batch fine-tuning:</strong> Fine-tuning tasks that fit on a small number of GPUs don't benefit from pod-scale distribution. A single B200 with 192 GB can fine-tune a 70B model without any parallelism — simpler, faster, and more cost-effective than distributing across multiple TPU chips.</li>
+  <li><strong>Heterogeneous workloads:</strong> GPU clusters can run many independent jobs simultaneously, each using a small number of GPUs. TPU pods are designed for single large jobs that occupy the entire pod or a large slice. Multi-tenant, heterogeneous serving is harder on the thin-node model.</li>
+  <li><strong>Ecosystem and tooling:</strong> The entire deep learning ecosystem (PyTorch, CUDA, NCCL) is built around the fat-node model. Distributed training frameworks assume large per-GPU memory and relatively slow inter-GPU communication. TPU's thin-node model requires different software (JAX, XLA, GSPMD), which narrows the developer pool.</li>
+</ul>
+
+<h2>The convergence question</h2>
+<p>Both strategies are evolving toward each other. NVIDIA is increasing interconnect bandwidth (NVLink 5.0 provides 1.8 TB/s bidirectional) while maintaining large per-GPU HBM. Google is increasing per-chip HBM (v5p has 95 GB, up from v4's 32 GB) while maintaining fast ICI. The question is whether they converge on a single design point or whether the optimal point remains workload-dependent.</p>
+<p>The answer is likely workload-dependent. Training frontier models — where the model is too large for any single chip and must be distributed across hundreds or thousands of chips — favors the thin-node approach: more chips, more aggregate memory, faster interconnect. Inference serving — where per-request memory capacity determines concurrency — favors the fat-node approach: more HBM per chip, less reliance on cross-chip communication for latency-sensitive token generation.</p>
+
+<div class='table-wrap'><table>
+<thead><tr><th>Workload</th><th>Favors Fat Nodes (GPU)</th><th>Favors Thin Nodes (TPU)</th></tr></thead>
+<tbody>
+<tr><td>Frontier model training</td><td></td><td><strong>✓</strong> — model is distributed regardless; more chips at lower cost wins</td></tr>
+<tr><td>Inference serving (high concurrency)</td><td><strong>✓</strong> — per-GPU KV-cache capacity determines throughput</td><td></td></tr>
+<tr><td>Fine-tuning (small-scale)</td><td><strong>✓</strong> — fits on 1–4 GPUs without distribution</td><td></td></tr>
+<tr><td>Large-batch research training</td><td></td><td><strong>✓</strong> — pod-scale compiler-managed distribution is simpler</td></tr>
+<tr><td>Multi-tenant serving</td><td><strong>✓</strong> — each GPU serves independently</td><td></td></tr>
+</tbody>
+</table></div>
+
+<blockquote>Less HBM is not inferior hardware. It is a different design bet: that aggregate memory across a fast interconnect is cheaper and more scalable than per-chip memory behind a slow one. Whether that bet pays off depends on the workload — and for the workloads Google cares about most, it does.</blockquote>
+
+<div class='footer-note'>
+  <code>tpu-less-hbm-design-choice-not-limitation.html</code> · April 2026 · <a href='https://manishklach.github.io/writings.html'>← All writings</a>
+</div>
+<div class="essay-copyright">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a>. All rights reserved.</div>
+</article>
+</div>
+</body>
+</html>

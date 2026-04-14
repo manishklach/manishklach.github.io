@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0'>
+<title>Software-Managed Memory Is the TPU's Real Advantage — and Its Hardest Abstraction | Manish KL</title>
+<meta name="description" content="A systems essay on the TPU's software-managed memory hierarchy. No hardware caches, no L1/L2 — just raw scratchpad SRAM that the XLA compiler must explicitly orchestrate. The tradeoff is determinism vs. generality.">
+<meta name="keywords" content="TPU, software-managed memory, VMEM, CMEM, XLA compiler, scratchpad SRAM, systolic array, MXU, SparseCore, GPU comparison, memory hierarchy, Google TPU">
+<meta name="author" content="Manish KL">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#08110f">
+<link rel="canonical" href="https://manishklach.github.io/writings/tpu-software-managed-memory-real-advantage.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Software-Managed Memory Is the TPU's Real Advantage">
+<meta property="og:description" content="No hardware caches. No L1/L2. The TPU exposes raw scratchpad SRAM to the compiler — and that changes everything about how memory works.">
+<meta property="og:url" content="https://manishklach.github.io/writings/tpu-software-managed-memory-real-advantage.html">
+<meta property="og:site_name" content="Manish KL">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="TPU Software-Managed Memory: The Real Advantage">
+<meta name="twitter:description" content="GPUs hide memory behind caches. TPUs expose it to the compiler. A systems essay on why that matters.">
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta name="twitter:site" content="@manishkl_">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Software-Managed Memory Is the TPU's Real Advantage — and Its Hardest Abstraction","description":"A systems essay on TPU software-managed memory.","datePublished":"2026-04-14","dateModified":"2026-04-14","author":{"@type":"Person","name":"Manish KL","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"Manish KL"},"mainEntityOfPage":"https://manishklach.github.io/writings/tpu-software-managed-memory-real-advantage.html","keywords":["TPU","VMEM","CMEM","XLA","scratchpad","memory hierarchy","systolic array"]}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#08110f;--bg2:#0f1d18;--surface:rgba(10,18,24,.82);--line:rgba(142,175,171,.14);--text:#d4e4e0;--muted:#8ea59f;--strong:#f5fbf8;--accent:#82f0a1;--accent2:#83bcff;--accent3:#d2a8ff;--warn:#f7c973;--danger:#ff879a;--maxw:980px;--mono:'JetBrains Mono',monospace;--display:'Fraunces',serif;--body:'Inter',sans-serif;--shadow:0 24px 80px rgba(0,0,0,.36)}*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{color:var(--text);font-family:var(--body);font-size:17px;line-height:1.84;background:radial-gradient(circle at top,rgba(130,240,161,.11),transparent 34%),radial-gradient(circle at 88% 14%,rgba(131,188,255,.10),transparent 23%),radial-gradient(circle at 7% 80%,rgba(210,168,255,.07),transparent 25%),linear-gradient(180deg,#08110f 0%,#091412 45%,#08100e 100%);background-attachment:fixed}a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}.wrap{width:min(var(--maxw),calc(100vw - 40px));margin:0 auto}.site-header{position:sticky;top:0;z-index:100;padding:14px 0;border-bottom:1px solid var(--line);background:rgba(6,13,12,.76);backdrop-filter:blur(18px)}.nav{display:flex;justify-content:space-between;align-items:center;gap:20px}.brand{font-family:var(--display);font-weight:700;font-size:1rem;color:var(--strong)}.back-link{font-size:13px;color:var(--muted)}.back-link:hover{color:var(--accent);text-decoration:none}.hero{padding:72px 0 38px}.eyebrow{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;border:1px solid rgba(130,240,161,.22);background:rgba(130,240,161,.08);font-family:var(--mono);font-size:11px;color:#c5f7d3;letter-spacing:.07em;margin-bottom:26px}.pulse{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 2s ease-in-out infinite}@keyframes pulse{0%,100%{box-shadow:0 0 0 4px rgba(130,240,161,.15)}50%{box-shadow:0 0 0 8px rgba(130,240,161,.03)}}h1{font-family:var(--display);font-weight:700;font-size:clamp(2.75rem,5.8vw,4.9rem);line-height:.98;letter-spacing:-.045em;color:var(--strong);margin-bottom:20px;max-width:16ch;text-wrap:balance}.dek{font-size:clamp(1.05rem,1.8vw,1.2rem);color:#b3c7c2;max-width:720px;line-height:1.76}.meta{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;color:var(--muted);font-family:var(--mono);font-size:11px;margin-top:28px;padding-top:22px;border-top:1px solid var(--line)}.meta-tag{color:#c5f7d3}.abstract{margin:38px 0;padding:26px 30px;border:1px solid rgba(130,240,161,.16);border-radius:22px;background:linear-gradient(180deg,rgba(14,24,22,.84),rgba(10,18,16,.9));box-shadow:var(--shadow);position:relative;overflow:hidden}.abstract::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:linear-gradient(180deg,var(--accent),var(--accent2))}.abstract-label{font-family:var(--mono);font-size:10px;color:#c5f7d3;letter-spacing:.14em;text-transform:uppercase;margin-bottom:12px}.abstract p{font-size:.98rem;color:#bdd0cb;line-height:1.8}.abstract strong{color:var(--accent);font-weight:600}.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:34px 0}.kpi{border:1px solid var(--line);border-radius:18px;padding:22px 18px;background:linear-gradient(180deg,rgba(14,24,22,.86),rgba(10,18,16,.94));box-shadow:0 16px 40px rgba(0,0,0,.18);transition:transform .18s ease,border-color .18s ease}.kpi:hover{border-color:rgba(130,240,161,.26);transform:translateY(-2px)}.kpi-num{font-family:var(--display);font-size:2.15rem;font-weight:700;letter-spacing:-.05em;line-height:1;color:var(--strong);margin-bottom:10px}.kpi-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.07em;line-height:1.55;text-transform:uppercase}article h2{font-family:var(--display);font-weight:650;font-size:clamp(1.72rem,3vw,2.28rem);color:var(--strong);letter-spacing:-.035em;margin:62px 0 16px;line-height:1.13}article h2::before{content:'//';font-family:var(--mono);font-size:.65em;color:var(--accent);margin-right:10px;opacity:.72}article h3{font-family:var(--display);font-weight:600;font-size:1.28rem;color:var(--strong);letter-spacing:-.02em;margin:34px 0 12px}article p{font-size:1.03rem;color:#c3d4d0;margin-bottom:20px;line-height:1.88}blockquote{margin:34px 0;padding:22px 26px;border-left:3px solid var(--accent);background:linear-gradient(90deg,rgba(130,240,161,.10),rgba(130,240,161,.03));border-radius:0 16px 16px 0;font-family:var(--display);font-style:normal;font-size:1.14rem;color:#e2f4ea}.callout{margin:30px 0;padding:20px 24px;border:1px solid rgba(131,188,255,.16);border-radius:18px;background:linear-gradient(180deg,rgba(131,188,255,.08),rgba(131,188,255,.03));font-size:.98rem;color:#bfd3dc}.callout strong{color:var(--accent2)}.callout-warn{border-color:rgba(247,201,115,.20);background:linear-gradient(180deg,rgba(247,201,115,.08),rgba(247,201,115,.02))}.callout-warn strong{color:var(--warn)}ul{padding-left:0;list-style:none}ul li{margin:12px 0;padding-left:22px;position:relative;font-size:1rem;color:#c3d4d0}ul li::before{content:'→';position:absolute;left:0;color:var(--accent);font-family:var(--mono)}code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid rgba(130,240,161,.14);border-radius:8px;padding:2px 7px;font-size:.88em;color:#c5f7d3}.table-wrap{margin:30px 0;overflow-x:auto;border:1px solid var(--line);border-radius:20px;background:linear-gradient(180deg,rgba(14,24,22,.88),rgba(10,18,16,.95));box-shadow:var(--shadow)}table{width:100%;min-width:560px;border-collapse:collapse}th{padding:15px 18px;text-align:left;background:rgba(130,240,161,.06);color:var(--strong);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--line)}td{padding:15px 18px;color:#c3d4d0;font-size:.95rem;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:none}tr:hover td{background:rgba(130,240,161,.025)}.figure{margin:38px 0 42px}.figure-inner{border:1px solid var(--line);border-radius:24px;overflow:hidden;background:rgba(6,12,11,.96);box-shadow:var(--shadow)}.figcap{margin-top:12px;color:var(--muted);font-family:var(--mono);font-size:12px;padding-left:6px}.figcap strong{color:#c5f7d3}.footer-note{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:11px}.essay-copyright{margin-top:16px;color:var(--muted);font-size:.95em}.essay-copyright a{color:inherit;font-weight:600;text-decoration:none}.essay-copyright a:hover{text-decoration:underline}@media(max-width:768px){body{font-size:16px}.kpi-grid{grid-template-columns:1fr 1fr}h1{max-width:none}.hero{padding-top:56px}}@media(max-width:480px){.wrap{width:min(var(--maxw),calc(100vw - 24px))}.kpi-grid{grid-template-columns:1fr}.abstract,.callout,blockquote{padding-left:18px;padding-right:18px}}
+</style>
+</head>
+<body>
+<header class='site-header'><div class='wrap'><div class='nav'><div class='brand'>Manish KL</div><a class='back-link' href='https://manishklach.github.io/writings.html'>← writings</a></div></div></header>
+<div class='wrap'>
+<section class='hero'>
+  <div class='eyebrow'><span class='pulse'></span> TPU Architecture · Memory Systems · Compiler Design</div>
+  <h1>Software-Managed Memory Is the TPU's Real Advantage</h1>
+  <p class='dek'>No hardware caches. No L1/L2. The TPU exposes raw scratchpad SRAM to the XLA compiler — and that changes everything about how the memory system behaves under load.</p>
+  <div class='meta'><span>By Manish KL</span><span class='meta-tag'>April 2026</span><span>~17 min read</span><span>Technical Essay</span></div>
+  <div class='abstract'>
+    <div class='abstract-label'>Abstract</div>
+    <p>The defining architectural difference between TPUs and GPUs is not the systolic array — it is the <strong>memory management model</strong>. GPUs rely on hardware-managed L1/L2 caches: the programmer writes kernels, the hardware decides what gets cached. TPUs eliminate hardware caches entirely, exposing scratchpad SRAM (<code>VMEM</code>, <code>CMEM</code>) that the XLA compiler must explicitly schedule via DMA at compile time. This is closer to embedded-systems programming than GPU programming. When the workload is predictable (dense matrix multiplication, transformer attention), the compiler produces near-optimal memory schedules with deterministic latency and zero cache-miss penalties. When the workload is unpredictable (irregular embeddings, dynamic shapes, sparse access), the compiler cannot schedule what it cannot predict — and Google had to build an entirely separate processor (<strong>SparseCore</strong>) to handle it. This essay examines why software-managed memory is both the TPU's greatest strength and its most constraining abstraction.</p>
+  </div>
+</section>
+
+<div class='kpi-grid'>
+  <div class='kpi'><div class='kpi-num'>0</div><div class='kpi-label'>hardware cache levels on a TPU (no L1/L2)</div></div>
+  <div class='kpi'><div class='kpi-num'>VMEM</div><div class='kpi-label'>per-TensorCore scratchpad SRAM for hot data</div></div>
+  <div class='kpi'><div class='kpi-num'>CMEM</div><div class='kpi-label'>shared on-chip SRAM for cross-core data exchange</div></div>
+  <div class='kpi'><div class='kpi-num'>XLA</div><div class='kpi-label'>compiler responsible for all data placement decisions</div></div>
+</div>
+
+<article>
+
+<h2>Two philosophies of memory management</h2>
+<p>GPU and TPU architects face the same fundamental problem: the gap between compute speed and memory speed. Both need to keep arithmetic units fed with data. But they solve this problem in opposite ways.</p>
+
+<div class='figure'>
+  <div class='figure-inner'>
+    <svg viewBox='0 0 960 380' xmlns='http://www.w3.org/2000/svg'>
+      <rect width='960' height='380' fill='rgba(5,8,16,0.98)'/>
+      <text x='480' y='32' text-anchor='middle' font-family='Syne, sans-serif' font-weight='700' font-size='17' fill='#edf3ff'>GPU vs TPU: Memory Management Philosophy</text>
+
+      <!-- GPU side -->
+      <rect x='30' y='60' width='430' height='290' rx='14' fill='rgba(131,188,255,0.04)' stroke='rgba(131,188,255,0.25)' stroke-width='1.5'/>
+      <text x='245' y='88' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='13' fill='#83bcff' font-weight='600'>GPU: Hardware-Managed</text>
+      <text x='245' y='108' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>programmer writes kernels → hardware decides caching</text>
+
+      <rect x='60' y='125' width='370' height='30' rx='6' fill='rgba(131,188,255,0.08)' stroke='rgba(131,188,255,0.15)'/>
+      <text x='245' y='145' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#83bcff'>Registers (per-thread, fastest)</text>
+      <rect x='60' y='162' width='370' height='30' rx='6' fill='rgba(131,188,255,0.06)' stroke='rgba(131,188,255,0.12)'/>
+      <text x='245' y='182' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#83bcff'>Shared Memory / L1 Cache (per-SM, configurable)</text>
+      <rect x='60' y='199' width='370' height='30' rx='6' fill='rgba(131,188,255,0.05)' stroke='rgba(131,188,255,0.10)'/>
+      <text x='245' y='219' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#83bcff'>L2 Cache (chip-wide, hardware-managed)</text>
+      <rect x='60' y='236' width='370' height='30' rx='6' fill='rgba(131,188,255,0.04)' stroke='rgba(131,188,255,0.08)'/>
+      <text x='245' y='256' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#83bcff'>HBM (main memory)</text>
+
+      <text x='245' y='290' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#83bcff'>✓ flexible, programmer-friendly</text>
+      <text x='245' y='308' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#ff879a'>✗ cache misses, thrashing, non-deterministic</text>
+      <text x='245' y='326' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#607090'>runtime decides data placement</text>
+
+      <!-- TPU side -->
+      <rect x='500' y='60' width='430' height='290' rx='14' fill='rgba(91,232,122,0.04)' stroke='rgba(91,232,122,0.25)' stroke-width='1.5'/>
+      <text x='715' y='88' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='13' fill='#5be87a' font-weight='600'>TPU: Software-Managed</text>
+      <text x='715' y='108' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>XLA compiler schedules DMA → no hardware caches</text>
+
+      <rect x='530' y='125' width='370' height='30' rx='6' fill='rgba(91,232,122,0.08)' stroke='rgba(91,232,122,0.15)'/>
+      <text x='715' y='145' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#5be87a'>VMEM (per-TensorCore scratchpad SRAM)</text>
+      <rect x='530' y='162' width='370' height='30' rx='6' fill='rgba(91,232,122,0.06)' stroke='rgba(91,232,122,0.12)'/>
+      <text x='715' y='182' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#5be87a'>CMEM (shared on-chip SRAM, cross-core)</text>
+      <rect x='530' y='199' width='370' height='30' rx='6' fill='rgba(91,232,122,0.04)' stroke='rgba(91,232,122,0.08)'/>
+      <text x='715' y='219' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#5be87a'>HBM (main memory)</text>
+      <rect x='530' y='236' width='370' height='30' rx='6' fill='rgba(91,232,122,0.03)' stroke='rgba(91,232,122,0.06)'/>
+      <text x='715' y='256' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>no L1, no L2 — compiler manages everything</text>
+
+      <text x='715' y='290' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#5be87a'>✓ deterministic, zero cache misses, efficient</text>
+      <text x='715' y='308' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#ff879a'>✗ compiler must predict all access patterns</text>
+      <text x='715' y='326' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#607090'>compile-time decides data placement</text>
+    </svg>
+  </div>
+  <div class='figcap'><strong>Figure 1.</strong> GPU memory is hardware-managed with multiple cache levels. TPU memory is software-managed with explicit scratchpad SRAM and no hardware caches. The tradeoff: determinism and efficiency vs. flexibility and programmer friendliness.</div>
+</div>
+
+<h2>What VMEM and CMEM actually are</h2>
+<p>On a GPU, "shared memory" is a programmer-visible scratchpad, but L1/L2 caches are hardware-managed and transparent. On a TPU, <em>everything</em> is a scratchpad. There is no transparent cache — every byte's location is determined by the compiler.</p>
+<ul>
+  <li><strong>VMEM (Vector Memory):</strong> A fast SRAM scratchpad local to each TensorCore. It holds the "hot" data that the MXU (systolic array) and vector unit consume. The XLA compiler issues explicit DMA commands to transfer data between HBM and VMEM before each computation begins. If the data isn't in VMEM when the MXU needs it, the systolic array stalls — there is no fallback "cache miss" path.</li>
+  <li><strong>CMEM (Common Memory):</strong> A shared SRAM pool accessible to all TensorCores on the chip. It serves as a producer-consumer buffer: one TensorCore writes partial results to CMEM, and another reads them, without round-tripping through HBM. This eliminates the inter-core communication overhead that GPUs handle via L2 cache or global memory.</li>
+</ul>
+
+<div class='callout'>
+  <strong>The embedded-systems parallel:</strong> TPU memory management is architecturally closer to a DMA-driven DSP or microcontroller (think TI C6000 or ARM Cortex-M with tightly-coupled memory) than to a GPU. The compiler generates a <em>schedule</em> of DMA transfers that runs concurrently with computation — prefetching the next tile into VMEM while the current tile is being processed. This double-buffering pattern is the same technique used in real-time audio processing and radar signal processing.
+</div>
+
+<h2>Why this works beautifully for matrix multiplication</h2>
+<p>Dense matrix multiplication — the operation that dominates transformer training and inference — has perfectly predictable access patterns. The compiler knows, at compile time, exactly which tiles of weight matrices and activation matrices will be needed, in what order, and at what time. This makes it an ideal target for software-managed memory:</p>
+<ul>
+  <li><strong>Tile scheduling:</strong> The compiler partitions the matrix into tiles that fit in VMEM, then generates a DMA schedule that prefetches the next tile while the current one is being multiplied in the MXU. The systolic array never stalls because the next tile is always ready.</li>
+  <li><strong>Zero cache-miss overhead:</strong> There is no cache hierarchy to miss in. Data is either in VMEM (and available at SRAM speed) or in HBM (and will be DMA'd explicitly). The latency is deterministic — there is no variance from cache contention, eviction, or thrashing.</li>
+  <li><strong>No wasted capacity:</strong> Hardware caches inevitably hold stale data (cache lines that were loaded but won't be used again). Software-managed scratchpad eliminates this waste — every byte in VMEM was explicitly placed there because the compiler determined it would be needed.</li>
+</ul>
+
+<h2>Why this breaks for irregular workloads</h2>
+<p>The software-managed model has a critical assumption: <strong>access patterns must be knowable at compile time</strong>. When they are not — when the access pattern depends on runtime data — the compiler cannot generate an optimal DMA schedule. It must fall back to conservative strategies that dramatically reduce efficiency.</p>
+
+<h3>Embedding lookups: the anti-pattern</h3>
+<p>Recommendation models use massive embedding tables — often hundreds of gigabytes — where each training example accesses a sparse, data-dependent subset of the table. The indices are unknown until the input arrives. The compiler cannot prefetch what it cannot predict. On a GPU, the hardware cache absorbs some of this unpredictability — frequently accessed embeddings naturally stay in L2. On a TPU, with no hardware cache, every embedding access is a full-latency HBM read.</p>
+<p>This is exactly why Google built <strong>SparseCore</strong>: a separate tiled dataflow processor with its own scratchpad (spMEM), designed specifically to handle the gather/scatter/reduce operations that the MXU + VMEM path cannot efficiently serve. SparseCore is, architecturally, an admission that software-managed memory has a boundary — and irregular workloads live on the other side of it.</p>
+
+<div class='callout callout-warn'>
+  <strong>SparseCore exists because VMEM doesn't work for everything.</strong> It is a purpose-built workaround for the exact class of memory access patterns that a software-managed scratchpad cannot handle: sparse, data-dependent, runtime-determined indexing. Its existence is the clearest evidence of the software-managed model's limitation.
+</div>
+
+<h2>The compiler is the memory controller</h2>
+<p>On a GPU, the memory controller is a hardware unit that decides, at runtime, which cache line to evict and which to keep. On a TPU, <strong>XLA is the memory controller</strong>. It makes the same decisions — what data to place where, when to prefetch, when to evict — but at compile time, statically, before the program runs.</p>
+<p>This has profound implications for what workloads TPUs can serve efficiently:</p>
+
+<div class='table-wrap'><table>
+<thead><tr><th>Workload Property</th><th>GPU (Hardware Cache)</th><th>TPU (Software Scratchpad)</th></tr></thead>
+<tbody>
+<tr><td>Static, predictable access</td><td>Good — cache learns the pattern</td><td><strong>Excellent</strong> — compiler schedules perfectly</td></tr>
+<tr><td>Dynamic shapes / control flow</td><td>Good — cache adapts at runtime</td><td>Poor — compiler must pad/speculate</td></tr>
+<tr><td>Sparse, data-dependent access</td><td>Moderate — L2 absorbs hot set</td><td><strong>Poor</strong> — requires SparseCore bypass</td></tr>
+<tr><td>Latency determinism</td><td>Low — cache misses cause variance</td><td><strong>High</strong> — no cache misses possible</td></tr>
+<tr><td>Energy efficiency</td><td>Moderate — cache tag checks cost power</td><td><strong>High</strong> — no tag arrays, no coherence</td></tr>
+</tbody>
+</table></div>
+
+<h2>The energy argument</h2>
+<p>Hardware caches are not free. Tag arrays, comparators, eviction logic, and coherence protocols consume silicon area and power. On a modern GPU, the L2 cache alone can consume 5–10% of the chip's power budget. By eliminating hardware caches entirely, the TPU reclaims that power budget for compute and memory bandwidth — a direct efficiency advantage for workloads that don't need the cache's flexibility.</p>
+<p>This is a significant part of Trillium's (v6e) 67% energy-efficiency improvement over v5e. It is not just better transistors — it is a fundamentally leaner memory interface that does not pay the overhead of hardware cache management.</p>
+
+<h2>Where this leads</h2>
+<p>The software-managed memory model is a bet on compiler technology. As XLA improves — better tiling strategies, better prefetch scheduling, better handling of dynamic shapes — the range of workloads that TPUs handle efficiently expands. But the fundamental constraint remains: <strong>the compiler operates on information available at compile time</strong>. Runtime-dependent access patterns will always require either hardware caching (the GPU approach) or purpose-built irregular-access processors (the SparseCore approach).</p>
+<p>The interesting question is not which approach is "better" — it is which approach is better suited to the workloads that matter most. For dense transformer training and inference, the TPU's software-managed model is demonstrably more efficient. For general-purpose ML serving with dynamic batching, variable-length inputs, and diverse model architectures, the GPU's hardware-managed model remains more robust.</p>
+
+<blockquote>GPUs hide the memory system behind hardware caches. TPUs expose it to the compiler. The tradeoff is determinism vs. generality — and it explains more about the TPU's strengths and limitations than any FLOPS number ever will.</blockquote>
+
+<div class='footer-note'>
+  <code>tpu-software-managed-memory-real-advantage.html</code> · April 2026 · <a href='https://manishklach.github.io/writings.html'>← All writings</a>
+</div>
+<div class="essay-copyright">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a>. All rights reserved.</div>
+</article>
+</div>
+</body>
+</html>
