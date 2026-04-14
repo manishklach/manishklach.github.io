@@ -2,88 +2,71 @@
 
 Static GitHub Pages portfolio for [manishklach.github.io](https://manishklach.github.io/).
 
-## Homepage redesign notes
+## Homepage structure
 
-This homepage was refactored to feel more like a flagship technical portfolio than a directory of links.
+The homepage is intentionally short and curated. It keeps only:
 
-### Design decisions
+- hero
+- flagship work
+- selected writing
+- patent record
+- footer
 
-- Reduced the homepage to a smaller set of stronger sections: hero, flagship work, writings, patent record, repositories, technical lens, and contact.
-- Shifted the visual language toward a darker editorial system with tighter spacing, sharper hierarchy, calmer motion, and fewer decorative effects.
-- Made flagship work the center of gravity instead of distributing equal visual weight across too many sections.
-- Treated essays and patents as first-class intellectual assets, not supporting material.
-- Kept the page static and dependency-light: plain HTML, CSS, and JavaScript only.
+## Updating homepage content
 
-### Content architecture
+Homepage content lives in [`script.js`](./script.js) inside `homepageData`.
 
-The page shell lives in [`index.html`](./index.html).
+Update these arrays:
 
-Repeated homepage content is rendered from data objects in [`script.js`](./script.js):
+- `homepageData.work`
+- `homepageData.writing`
+- `homepageData.patentStats`
+- `homepageData.patents`
 
-- `portfolioData.flagship`
-- `portfolioData.writings`
-- `portfolioData.patents.stats`
-- `portfolioData.patents.india`
-- `portfolioData.patents.us`
-- `portfolioData.repositories`
-- `portfolioData.lens`
+### Add or edit flagship work
 
-This keeps the markup smaller and makes future edits less error-prone.
-
-### How to add or update homepage content
-
-#### Add a new flagship project
-
-Edit `portfolioData.flagship` in `script.js` and add an object with:
+Each work item includes:
 
 - `title`
-- `category`
-- `description`
-- `insight`
+- `meta`
+- `text`
+- `detail`
 - `primaryLabel`
 - `primaryHref`
 - `secondaryLabel`
 - `secondaryHref`
 
-#### Add a new featured essay
+### Add or edit writing
 
-Edit `portfolioData.writings` in `script.js` and add:
-
-- `title`
-- `type`
-- `summary`
-- `href`
-
-#### Update patent highlights
-
-Edit `portfolioData.patents` in `script.js`:
-
-- `stats` controls the headline counts
-- `india` controls the India filing sample
-- `us` controls the selected U.S. patent sample
-
-#### Update selected repositories
-
-Edit `portfolioData.repositories` in `script.js` and add:
+Each writing item includes:
 
 - `title`
-- `meta`
-- `summary`
-- `why`
+- `text`
 - `href`
 
-### Styling
+### Add or edit patent highlights
+
+Headline numbers live in `homepageData.patentStats`.
+
+Curated patent entries live in `homepageData.patents` with:
+
+- `id`
+- `title`
+- `href`
+
+## Styling
 
 The visual system is in [`styles.css`](./styles.css).
 
 Key areas:
 
-- root tokens at the top of the file
-- section layout and typography
-- premium card treatments for flagship, essay, repo, and patent items
-- sticky header, mobile nav, and reduced-motion support
+- root tokens at the top
+- hero layout and frame
+- shared card system
+- patent layout
+- sticky header and mobile nav
 
-### Local preview
+## Local preview
 
 Any static file server works. Example:
 
