@@ -189,7 +189,7 @@
       <h2>The 75x Cliff: The Cruel Reality of Bandwidth Scaling</h2>
       <p>Modern AI inference exists in two distinct states: either everything fits perfectly inside High Bandwidth Memory (HBM), or it doesn't. When it doesn't, the consequences are catastrophic for latency.</p>
       
-      <p>Consider an NVIDIA H200. Its internal memory bandwidth is approximately <strong>4.8 Terabytes per second (TB/s)</strong>. But what happens when the 141GB of HBM is full—perhaps consumed by a massive 128k-token KV cache for an agentic workload, or while attempting to offload model weights during batch processing?</p>
+      <p>Consider an NVIDIA H200. Its internal memory bandwidth is approximately <strong>4.8 Terabytes per second (TB/s)</strong>. But what happens when the 141GB of HBM is full? Imagine an enterprise scenario where a swarm of autonomous software agents is attempting to ingest a massive codebase and reason over it. The KV cache (the memory footprint of the conversation history) for a 128k-token context window on a 70B parameter model can easily consume 40GB to 80GB of memory <em>per request</em>. Once you try to handle a batch size of even just a few concurrent long-context requests, the HBM is instantly exhausted.</p>
       
       <p>You spill over the peripheral bus—the Peripheral Component Interconnect Express (PCIe). A modern data center node uses PCIe Gen 5 x16 lanes to connect the host CPU/RAM to the GPU. That connection tops out at <strong>64 Gigabytes per second (GB/s)</strong>.</p>
       
@@ -198,7 +198,8 @@
         <p>4,800 GB/s divided by 64 GB/s is a <strong>75x drop in bandwidth</strong>. It’s the equivalent of driving an F1 car on a closed track, only to be forced to merge onto a one-lane dirt road the moment your gas tank needs a refill.</p>
       </div>
       
-      <p>Software engineers try to hide this with pipeline parallel pre-fetching, double-buffered DMA streams, and complex tensor sharding logic across multiple GPUs. But you cannot cheat physics. If an inference step requires 50GB of weights from the host DDR5 RAM, it will take nearly a full second just to move the data over PCIe. At that point, the thousands of Streaming Multiprocessors on your $30,000 GPU are sitting completely idle, multiplying nothing.</p>
+      <p>Software engineers try to hide this cliff using pipeline parallel pre-fetching, double-buffered DMA streams, and complex tensor sharding logic across multiple GPUs. But you cannot cheat physics. If an inference step requires evicting 50GB of stale KV cache to host DDR5 RAM to make room for new active tokens, it will take nearly a full second just to move the data over PCIe Gen 5. While that data is migrating, the thousands of Streaming Multiprocessors on your $30,000 GPU are completely memory-bound. They sit idle, burning hundreds of watts holding their state, multiplying nothing.</p>
+      <p>This is the fundamental reason why "infinite context window" models are a systems problem, not just an algorithmic one. A 1-million token context window is mathematically useless if evaluating every new token forces an 8-second PCIe data swap.</p>
     </section>
 
     <section>
@@ -207,26 +208,30 @@
       <p>But the PCIe specification is running headfirst into the physical limits of copper trace lengths and SerDes (Serializer/Deserializer) power constraints.</p>
 
       <h3>The Physics of Trace Length</h3>
-      <p>As transmission frequencies double, the distance electrical signals can travel reliably over standard FR4 motherboard PCBs shrinks exponentially. At PCIe Gen 3, a signal could comfortably travel ~20 inches across a motherboard. At PCIe Gen 5, that halved. At PCIe Gen 6, without ultra-low-loss materials and retimers (expensive signal amplifiers that add latency and consume power), driving a signal from a CPU socket to a heavy GPU cluster board is a signal-integrity nightmare.</p>
+      <p>As transmission frequencies double, the distance electrical signals can travel reliably over standard FR4 motherboard PCBs shrinks exponentially. At PCIe Gen 3, a signal could comfortably travel ~20 inches across a motherboard. At PCIe Gen 5, that halved to roughly 10 inches. At Gen 6 and Gen 7, driving a signal from a CPU socket directly to a heavy GPU cluster board is a signal-integrity nightmare. It requires ultra-low-loss dielectric materials and expensive "retimers" (signal amplifiers). These retimers sit in the middle of the bus to catch degraded signals, clean them up, and re-transmit them. Unfortunately, every retimer adds crucial nanoseconds of latency and significant power draw.</p>
 
-      <h3>The Protocol Latency Penalty</h3>
-      <p>Worn out signal paths aren't the only problem. The PCIe protocol itself was fundamentally designed for <em>I/O devices</em> (like network cards and storage drives)—not for granular, nanosecond-sensitive memory cache lines.</p>
-      <p>When a GPU requests data over PCIe, the transaction suffers bloated overhead headers, CPU-mediated interrupts, and complex DMA bounce buffer management in the OS kernel. Even if PCIe Gen 6 doubles the absolute throughput, the <strong>latency</strong> floor of the transaction stack remains stubbornly high. You can make the water pipe wider, but if the water has to pass through five different toll booths, the delay is identical.</p>
+      <h3>The TLP Overhead and Protocol Latency Penalty</h3>
+      <p>Worn out signal paths aren't the only problem. The PCIe protocol itself was fundamentally designed for <em>I/O devices</em> like network cards, RAID controllers, and NVMe drives—not for granular, nanosecond-sensitive memory cache lines.</p>
+      <p>PCIe relies on Transaction Layer Packets (TLPs). Every time a GPU wants to read a mere 64 bytes of memory, that request is wrapped in a massive TLP header containing routing IDs, traffic class flags, and cyclic redundancy checks (CRCs). This introduces immense protocol bloat. Furthermore, when the host CPU is involved, it must field hardware interrupts, map Translation Lookaside Buffer (TLB) addresses, and orchestrate complex DMA bounce-buffer transfers inside the OS kernel. Even if PCIe Gen 6 doubles the absolute throughput, the <strong>latency</strong> floor of the TLP transaction stack remains stubbornly high. You can make the water pipe wider, but if the water must pass through five different protocol toll booths, the delay remains identical.</p>
 
-      <p>NVIDIA bypassed this problem entirely within the server pod by building <strong>NVLink</strong>—a proprietary, coherent, ultra-fast interconnect that allows GPUs to talk directly to each other's memory banks at 900 GB/s. But NVLink is a walled garden. It connects GPUs to GPUs, or GPUs to proprietary Grace CPUs. It does not solve the mass ecosystem problem of standardized memory capacity pooling at the rack level.</p>
+      <p>NVIDIA bypassed this problem entirely within the server pod by building <strong>NVLink</strong>—a proprietary, coherent, ultra-fast interconnect that strips away the PCIe TLP bloat. NVLink allows GPUs to talk directly to each other's memory banks at 900 GB/s. But NVLink is a walled garden. It connects GPUs to GPUs, or GPUs to proprietary Grace CPUs. It solves the interconnect problem <em>within</em> the node, but it does not solve the mass ecosystem problem of standardized, disaggregated memory capacity pooling at the data-center rack level.</p>
     </section>
 
-    <section>
-      <h2>The Motherboard is Dead. Enter CXL 3.0.</h2>
-      <p>If the PCIe bus restricts scaling, and proprietary interconnects wall off the ecosystem, how do we solve the massive memory demands of scale-out AI?</p>
+        <h2>The Motherboard is Dead. Enter CXL 3.0.</h2>
+      <p>If the PCIe bus restricts scaling due to latency overheads, and proprietary interconnects wall off the broader ecosystem, how do we solve the massive and unpredictable memory demands of scale-out AI?</p>
       <p>We stop treating the server motherboard as the boundary. We turn the entire rack into the server. This is the promise of <strong>CXL (Compute Express Link)</strong>, specifically the CXL 3.0 specification.</p>
 
-      <p>CXL runs over the physical pins of PCIe, but it speaks a completely different language. Instead of clumsy I/O block transfers, CXL introduces three new protocols, the most critical being <strong>CXL.mem</strong>.</p>
+      <p>CXL runs over the exact same physical pins and electrical traces as PCIe, but it dynamically negotiates to speak a completely different, highly optimized language. Instead of clumsy I/O block transfers, CXL introduces three new interconnect protocols:</p>
       <ul class="clean">
-        <li><strong>Flit-based Efficiency:</strong> CXL packs data into optimized "flits" (flow control units) designed explicitly for caching and memory transactions, slashing the protocol overhead plaguing standard PCIe.</li>
-        <li><strong>Byte Addressability:</strong> A GPU can natively load a 64-byte cache line directly from a CXL-attached DDR5 memory module located across the room, with latency near that of a local NUMA hop (under 250ns).</li>
-        <li><strong>Fabric Switching:</strong> With CXL 3.0, we break the tree-topology of PCIe. CXL introduces peer-to-peer fabric switching. A memory appliance is no longer owned by a single host CPU.</li>
+        <li><strong>CXL.io:</strong> Used for discovery, configuration, and legacy interrupts (essentially just PCIe).</li>
+        <li><strong>CXL.cache:</strong> Allows accelerators (like GPUs) to cache host memory locally, ensuring cache coherency across devices.</li>
+        <li><strong>CXL.mem:</strong> The true game-changer. It allows the GPU or CPU to access an external memory pool using simple byte-level load/store commands just like it does with local RAM.</li>
       </ul>
+
+      <h3>Flits vs TLPs and Multi-Logical Devices</h3>
+      <p>Under the hood, CXL.mem replaces bulky PCIe TLPs with optimized <strong>"flits"</strong> (flow control units). These flits are packed incredibly tightly, stripping away the routing overhead. Because of this, a GPU can natively load a 64-byte cache line directly from a CXL-attached DDR5 memory module located across the room, with latency near that of a local NUMA hop (under 250ns). It feels like local memory to the GPU architecture.</p>
+      
+      <p>Furthermore, CXL 2.0 and 3.0 heavily lean into <strong>Multi-Logical Devices (MLDs)</strong> and <strong>Fabric Switching</strong>. Moving past the strict tree-topology of PCIe (where devices are slaves to a single master CPU Root Complex), CXL switches allow true peer-to-peer memory fabrics.</p>
 
       <div class="diagram">
         <svg viewBox="0 0 900 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Traditional PCIe hierarchy vs CXL Fabric">
@@ -281,27 +286,28 @@
         </svg>
       </div>
       
-      <p>Under CXL 3.0, a rack can contain a chassis composed entirely of SSDs and DDR5 slots. Multiple separate servers (with CPUs and GPUs) map to this central memory pool dynamically. If an AI inference node suddenly needs 500GB of extra space to hold an expanding KV Cache for a multi-hour agent reasoning process, the CXL switch provisions that memory capacity instantly. The GPU accesses it directly via `CXL.mem` semantics, entirely bypassing the CPU's memory controllers and DMA bounce buffers.</p>
+      <p>Under CXL 3.0, a datacenter rack can contain a "Memory Appliance"—a 2U chassis comprised entirely of low-power controllers and rows of unpopulated DDR5 slots. Multiple separate compute servers map to this central memory pool dynamically. If an AI inference node suddenly needs 500GB of extra space to hold an expanding Agent KV Cache, the CXL switch provisions a logical chunk of that memory on the fly. The GPU accesses it directly via `CXL.mem` load/store instructions, entirely bypassing the local host CPU's memory controllers, translation tables, and OS kernel overhead.</p>buffers.</p>
     </section>
 
     <section>
       <h2>Why Scale-Up AI Requires Memory Orchestration</h2>
-      <p>The implications of breaking the motherboard boundary are profound for inference architectures. Currently, frameworks like <code>vLLM</code> aggressively engineer PagedAttention and CPU offload to combat KV cache fragmentation. But when a request spills to CPU RAM, the scheduler has to pause execution and orchestrate a heavy, CPU-bound PCIe copy back into HBM to resume decoding.</p>
+      <p>The implications of breaking the motherboard boundary are profound for inference architectures. Currently, frameworks like <code>vLLM</code> aggressively engineer mechanisms like <strong>PagedAttention</strong> to combat KV cache memory fragmentation. PagedAttention divides the KV cache into fixed-size blocks (pages), allowing non-contiguous storage of attention vectors. However, when a massive request overflows the GPU's HBM, vLLM has to pause the decoder timeline, swap pages out over PCIe to the CPU's DDR RAM, and swap them back in later when needed.</p>
       
-      <p>With CXL-attached tiering, the memory paradigm shifts from <em>Explicit Swapping</em> to <em>Tiered Residency</em>:</p>
+      <p>This explicit paging is disastrous for response latency (Time to First Token and inter-token latency). With CXL-attached memory pooling, the memory orchestrator paradigm shifts from <em>Explicit Swapping</em> over I/O to native hardware <em>Tiered Residency</em>:</p>
       
       <table>
         <thead>
           <tr><th>Storage Tier</th><th>Bandwidth</th><th>Latency</th><th>AI Purpose</th></tr>
         </thead>
         <tbody>
-          <tr><td><strong>HBM3e (Local)</strong></td><td>4,800 GB/s</td><td>~100ns</td><td>Hot tokens, active decode KV cache, high-utility weights</td></tr>
-          <tr><td><strong>CXL.mem DDR5</strong></td><td>~64-128 GB/s</td><td>~250ns</td><td>Warm tokens, massive agent prompts, predictive draft context</td></tr>
-          <tr><td><strong>NVMe NAND</strong></td><td>~14 GB/s</td><td>~15µs+</td><td>Cold checkpointing, background weight staging</td></tr>
+          <tr><td><strong>HBM3e (Local)</strong></td><td>4,800 GB/s</td><td>~100ns</td><td>Hot tokens, active decode KV cache, high-utility base model weights</td></tr>
+          <tr><td><strong>CXL.mem DDR5</strong></td><td>~64-128 GB/s</td><td>~250ns</td><td>Warm tokens, massive static agent prompts, LoRA weights, predictive draft context</td></tr>
+          <tr><td><strong>NVMe NAND (via CXL)</strong></td><td>~14 GB/s</td><td>~15µs+</td><td>Cold checkpointing, inactive tenant states, background weight staging</td></tr>
         </tbody>
       </table>
 
-      <p>As AI agents adopt speculative decoding loops (drafting multiple tokens at once using a smaller model before verifying via the large model), the KV cache size explodes geometrically. A local GPU will never possess enough HBM to hold the complete context tree of a swarm of autonomous agents. The system <em>must</em> rely on high-capacity memory pools. CXL allows the GPU to stream draft cache lines directly from a 2TB rack-scale memory appliance without ever waking up the host CPU software stack.</p>
+      <p>Consider the future of inference: <strong>Speculative Decoding swarms</strong>. In these workloads, a small "draft" model generates dozens of guess-tokens simultaneously, while a large "target" model verifies them. The KV cache size explodes geometrically because you are branching multiple possible futures. A single local GPU cluster will never possess enough contiguous HBM to hold the complete probability context tree of an autonomous agent swarm running for days.</p>
+      <p>The system <em>must</em> rely on high-capacity memory pools. CXL allows the GPU's memory management unit (MMU) to simply treat the rack's memory appliance as an extended address range. It streams draft cache lines natively from a 2TB pool located physically in another chassis, executing hardware-level memory loads without ever waking up the host CPU software stack or relying on an OS paged interrupt.</p>
     </section>
 
     <section>
