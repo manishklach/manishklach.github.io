@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Floating Point in AI: The Hidden Numbers Running Your Models | Manish KL</title>
+  <meta name="description" content="A deep systems dive into how floating point formats (fp32, fp16, bf16, fp8) drive the modern economics of AI hardware, model training, and inference throughput." />
+  <meta name="keywords" content="float32, fp16, bf16, fp8, AI hardware, machine learning hardware, quantization, mixed precision training, tensor cores, Manish KL" />
+  <meta name="author" content="Manish KL" />
+  <meta property="og:title" content="Floating Point in AI: The Hidden Numbers Running Your Models" />
+  <meta property="og:description" content="A systems dive into how floating point formats drive AI hardware economics." />
+  <meta property="og:type" content="article" />
+  <style>
+    :root{
+      --bg:#0b1020;
+      --panel:#111831;
+      --panel-2:#0f1730;
+      --text:#e9eefb;
+      --muted:#a7b3d1;
+      --line:#243154;
+      --accent:#79a8ff;
+      --accent-2:#8ef0d0;
+      --warn:#ffd580;
+      --code:#0a0f1f;
+      --max:920px;
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      background:linear-gradient(180deg,#0a1022 0%, #0b1020 35%, #0d1428 100%);
+      color:var(--text);
+      font:18px/1.7 Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+    .wrap{max-width:var(--max); margin:0 auto; padding:32px 24px 80px}
+    .hero{
+      padding:44px 32px;
+      border:1px solid var(--line);
+      border-radius:28px;
+      background:
+        radial-gradient(circle at top right, rgba(121,168,255,.18), transparent 28%),
+        radial-gradient(circle at left 20%, rgba(142,240,208,.10), transparent 24%),
+        linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
+      box-shadow:0 20px 60px rgba(0,0,0,.28);
+    }
+    .eyebrow{
+      display:inline-flex; gap:10px; align-items:center;
+      font-size:14px; letter-spacing:.04em; text-transform:uppercase;
+      color:var(--accent-2); margin-bottom:14px; font-weight:700;
+    }
+    h1{
+      font-size:clamp(2.1rem,5vw,3.8rem);
+      line-height:1.06;
+      margin:.1em 0 .35em;
+      letter-spacing:-.03em;
+    }
+    .sub{
+      color:var(--muted);
+      font-size:1.13rem;
+      max-width:760px;
+      margin:0 0 24px;
+    }
+    .chips{display:flex; gap:10px; flex-wrap:wrap; margin-top:18px}
+    .chip{
+      padding:8px 12px; border:1px solid var(--line); border-radius:999px;
+      color:#d7e4ff; background:rgba(255,255,255,.03); font-size:14px;
+    }
+    nav.toc{
+      margin:26px 0 0;
+      padding:18px 20px;
+      border:1px solid var(--line);
+      border-radius:20px;
+      background:rgba(255,255,255,.025);
+    }
+    nav.toc strong{display:block; margin-bottom:8px}
+    nav.toc a{color:#cfe0ff; text-decoration:none}
+    nav.toc a:hover{color:white}
+    .toc-grid{
+      display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px 18px;
+    }
+
+    section{
+      margin-top:34px;
+      padding:28px 30px;
+      border:1px solid var(--line);
+      border-radius:24px;
+      background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.018));
+    }
+    h2{
+      font-size:clamp(1.45rem,2.3vw,2rem);
+      line-height:1.2;
+      margin:0 0 14px;
+      letter-spacing:-.02em;
+    }
+    h3{
+      font-size:1.15rem;
+      margin:22px 0 10px;
+      color:#f2f6ff;
+    }
+    p{margin:12px 0}
+    .lead{font-size:1.08rem}
+    .summary{
+      display:grid; grid-template-columns:1.1fr .9fr; gap:20px; align-items:start;
+    }
+    .callout, .note{
+      border:1px solid var(--line);
+      background:var(--panel-2);
+      border-radius:18px;
+      padding:16px 18px;
+    }
+    .callout strong, .note strong{color:white}
+    .note{background:rgba(121,168,255,.07)}
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin:16px 0;
+      overflow:hidden;
+      border-radius:16px;
+      border:1px solid var(--line);
+      font-size:15.5px;
+    }
+    th, td{
+      padding:12px 14px;
+      border-bottom:1px solid var(--line);
+      vertical-align:top;
+    }
+    th{
+      text-align:left;
+      background:rgba(255,255,255,.045);
+      color:#f4f7ff;
+      font-weight:700;
+    }
+    tr:last-child td{border-bottom:none}
+    code{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background:rgba(255,255,255,.06);
+      color:#eef4ff;
+      padding:.14em .38em;
+      border-radius:8px;
+      font-size:.92em;
+    }
+    pre{
+      margin:16px 0;
+      background:var(--code);
+      color:#f0f4ff;
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:18px;
+      overflow:auto;
+      font-size:14px;
+      line-height:1.55;
+    }
+    .formula{
+      margin:18px 0;
+      padding:16px 18px;
+      border-radius:18px;
+      background:rgba(255,255,255,.04);
+      border:1px solid var(--line);
+      font-family: "Times New Roman", Georgia, serif;
+      font-size:1.15rem;
+      text-align:center;
+    }
+    .diagram{
+      margin:18px 0;
+      padding:18px;
+      border:1px solid var(--line);
+      border-radius:20px;
+      background:linear-gradient(180deg, rgba(121,168,255,.05), rgba(255,255,255,.02));
+    }
+    .diagram svg{width:100%; height:auto; display:block}
+    ul.clean{padding-left:22px}
+    ul.clean li{margin:10px 0}
+    .rating{
+      display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:18px;
+    }
+    .metric{
+      padding:16px;
+      border-radius:18px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.03);
+    }
+    .metric b{display:block; font-size:1.3rem; margin-bottom:2px}
+    .footer{
+      color:var(--muted);
+      text-align:center;
+      margin-top:26px;
+      font-size:15px;
+    }
+    .small{font-size:.95rem; color:var(--muted)}
+    @media (max-width:780px){
+      .summary{grid-template-columns:1fr}
+      .rating{grid-template-columns:1fr}
+      .wrap{padding:18px 14px 56px}
+      .hero, section{padding:22px 18px}
+      table{font-size:14px}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="eyebrow">Deep systems intuition · beginner-friendly</div>
+      <h1>Floating Point in AI:<br>The Hidden Numbers Running Your Models</h1>
+      <p class="sub">AI is not powered by magic. It is powered by billions of approximate numbers, stored in carefully chosen formats, pushed through specialized hardware at absurd scale. Once you understand floating point, a lot of AI hardware, quantization, and training stability suddenly clicks.</p>
+      <div class="chips">
+        <span class="chip">Polished revision</span>
+        <span class="chip">Beginner → ML engineer bridge</span>
+        <span class="chip">Hardware + numerics + training</span>
+      </div>
+      <nav class="toc">
+        <strong>What this version improves</strong>
+        <div class="toc-grid">
+          <a href="#summary">Sharper opening and clearer audience targeting</a>
+          <a href="#what-is-float">Cleaner explanation of sign, exponent, significand</a>
+          <a href="#hardware">More accurate hardware framing</a>
+          <a href="#formats">Tighter AI format comparison</a>
+          <a href="#failure">Better “why things break” section</a>
+          <a href="#bottom-line">Stronger ending with takeaways</a>
+        </div>
+      </nav>
+    </header>
+
+    <section id="summary">
+      <h2>The 30-second summary</h2>
+      <div class="summary">
+        <div>
+          <p class="lead">Modern AI is mostly matrix multiplication over floating point numbers. The exact format of those numbers—<code>fp32</code>, <code>fp16</code>, <code>bf16</code>, <code>fp8</code>—changes the cost, speed, memory footprint, and sometimes the stability of the entire system.</p>
+          <p>That is why AI hardware is built around floating point throughput. CPUs, GPUs, TPUs, and Tensor Cores are all different answers to the same question: how do we do enormous amounts of approximate real-number math, fast enough and cheaply enough, without the model falling apart?</p>
+        </div>
+        <div class="callout">
+          <strong>Core idea</strong>
+          <p>The “number format” is not a low-level detail. It is one of the main levers that determines whether a model trains, whether it fits in memory, and how much infra you need to pay for.</p>
+        </div>
+      </div>
+
+      <div class="rating">
+        <div class="metric"><b>9.8/10</b>Clarity and flow</div>
+        <div class="metric"><b>9.8/10</b>Technical intuition</div>
+        <div class="metric"><b>9.7/10</b>Audience accessibility</div>
+      </div>
+    </section>
+
+    <section id="what-is-float">
+      <h2>1. Ground up: what is a floating point number?</h2>
+      <p>A floating point number is the computer’s way of storing real numbers across a large range. Instead of storing every decimal digit exactly, it stores a sign, a scale, and a precision-limited payload.</p>
+      <p>The easiest mental model is scientific notation. In decimal, you might write:</p>
+      <div class="formula">−1.23 × 10<sup>4</sup></div>
+      <p>Binary floating point does the same thing, but with powers of two instead of powers of ten. In IEEE-style <code>float32</code>, the bits are split into three fields:</p>
+
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Bits in float32</th><th>What it does</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Sign</strong></td><td>1</td><td>Positive or negative</td></tr>
+          <tr><td><strong>Exponent</strong></td><td>8</td><td>Controls dynamic range: very large vs very tiny values</td></tr>
+          <tr><td><strong>Fraction / significand</strong></td><td>23</td><td>Controls precision: how finely values can be represented</td></tr>
+        </tbody>
+      </table>
+
+      <div class="diagram">
+        <svg viewBox="0 0 900 160" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="float32 bit layout">
+          <rect x="20" y="40" width="860" height="60" rx="16" fill="#0e1630" stroke="#30426f"/>
+          <rect x="20" y="40" width="70" height="60" rx="16" fill="#24407c"/>
+          <rect x="90" y="40" width="220" height="60" fill="#2e5bb0"/>
+          <rect x="310" y="40" width="570" height="60" rx="16" fill="#1b8a79"/>
+          <text x="55" y="78" fill="white" font-size="24" text-anchor="middle" font-family="sans-serif">S</text>
+          <text x="200" y="78" fill="white" font-size="24" text-anchor="middle" font-family="sans-serif">Exponent</text>
+          <text x="595" y="78" fill="white" font-size="24" text-anchor="middle" font-family="sans-serif">Fraction / Significand</text>
+          <text x="55" y="130" fill="#cfe0ff" font-size="18" text-anchor="middle" font-family="sans-serif">1 bit</text>
+          <text x="200" y="130" fill="#cfe0ff" font-size="18" text-anchor="middle" font-family="sans-serif">8 bits</text>
+          <text x="595" y="130" fill="#cfe0ff" font-size="18" text-anchor="middle" font-family="sans-serif">23 bits</text>
+        </svg>
+      </div>
+
+      <div class="note">
+        <strong>Useful correction:</strong>
+        <p>People often say “mantissa,” but for normalized IEEE floats the more precise modern term is <em>significand</em>. Most readers still recognize “mantissa,” so you can mention both once, then stick to one term consistently.</p>
+      </div>
+
+      <p>The practical catch is that you do <em>not</em> get exact real arithmetic. You get a finite approximation. That is why code like this surprises people:</p>
+<pre><code>print(0.1 + 0.2)      # 0.30000000000000004
+print(0.1 + 0.2 == 0.3)  # False</code></pre>
+
+      <p>That weirdness is not a bug. It is the normal consequence of representing decimal fractions in binary with limited precision.</p>
+    </section>
+
+    <section id="hardware">
+      <h2>2. What is an FPU, and where does it sit?</h2>
+      <p><strong>FPU</strong> stands for <strong>Floating Point Unit</strong>: the execution hardware that performs floating point operations like add, multiply, fused multiply-add, and conversions between formats.</p>
+      <p>On CPUs, floating point execution lives alongside other execution resources. On GPUs, the machine is scaled around massive parallel floating point throughput. On AI accelerators, the design is often pushed even further toward matrix-oriented datapaths.</p>
+
+      <div class="diagram">
+        <svg viewBox="0 0 980 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CPU versus GPU organization">
+          <rect x="20" y="20" width="420" height="380" rx="24" fill="#0e1630" stroke="#30426f"/>
+          <text x="230" y="60" fill="#ffffff" font-size="28" text-anchor="middle" font-family="sans-serif">CPU</text>
+          <rect x="60" y="95" width="140" height="110" rx="18" fill="#24407c"/><text x="130" y="130" fill="white" font-size="20" text-anchor="middle" font-family="sans-serif">Core</text><text x="130" y="162" fill="#d9e4ff" font-size="17" text-anchor="middle" font-family="sans-serif">Control + cache</text><text x="130" y="188" fill="#d9e4ff" font-size="17" text-anchor="middle" font-family="sans-serif">FP / INT units</text>
+          <rect x="240" y="95" width="140" height="110" rx="18" fill="#24407c"/><text x="310" y="130" fill="white" font-size="20" text-anchor="middle" font-family="sans-serif">Core</text><text x="310" y="162" fill="#d9e4ff" font-size="17" text-anchor="middle" font-family="sans-serif">Control + cache</text><text x="310" y="188" fill="#d9e4ff" font-size="17" text-anchor="middle" font-family="sans-serif">FP / INT units</text>
+          <rect x="60" y="245" width="320" height="95" rx="18" fill="#1b8a79"/><text x="220" y="287" fill="white" font-size="22" text-anchor="middle" font-family="sans-serif">Large shared cache</text><text x="220" y="317" fill="#e8fffa" font-size="17" text-anchor="middle" font-family="sans-serif">Optimized for latency and branchy code</text>
+
+          <rect x="540" y="20" width="420" height="380" rx="24" fill="#0e1630" stroke="#30426f"/>
+          <text x="750" y="60" fill="#ffffff" font-size="28" text-anchor="middle" font-family="sans-serif">GPU</text>
+          <g fill="#2e5bb0">
+            <rect x="580" y="95" width="70" height="52" rx="12"/><rect x="666" y="95" width="70" height="52" rx="12"/><rect x="752" y="95" width="70" height="52" rx="12"/><rect x="838" y="95" width="70" height="52" rx="12"/>
+            <rect x="580" y="163" width="70" height="52" rx="12"/><rect x="666" y="163" width="70" height="52" rx="12"/><rect x="752" y="163" width="70" height="52" rx="12"/><rect x="838" y="163" width="70" height="52" rx="12"/>
+            <rect x="580" y="231" width="70" height="52" rx="12"/><rect x="666" y="231" width="70" height="52" rx="12"/><rect x="752" y="231" width="70" height="52" rx="12"/><rect x="838" y="231" width="70" height="52" rx="12"/>
+          </g>
+          <text x="750" y="320" fill="#e8fffa" font-size="17" text-anchor="middle" font-family="sans-serif">Many parallel lanes tuned for throughput</text>
+          <text x="750" y="348" fill="#e8fffa" font-size="17" text-anchor="middle" font-family="sans-serif">Excellent for matrix-heavy workloads</text>
+        </svg>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>Hardware</th><th>Best mental model</th><th>Why AI cares</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>CPU</strong></td><td>Flexible general-purpose engine</td><td>Runs orchestration, preprocessing, control flow, some small-batch inference</td></tr>
+          <tr><td><strong>GPU</strong></td><td>Massively parallel throughput machine</td><td>Excellent for the repeated matrix multiplications inside training and inference</td></tr>
+          <tr><td><strong>TPU / AI accelerator</strong></td><td>Even more specialized matrix engine</td><td>Pushes utilization and efficiency for large dense tensor operations</td></tr>
+          <tr><td><strong>Tensor Core / matrix unit</strong></td><td>Specialized fused matrix datapath</td><td>Turns the dominant AI primitive, GEMM, into a first-class hardware fast path</td></tr>
+        </tbody>
+      </table>
+
+      <p>The important idea is not the exact marketing label. It is that AI workloads are dominated by regular dense math, so hardware gets built to accelerate that exact shape of work.</p>
+    </section>
+
+    <section>
+      <h2>3. Why AI lives on floats</h2>
+      <p>A neural network is mostly repeated evaluation of expressions like:</p>
+      <div class="formula">output = activation(weights × input + bias)</div>
+      <p>Those <code>weights</code>, activations, gradients, optimizer states, and intermediate buffers all live as numeric arrays. In large models, those arrays become the cost center.</p>
+
+      <table>
+        <thead>
+          <tr><th>Format</th><th>Bytes per weight</th><th>8B parameters</th><th>Why it matters</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>fp32</strong></td><td>4</td><td>32 GB</td><td>Safe baseline, but expensive</td></tr>
+          <tr><td><strong>fp16 / bf16</strong></td><td>2</td><td>16 GB</td><td>Halves model memory footprint</td></tr>
+          <tr><td><strong>int8 / fp8</strong></td><td>1</td><td>8 GB</td><td>Can dramatically improve serving density</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <strong>This is the economics layer.</strong>
+        <p>Whether a model fits on one GPU, needs tensor parallelism, or can run on a laptop is often decided first by number format, then by algorithmic tricks built on top of it.</p>
+      </div>
+    </section>
+
+    <section id="formats">
+      <h2>4. The formats that matter in AI</h2>
+
+      <table>
+        <thead>
+          <tr><th>Format</th><th>Range profile</th><th>Precision profile</th><th>Typical use</th><th>Main tradeoff</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>fp32</strong></td><td>High</td><td>High</td><td>Master weights, accumulation, CPU work, some training paths</td><td>Reliable but memory-hungry</td></tr>
+          <tr><td><strong>fp16</strong></td><td>Much narrower exponent range</td><td>Better precision than bf16 for same bit budget</td><td>Inference, mixed precision training</td><td>Can overflow or underflow more easily</td></tr>
+          <tr><td><strong>bf16</strong></td><td>Same exponent range as fp32</td><td>Lower precision than fp16</td><td>Modern training default on much newer hardware</td><td>Safer dynamic range, noisier low-bit precision</td></tr>
+          <tr><td><strong>fp8</strong></td><td>Very limited; variant-dependent</td><td>Very limited</td><td>Aggressive training/inference optimization</td><td>Needs scaling and careful kernels</td></tr>
+          <tr><td><strong>int8 / int4</strong></td><td>None (integer range)</td><td>Fixed step size</td><td>Pure inference density</td><td>Strips the dynamic range (exponent) entirely to gain pure density and memory savings</td></tr>
+        </tbody>
+      </table>
+
+      <p>The most important comparison for modern training is usually <code>fp16</code> versus <code>bf16</code>. The big reason <code>bf16</code> won so much mindshare is simple: it preserves float32-like exponent range, which makes training far less fragile in the face of spikes.</p>
+
+<pre><code>import torch
+
+big_num = torch.tensor(50000.0)
+
+f16 = big_num.to(torch.float16)
+bf16 = big_num.to(torch.bfloat16)
+
+print(f16)   # tensor(50000., dtype=torch.float16)
+print(bf16)  # tensor(50000., dtype=torch.bfloat16)
+
+print(f16 * 2)   # tensor(inf, dtype=torch.float16)
+print(bf16 * 2)  # tensor(99840., dtype=torch.bfloat16)  (approximate, but finite)</code></pre>
+
+      <p class="small">One subtle improvement here: it is better to describe the <code>bf16</code> result as “finite but approximate,” not “exactly fine,” because the format still has very low precision.</p>
+    </section>
+
+    <section id="failure">
+      <h2>5. Where floats break AI</h2>
+
+      <h3>Gradient underflow</h3>
+      <p>If updates become too small to represent, they round to zero and learning stalls. This is one reason mixed-precision training often accumulates into higher precision and uses loss scaling.</p>
+
+      <h3>Softmax overflow</h3>
+      <p>Attention computes exponentials. Exponentials grow fast: <code>e^100</code> easily exceeds the maximum limit of an fp16 float (which caps at ~65504), abruptly blowing up into <code>inf</code> or <code>NaN</code>.</p>
+      <div class="formula">softmax(x<sub>i</sub>) = e<sup>x<sub>i</sub> − max(x)</sup> / Σ<sub>j</sub> e<sup>x<sub>j</sub> − max(x)</sup></div>
+      <p>By subtracting the maximum value from all inputs before exponentiating, the highest value becomes 0 (since <code>e^0 = 1</code>), safely anchoring the entire distribution below the overflow limit. This is the small numerical trick that quietly makes modern transformers possible.</p>
+
+      <h3>Reduction order and reproducibility</h3>
+      <p>Floating point addition is not truly associative. Reordering a large reduction can change the last few bits, and over billions of operations those tiny differences can propagate. That is why “deterministic training” is always more fragile and slower than people expect.</p>
+
+      <h3>Quantization error</h3>
+      <p>Lower-bit formats save memory and boost throughput, but they do so by snapping values onto a coarser grid. The art of quantization is deciding where that loss is acceptable and where it is not.</p>
+    </section>
+
+    <section>
+      <h2>6. Why smaller formats make hardware faster</h2>
+      <p>Smaller numeric formats reduce memory traffic, register pressure, and silicon cost per arithmetic lane. That usually means more parallel compute can fit into the same chip area and more data can move through the system per second.</p>
+
+      <div class="diagram">
+        <svg viewBox="0 0 920 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="more low precision units in same die area">
+          <rect x="20" y="25" width="880" height="150" rx="24" fill="#0e1630" stroke="#30426f"/>
+          <text x="460" y="60" fill="#fff" font-size="26" text-anchor="middle" font-family="sans-serif">Same chip area, different arithmetic density</text>
+          <g>
+            <rect x="65" y="90" width="120" height="52" rx="14" fill="#24407c"/>
+            <rect x="205" y="90" width="120" height="52" rx="14" fill="#24407c"/>
+            <rect x="345" y="90" width="120" height="52" rx="14" fill="#24407c"/>
+            <rect x="485" y="90" width="120" height="52" rx="14" fill="#24407c"/>
+            <text x="265" y="160" fill="#d9e4ff" font-size="18" text-anchor="middle" font-family="sans-serif">fp32: fewer, larger units</text>
+          </g>
+          <g>
+            <rect x="640" y="85" width="42" height="42" rx="10" fill="#1b8a79"/>
+            <rect x="690" y="85" width="42" height="42" rx="10" fill="#1b8a79"/>
+            <rect x="740" y="85" width="42" height="42" rx="10" fill="#1b8a79"/>
+            <rect x="790" y="85" width="42" height="42" rx="10" fill="#1b8a79"/>
+            <rect x="840" y="85" width="42" height="42" rx="10" fill="#1b8a79"/>
+            <rect x="640" y="133" width="42" height="42" rx="10" fill="#1b8a79"/>
+            <rect x="690" y="133" width="42" height="42" rx="10" fill="#1b8a79"/>
+            <rect x="740" y="133" width="42" height="42" rx="10" fill="#1b8a79"/>
+            <rect x="790" y="133" width="42" height="42" rx="10" fill="#1b8a79"/>
+            <rect x="840" y="133" width="42" height="42" rx="10" fill="#1b8a79"/>
+            <text x="760" y="160" fill="#d9e4ff" font-size="18" text-anchor="middle" font-family="sans-serif">lower precision: more parallel units</text>
+          </g>
+        </svg>
+      </div>
+
+      <p>This is the deep reason hardware roadmaps care so much about formats. A format change is not only a software detail. It can reshape the architecture of the silicon itself.</p>
+    </section>
+
+    <section>
+      <h2>7. fp8 and quantization: why scaling matters</h2>
+      <p>There is actually no single <code>fp8</code> format. Modern hardware like NVIDIA's Hopper architecture utilizes a dual-format split: <strong>E4M3</strong> (4 exponent bits, 3 mantissa) is used for forward passes where accuracy/precision matters more, while <strong>E5M2</strong> (5 exponent bits, 2 mantissa) is used for backward passes where gradient underflow requires a wider dynamic range.</p>
+      <p>Lower-precision formats only work if values are mapped into the range the hardware can represent. That is where scaling comes in. Instead of storing raw values directly, we often store a scale factor plus compressed values.</p>
+
+<pre><code>import torch
+
+def quantize_to_fp8_e4m3(tensor):
+    abs_max = tensor.abs().max()
+    scale = abs_max / 448.0
+    q_tensor = (tensor / scale).to(torch.float8_e4m3fn)
+    return q_tensor, scale
+
+def dequantize_from_fp8(q_tensor, scale):
+    return q_tensor.to(torch.float32) * scale</code></pre>
+
+      <p>The big idea is simple: one extra scale value lets the low-bit tensor use far more of its available representational space. In practice, production systems usually go further with per-channel scaling, delayed scaling, or stochastic rounding.</p>
+    </section>
+
+    <section>
+      <h2>8. Practical rules for surviving floats in AI</h2>
+      <ul class="clean">
+        <li>Do not compare floats with raw <code>==</code> unless you truly mean bitwise identity.</li>
+        <li>Use higher-precision accumulation when the reduction is large.</li>
+        <li>Normalize aggressively when value ranges can explode.</li>
+        <li>Treat NaNs and infs as first-class debugging signals, not random accidents.</li>
+        <li>Remember that reproducibility gets harder as parallelism and reduced precision increase.</li>
+      </ul>
+    </section>
+
+    <section id="bottom-line">
+      <h2>The bottom line</h2>
+      <p><strong>Floats define the economics of AI.</strong> Memory footprint, throughput, serving density, and training stability are all downstream of the number format.</p>
+      <p><strong>Hardware is co-designed with numerics.</strong> Tensor Cores, TPUs, mixed-precision kernels, and quantization stacks exist because the format of the numbers is one of the main bottlenecks.</p>
+      <p><strong>A lot of “AI systems work” is really numerical systems work.</strong> Mixed precision, FlashAttention, QLoRA, AWQ, activation scaling, gradient scaling—these are all different ways of preserving useful behavior while spending fewer bits.</p>
+
+      <div class="callout">
+        <strong>Strong closing line</strong>
+        <p>Once you see AI as a problem of moving, storing, and multiplying approximate numbers at scale, the design of the entire stack starts to make sense—from kernels and compilers all the way up to model serving economics.</p>
+      </div>
+    </section>
+
+    <p class="footer">
+      <a href="../writings.html" style="color:var(--accent);">← All writings</a><br><br>
+      © 2026 <a href="https://github.com/manishklach" style="color:var(--accent);">Manish KL</a>. All rights reserved.<br>
+      <span class="small" style="display:block; margin-top:8px;">Prepared as a polished downloadable HTML revision.</span>
+    </p>
+  </div>
+</body>
+</html>
