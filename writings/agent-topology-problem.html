@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Agent Topology Problem: Inference Scheduling Across Model Boundaries | Manish KL</title>
+
+<meta name="description" content="Agentic AI workloads are not well-served by inference infrastructure designed for isolated single-model requests. This essay argues that agent pipelines constitute a new topology problem." />
+<meta name="keywords" content="Agent Systems, Inference Architecture, Multi-Model Scheduling, Manish KL" />
+<meta name="author" content="Manish KL" />
+
+<style>
+  :root {
+    --font-main: 'Georgia', serif;
+    --font-mono: 'Courier New', monospace;
+    --font-sans: system-ui, -apple-system, sans-serif;
+    --text: #1a1a1a;
+    --text-secondary: #4a4a4a;
+    --text-muted: #6b6b6b;
+    --bg: #fafaf8;
+    --bg-card: #ffffff;
+    --bg-code: #f4f4f0;
+    --border: #e2e2da;
+    --accent: #1a3a5c;
+    --accent-light: #e8eef4;
+    --highlight: #b35a00;
+    --table-head: #f0ede6;
+    --callout-bg: #faf6ee;
+    --callout-border: #c8a96e;
+    --diagram-bg: #f7f7f3;
+    --green: #1a5c3a;
+    --green-light: #e8f4ec;
+    --purple: #4a1a7c;
+    --purple-light: #f0e8f8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-main);
+    font-size: 18px;
+    line-height: 1.75;
+    color: var(--text);
+    background: var(--bg);
+    padding: 0 1rem;
+  }
+
+  .wrapper {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 3rem 0 6rem;
+  }
+
+  .nav {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 2.5rem;
+  }
+  .nav a { color: var(--accent); text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+
+  .tags {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 1.2rem;
+  }
+  .tags span { margin-right: 1rem; }
+
+  h1 {
+    font-family: var(--font-main);
+    font-size: 2.4rem;
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--text);
+    margin-bottom: 1.2rem;
+    letter-spacing: -0.01em;
+  }
+
+  .subtitle {
+    font-size: 1.15rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 1.5rem;
+    font-style: italic;
+  }
+
+  .byline {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 3rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .byline a { color: var(--accent); text-decoration: none; }
+
+  .abstract {
+    background: var(--accent-light);
+    border-left: 3px solid var(--accent);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 2.5rem;
+    font-size: 0.95rem;
+    font-family: var(--font-sans);
+    line-height: 1.65;
+    color: var(--text-secondary);
+  }
+  .abstract strong { color: var(--accent); }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    margin-bottom: 3rem;
+    border: 1px solid var(--border);
+  }
+  .stat-cell {
+    background: var(--bg-card);
+    padding: 1rem 1.2rem;
+    text-align: center;
+  }
+  .stat-num {
+    display: block;
+    font-family: var(--font-sans);
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1.2;
+    margin-bottom: 0.25rem;
+  }
+  .stat-label {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.3;
+  }
+
+  .toc {
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 3rem;
+    font-family: var(--font-sans);
+    font-size: 14px;
+  }
+  .toc-title {
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.75rem;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .toc ol { padding-left: 1.25rem; }
+  .toc li { margin-bottom: 0.3rem; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  h2 {
+    font-family: var(--font-main);
+    font-size: 1.55rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-top: 3.5rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  h3 {
+    font-family: var(--font-sans);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-top: 2rem;
+    margin-bottom: 0.6rem;
+  }
+
+  h4 {
+    font-family: var(--font-sans);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  p { margin-bottom: 1.2rem; }
+  strong { color: var(--text); }
+  em { color: var(--text-secondary); }
+
+  blockquote {
+    background: var(--callout-bg);
+    border-left: 3px solid var(--callout-border);
+    padding: 1rem 1.5rem;
+    margin: 2rem 0;
+    font-style: italic;
+    color: var(--text-secondary);
+    font-size: 1.05rem;
+  }
+  blockquote strong { font-style: normal; color: var(--highlight); }
+
+  pre {
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    padding: 1.2rem 1.4rem;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-x: auto;
+    margin: 1.5rem 0;
+    color: var(--text);
+  }
+  code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--bg-code);
+    padding: 0.1em 0.35em;
+    border-radius: 2px;
+    color: var(--highlight);
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+
+  .table-wrap { overflow-x: auto; margin: 1.75rem 0; }
+  table { width: 100%; border-collapse: collapse; font-family: var(--font-sans); font-size: 13.5px; line-height: 1.5; }
+  thead th { background: var(--table-head); text-align: left; padding: 0.6rem 0.9rem; font-weight: 600; color: var(--text); border: 1px solid var(--border); white-space: nowrap; }
+  tbody td { padding: 0.55rem 0.9rem; border: 1px solid var(--border); color: var(--text-secondary); vertical-align: top; }
+  tbody tr:nth-child(even) td { background: var(--bg-code); }
+  tbody td strong { color: var(--text); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .svg-wrap { margin: 2rem 0; border: 1px solid var(--border); background: var(--diagram-bg); padding: 1rem; }
+  .svg-wrap svg { display: block; width: 100%; height: auto; }
+  .fig-caption { font-family: var(--font-sans); font-size: 12px; color: var(--text-muted); margin-top: 0.5rem; font-style: italic; text-align: center; }
+
+  .callout { background: var(--callout-bg); border: 1px solid var(--callout-border); padding: 1.2rem 1.5rem; margin: 2rem 0; font-family: var(--font-sans); font-size: 14px; line-height: 1.6; }
+  .callout-label { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--highlight); margin-bottom: 0.5rem; }
+
+  .eq { background: var(--bg-code); border: 1px solid var(--border); padding: 1rem 1.5rem; margin: 1.5rem 0; font-family: var(--font-mono); font-size: 13px; line-height: 1.8; color: var(--text); }
+  .eq-label { font-family: var(--font-sans); font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+
+  .def-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); margin: 1.5rem 0; border: 1px solid var(--border); }
+  .def-cell { background: var(--bg-card); padding: 0.9rem 1rem; }
+  .def-label { font-family: var(--font-sans); font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 0.3rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .def-body { font-family: var(--font-sans); font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+
+  .annotation-row { display: flex; gap: 1rem; margin: 0.75rem 0; align-items: flex-start; }
+  .ann-num { flex-shrink: 0; width: 22px; height: 22px; background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-sans); font-size: 11px; font-weight: 700; margin-top: 2px; }
+  .ann-text { font-family: var(--font-sans); font-size: 13.5px; color: var(--text-secondary); line-height: 1.55; }
+  .ann-text strong { color: var(--text); }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 3rem 0; }
+
+  .footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--border); font-family: var(--font-sans); font-size: 13px; color: var(--text-muted); }
+  .footer a { color: var(--accent); text-decoration: none; }
+
+  /* Comparison callout with two columns */
+  .compare-two {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin: 1.5rem 0;
+  }
+  .compare-cell {
+    background: var(--bg-card);
+    padding: 1rem 1.2rem;
+  }
+  .compare-head {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.6rem;
+  }
+  .compare-cell ul {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: var(--text-secondary);
+    padding-left: 1.1rem;
+    line-height: 1.6;
+  }
+  .compare-cell ul li { margin-bottom: 0.3rem; }
+
+  @media (max-width: 640px) {
+    h1 { font-size: 1.7rem; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    .def-grid { grid-template-columns: 1fr; }
+    .compare-two { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <div class="nav">
+    <a href="https://manishklach.github.io/index.html">Home</a> ·
+    <a href="https://manishklach.github.io/writings.html">← Back to writings</a>
+  </div>
+
+  <div class="tags">
+    <span>Agent Systems</span>
+    <span>Inference Architecture</span>
+    <span>Memory Policy</span>
+    <span>Multi-Model Scheduling</span>
+  </div>
+
+  <h1>The Agent Topology Problem: Inference Scheduling Across Model Boundaries</h1>
+
+  <p class="subtitle">
+    Every essay in this corpus has treated inference as one model, one request. 
+    The real 2026 workload is a directed graph of model calls. When the unit of 
+    scheduling shifts from a request to a pipeline, everything we know about KV 
+    locality, memory residency, and latency SLOs must be rebuilt from scratch.
+  </p>
+
+  <div class="byline">
+    By <a href="https://manishklach.github.io/index.html">Manish KL</a> · April 2026 · ~20 min read · Systems Essay
+  </div>
+
+  <div class="abstract">
+    <strong>Abstract.</strong> Agentic AI workloads — orchestrators calling planners calling 
+    retrievers calling verifiers — are not well-served by inference infrastructure designed 
+    for isolated single-model requests. This essay argues that agent pipelines constitute a 
+    new topology problem: the memory, latency, and scheduling machinery of modern serving 
+    must be extended across model call boundaries. We define the agent call graph formally, 
+    characterise its resource profile, identify three structural problems it creates 
+    (KV locality loss, cross-hop latency compounding, and memory fragmentation under 
+    speculation), and propose a scheduling abstraction — the Agent Memory Fabric (AMF) — 
+    that treats the entire pipeline as a single scheduling domain. The goal is not a 
+    research proposal. It is a systems argument for why the next generation of inference 
+    infrastructure must become topology-aware.
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-cell">
+      <span class="stat-num">3–12×</span>
+      <span class="stat-label">latency compounding from naive sequential model chaining vs. topology-aware scheduling</span>
+    </div>
+    <div class="stat-cell">
+      <span class="stat-num">40–60%</span>
+      <span class="stat-label">KV reuse opportunity lost when model-call boundaries reset the cache</span>
+    </div>
+    <div class="stat-cell">
+      <span class="stat-num">~7</span>
+      <span class="stat-label">average model hops in a production coding agent pipeline (2026)</span>
+    </div>
+    <div class="stat-cell">
+      <span class="stat-num">2–5×</span>
+      <span class="stat-label">HBM memory fragmentation increase under speculative multi-path agent execution</span>
+    </div>
+  </div>
+
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#preface">The serving assumption that is now wrong</a></li>
+      <li><a href="#topology">What an agent call graph actually looks like</a></li>
+      <li><a href="#problem1">Problem 1: KV locality does not cross model boundaries</a></li>
+      <li><a href="#problem2">Problem 2: Latency compounds multiplicatively</a></li>
+      <li><a href="#problem3">Problem 3: Speculative branching fragments memory</a></li>
+      <li><a href="#anatomy">The anatomy of agent memory movement</a></li>
+      <li><a href="#amf">The Agent Memory Fabric: a scheduling abstraction for pipelines</a></li>
+      <li><a href="#cross-model-kv">Cross-model KV reuse: when it is possible and when it is not</a></li>
+      <li><a href="#routing">Topology-aware routing: placing model calls near their memory</a></li>
+      <li><a href="#slo">SLO composition across a pipeline</a></li>
+      <li><a href="#mcos">How MCOS extends to agent scope</a></li>
+      <li><a href="#close">The infrastructure debt of the agent era</a></li>
+    </ol>
+  </div>
+
+  <!-- Section 1 -->
+  <h2 id="preface">1. The serving assumption that is now wrong</h2>
+
+  <p>
+    Every piece of inference infrastructure built over the last three years — vLLM, TGI, TensorRT-LLM, 
+    SGLang, the prefill/decode disaggregation proposals, the KV cache eviction policies, the MCOS 
+    framework — was designed with the same implicit assumption: <strong>a request is a conversation 
+    with a single model</strong>. A user sends a prompt. A model responds. The serving system 
+    manages one KV cache, one GPU pool, one latency SLO.
+  </p>
+
+  <p>
+    That assumption is now wrong for a large and growing fraction of production AI workload.
+  </p>
+
+  <p>
+    In 2026, the typical interaction with a frontier AI system is not a single model call. It is 
+    a directed graph of model calls: an orchestrator that decomposes tasks, a planner that 
+    sequences steps, a retrieval system that finds context, a reasoning model that evaluates 
+    options, a code executor that validates outputs, and a verifier that checks the result. 
+    These are not the same model. They are often different models, different sizes, different 
+    precisions, running on different hardware pools, with different latency profiles.
+  </p>
+
+  <p>
+    The serving infrastructure has not caught up. Each model call is still scheduled independently. 
+    Each KV cache is still scoped to one request on one model. Each latency SLO is still 
+    measured per model hop rather than end-to-end. The consequence is that agent pipelines are 
+    being served by infrastructure that is individually optimised and globally naive — and the 
+    global naivety is often the dominant cost.
+  </p>
+
+  <blockquote>
+    <strong>The core argument:</strong> agent pipelines are not a composition of single-model 
+    serving problems. They are a new topology with new resource pathologies that cannot be 
+    solved by optimising individual hops in isolation.
+  </blockquote>
+
+  <!-- Section 2 -->
+  <h2 id="topology">2. What an agent call graph actually looks like</h2>
+
+  <p>
+    Before we can reason about the infrastructure, we need a precise characterisation of the 
+    workload. An agent call graph is a directed acyclic graph (DAG) <em>G = (V, E)</em> where:
+  </p>
+
+  <ul style="padding-left: 1.5rem; margin-bottom: 1.2rem; font-family: var(--font-sans); font-size: 14px; line-height: 1.7; color: var(--text-secondary);">
+    <li>Each vertex <em>v ∈ V</em> is a model call: a (model, prompt, parameters) tuple</li>
+    <li>Each edge <em>e ∈ E</em> is a data dependency: the output of one call becomes (part of) the input to another</li>
+    <li>The graph may include parallel branches (fan-out), joins (fan-in), conditional branches (speculation), and feedback loops (iteration)</li>
+  </ul>
+
+  <p>
+    In practice, production agent graphs have the following structural characteristics:
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Structural Property</th>
+          <th>Typical range (2026)</th>
+          <th>Infrastructure implication</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Depth (sequential hops)</strong></td>
+          <td>4–15 hops</td>
+          <td>Latency multiplies; end-to-end SLO requires per-hop budgeting</td>
+        </tr>
+        <tr>
+          <td><strong>Width (parallel branches)</strong></td>
+          <td>2–8 concurrent calls</td>
+          <td>Memory pressure multiplies; batch contamination across branches</td>
+        </tr>
+        <tr>
+          <td><strong>Model diversity</strong></td>
+          <td>2–5 distinct models</td>
+          <td>KV caches are disjoint; no direct reuse across model boundaries</td>
+        </tr>
+        <tr>
+          <td><strong>Context growth rate</strong></td>
+          <td>5–50× from root to leaf</td>
+          <td>KV size at leaf nodes is much larger than at root; HBM pressure peaks late</td>
+        </tr>
+        <tr>
+          <td><strong>Speculation (branching)</strong></td>
+          <td>1.5–3× the committed token count</td>
+          <td>Memory must be allocated for paths that may be discarded</td>
+        </tr>
+        <tr>
+          <td><strong>Retrieval injection size</strong></td>
+          <td>4K–256K tokens per RAG hop</td>
+          <td>Each retrieval hop is a large-context prefill; prefill cost dominates agent cost</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 720 380" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <text x="360" y="20" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a5c" letter-spacing="0.5">Agent call graph — production coding agent (7 model hops)</text>
+
+      <!-- Node dimensions: width=130, height=44, rx=8 -->
+      <!-- Layout: y layers at 60, 140, 220, 300 -->
+
+      <!-- Root: Orchestrator -->
+      <rect x="295" y="32" width="130" height="44" rx="8" fill="#e8eef4" stroke="#1a3a5c" stroke-width="1.5"/>
+      <text x="360" y="50" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a5c">Orchestrator</text>
+      <text x="360" y="64" text-anchor="middle" font-size="10" fill="#4a6a8a">70B, 2K ctx → plan</text>
+
+      <!-- Second level: Task planner + Retriever (parallel) -->
+      <rect x="100" y="115" width="130" height="44" rx="8" fill="#faf6ee" stroke="#c8a96e" stroke-width="1"/>
+      <text x="165" y="133" text-anchor="middle" font-size="12" font-weight="600" fill="#8a5a00">Task planner</text>
+      <text x="165" y="147" text-anchor="middle" font-size="10" fill="#a07030">32B, 4K ctx → steps</text>
+
+      <rect x="490" y="115" width="130" height="44" rx="8" fill="#f0e8f8" stroke="#8844aa" stroke-width="1"/>
+      <text x="555" y="133" text-anchor="middle" font-size="12" font-weight="600" fill="#6622aa">RAG retriever</text>
+      <text x="555" y="147" text-anchor="middle" font-size="10" fill="#8844bb">embed+rerank, 256K ctx</text>
+
+      <!-- Third level: Reasoning model + Code gen (parallel fan-in from both) -->
+      <rect x="180" y="198" width="145" height="44" rx="8" fill="#eaf4ec" stroke="#1a5c3a" stroke-width="1"/>
+      <text x="252" y="216" text-anchor="middle" font-size="12" font-weight="600" fill="#1a5c3a">Reasoning model</text>
+      <text x="252" y="230" text-anchor="middle" font-size="10" fill="#2a7a4a">70B, 32K ctx → eval</text>
+
+      <rect x="395" y="198" width="130" height="44" rx="8" fill="#eaf4ec" stroke="#1a5c3a" stroke-width="1"/>
+      <text x="460" y="216" text-anchor="middle" font-size="12" font-weight="600" fill="#1a5c3a">Code generator</text>
+      <text x="460" y="230" text-anchor="middle" font-size="10" fill="#2a7a4a">34B, 16K ctx → code</text>
+
+      <!-- Fourth level: Verifier + Executor (parallel) -->
+      <rect x="180" y="280" width="130" height="44" rx="8" fill="#f4f0e8" stroke="#6a4a1a" stroke-width="1"/>
+      <text x="245" y="298" text-anchor="middle" font-size="12" font-weight="600" fill="#6a4a1a">Verifier</text>
+      <text x="245" y="312" text-anchor="middle" font-size="10" fill="#8a6a2a">13B, 8K ctx → pass/fail</text>
+
+      <rect x="395" y="280" width="130" height="44" rx="8" fill="#f4f0e8" stroke="#6a4a1a" stroke-width="1"/>
+      <text x="460" y="298" text-anchor="middle" font-size="12" font-weight="600" fill="#6a4a1a">Executor</text>
+      <text x="460" y="312" text-anchor="middle" font-size="10" fill="#8a6a2a">sandbox + output</text>
+
+      <!-- Edges -->
+      <!-- Orchestrator → Task planner -->
+      <path d="M330 76 L200 115" fill="none" stroke="#1a3a5c" stroke-width="1.2" marker-end="url(#arr)"/>
+      <!-- Orchestrator → RAG retriever -->
+      <path d="M390 76 L520 115" fill="none" stroke="#1a3a5c" stroke-width="1.2" marker-end="url(#arr)"/>
+
+      <!-- Task planner → Reasoning -->
+      <path d="M195 159 L230 198" fill="none" stroke="#c8a96e" stroke-width="1.2" marker-end="url(#arr)"/>
+      <!-- RAG retriever → Reasoning -->
+      <path d="M525 159 L285 198" fill="none" stroke="#8844aa" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+      <!-- RAG retriever → Code gen -->
+      <path d="M555 159 L480 198" fill="none" stroke="#8844aa" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+
+      <!-- Reasoning → Verifier -->
+      <path d="M252 242 L245 280" fill="none" stroke="#1a5c3a" stroke-width="1.2" marker-end="url(#arr)"/>
+      <!-- Code gen → Executor -->
+      <path d="M460 242 L460 280" fill="none" stroke="#1a5c3a" stroke-width="1.2" marker-end="url(#arr)"/>
+      <!-- Code gen → Verifier -->
+      <path d="M420 242 L290 280" fill="none" stroke="#1a5c3a" stroke-width="0.8" stroke-dasharray="3,3" marker-end="url(#arr)"/>
+
+      <!-- Context growth annotation (right margin) -->
+      <text x="668" y="55"  text-anchor="end" font-size="10" fill="#888">ctx: 2K</text>
+      <text x="668" y="138" text-anchor="end" font-size="10" fill="#888">ctx: 4K–256K</text>
+      <text x="668" y="222" text-anchor="end" font-size="10" fill="#888">ctx: 32K</text>
+      <text x="668" y="305" text-anchor="end" font-size="10" fill="#888">ctx: 8K–16K</text>
+      <line x1="673" y1="40" x2="673" y2="330" stroke="#ddd" stroke-width="0.5" stroke-dasharray="2,3"/>
+      <text x="690" y="185" text-anchor="middle" font-size="10" fill="#aaa" transform="rotate(90,690,185)">context size</text>
+
+      <!-- Model diversity legend -->
+      <rect x="35" y="338" width="10" height="10" rx="2" fill="#e8eef4" stroke="#1a3a5c"/>
+      <text x="50" y="348" font-size="10" fill="#555">orchestrator/planner (70B)</text>
+      <rect x="180" y="338" width="10" height="10" rx="2" fill="#f0e8f8" stroke="#8844aa"/>
+      <text x="195" y="348" font-size="10" fill="#555">retrieval model</text>
+      <rect x="300" y="338" width="10" height="10" rx="2" fill="#eaf4ec" stroke="#1a5c3a"/>
+      <text x="315" y="348" font-size="10" fill="#555">reasoning/code (34–70B)</text>
+      <rect x="460" y="338" width="10" height="10" rx="2" fill="#f4f0e8" stroke="#6a4a1a"/>
+      <text x="475" y="348" font-size="10" fill="#555">verifier/executor (13B)</text>
+
+      <text x="360" y="370" text-anchor="middle" font-size="10" fill="#aaa" font-style="italic">
+        Dashed edges = context injection from RAG. KV caches do not persist across node boundaries.
+      </text>
+    </svg>
+    <div class="fig-caption">
+      Fig 1. A production coding agent pipeline represented as a directed call graph. 
+      Seven model hops across four model families. Context size grows from 2K at the orchestrator 
+      to 256K at the RAG retrieval node. KV caches are scoped to individual nodes — 
+      no locality is preserved across edges. Each edge is a serialisation point.
+    </div>
+  </div>
+
+  <!-- Section 3 -->
+  <h2 id="problem1">3. Problem 1: KV locality does not cross model boundaries</h2>
+
+  <p>
+    In a single-model serving system, KV caching across requests is the primary throughput 
+    lever. When two requests share a common prefix — a system prompt, a document, a code context — 
+    the KV cache for that prefix can be shared, avoiding a redundant prefill. This is the 
+    foundation of prefix caching in vLLM, SGLang's RadixAttention, and every modern KV 
+    sharing scheme.
+  </p>
+
+  <p>
+    In an agent pipeline, this locality property breaks at every edge in the call graph. When 
+    the task planner sends its output to the reasoning model, the reasoning model starts a 
+    new KV cache from scratch. The KV state of the task planner is not transferable — it is 
+    computed by a different model with a different weight matrix, a different attention head 
+    structure, and potentially a different vocabulary. KV vectors are model-specific. They 
+    cannot be reused across model boundaries.
+  </p>
+
+  <p>
+    This means that every edge in the agent call graph is a <strong>KV locality reset</strong>. 
+    The context that took many tokens and many prefill cycles to encode in the upstream model 
+    must be re-encoded from text (or token IDs) in the downstream model. The bytes are moved 
+    out of the upstream model's KV cache, serialised as tokens, transmitted across the pipeline, 
+    and re-prefilled into the downstream model.
+  </p>
+
+  <div class="eq">
+    <div class="eq-label">Prefill cost at each agent hop</div>
+    prefill_FLOPs(hop_i) = 2 × L × d² × context_tokens(hop_i)<br>
+    <br>
+    For a 7-hop pipeline, context growing 2× per hop from 2K:<br>
+    hop 1 (orchestrator): 2K  tokens → ~71B  FLOPs<br>
+    hop 2 (planner):      4K  tokens → ~142B FLOPs<br>
+    hop 3 (retriever):    256K tokens → ~9.1T FLOPs  ← dominates<br>
+    hop 4 (reasoning):    32K tokens  → ~1.1T FLOPs<br>
+    hop 5 (code gen):     16K tokens  → ~571B FLOPs<br>
+    hop 6 (verifier):     8K  tokens  → ~285B FLOPs<br>
+    hop 7 (executor):     overhead<br>
+    <br>
+    Total pipeline prefill: ~11.2T FLOPs<br>
+    vs. single 2K-context request prefill: ~71B FLOPs<br>
+    <strong>Agent pipeline prefill is ~158× the cost of the root request.</strong>
+  </div>
+
+  <p>
+    The implications are significant. In a single-model serving system, prefill is a 
+    small fraction of total cost (decode dominates for long outputs). In an agent pipeline, 
+    prefill is re-run at every hop, and the context at each hop includes the accumulated 
+    output of all prior hops plus any retrieved content. By the time the pipeline reaches 
+    the reasoning model, the prefill cost alone can dwarf the decode cost of the entire 
+    original request.
+  </p>
+
+  <div class="callout">
+    <div class="callout-label">The reuse opportunity that is being wasted</div>
+    If two agent pipelines share a common sub-graph — the same orchestrator prompt, the same 
+    retrieved documents, the same code context — there is, in principle, enormous KV reuse 
+    opportunity across those pipelines even though individual model boundaries prevent cross-model 
+    reuse. A topology-aware scheduler could identify this shared sub-graph, cache the text 
+    serialisation of each hop's output, and serve subsequent pipelines by prefix-caching the 
+    shared portions within each model's own KV cache. Current systems do not do this because 
+    they do not model the pipeline — only individual requests.
+  </div>
+
+  <!-- Section 4 -->
+  <h2 id="problem2">4. Problem 2: Latency compounds multiplicatively</h2>
+
+  <p>
+    A serving system optimised for TTFT (time-to-first-token) and TBT (time-between-tokens) 
+    at the individual request level has a simple latency model. In an agent pipeline, these 
+    per-hop latencies compound.
+  </p>
+
+  <div class="eq">
+    <div class="eq-label">End-to-end latency of a sequential agent pipeline</div>
+    E2E_latency = Σᵢ [prefill_latency(i) + decode_latency(i) + serialisation(i) + network(i)]<br>
+    <br>
+    Where:<br>
+    prefill_latency(i)    = context_tokens(i) / prefill_throughput(i)<br>
+    decode_latency(i)     = output_tokens(i) × decode_time_per_token(i)<br>
+    serialisation(i)      = output marshalling, tokenisation of upstream output<br>
+    network(i)            = inter-service hop, typically 0.5–5 ms per hop<br>
+    <br>
+    For our 7-hop pipeline (optimistic estimates):<br>
+    hop 1:  TTFT 12ms   + decode  40ms  = 52ms<br>
+    hop 2:  TTFT 22ms   + decode  80ms  = 102ms<br>
+    hop 3:  TTFT 1,800ms + decode 200ms = 2,000ms  ← RAG prefill at 256K ctx<br>
+    hop 4:  TTFT 220ms  + decode 400ms  = 620ms<br>
+    hop 5:  TTFT 110ms  + decode 800ms  = 910ms<br>
+    hop 6:  TTFT 55ms   + decode 120ms  = 175ms<br>
+    hop 7:  execution overhead          = 300ms<br>
+    <br>
+    Total E2E: ~4,159ms — nearly 4.2 seconds<br>
+    A single equivalent 2K request: ~52ms
+  </div>
+
+  <p>
+    The 4.2-second figure assumes zero queuing delay at each model and no contention for GPU 
+    capacity. In a production cluster serving hundreds of concurrent agent pipelines, each hop 
+    waits in a queue. The queuing latency at each hop is independent of the queuing latency at 
+    the prior hop — which means tail latency for the full pipeline is the sum of per-hop 
+    tail latencies, not the maximum. This is a much worse distribution than single-model serving.
+  </p>
+
+  <p>
+    A p99 TTFT of 300ms at each hop produces a p99 end-to-end latency of approximately 
+    2.1 seconds (7 × 300ms) even if every hop individually meets its SLO. The pipeline 
+    SLO is a different, harder problem than the per-hop SLO.
+  </p>
+
+  <!-- Section 5 -->
+  <h2 id="problem3">5. Problem 3: Speculative branching fragments memory</h2>
+
+  <p>
+    Many agent architectures include speculative execution: launching multiple branches in 
+    parallel and committing to the one that returns the best result. This is correct 
+    algorithmically — it reduces end-to-end latency by parallelising uncertainty. But it 
+    creates a severe memory management problem.
+  </p>
+
+  <p>
+    When a scheduler launches N branches speculatively, it must allocate KV cache space for 
+    all N branches simultaneously. If only one branch commits, the KV pages allocated for 
+    the N-1 discarded branches must be freed. In a system using PagedAttention or a similar 
+    block-allocated KV management scheme, these freed pages become fragmented — they are 
+    scattered throughout the HBM in non-contiguous blocks that may not be immediately 
+    re-usable for the next incoming request.
+  </p>
+
+  <div class="eq">
+    <div class="eq-label">HBM fragmentation under speculative branching</div>
+    For branching factor N=3, context C=16K tokens per branch, 70B FP8:<br>
+    KV per branch = 16,384 × 1.25 MB = 20 GB per branch<br>
+    Total speculative KV allocated = 3 × 20 GB = 60 GB<br>
+    KV committed after branch resolution = 1 × 20 GB<br>
+    KV freed (fragmented) = 2 × 20 GB = 40 GB<br>
+    <br>
+    H200 HBM = 141 GB<br>
+    Useful HBM available for other requests after speculation = 141 - 60 = 81 GB<br>
+    After commit + deallocation: 141 - 20 = 121 GB (but 40 GB in scattered free blocks)<br>
+    <strong>Effective contiguous usable HBM ≈ 60–80 GB — nearly halved</strong>
+  </div>
+
+  <p>
+    This fragmentation is not hypothetical. It is the same class of problem that motivated 
+    PagedAttention in the first place — but agent pipelines make it significantly worse because 
+    the branching and commitment patterns are irregular and hard to predict ahead of time.
+  </p>
+
+  <!-- Section 6 -->
+  <h2 id="anatomy">6. The anatomy of agent memory movement</h2>
+
+  <p>
+    If we apply the byte-movement accounting from the previous essay ("The True Cost of a Token") 
+    to an agent pipeline, the picture changes materially. In single-model serving, the dominant 
+    movement is weights (read once per decode step, amortised over batch) and KV cache (read 
+    once per decode step per request). In an agent pipeline, two new movement costs appear:
+  </p>
+
+  <div class="annotation-row">
+    <div class="ann-num">1</div>
+    <div class="ann-text">
+      <strong>Cross-hop serialisation movement.</strong> The output of each model hop must be 
+      serialised (token IDs or text bytes), transmitted, and deserialised before the next hop 
+      can begin its prefill. For a 4,096-token output at 2 bytes/token (int16 token IDs), this 
+      is 8 KB — trivially small. But for a RAG retriever returning 64K tokens of retrieved context, 
+      this is 128 KB, plus any structured metadata. At scale (hundreds of concurrent pipelines), 
+      cross-hop traffic through the serving fabric becomes measurable.
+    </div>
+  </div>
+  <div class="annotation-row">
+    <div class="ann-num">2</div>
+    <div class="ann-text">
+      <strong>Re-prefill cost.</strong> Every agent hop that receives context from upstream 
+      must run a full prefill of that context in the downstream model. This is not a KV read — 
+      it is a full forward pass through all layers for all context tokens. For a 256K-context 
+      RAG hop, this re-prefill costs approximately 9.1T FLOPs, ~40× the cost of serving the 
+      original 2K user request. This is compute and memory movement that would be avoided if 
+      the KV state could be preserved across model boundaries — which it cannot.
+    </div>
+  </div>
+  <div class="annotation-row">
+    <div class="ann-num">3</div>
+    <div class="ann-text">
+      <strong>Speculative KV allocation and deallocation churn.</strong> The HBM fragmentation 
+      problem described in Section 5 is also a movement problem: when speculative branches are 
+      discarded, the compaction operations required to consolidate free HBM space involve 
+      KV page moves — bytes that are moved inside HBM with no benefit to the workload. 
+      This is the agent equivalent of GC pause: invisible to the application, expensive to the 
+      memory system.
+    </div>
+  </div>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif">
+      <defs>
+        <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <text x="360" y="20" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a5c" letter-spacing="0.5">Agent memory movement — three new byte-movement costs</text>
+
+      <!-- Single model box (top) -->
+      <rect x="270" y="34" width="180" height="44" rx="8" fill="#e8eef4" stroke="#1a3a5c" stroke-width="1.5"/>
+      <text x="360" y="52" text-anchor="middle" font-size="11" font-weight="600" fill="#1a3a5c">Single model request</text>
+      <text x="360" y="66" text-anchor="middle" font-size="10" fill="#4a6a8a">weights + KV → 2 byte-movement types</text>
+
+      <!-- Agent pipeline row (bottom three boxes) -->
+      <rect x="40"  y="155" width="180" height="54" rx="8" fill="#faf6ee" stroke="#c8a96e" stroke-width="1"/>
+      <text x="130" y="173" text-anchor="middle" font-size="11" font-weight="600" fill="#8a5a00">Re-prefill cost</text>
+      <text x="130" y="187" text-anchor="middle" font-size="9.5" fill="#a07030">cross-boundary context</text>
+      <text x="130" y="199" text-anchor="middle" font-size="9.5" fill="#a07030">must be re-prefilled</text>
+
+      <rect x="270" y="155" width="180" height="54" rx="8" fill="#f0e8f8" stroke="#8844aa" stroke-width="1"/>
+      <text x="360" y="173" text-anchor="middle" font-size="11" font-weight="600" fill="#6622aa">Serialisation traffic</text>
+      <text x="360" y="187" text-anchor="middle" font-size="9.5" fill="#8844bb">output bytes cross</text>
+      <text x="360" y="199" text-anchor="middle" font-size="9.5" fill="#8844bb">model service boundaries</text>
+
+      <rect x="500" y="155" width="180" height="54" rx="8" fill="#f4e8e8" stroke="#aa4444" stroke-width="1"/>
+      <text x="590" y="173" text-anchor="middle" font-size="11" font-weight="600" fill="#aa2222">Speculative churn</text>
+      <text x="590" y="187" text-anchor="middle" font-size="9.5" fill="#cc3333">discarded branches leave</text>
+      <text x="590" y="199" text-anchor="middle" font-size="9.5" fill="#cc3333">fragmented HBM</text>
+
+      <!-- Arrows from single model down to three -->
+      <path d="M300 78 L160 155" fill="none" stroke="#1a3a5c" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr2)"/>
+      <path d="M360 78 L360 155" fill="none" stroke="#1a3a5c" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr2)"/>
+      <path d="M420 78 L560 155" fill="none" stroke="#1a3a5c" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr2)"/>
+
+      <!-- Cost annotations below -->
+      <text x="130" y="226" text-anchor="middle" font-size="10" fill="#8a5a00" font-weight="600">~9T FLOPs/hop (256K)</text>
+      <text x="130" y="238" text-anchor="middle" font-size="9.5" fill="#aaa">dominant cost driver</text>
+
+      <text x="360" y="226" text-anchor="middle" font-size="10" fill="#6622aa" font-weight="600">0.1–128 KB per hop</text>
+      <text x="360" y="238" text-anchor="middle" font-size="9.5" fill="#aaa">small individually; scales with fanout</text>
+
+      <text x="590" y="226" text-anchor="middle" font-size="10" fill="#aa2222" font-weight="600">2–5× HBM fragmentation</text>
+      <text x="590" y="238" text-anchor="middle" font-size="9.5" fill="#aaa">vs. single-model serving</text>
+
+      <text x="360" y="268" text-anchor="middle" font-size="10" fill="#aaa" font-style="italic">
+        Agent pipelines introduce three new byte-movement categories absent from single-model serving.
+      </text>
+    </svg>
+    <div class="fig-caption">
+      Fig 2. Agent pipelines add three new byte-movement cost categories that are absent from 
+      single-model serving: cross-boundary re-prefill (dominant cost), cross-service serialisation 
+      traffic, and speculative KV allocation churn. None of these appear in per-model profiling.
+    </div>
+  </div>
+
+  <!-- Section 7 -->
+  <h2 id="amf">7. The Agent Memory Fabric: a scheduling abstraction for pipelines</h2>
+
+  <p>
+    The three problems above — KV locality loss, multiplicative latency compounding, and 
+    speculative memory fragmentation — are not solvable by improving individual model serving. 
+    They require a scheduling abstraction that spans the full pipeline.
+  </p>
+
+  <p>
+    I will call this the <strong>Agent Memory Fabric (AMF)</strong>. The AMF is not a new hardware 
+    layer. It is a control-plane abstraction that has three responsibilities:
+  </p>
+
+  <div class="def-grid">
+    <div class="def-cell">
+      <div class="def-label">Pipeline-scoped KV prefix registry</div>
+      <div class="def-body">Track, for each active pipeline execution, which prefix hashes have been prefilled in which models. When a new pipeline starts that shares a prefix with an active or recently completed pipeline, reuse the cached KV state within that model's KV cache rather than re-prefilling. This is RadixAttention lifted to pipeline scope.</div>
+    </div>
+    <div class="def-cell">
+      <div class="def-label">Cross-hop latency budgeting</div>
+      <div class="def-body">Assign per-hop latency budgets based on the end-to-end SLO and the criticality of each hop's output to the path. Allocate prefill priority and batch slots to each hop accordingly. A hop on the critical path gets priority; a speculative branch gets a lower budget and is killed early if it misses its deadline.</div>
+    </div>
+    <div class="def-cell">
+      <div class="def-label">Speculative memory reservation</div>
+      <div class="def-body">When a speculative branch is launched, reserve HBM pages in contiguous blocks (using a buddy allocator or equivalent). When branches are discarded, release pages in a way that minimises fragmentation — either deferring release until the commit decision is made, or running a lightweight compaction pass on the freed region.</div>
+    </div>
+    <div class="def-cell">
+      <div class="def-label">Cross-model locality awareness</div>
+      <div class="def-body">When routing an agent pipeline's model calls to GPU nodes, prefer nodes where the same documents, context, or model-specific KV prefix is already warm in HBM. This is the same principle as NUMA-aware scheduling applied to model-specific KV locality.</div>
+    </div>
+  </div>
+
+  <h3>7.1 What the AMF does not require</h3>
+
+  <p>
+    The AMF does not require cross-model KV transfer (which is physically impossible without 
+    re-projection through the model). It does not require a shared global memory address space 
+    across GPUs. It does not require changes to individual model serving engines. It is a 
+    scheduling layer, not a hardware layer — it sits above vLLM, TGI, and similar systems 
+    and orchestrates their resource allocation based on pipeline-level context.
+  </p>
+
+  <!-- Section 8 -->
+  <h2 id="cross-model-kv">8. Cross-model KV reuse: when it is possible and when it is not</h2>
+
+  <p>
+    A natural question: could KV vectors ever be reused across model boundaries, if the models 
+    share architectural properties? The answer depends on what kind of sharing we mean.
+  </p>
+
+  <div class="compare-two">
+    <div class="compare-cell">
+      <div class="compare-head" style="color: var(--green)">Possible (with constraints)</div>
+      <ul>
+        <li>Same model, same prompt prefix — standard prefix caching</li>
+        <li>Same base model, different LoRA adapters — base model KV can be shared; adapter-specific layers must be recomputed</li>
+        <li>Distilled model family with identical attention head structure — KV vectors are mathematically compatible (rare in practice)</li>
+        <li>Same model running on different replicas — KV migration across replicas for load balancing</li>
+      </ul>
+    </div>
+    <div class="compare-cell">
+      <div class="compare-head" style="color: #aa2222">Not possible (by definition)</div>
+      <ul>
+        <li>Different base models (Llama vs. Mistral vs. Qwen) — incompatible weight matrices produce incompatible KV subspaces</li>
+        <li>Same model, different quantisation (FP16 KV vs. FP8 KV) — values are numerically incompatible without dequant/requant</li>
+        <li>Different architectures (MHA vs. GQA vs. MQA) — incompatible head counts and projection dimensions</li>
+        <li>Cross-modal models (text model KV vs. vision-language KV) — different embedding spaces entirely</li>
+      </ul>
+    </div>
+  </div>
+
+  <p>
+    For the majority of production agent pipelines, where different models serve different roles 
+    in the pipeline, cross-model KV sharing is not possible. The architecture must instead 
+    focus on minimising the re-prefill cost — through text-level prefix caching within each 
+    model, through aggressive context compression before transmission, and through prefill 
+    scheduling that prioritises pipeline-critical hops.
+  </p>
+
+  <!-- Section 9 -->
+  <h2 id="routing">9. Topology-aware routing: placing model calls near their memory</h2>
+
+  <p>
+    In a serving cluster with many GPU nodes, each serving one or more models, the placement 
+    of a model call matters for latency. A call routed to a GPU node where the system prompt 
+    and document context are already warm in HBM saves the prefill cost. A call routed to a 
+    cold node pays the full prefill.
+  </p>
+
+  <p>
+    Current load balancers for model serving use simple round-robin or least-loaded routing. 
+    They do not model KV warmth. The AMF should extend routing to include KV locality as a 
+    first-class routing signal:
+  </p>
+
+  <pre>
+route_request(pipeline_id, hop_id, context_hash):
+  # Find GPU nodes with warm KV for this context
+  warm_nodes = kv_registry.query(model_id, context_hash)
+  
+  if warm_nodes and min(warm_nodes.queue_depth) < KV_REUSE_THRESHOLD:
+    # Route to warm node; save prefill
+    return route_to(warm_nodes.least_loaded())
+  
+  else:
+    # Route to least-loaded node; pay prefill
+    cold_node = gpu_pool.least_loaded(model_id)
+    kv_registry.register_prefill(cold_node, model_id, context_hash)
+    return route_to(cold_node)
+  </pre>
+
+  <p>
+    The <code>KV_REUSE_THRESHOLD</code> controls the tradeoff between KV warmth and queue 
+    depth. A tight threshold favours latency (route to warm even if slightly busier). 
+    A loose threshold favours throughput (always route to least-loaded). For agent pipelines 
+    on the critical path, a tight threshold is almost always preferable: the cost of a queue 
+    wait is additive across all downstream hops, while the benefit of KV reuse is multiplicative.
+  </p>
+
+  <!-- Section 10 -->
+  <h2 id="slo">10. SLO composition across a pipeline</h2>
+
+  <p>
+    A well-designed single-model serving system can achieve p99 TTFT under 300ms for short 
+    contexts and p99 TBT under 30ms. These are hard numbers, achieved through careful batch 
+    management, preemption policies, and priority queuing.
+  </p>
+
+  <p>
+    In an agent pipeline with N hops, what is the p99 end-to-end latency? Under the 
+    independence assumption (hop latencies are independent), it is approximately:
+  </p>
+
+  <div class="eq">
+    <div class="eq-label">P99 E2E latency under hop independence</div>
+    P99_E2E ≈ Σᵢ P99_hop(i) + Σᵢ P99_network(i)<br>
+    <br>
+    For 7 hops, each with P99 = 500ms (accounting for prefill at the RAG hop):<br>
+    P99_E2E ≈ 7 × 500ms = 3,500ms<br>
+    <br>
+    But hop latencies are NOT independent:<br>
+    - Heavy batching at hop i causes queuing delay at hop i+1<br>
+    - A slow RAG response at hop 3 stalls hops 4–7<br>
+    - Memory pressure at hop 4 (caused by hop 3's large KV) degrades hop 4's decode rate<br>
+    <br>
+    Correlated model: P99_E2E ≈ 4,200–6,500ms (2–5 seconds added by correlation)
+  </div>
+
+  <p>
+    The correct way to manage E2E SLO in an agent pipeline is to work backward from the 
+    end-to-end budget and allocate per-hop latency budgets based on criticality and expected 
+    cost. The AMF should implement <strong>deadline propagation</strong>: each hop receives 
+    a deadline derived from the E2E SLO, and the serving scheduler for that model uses the 
+    deadline as a priority signal rather than first-in-first-out ordering.
+  </p>
+
+  <!-- Section 11 -->
+  <h2 id="mcos">11. How MCOS extends to agent scope</h2>
+
+  <p>
+    The MCOS framework — memory placement, movement, residency, reuse, admission, and eviction 
+    as first-class scheduling objects — was designed with single-model inference in mind. 
+    The concepts extend naturally to agent pipelines, but with a change of scope.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>MCOS concept</th>
+          <th>Single-model scope</th>
+          <th>Agent pipeline scope</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Placement</strong></td>
+          <td>Which tier (SRAM/HBM/NVMe) should a KV block reside in?</td>
+          <td>Which GPU node, and which memory tier on that node, should a pipeline's KV state reside in, given the subsequent hops it will feed?</td>
+        </tr>
+        <tr>
+          <td><strong>Residency</strong></td>
+          <td>How long should a KV block stay in HBM before eviction?</td>
+          <td>How long should a hop's output context stay warm in the downstream model's prefix cache, given the probability of future pipeline calls sharing that context?</td>
+        </tr>
+        <tr>
+          <td><strong>Reuse</strong></td>
+          <td>Can this KV block serve multiple concurrent requests?</td>
+          <td>Can this pipeline's intermediate outputs be shared with other pipelines that share the same sub-graph? Tracked at text-hash level across model boundaries.</td>
+        </tr>
+        <tr>
+          <td><strong>Admission</strong></td>
+          <td>Should a new request enter the fast KV tier?</td>
+          <td>Should a new agent pipeline be admitted to the cluster, given current pipeline depth, speculative branch count, and HBM fragmentation state?</td>
+        </tr>
+        <tr>
+          <td><strong>Movement</strong></td>
+          <td>When and how should KV blocks be moved between tiers?</td>
+          <td>When should cross-hop context be compressed before transmission? When should upstream KV state be proactively staged on the downstream GPU before the hop begins?</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    The extension of MCOS to agent scope does not require changing the core MCOS abstractions. 
+    It requires extending the information available to the MCOS scheduler: instead of seeing 
+    individual request objects, it must see pipeline DAGs with known structure, estimated hop 
+    costs, and cross-hop memory dependencies.
+  </p>
+
+  <blockquote>
+    MCOS at single-model scope is a memory scheduler. MCOS at agent scope is a topology planner 
+    with memory awareness. The algebra is the same; the object it operates on is a graph, not a request.
+  </blockquote>
+
+  <!-- Section 12 -->
+  <h2 id="close">12. The infrastructure debt of the agent era</h2>
+
+  <p>
+    The AI industry is in the middle of an infrastructure debt accumulation. Application 
+    developers are building agent pipelines using frameworks (LangChain, AutoGen, LlamaIndex, 
+    CrewAI, Claude's computer use API) that abstract away the infrastructure entirely. Each 
+    model call goes through an HTTP endpoint. The endpoint dispatches to a vLLM or TGI instance. 
+    The instance manages its own KV cache. No component in this stack has a model of the pipeline.
+  </p>
+
+  <p>
+    The consequences are visible in production. Agent pipelines that should take 2–3 seconds 
+    take 8–12 seconds because of queuing at the RAG hop. Pipelines that should cost $0.02 
+    cost $0.15 because large contexts are being re-prefilled on cold nodes when warm nodes 
+    exist. Pipelines that should maintain a 4-second p99 SLO miss it consistently during 
+    peak traffic because per-model SLOs are each met but their sum is not.
+  </p>
+
+  <p>
+    The infrastructure that will fix this has three components, in order of likely emergence:
+  </p>
+
+  <div class="annotation-row">
+    <div class="ann-num">1</div>
+    <div class="ann-text">
+      <strong>Pipeline-aware serving routers.</strong> The first fix is the cheapest: route 
+      model calls within a pipeline to nodes with warm KV prefix caches, and implement 
+      deadline propagation so that hops on the critical path receive serving priority. This 
+      requires no changes to individual model serving engines — only a smarter routing layer 
+      above them. SGLang's recent work on RadixAttention and constrained decoding scheduling 
+      points in this direction.
+    </div>
+  </div>
+  <div class="annotation-row">
+    <div class="ann-num">2</div>
+    <div class="ann-text">
+      <strong>Cross-hop context compression.</strong> The RAG hop is the dominant prefill 
+      cost because it injects 64K–256K tokens of retrieved context into the reasoning model. 
+      Context compression techniques — learned extractive summarisation, KV compression via 
+      attention sparsification, hierarchical context with selective attention — can reduce 
+      the effective prefill context by 4–10× while preserving the information needed downstream. 
+      This is not a routing problem; it is a model-level and framework-level problem that 
+      will be solved by model developers optimising specifically for agent deployment.
+    </div>
+  </div>
+  <div class="annotation-row">
+    <div class="ann-num">3</div>
+    <div class="ann-text">
+      <strong>Agent Memory Fabric as infrastructure primitive.</strong> The full AMF — 
+      pipeline-scoped KV registry, speculative memory reservation, cross-hop latency budgeting, 
+      topology-aware placement — is a 2–3 year infrastructure bet. It requires serving 
+      engines to expose pipeline context to the scheduler, GPUs to maintain cross-request 
+      KV warmth registries, and load balancers to model memory topology rather than just 
+      queue depth. The companies that build this first will have a structural cost and 
+      latency advantage for every agentic workload — which, by 2027, will be the majority 
+      of production AI inference.
+    </div>
+  </div>
+
+  <p>
+    Single-model serving infrastructure took three years to mature from naive batching to 
+    PagedAttention, continuous batching, and speculative decoding. Agent-topology infrastructure 
+    is at year zero. The problems are well-defined. The abstractions are transferable from 
+    single-model work. What is missing is the systems investment.
+  </p>
+
+  <blockquote>
+    The agent pipeline is not a new product. It is a new topology. And topology changes 
+    the machine — not the model, not the algorithm, but the machine that holds the memory, 
+    routes the bytes, and pays the power bill. If the machine does not understand the 
+    topology it is serving, it will serve it expensively and slowly, even as the models 
+    themselves become cheaper and faster.
+  </blockquote>
+
+  <hr>
+
+  <div class="callout">
+    <div class="callout-label">What this essay does not cover</div>
+    This essay focuses on the infrastructure scheduling problems created by agent pipelines. 
+    It does not cover: the application-layer design of agent architectures, the correctness 
+    and safety properties of multi-model reasoning systems, the specific engineering of 
+    context compression algorithms, or the economics of agent workloads (which requires the 
+    cost model from the preceding essay extended to multi-hop pipelines). 
+    The MoE routing problem — where within a single model call, expert selection introduces 
+    its own residency and scheduling complexity — is also a distinct problem that will be 
+    treated separately.
+  </div>
+
+  <div class="footer">
+    <p>
+      <a href="https://manishklach.github.io/index.html">Manish KL</a> · Essays · April 2026 ·
+      <a href="https://manishklach.github.io/writings.html">← All writings</a>
+    </p>
+    <p style="margin-top:0.5rem">© 2026 <a href="https://github.com/manishklach">Manish KL</a>. All rights reserved.</p>
+  </div>
+
+</div>
+
+<hr style="margin-top: 3rem; border: none; border-top: 1px solid var(--border, #ddd);" />
+<p style="text-align:center; color:var(--text-muted, #666); font-size:0.9rem; margin-bottom: 2rem;">
+  <a href="../writings.html" style="color:var(--accent, #0366d6); text-decoration:none;">← All writings</a><br><br>
+  © 2026 <a href="https://github.com/manishklach" style="color:var(--accent, #0366d6); text-decoration:none;">Manish KL</a>. All rights reserved.<br>
+  <span style="display:block; margin-top:8px;">Systems architecture notes on infrastructure boundaries.</span>
+</p>
+</body>
+
+</html>
