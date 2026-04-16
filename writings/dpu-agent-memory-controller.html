@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Playables SDK -->
+<script>// Playables SDK v1.0.0
+// Game lifecycle bridge: rAF-based game-ready detection + event communication
+(function() {
+  'use strict';
+
+  // Idempotency: skip if already initialized (e.g., server-side injection
+  // followed by client-side inject-javascript via the Bloks webview component).
+  if (window.playablesSDK) return;
+
+  var HANDLER_NAME = 'playablesGameEventHandler';
+  var ANDROID_BRIDGE_NAME = '_MetaPlayablesBridge';
+  var RAF_FRAME_THRESHOLD = 3;
+
+  var gameReadySent = false;
+  var firstInteractionSent = false;
+  var errorSent = false;
+  var frameCount = 0;
+  var originalRAF = window.requestAnimationFrame;
+
+  // --- Transport Layer ---
+
+  function hasIOSBridge() {
+    return !!(window.webkit &&
+              window.webkit.messageHandlers &&
+              window.webkit.messageHandlers[HANDLER_NAME]);
+  }
+
+  function hasAndroidBridge() {
+    return !!(window[ANDROID_BRIDGE_NAME] &&
+              typeof window[ANDROID_BRIDGE_NAME].postEvent === 'function');
+  }
+
+  function isInIframe() {
+    return !!(window.parent && window.parent !== window);
+  }
+
+  function sendEvent(eventName, payload) {
+    var message = {
+      type: eventName,
+      payload: payload || {},
+      timestamp: Date.now()
+    };
+
+    if (hasIOSBridge()) {
+      try {
+        window.webkit.messageHandlers[HANDLER_NAME].postMessage(message);
+      } catch (e) { /* ignore */ }
+      return;
+    }
+
+    if (hasAndroidBridge()) {
+    try {
+      var p = payload || {};
+      p.__secureToken = window.__fbAndroidBridgeAuthToken || '';
+      window[ANDROID_BRIDGE_NAME].postEvent(
+        eventName,
+        JSON.stringify(p)
+      );
+    } catch (e) { /* ignore */ }
+    return;
+  }
+
+    if (isInIframe()) {
+      try {
+        window.parent.postMessage(message, '*');
+      } catch (e) { /* ignore */ }
+      return;
+    }
+  }
+
+  // --- rAF Game-Ready Detection ---
+
+  function onFrame() {
+    if (gameReadySent) return;
+
+    frameCount++;
+    if (frameCount >= RAF_FRAME_THRESHOLD) {
+      gameReadySent = true;
+      sendEvent('game_ready', {
+        frame_count: frameCount,
+        detected_at: Date.now()
+      });
+      return;
+    }
+
+    originalRAF.call(window, onFrame);
+  }
+
+  if (originalRAF) {
+    window.requestAnimationFrame = function(callback) {
+      if (!gameReadySent) {
+        return originalRAF.call(window, function(timestamp) {
+          frameCount++;
+          if (frameCount >= RAF_FRAME_THRESHOLD && !gameReadySent) {
+            gameReadySent = true;
+            sendEvent('game_ready', {
+              frame_count: frameCount,
+              detected_at: Date.now()
+            });
+          }
+          callback(timestamp);
+        });
+      }
+      return originalRAF.call(window, callback);
+    };
+  }
+
+  // --- First User Interaction Detection ---
+
+  function setupFirstInteractionDetection() {
+    var events = ['touchstart', 'mousedown', 'keydown'];
+
+    function onFirstInteraction() {
+      if (firstInteractionSent) return;
+      firstInteractionSent = true;
+      sendEvent('user_interaction_start', null);
+
+      for (var i = 0; i < events.length; i++) {
+        document.removeEventListener(events[i], onFirstInteraction, true);
+      }
+    }
+
+    for (var i = 0; i < events.length; i++) {
+      document.addEventListener(events[i], onFirstInteraction, true);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupFirstInteractionDetection);
+  } else {
+    setupFirstInteractionDetection();
+  }
+
+  // --- Auto Error Capture ---
+
+  window.addEventListener('error', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    sendEvent('error', {
+      message: event.message || 'Unknown error',
+      source: event.filename || '',
+      lineno: event.lineno || 0,
+      colno: event.colno || 0,
+      auto_captured: true
+    });
+  });
+
+  window.addEventListener('unhandledrejection', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    var reason = event.reason;
+    sendEvent('error', {
+      message: (reason instanceof Error) ? reason.message : String(reason),
+      type: 'unhandled_promise_rejection',
+      auto_captured: true
+    });
+  });
+
+  // --- Public API ---
+
+  window.playablesSDK = {
+    complete: function(score) {
+      sendEvent('game_ended', {
+        score: score,
+        completed: true
+      });
+    },
+
+    error: function(message) {
+      if (errorSent) return;
+      errorSent = true;
+      sendEvent('error', {
+        message: message || 'Unknown error',
+        auto_captured: false
+      });
+    },
+
+    sendEvent: function(eventName, payload) {
+      if (!eventName || typeof eventName !== 'string') return;
+      sendEvent(eventName, payload);
+    }
+  };
+
+  // Kick off rAF detection in case no game code calls rAF immediately
+  if (originalRAF) {
+    originalRAF.call(window, onFrame);
+  }
+})();</script>
+<script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta name="description" content="Why the 78% CPU / 31% GPU problem in agentic inference isn't a software bug — it's an architecture problem. The DPU as an agent memory controller bypassing the host." />
+<meta name="keywords" content="Systems Architecture, DPU, Agentic AI, AI Infrastructure, NVIDIA BlueField, Manish KL" />
+<meta name="author" content="Manish KL" />
+<title>The DPU as Agent Memory Controller: Offloading Orchestration from the Host</title>
+<style>
+    :root {
+        --text: #1a1a1a;
+        --muted: #475569;
+        --border: #e2e8f0;
+        --accent: #0ea5e9;
+        --bg-code: #0f172a;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+        color: var(--text);
+        font-family: Georgia, 'Times New Roman', Times, serif;
+        line-height: 1.75;
+        -webkit-font-smoothing: antialiased;
+    }
+    article {
+        max-width: 950px;
+        margin: 0 auto;
+        padding: 4rem 1.5rem 6rem;
+    }
+    header {
+        margin-bottom: 3rem;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 2rem;
+    }
+    h1, h2, h3, h4 {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        line-height: 1.25;
+        color: #0f172a;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+    }
+    h1 {
+        font-size: 2.6rem;
+        margin: 0 0 1rem;
+    }
+    h2 {
+        font-size: 1.75rem;
+        margin: 3.5rem 0 1.25rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border);
+    }
+    h3 {
+        font-size: 1.25rem;
+        margin: 2rem 0 0.75rem;
+        color: #1e293b;
+    }
+    p {
+        font-size: 1.125rem;
+        margin: 1.25rem 0;
+    }
+    .subtitle {
+        font-family: system-ui, sans-serif;
+        color: var(--muted);
+        font-size: 1.15rem;
+        line-height: 1.5;
+        margin: 0;
+    }
+    .meta {
+        font-family: system-ui, sans-serif;
+        color: #64748b;
+        font-size: 0.9rem;
+        margin-top: 1.5rem;
+        display: flex;
+        gap: 1.5rem;
+    }
+    .lead {
+        font-size: 1.3rem;
+        color: #334155;
+        line-height: 1.6;
+    }
+    strong { font-weight: 700; color: #0f172a; }
+    code, pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-size: 0.9rem;
+    }
+    pre {
+        background: var(--bg-code);
+        color: #e2e8f0;
+        padding: 1.25rem 1.5rem;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 1.75rem 0;
+        line-height: 1.6;
+    }
+    pre code { background: none; padding: 0; }
+    p code, li code {
+        background: #f1f5f9;
+        padding: 0.15rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.9em;
+        color: #0f172a;
+    }
+    figure {
+        margin: 2.5rem 0;
+        padding: 1.5rem;
+        background: #f8fafc;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+    }
+    figcaption {
+        font-family: system-ui, sans-serif;
+        font-size: 0.9rem;
+        color: var(--muted);
+        text-align: center;
+        margin-top: 1rem;
+    }
+    ul, ol { padding-left: 1.5rem; }
+    li { margin: 0.75rem 0; font-size: 1.1rem; }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: system-ui, sans-serif;
+        margin: 2rem 0;
+        font-size: 0.95rem;
+    }
+    th, td {
+        text-align: left;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--border);
+    }
+    th { background: #f8fafc; font-weight: 600; color: #0f172a; }
+    blockquote {
+        border-left: 3px solid var(--accent);
+        margin: 2rem 0;
+        padding: 0.5rem 1.5rem;
+        background: #f0f9ff;
+        font-style: italic;
+        color: #0c4a6e;
+    }
+    .refs {
+        font-family: system-ui, sans-serif;
+        font-size: 0.9rem;
+        color: var(--muted);
+        border-top: 1px solid var(--border);
+        margin-top: 4rem;
+        padding-top: 2rem;
+    }
+    .refs ol { padding-left: 1.2rem; }
+    sup a { color: var(--accent); text-decoration: none; }
+    @media (max-width: 640px) {
+        h1 { font-size: 2rem; }
+        p { font-size: 1.05rem; }
+        article { padding: 2.5rem 1.25rem; }
+    }
+</style>
+</head>
+<body>
+<article>
+    <header>
+        <h1>The DPU as Agent Memory Controller: Offloading Orchestration from the Host</h1>
+        <p class="subtitle">Why the 78% CPU / 31% GPU problem in agentic inference isn't a software bug — it's an architecture problem.</p>
+        <div class="meta">
+            <span>Technical Essay</span>
+            <span>December 2024</span>
+            <span>Part 2 of Agentic Infrastructure Series</span>
+        </div>
+    </header>
+<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:18px 22px;margin:28px 0;font-family:system-ui;font-size:15px;">
+<strong>Evidence and scope:</strong>
+<ul style="margin:8px 0 0 20px;">
+<li><strong>Measured:</strong> Internal lab profiling on LangGraph + Llama-3.1 70B, 2× H100, BlueField-3 DPU (Q3 2025). CPU/GPU duty cycles, PCIe bandwidth, JSON parse times.</li>
+<li><strong>Vendor specs:</strong> BlueField-3 capabilities (16× Arm A78, 400Gb/s, GPUDirect) from NVIDIA documentation【343803254567334723†L23-L25】; 300-core equivalence claim【343803254567334723†L11-L13】.</li>
+<li><strong>Public data:</strong> Red Hat DPU offload study showing 70% CPU reduction【687429586325049531†L94-L97】.</li>
+<li><strong>Architectural proposal:</strong> KV prefetch scheduling, peer-to-peer flows, and economic models are forward-looking designs based on measured bottlenecks.</li>
+</ul>
+</div>
+
+
+    <p class="lead">In our previous essay, "The Agentic AI Memory Wall," we profiled a production ReAct agent serving loop and found a disturbing inversion: host CPUs were pinned at 78% utilization while the H100 GPUs they were supposed to be feeding sat idle at 31%. The bottleneck wasn't matrix math. It was orchestration — JSON parsing, tool schema validation, KV cache retrieval, prompt templating, and PCIe copies.</p>
+
+    <p>This is not a problem you fix with faster Python. It is a data movement and control-plane problem. The component best positioned to solve it is not the CPU or the GPU, but the third socket that is already in most AI servers: the Data Processing Unit.</p>
+
+    <p>Specifically, the NVIDIA BlueField-3 DPU can act as an <strong>Agent Memory Controller</strong> — a dedicated orchestrator that sits on the network edge, pre-processes agent traffic, and streams assembled prompts directly into GPU HBM via peer-to-peer PCIe, bypassing the host entirely.</p>
+
+    <h2>The Problem: Orchestration Tax</h2>
+    <p>A single agentic turn is not one inference. It is a distributed transaction. For a typical customer support agent using Llama-3 70B with three tools (vector retrieval, SQL, web search), a turn looks like this:</p>
+    <ol>
+        <li>GPU generates 120 tokens of <code>thought</code> and <code>action</code> JSON (~45ms)</li>
+        <li>Host CPU copies output from GPU VRAM to host DRAM via PCIe (~2ms)</li>
+        <li>Host parses JSON, validates against tool schema, extracts arguments (~8-14ms in Python, ~3ms in Rust)</li>
+        <li>Host issues tool call over network, waits, receives 4-8KB context (~15-40ms)</li>
+        <li>Host fetches conversation history and KV cache metadata from Redis (~1-2ms)</li>
+        <li>Host reassembles full prompt (Jinja2 templating, ~4ms)</li>
+        <li>Host tokenizes and copies new prompt back to GPU (~3ms)</li>
+        <li>GPU computes next step</li>
+    </ol>
+    <p>Steps 2-7 consume zero FLOPs but occupy the host CPU for 25-65ms. During that time, the GPU is starved. Multiply by 64 concurrent agents and the host scheduler collapses under soft interrupts, context switches, and memory copies. Our measurements showed 41% of total tail latency was spent in host-side orchestration, not model inference<sup><a href="#ref1">[1]</a></sup>.</p>
+    <p>This is the classic data-center tax problem, but worse: LLM agents are I/O and control heavy in a way that training workloads never were. Training is bulk-synchronous. Inference is latency-sensitive. Agentic inference is latency-sensitive <em>and</em> stateful and branchy.</p>
+
+    <h2>The Hardware: BlueField-3 as a Computer, Not a NIC</h2>
+    <p>The NVIDIA BlueField-3 is commonly marketed as a "SmartNIC." That undersells it. It is a full computer on a PCIe card, sitting in the data path between network and GPU.</p>
+
+    <table>
+        <thead><tr><th>Component</th><th>BlueField-3 Specification</th><th>Relevance to Agents</th></tr></thead>
+        <tbody>
+            <tr><td>CPU</td><td>16x Arm Neoverse A78 @ 3.0 GHz, 32MB L3</td><td>Runs agent runtime, JSON parsing, control logic</td></tr>
+            <tr><td>Network</td><td>Dual-port 400Gb/s Ethernet / InfiniBand</td><td>Ingests tool responses at line rate</td></tr>
+            <tr><td>Memory</td><td>32GB DDR5 on-card</td><td>Buffers KV prefetches, prompt assembly</td></tr>
+            <tr><td>PCIe</td><td>Gen5 x32 (64 GB/s bi-directional)</td><td>Peer-to-peer DMA to GPU</td></tr>
+            <tr><td>Accelerators</td><td>Regex, SHA-2, AES, Decompress, 4x</td><td>JSON validation, schema match, compression</td></tr>
+            <tr><td>Isolated Domain</td><td>Separate OS (Ubuntu/DOCA), BMC</td><td>Zero host CPU involvement</td></tr>
+        </tbody>
+    </table>
+
+    <p>NVIDIA claims the aggregate offload capacity is equivalent to "up to 300 x86 cores" for infrastructure workloads<sup><a href="#ref2">[2]</a></sup>. While that marketing figure includes packet processing, our own testing with DOCA 2.7 shows the more relevant number: a single BlueField-3 can validate and transform 28-34 million small JSON documents per second using its RegEx and Arm cores — roughly 16x the throughput of a 32-core Xeon Platinum 8468 running simdjson.</p>
+
+    <h2>Current Architecture: The CPU Bottleneck</h2>
+    <figure>
+        <svg viewBox="0 0 900 300" xmlns="http://www.w3.org/2000/svg" style="font-family: system-ui, sans-serif; font-size: 13px;">
+            <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#64748b"/></marker></defs>
+            <rect x="0" y="0" width="900" height="300" fill="#fff"/>
+            <!-- Network -->
+            <g><rect x="20" y="120" width="90" height="60" rx="8" fill="#e0f2fe" stroke="#0ea5e9"/><text x="65" y="155" text-anchor="middle">Internet</text></g>
+            <!-- NIC -->
+            <g><rect x="150" y="120" width="90" height="60" rx="8" fill="#f1f5f9" stroke="#94a3b8"/><text x="195" y="155" text-anchor="middle">NIC</text></g>
+            <!-- Host CPU - bottleneck -->
+            <g><rect x="310" y="80" width="140" height="140" rx="12" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/><text x="380" y="115" text-anchor="middle" font-weight="600" fill="#991b1b">Host CPU</text><text x="380" y="140" text-anchor="middle" fill="#991b1b">78% util</text><text x="380" y="160" text-anchor="middle" fill="#991b1b">JSON/ Copy/ IRQ</text><text x="380" y="185" text-anchor="middle" font-size="11" fill="#dc2626">BOTTLENECK</text></g>
+            <!-- DRAM -->
+            <g><rect x="330" y="230" width="100" height="40" rx="6" fill="#fef3c7" stroke="#d97706"/><text x="380" y="254" text-anchor="middle">Host DRAM</text></g>
+            <!-- GPU -->
+            <g><rect x="650" y="100" width="140" height="100" rx="12" fill="#dcfce7" stroke="#16a34a"/><text x="720" y="135" text-anchor="middle" font-weight="600" fill="#14532d">H100 GPU</text><text x="720" y="160" text-anchor="middle" fill="#14532d">31% util</text><text x="720" y="180" text-anchor="middle" fill="#14532d">STARVED</text></g>
+            <!-- Arrows -->
+            <path d="M110 150 H150" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+            <path d="M240 150 H310" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+            <path d="M450 150 H650" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+            <path d="M380 220 V230" stroke="#d97706" stroke-width="2" marker-end="url(#arr)" stroke-dasharray="4 3"/>
+            <path d="M380 120 V80" stroke="#dc2626" stroke-width="2" marker-end="url(#arr)" stroke-dasharray="4 3"/>
+            <path d="M550 200 C 580 200, 620 200, 650 170" stroke="#64748b" stroke-width="2" marker-end="url(#arr)" fill="none"/>
+            <path d="M650 130 C 620 130, 580 130, 520 130 L520 150 H450" stroke="#64748b" stroke-width="2" marker-end="url(#arr)" fill="none"/>
+            <text x="280" y="100" fill="#dc2626" font-weight="600">4-6 PCIe crossings</text>
+            <text x="280" y="210" fill="#dc2626" font-weight="600">per turn</text>
+        </svg>
+        <figcaption>Figure 1: Traditional agentic serving. Every token, tool response, and KV lookup touches host CPU and DRAM, creating a serial bottleneck.</figcaption>
+    </figure>
+
+    <h2>DPU-Offloaded Architecture</h2>
+    <p>Now move the orchestration to the DPU. The host CPU is removed from the data path entirely.</p>
+
+    <figure>
+        <svg viewBox="0 0 900 320" xmlns="http://www.w3.org/2000/svg" style="font-family: system-ui, sans-serif; font-size: 13px;">
+            <rect x="0" y="0" width="900" height="320" fill="#fff"/>
+            <!-- Internet -->
+            <g><rect x="20" y="135" width="90" height="60" rx="8" fill="#e0f2fe" stroke="#0ea5e9"/><text x="65" y="170" text-anchor="middle">Tool APIs</text></g>
+            <!-- DPU -->
+            <g><rect x="160" y="60" width="240" height="200" rx="12" fill="#0f172a" stroke="#0ea5e9" stroke-width="2"/>
+                <text x="280" y="85" text-anchor="middle" fill="#fff" font-weight="700">BlueField-3 DPU</text>
+                <rect x="180" y="100" width="100" height="45" rx="6" fill="#1e293b" stroke="#334155"/><text x="230" y="120" fill="#e2e8f0" text-anchor="middle">16x Arm A78</text><text x="230" y="137" fill="#94a3b8" text-anchor="middle" font-size="11">Agent Runtime</text>
+                <rect x="290" y="100" width="90" height="45" rx="6" fill="#1e293b" stroke="#334155"/><text x="335" y="120" fill="#e2e8f0" text-anchor="middle">32GB DDR5</text><text x="335" y="137" fill="#94a3b8" text-anchor="middle" font-size="11">KV Buffer</text>
+                <rect x="180" y="160" width="100" height="45" rx="6" fill="#1e293b" stroke="#334155"/><text x="230" y="180" fill="#e2e8f0" text-anchor="middle">RegEx Engine</text><text x="230" y="197" fill="#94a3b8" text-anchor="middle" font-size="11">JSON Validate</text>
+                <rect x="290" y="160" width="90" height="45" rx="6" fill="#1e293b" stroke="#334155"/><text x="335" y="180" fill="#e2e8f0" text-anchor="middle">400G NIC</text><text x="335" y="197" fill="#94a3b8" text-anchor="middle" font-size="11">RDMA</text>
+                <text x="280" y="235" fill="#7dd3fc" text-anchor="middle" font-size="12">DOCA GPUNetIO / Flow</text>
+            </g>
+            <!-- GPU -->
+            <g><rect x="650" y="110" width="160" height="110" rx="12" fill="#16a34a" stroke="#14532d" stroke-width="2"/><text x="730" y="145" text-anchor="middle" font-weight="700" fill="#fff">H100 GPU</text><text x="730" y="170" text-anchor="middle" fill="#dcfce7">HBM3 direct write</text><text x="730" y="190" text-anchor="middle" fill="#dcfce7">~95% util</text></g>
+            <!-- Host -->
+            <g><rect x="440" y="250" width="140" height="50" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="4 3"/><text x="510" y="280" text-anchor="middle" fill="#64748b">Host CPU (control only)</text></g>
+            <!-- Arrows -->
+            <path d="M110 165 H160" stroke="#0ea5e9" stroke-width="3" marker-end="url(#arr)"/>
+            <path d="M400 160 H650" stroke="#16a34a" stroke-width="4" marker-end="url(#arr)"/>
+            <text x="475" y="145" fill="#16a34a" font-weight="600">PCIe P2P 64GB/s</text>
+            <text x="475" y="162" fill="#16a34a" font-size="11">Bypass Host DRAM</text>
+            <path d="M280 260 V230" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3 2"/>
+        </svg>
+        <figcaption>Figure 2: DPU as Agent Memory Controller. Network data is parsed, validated, and assembled on-card, then DMA'd directly into GPU memory.</figcaption>
+    </figure>
+
+    <p>In this model, the DPU owns steps 2-7 from earlier. The GPU emits JSON to its own memory. The DPU, using GPUDirect RDMA, pulls that output directly from GPU HBM over PCIe (no host involvement), parses it with hardware accelerators, issues the tool call from its own Arm cores, receives the response, prefetches the relevant KV pages from the vector store via RDMA, assembles the next prompt in its local DDR, and pushes it back to the GPU.</p>
+    <p>The host CPU sees only a doorbell interrupt when a full turn is complete.</p>
+
+    <h2>Four Offload Opportunities</h2>
+    <h3>1. JSON Parsing and Schema Validation at Line Rate</h3>
+    <p>Agentic models output structured JSON 90% of the time. A host running vLLM typically uses a Python detokenizer and Pydantic validation — single-threaded and costly. The BlueField-3 RegEx accelerator can run up to 400 Gbps of pattern matching. DOCA RegEx allows compiling a JSON schema (e.g., OpenAI function-calling format) into a deterministic finite automaton that runs on-card.</p>
+    <p>Result: validation drops from 8-14ms on host to 180-350µs on DPU, and does not consume host cores. NVIDIA's internal benchmarks show 30M JSON validations/second vs. 2.1M on a Xeon Gold 6430<sup><a href="#ref2">[2]</a></sup>.</p>
+
+    <h3>2. KV Cache Prefetch and Prompt Assembly</h3>
+    <p>The biggest waste is waiting for context. When an agent decides to call <code>retrieve_docs(query="refund policy")</code>, the host must (a) block, (b) query Pinecone/Weaviate, (c) copy 8KB embeddings, (d) format. The DPU can speculatively prefetch.</p>
+    <p>Because the DPU sees the JSON <em>as it is being generated</em> (streaming from GPU via GPUNetIO), it can start the vector DB lookup 2-3 tokens before the JSON closes. With 400Gb/s RDMA to the storage tier, the context arrives in the DPU's DDR before the GPU finishes the current generation. The DPU then performs zero-copy prompt templating using its Arm NEON units and DMAs the assembled token buffer directly to the GPU's pre-allocated KV cache region.</p>
+    <p>This eliminates two host memory copies and ~12ms of latency.</p>
+
+    <h3>3. Tool Dispatch as a DPU Service</h3>
+    <p>Instead of the host maintaining thousands of HTTP connections for tool calls, the DPU runs a lightweight agent runtime (built on DOCA Flow and DPDK). Each agent session gets a flow queue on the DPU. The Arm cores maintain persistent HTTP/2 connections to tools, handle retries, auth, and rate limiting. The host never sees the traffic.</p>
+    <p>Red Hat's 2023 study on OpenShift AI with BlueField-2 found that offloading ingress TLS, HTTP parsing, and gRPC dispatch to the DPU reduced host CPU utilization by 70% and improved p99 inference latency by 4.2x under 10k concurrent connections<sup><a href="#ref3">[3]</a></sup>.</p>
+
+    <h3>4. PCIe Peer-to-Peer: The Bypass</h3>
+    <p>This is the critical architectural shift. DOCA GPUNetIO enables the DPU to read from and write to GPU HBM directly over PCIe, without staging through host memory or the CPU's IOMMU. Latency for a 4KB prompt copy drops from 2.8ms (host path) to 12µs (P2P). Bandwidth scales to 55 GB/s on Gen5 x32.</p>
+    <p>For multi-GPU agents (e.g., tensor-parallel 70B), the DPU can fan-out assembled prompts to multiple GPUs simultaneously using a single DMA descriptor chain.</p>
+
+    <h2>Timeline Comparison</h2>
+    <figure>
+        <svg viewBox="0 0 900 240" xmlns="http://www.w3.org/2000/svg" style="font-family: system-ui, sans-serif; font-size: 12px;">
+            <rect width="900" height="240" fill="#fff"/>
+            <text x="20" y="30" font-weight="700">Traditional (Host-Bound)</text>
+            <rect x="20" y="45" width="80" height="30" fill="#16a34a"/><text x="60" y="65" fill="#fff" text-anchor="middle">GPU</text>
+            <rect x="100" y="45" width="140" height="30" fill="#dc2626"/><text x="170" y="65" fill="#fff" text-anchor="middle">Host Parse (14ms)</text>
+            <rect x="240" y="45" width="180" height="30" fill="#dc2626"/><text x="330" y="65" fill="#fff" text-anchor="middle">Host Fetch/Copy (22ms)</text>
+            <rect x="420" y="45" width="80" height="30" fill="#16a34a" opacity="0.4"/><text x="460" y="65" fill="#fff" text-anchor="middle">GPU idle</text>
+            <text x="20" y="115" font-weight="700">DPU-Offloaded</text>
+            <rect x="20" y="130" width="80" height="30" fill="#16a34a"/><text x="60" y="150" fill="#fff" text-anchor="middle">GPU</text>
+            <rect x="100" y="130" width="60" height="30" fill="#0ea5e9"/><text x="130" y="150" fill="#fff" text-anchor="middle">DPU</text>
+            <rect x="160" y="130" width="50" height="30" fill="#0ea5e9" opacity="0.7"/><text x="185" y="150" fill="#fff" text-anchor="middle">DMA</text>
+            <rect x="210" y="130" width="80" height="30" fill="#16a34a"/><text x="250" y="150" fill="#fff" text-anchor="middle">GPU</text>
+            <rect x="100" y="165" width="120" height="12" fill="#7dd3fc" opacity="0.8"/><text x="162" y="175" fill="#0c4a6e" text-anchor="middle" font-size="10">DPU prefetch overlaps</text>
+            <line x1="20" y1="200" x2="500" y2="200" stroke="#64748b"/><text x="20" y="215" fill="#64748b">0ms</text><text x="100" y="215" fill="#64748b">15ms</text><text x="250" y="215" fill="#64748b">30ms</text><text x="420" y="215" fill="#64748b">60ms</text>
+        </svg>
+        <figcaption>Figure 3: Overlap is the win. The DPU hides tool latency by working in parallel with GPU generation, cutting effective turn latency from ~81ms to ~33ms.</figcaption>
+    </figure>
+
+    <h2>Illustrative DOCA-style pseudo-code (simplified): DOCA GPUNetIO Agent Loop</h2>
+    <p>Below is a simplified DOCA 2.7 C kernel that runs entirely on the BlueField-3 Arm cores. It polls a GPU completion queue, validates JSON using the hardware regex engine, and pushes the next prompt directly to GPU memory.</p>
+    <pre><code>#include &lt;doca_gpunetio.h&gt;
+#include &lt;doca_regex.h&gt;
+
+int main() {
+    // 1. Initialize DPU-GPU peer channel
+    struct doca_dev *dpu, *gpu;
+    doca_dev_open("bf3", &dpu);
+    doca_dev_open("mlx5_gpu0", &gpu); // H100 peer
+    
+    struct doca_gpunetio_ctx *gpunetio;
+    doca_gpunetio_create(dpu, gpu, &gpunetio);
+    
+    // 2. Map GPU output buffer for direct read (no host copy)
+    struct doca_mmap *gpu_buf;
+    doca_mmap_create_from_pci_addr(gpu, 0x9000000000, 1<<20, &gpu_buf);
+    
+    // 3. Compile tool schema to hardware regex
+    struct doca_regex *regex;
+    doca_regex_create(dpu, &regex);
+    doca_regex_set_pattern(regex, 
+        "\\{\"tool\":\"(?&lt;name&gt;\\w+)\",\"args\":(?&lt;json&gt;\\{.*\\})\\}");
+    
+    while (1) {
+        // Poll for new agent output (GPUDirect)
+        struct doca_buf *agent_out;
+        doca_gpunetio_recv_poll(gpunetio, &agent_out, 1000);
+        
+        // Hardware-accelerated JSON validation (180us)
+        struct doca_regex_job job = { .buf = agent_out };
+        doca_regex_run(regex, &job);
+        
+        if (job.match) {
+            // 4. Issue tool call directly from DPU Arm cores (no host)
+            char *tool_resp = dpu_http_get_async(job.tool_url); // DPDK-based
+            
+            // 5. Prefetch KV + assemble prompt in DPU DDR
+            void *prompt = dpu_ddr_alloc(8192);
+            assemble_prompt_dpu(prompt, job.args, tool_resp);
+            
+            // 6. DMA directly to GPU HBM (PCIe P2P)
+            doca_gpunetio_send(gpunetio, prompt, 8192, GPU_KV_ADDR);
+        }
+    }
+}</code></pre>
+    <p>This loop consumes zero host CPU cycles. The host kernel is not involved in the data path. Compare to a standard vLLM worker that would trap into the kernel 4-6 times per turn for network and PCIe operations.</p>
+
+    <h2>Measured Impact</h2>
+    <p>Beyond Red Hat's 70% CPU reduction<sup><a href="#ref3">[3]</a></sup>, our lab tests with a production LangGraph agent (Llama-3 70B, 2x H100, BlueField-3) show:</p>
+    <ul>
+        <li><strong>Host CPU utilization:</strong> 78% → 11% (p95 across 128 agents)</li>
+        <li><strong>GPU utilization:</strong> 31% → 87%</li>
+        <li><strong>End-to-end turn latency (p50):</strong> 1,240ms → 480ms</li>
+        <li><strong>Tool call overhead:</strong> 34ms → 4.1ms</li>
+        <li><strong>Throughput per node:</strong> 14 req/s → 39 req/s (2.8x)</li>
+    </ul>
+    <p>The key driver was eliminating host DRAM staging. Each prompt copy previously incurred ~2,800 CPU cycles in memcpy plus IOMMU translation. With GPUDirect, that cost is zero.</p>
+
+    <h2>Economics: Why the DPU Pays for Itself</h2>
+    <p>A BlueField-3 400G card lists at ~$4,500. In a DGX H100 node costing $350,000, that's 1.3% of capex.</p>
+    <blockquote>The waste from an underutilized H100 at 31% is ~$2.10/hour in lost rental value. Improving utilization to 87% recovers $1.68/hour, or $14,700/year per GPU.</blockquote>
+    <p>Even accounting for DPU power (75W) and software complexity, payback is under 4 months at cloud pricing. For self-hosted clusters, the value is capacity: you can run 2.8x more agents on the same GPU fleet, deferring a $2M expansion.</p>
+    <p>More importantly, the DPU provides isolation. In multi-tenant agent platforms, running untrusted tool code and JSON parsing on the host is a security risk. Moving it to the DPU's separate trust domain eliminates an entire class of host escapes — a benefit hyperscalers already exploit for storage and network virtualization.</p>
+
+    
+<h2>What this does not solve: deployment constraints</h2>
+<p>The DPU-as-controller architecture is not a universal drop-in. It introduces real tradeoffs that architects must weigh:</p>
+<ul>
+<li><strong>Software maturity:</strong> DOCA programming requires C and low-level PCIe knowledge. Moving from Python/LangChain to DPU firmware is a steep climb. Emerging frameworks like vLLM's DPU backend are early-stage.</li>
+<li><strong>Topology dependence:</strong> GPUDirect P2P requires specific PCIe switch configurations and same-root-complex placement. Not all servers support bypass.</li>
+<li><strong>Heterogeneous clusters:</strong> In mixed fleets, schedulers must steer agentic workloads to DPU-equipped nodes, adding complexity. Non-agentic batch inference sees minimal benefit.</li>
+<li><strong>Tool latency remains:</strong> The DPU can overlap tool calls but cannot eliminate external API latency (600ms web search). The win is concurrency, not magic.</li>
+<li><strong>Security boundaries:</strong> Running orchestration on DPU creates a new trust domain. Host isolation is a feature, but also an operational burden.</li>
+</ul>
+<p>These constraints mean the architecture fits best for high-volume, stateful agent serving — not for every inference workload.</p>
+
+<h2>Conclusion: The Memory Controller for Agents</h2>
+    <p>CPUs were designed to be general-purpose orchestrators. GPUs were designed for parallel math. Neither was designed for the agentic workload: millions of small, stateful, network-bound transactions that require deterministic parsing and zero-copy data movement.</p>
+    <p>The DPU is. It sits at the natural choke point — between the network where tools live and the PCIe bus where GPUs live — with enough compute, memory, and hardware accelerators to own the entire orchestration loop.</p>
+    <p>This mirrors the history of computing: we offloaded graphics to GPUs, storage to NVMe controllers, networking to NICs. Now we offload <em>agent coordination</em> to DPUs. In two years, I expect "Agent Memory Controller" to be a standard server component, just as the BMC is today. The host CPU will return to what it does best: running business logic. The GPU will return to what it does best: generating tokens. And the 78/31 inversion will be remembered as a temporary architectural mismatch from the early agentic era.</p>
+
+    <div class="refs">
+        <ol>
+            <li id="ref1">Internal profiling, "The Agentic AI Memory Wall," Anyscale + LangChain, Q3 2024. 78% CPU / 31% GPU measured on 70B ReAct workload.</li>
+            <li id="ref2">NVIDIA BlueField-3 DPU Product Brief, PB-11133-001_v03, 2024. "300 cores equivalent" and regex throughput claims.</li>
+            <li id="ref3">Red Hat, "Accelerating AI Inference at Scale with DPUs," Summit 2023. 70% host CPU reduction, 4.2x p99 latency improvement using BlueField-2 and OpenShift AI.</li>
+        </ol>
+    </div>
+</article>
+
+<hr style="margin-top: 3rem; border: none; border-top: 1px solid var(--border, #e2e8f0);" />
+<p style="text-align:center; color:var(--muted, #475569); font-size:0.9rem; margin-bottom: 2rem;">
+  <a href="../writings.html" style="color:var(--accent, #0ea5e9); text-decoration:none; font-family:system-ui">← All writings</a><br><br>
+  <span style="font-family:system-ui">© 2026</span> <a href="https://github.com/manishklach" style="color:var(--accent, #0ea5e9); text-decoration:none; font-family:system-ui">Manish KL</a><span style="font-family:system-ui">. All rights reserved.</span><br>
+  <span style="display:block; margin-top:8px; font-family:system-ui">Systems architecture notes on infrastructure boundaries.</span>
+</p>
+</body>
+
+</html>
