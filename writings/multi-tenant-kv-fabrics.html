@@ -1,6 +1,6 @@
 <!DOCTYPE html><html><head>
-<meta name="description" content="KV cache bandwidth must be partitioned like network bandwidth. With compiler contracts, token buckets in hardware, and page coloring, multi-tenant tail latency improves 3.6x and throughput improves 28 to 31 percent." />
-<meta name="keywords" content="Multi-Tenant, KV Fabrics, Bandwidth Contracts, Shared LLM Memory Systems, Manish KL" />
+<meta name="description" content="KV cache bandwidth must be partitioned like network bandwidth. With compiler contracts, token buckets in hardware, and page coloring, multi-tenant tail latency improves 3.6x and throughput improves 28 to 31 percent. Includes Addendum on Power Contract SLO." />
+<meta name="keywords" content="Multi-Tenant, KV Fabrics, Bandwidth Contracts, Shared LLM Memory Systems, Power Contract SLO, Manish KL" />
 <meta name="author" content="Manish KL" />
 
 </title>
@@ -198,6 +198,48 @@ end
 </svg>
 <p style="font-size:0.85em;color:#555;margin-top:0.5rem;">Simulated H200, 4 tenants, 1 prefill + 3 decode. Bars show p99 decode latency.</p>
 </div>
+
+<br><br><br><br><hr style='border: none; border-top: 2px solid #000; margin: 2rem 0; clear: both;'>
+
+<h2 style="font-size: 2.2rem; font-weight: bold; margin-bottom: 2rem;">Addendum: The Power Contract SLO</h2>
+<p><em>Making Joules-per-Token Schedulable from Grid to SRAM</em></p>
+
+
+<h2>0.1 Primer</h2>
+<ul><li><strong>Joules per token:</strong> Energy divided by useful output tokens</li><li><strong>PDU:</strong> Power distribution unit</li><li><strong>DVFS:</strong> Dynamic voltage/frequency scaling</li><li><strong>CPO/LPO:</strong> Co-packaged optics / linear-drive optics</li></ul>
+
+<h2>0.2 Evidence basis and scope</h2>
+<ul><li><strong>Measured:</strong> GB200 120kW, H200 power from vendor datasheets and MLPerf 2025</li><li><strong>Trace-driven simulation:</strong> throughput under caps, latency from production traces</li><li><strong>Analytic estimates:</strong> joules per token, capacitor energy</li><li><strong>Design proposal:</strong> RIIR power contracts, fabric arbiter</li></ul>
+
+<h2>1. The power wall</h2>
+<p>In modeled deployments, a GB200 NVL72 rack draws roughly 120 kW sustained, with peaks near 135 kW during all-reduce. At 10k GPU scale, this approaches 17–20 MW.</p>
+
+<h2>2. Why joules per token</h2>
+<p>Throughput per watt is the right metric. Representative numbers: H200 FP16 ~0.42 J/token, FP8 with LPO ~0.28 J/token, GB200 FP4 with CPO sleep ~0.17 J/token.</p>
+
+<h2>4. Why not just throttle</h2>
+<p>Firmware throttling reacts to temperature, not SLOs. Static caps waste headroom. DVFS alone ignores memory and links which are ~55% of power.</p>
+
+<h2>5. Resource Intent Interface</h2>
+<pre>power = { target_jpt=0.30, alternatives=[A, B, C] }</pre>
+
+<h3>5.1 Where contracts are emitted</h3>
+<p>In practice, the contract is not emitted by a new compiler. For PyTorch 2.x, this is a TorchInductor post-lowering pass that annotates each kernel with estimated joules and emits RIIR power alternatives as metadata. For XLA/JAX, it is an HLO pass before codegen that inserts power metadata into custom calls. For vLLM and TensorRT-LLM, the runtime reads the metadata at model load and registers contracts with MCOS; the scheduler selects the plan at request dispatch based on live PDU forecasts. The compiler proposes the Pareto frontier, the runtime selects.</p>
+
+<h2>6. Compiler generates frontier</h2>
+<p>Search yields 7–14 Pareto-optimal plans. Model error ~4% for joules in simulation.</p>
+
+<h2>8. Handling transients</h2>
+<p>Two-tier control: 5s forecast for utility, 200µs local override using PSU capacitors (~32J) and arbiter broadcast.</p>
+
+<h2>9. Case studies</h2>
+<h3>9.1 GB200 training</h3>
+<div style="background:#f5f5f5;padding:0.8rem;border-left:3px solid #999;">Assumptions: 800 racks, simulated, PDU cap 94.5 MW</div>
+<p>Effective token throughput per MW rose from ~81% to ~96% of theoretical in simulation.</p>
+
+<h2>10. Conclusion</h2>
+<p>Power is not a limit to hit. It is a budget to allocate. Once joules per token becomes schedulable, the datacenter stops throttling and starts negotiating.</p>
+<p><strong>Make power a contract, not a crisis.</strong></p>
 
 
 <hr style="margin-top: 3rem; border: none; border-top: 1px solid #ddd;" />
