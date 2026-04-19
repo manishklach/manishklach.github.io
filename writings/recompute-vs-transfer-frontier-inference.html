@@ -1,27 +1,28 @@
 <!DOCTYPE html>
-<html lang='en'>
+
+<html lang="en">
 <head>
-<meta charset='UTF-8'>
-<meta name='viewport' content='width=device-width, initial-scale=1.0'>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>The Recompute-vs-Transfer Frontier: When Redoing Work Is Cheaper Than Moving Bytes | Manish K. Lach</title>
-<meta name="description" content="A systems essay on the inference-time recompute-vs-transfer tradeoff for KV-cache management. For some pages, recomputing attention from scratch costs less than fetching from host RAM.">
-<meta name="keywords" content="recompute vs transfer, KV cache, inference optimization, FlashAttention, memory hierarchy, GPU inference, long-context, recomputation, eviction policy, HBM bandwidth">
-<meta name="author" content="Manish KL">
-<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
-<meta name="theme-color" content="#08110f">
-<link rel="canonical" href="https://manishklach.github.io/writings/recompute-vs-transfer-frontier-inference.html">
-<meta property="og:type" content="article">
-<meta property="og:title" content="The Recompute-vs-Transfer Frontier: When Redoing Work Is Cheaper Than Moving Bytes | Manish K. Lach">
-<meta property="og:description" content="A systems essay on the inference-time recompute-vs-transfer tradeoff for KV-cache management. For some pages, recomputing attention from scratch costs less than fetching from host RAM.">
-<meta property="og:url" content="https://manishklach.github.io/writings/recompute-vs-transfer-frontier-inference.html">
-<meta property="og:site_name" content="Manish KL">
-<meta property="og:locale" content="en_US">
-<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="The Recompute-vs-Transfer Frontier: When Redoing Work Is Cheaper Than Moving Bytes | Manish K. Lach">
-<meta name="twitter:description" content="For some KV pages, recomputing attention is cheaper than fetching from host RAM. A systems essay on the recompute-transfer frontier.">
-<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
-<meta name="twitter:site" content="@manishkl_">
+<meta content="A systems essay on the inference-time recompute-vs-transfer tradeoff for KV-cache management. For some pages, recomputing attention from scratch costs less than fetching from host RAM." name="description"/>
+<meta content="recompute vs transfer, KV cache, inference optimization, FlashAttention, memory hierarchy, GPU inference, long-context, recomputation, eviction policy, HBM bandwidth" name="keywords"/>
+<meta content="Manish KL" name="author"/>
+<meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/>
+<meta content="#08110f" name="theme-color"/>
+<link href="https://manishklach.github.io/writings/recompute-vs-transfer-frontier-inference.html" rel="canonical"/>
+<meta content="article" property="og:type"/>
+<meta content="The Recompute-vs-Transfer Frontier: When Redoing Work Is Cheaper Than Moving Bytes | Manish K. Lach" property="og:title"/>
+<meta content="A systems essay on the inference-time recompute-vs-transfer tradeoff for KV-cache management. For some pages, recomputing attention from scratch costs less than fetching from host RAM." property="og:description"/>
+<meta content="https://manishklach.github.io/writings/recompute-vs-transfer-frontier-inference.html" property="og:url"/>
+<meta content="Manish KL" property="og:site_name"/>
+<meta content="en_US" property="og:locale"/>
+<meta content="https://manishklach.github.io/og/recompute-vs-transfer-frontier-inference.png" property="og:image"/>
+<meta content="summary_large_image" name="twitter:card"/>
+<meta content="The Recompute-vs-Transfer Frontier" name="twitter:title"/>
+<meta content="A systems essay on the inference-time recompute-vs-transfer tradeoff for KV-cache management. For some pages, recomputing attention from scratch costs less than fetching from host RAM." name="twitter:description"/>
+<meta content="https://manishklach.github.io/og/recompute-vs-transfer-frontier-inference.png" name="twitter:image"/>
+<meta content="@manishkl_" name="twitter:site"/>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -44,9 +45,9 @@
   }
 }
 </script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&amp;family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#08110f;--bg2:#0f1d18;--surface:rgba(10,18,24,.82);--surface-strong:rgba(10,18,24,.94);--line:rgba(142,175,171,.14);--text:#d4e4e0;--muted:#8ea59f;--strong:#f5fbf8;--accent:#82f0a1;--accent2:#83bcff;--accent3:#d2a8ff;--warn:#f7c973;--danger:#ff879a;--maxw:980px;--mono:'JetBrains Mono',monospace;--display:'Fraunces',serif;--body:'Inter',sans-serif;--shadow:0 24px 80px rgba(0,0,0,.36)}
 *{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{color:var(--text);font-family:var(--body);font-size:17px;line-height:1.84;background:radial-gradient(circle at top,rgba(130,240,161,.11),transparent 34%),radial-gradient(circle at 88% 14%,rgba(131,188,255,.10),transparent 23%),radial-gradient(circle at 7% 80%,rgba(210,168,255,.07),transparent 25%),linear-gradient(180deg,#08110f 0%,#091412 45%,#08100e 100%);background-attachment:fixed}
@@ -66,199 +67,164 @@ code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid r
 .footer-note{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:11px}.essay-copyright{margin-top:16px;color:var(--muted);font-size:.95em}.essay-copyright a{color:inherit;font-weight:600;text-decoration:none}.essay-copyright a:hover{text-decoration:underline}
 @media(max-width:768px){body{font-size:16px}.kpi-grid{grid-template-columns:1fr 1fr}h1{max-width:none}.hero{padding-top:56px}}@media(max-width:480px){.wrap{width:min(var(--maxw),calc(100vw - 24px))}.kpi-grid{grid-template-columns:1fr}.abstract,.callout,blockquote{padding-left:18px;padding-right:18px}}
 </style>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-</head>
-<body>
-
-<header class='site-header'>
-  <div class='wrap'>
-    <div class='nav'>
-      <div class='brand'>Manish KL</div>
-      <a class='back-link' href='https://manishklach.github.io/writings.html'>← writings</a>
-    </div>
-  </div>
-</header>
-
-<div class='wrap'>
-<section class='hero'>
-  <div class='eyebrow'><span class='pulse'></span> Memory Systems · Inference Architecture · Compute-Memory Tradeoffs</div>
-  <h1>The Recompute-vs-Transfer Frontier</h1>
-  <p class='dek'>When redoing work is cheaper than moving bytes — and why eviction policies should know the difference between pages worth storing and pages worth recomputing.</p>
-  <div class='meta'>
-    <span>By Manish KL</span>
-    <span class='meta-tag'><time datetime="2026-04-14">April 2026</time></span>
-    <span>~17 min read</span>
-    <span>Technical Essay</span>
-  </div>
-
-  <div class='abstract'>
-    <div class='abstract-label'>Abstract</div>
-    <p>The memory hierarchy literature assumes that every evicted piece of data will eventually be re-loaded from a slower tier. But for KV-cache pages in long-context inference, there is a fourth option beyond keep, demote, and evict: <strong>recompute</strong>. Rerunning a few attention layers from the original token embeddings can sometimes cost less than the bandwidth penalty of fetching demoted pages from host RAM — especially when the GPU has spare compute cycles during memory-bound decode. This essay examines the <strong>recompute-vs-transfer frontier</strong>: the decision surface where compute cost, bandwidth availability, reuse probability, and tier latency determine whether a page is worth storing at all.</p>
-  </div>
-</section>
-
-<div class='kpi-grid'>
-  <div class='kpi'><div class='kpi-num'>4</div><div class='kpi-label'>actions in a residency-aware policy: keep, demote, evict, recompute</div></div>
-  <div class='kpi'><div class='kpi-num'>~50μs</div><div class='kpi-label'>recompute cost for 1 KV page (128 tokens, 1 layer) on H100</div></div>
-  <div class='kpi'><div class='kpi-num'>~200μs</div><div class='kpi-label'>host RAM round-trip for the same page via PCIe 5.0</div></div>
-  <div class='kpi'><div class='kpi-num'>>60%</div><div class='kpi-label'>GPU compute idle during memory-bound decode steps</div></div>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<meta content="light dark" name="color-scheme"/>
+<script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><link href="/assets/site.css" rel="stylesheet"/><script defer="" src="/assets/site.js"></script><link href="/feed.xml" rel="alternate" title="Manish K. Lach RSS" type="application/rss+xml"/></head>
+<body><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
+<header class="site-header">
+<div class="wrap">
+<div class="nav">
+<div class="brand">Manish KL</div>
+<a class="back-link" href="https://manishklach.github.io/writings.html">← writings</a>
 </div>
-
-<article data-pagefind-body>
-
-<h2>The missing fourth action</h2>
+</div>
+</header>
+<div class="wrap">
+<section class="hero">
+<div class="eyebrow"><span class="pulse"></span> Memory Systems · Inference Architecture · Compute-Memory Tradeoffs</div>
+<h1>The Recompute-vs-Transfer Frontier</h1><div class="meta reading-meta">Published <time datetime="2026-04-14">Apr 14, 2026</time> · 9 min read</div>
+<p class="dek">When redoing work is cheaper than moving bytes — and why eviction policies should know the difference between pages worth storing and pages worth recomputing.</p>
+<div class="meta">
+<span>By Manish KL</span>
+<span class="meta-tag"><time datetime="2026-04-14">April 2026</time></span>
+<span>~17 min read</span>
+<span>Technical Essay</span>
+</div>
+<div class="abstract">
+<div class="abstract-label">Abstract</div>
+<p>The memory hierarchy literature assumes that every evicted piece of data will eventually be re-loaded from a slower tier. But for KV-cache pages in long-context inference, there is a fourth option beyond keep, demote, and evict: <strong>recompute</strong>. Rerunning a few attention layers from the original token embeddings can sometimes cost less than the bandwidth penalty of fetching demoted pages from host RAM — especially when the GPU has spare compute cycles during memory-bound decode. This essay examines the <strong>recompute-vs-transfer frontier</strong>: the decision surface where compute cost, bandwidth availability, reuse probability, and tier latency determine whether a page is worth storing at all.</p>
+</div>
+</section>
+<div class="kpi-grid">
+<div class="kpi"><div class="kpi-num">4</div><div class="kpi-label">actions in a residency-aware policy: keep, demote, evict, recompute</div></div>
+<div class="kpi"><div class="kpi-num">~50μs</div><div class="kpi-label">recompute cost for 1 KV page (128 tokens, 1 layer) on H100</div></div>
+<div class="kpi"><div class="kpi-num">~200μs</div><div class="kpi-label">host RAM round-trip for the same page via PCIe 5.0</div></div>
+<div class="kpi"><div class="kpi-num">&gt;60%</div><div class="kpi-label">GPU compute idle during memory-bound decode steps</div></div>
+</div>
+<article data-pagefind-body="">
+<nav class="toc"><strong>Contents</strong><ul><li><a href="#the-missing-fourth-action">The missing fourth action</a></li><li><a href="#when-recompute-wins">When recompute wins</a></li><li><a href="#flashattention-already-proved-the-concept">FlashAttention already proved the concept</a></li><li><a href="#implications-for-eviction-policy-design">Implications for eviction policy design</a></li><li><a href="#the-compression-dimension">The compression dimension</a></li><li><a href="#what-remains-hard">What remains hard</a></li><li><a href="#where-this-leads">Where this leads</a></li></ul></nav><h2 id="the-missing-fourth-action">The missing fourth action</h2>
 <p>Traditional cache management offers three actions for a resident page: <strong>keep</strong> it in fast tier, <strong>demote</strong> it to a slower tier, or <strong>evict</strong> it entirely (discarding the data). Every eviction policy — LRU, frequency-based, cost-aware, regret-aware — operates on this three-action space. The implicit assumption is that evicted or demoted data must be <em>re-loaded</em> from wherever it was sent.</p>
 <p>But KV-cache pages are not arbitrary data. They are <em>derived</em> from the original token embeddings through a deterministic sequence of attention computations. Any KV page can be reconstructed from the corresponding input tokens by replaying the attention layers. This means there is a fourth action: <strong>recompute on demand</strong> — discard the page, and when it is next needed, regenerate it from the source tokens rather than fetching it from a slower memory tier.</p>
-
 <blockquote>The cheapest byte to move is the one you never move. For some KV pages, the cheapest eviction policy is to never store them in the first place — and recompute them on demand.</blockquote>
-
 <!-- DIAGRAM 1: Four-Action Decision Space -->
-<div class='figure'>
-  <div class='figure-inner'>
-    <svg viewBox='0 0 960 380' xmlns='http://www.w3.org/2000/svg'>
-      <rect width='960' height='380' fill='rgba(5,8,16,0.98)'/>
-      <text x='480' y='36' text-anchor='middle' font-family='Syne, sans-serif' font-weight='700' font-size='17' fill='#edf3ff'>The Four-Action Residency Decision</text>
-      <text x='480' y='56' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#607090'>traditional policies use 3 actions — the recompute path is the missing fourth</text>
-
-      <!-- Keep -->
-      <rect x='40' y='90' width='200' height='120' rx='14' fill='rgba(91,232,122,0.06)' stroke='rgba(91,232,122,0.25)' stroke-width='1.5'/>
-      <text x='140' y='118' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='12' fill='#5be87a' font-weight='600'>KEEP</text>
-      <text x='140' y='140' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#9ab5cf'>page stays in GPU HBM</text>
-      <text x='140' y='158' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#9ab5cf'>cost: 0 (already resident)</text>
-      <text x='140' y='176' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#5be87a'>access: ~1μs</text>
-      <text x='140' y='196' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>occupies fast-tier capacity</text>
-
-      <!-- Demote -->
-      <rect x='260' y='90' width='200' height='120' rx='14' fill='rgba(131,188,255,0.06)' stroke='rgba(131,188,255,0.2)' stroke-width='1.5'/>
-      <text x='360' y='118' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='12' fill='#83bcff' font-weight='600'>DEMOTE</text>
-      <text x='360' y='140' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#9ab5cf'>page moves to host RAM</text>
-      <text x='360' y='158' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#9ab5cf'>cost: PCIe write + later read</text>
-      <text x='360' y='176' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#83bcff'>re-access: ~200μs</text>
-      <text x='360' y='196' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>bandwidth-limited</text>
-
-      <!-- Evict -->
-      <rect x='480' y='90' width='200' height='120' rx='14' fill='rgba(255,135,154,0.06)' stroke='rgba(255,135,154,0.2)' stroke-width='1.5'/>
-      <text x='580' y='118' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='12' fill='#ff879a' font-weight='600'>EVICT</text>
-      <text x='580' y='140' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#9ab5cf'>page discarded entirely</text>
-      <text x='580' y='158' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#9ab5cf'>cost: permanent loss</text>
-      <text x='580' y='176' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#ff879a'>re-access: impossible</text>
-      <text x='580' y='196' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>quality degradation</text>
-
-      <!-- Recompute (highlighted) -->
-      <rect x='700' y='90' width='220' height='120' rx='14' fill='rgba(210,168,255,0.08)' stroke='rgba(210,168,255,0.35)' stroke-width='2'/>
-      <text x='810' y='118' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='12' fill='#d2a8ff' font-weight='600'>RECOMPUTE ★</text>
-      <text x='810' y='140' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#9ab5cf'>page discarded, rebuilt on demand</text>
-      <text x='810' y='158' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#9ab5cf'>cost: attention recomputation</text>
-      <text x='810' y='176' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#d2a8ff'>re-access: ~50μs (compute-bound)</text>
-      <text x='810' y='196' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>uses idle compute, no bandwidth</text>
-
-      <!-- Decision flow -->
-      <rect x='40' y='240' width='880' height='110' rx='14' fill='rgba(210,168,255,0.04)' stroke='rgba(210,168,255,0.15)'/>
-      <text x='480' y='268' text-anchor='middle' font-family='Syne, sans-serif' font-weight='700' font-size='14' fill='#d2a8ff'>The Decision Frontier</text>
-      <text x='480' y='292' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#edf3ff'>if recompute_cost(page) < transfer_cost(page) AND gpu_compute_available > threshold:</text>
-      <text x='480' y='312' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#d2a8ff'>→ discard and recompute on demand (no bandwidth consumed, no storage needed)</text>
-      <text x='480' y='332' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#607090'>this is the recompute-vs-transfer frontier</text>
-    </svg>
-  </div>
-  <div class='figcap'><strong>Figure 1.</strong> The four-action residency decision. Traditional policies operate on keep/demote/evict. Recompute adds a fourth path that trades idle GPU compute for bandwidth — useful when compute is abundant and bandwidth is scarce.</div>
+<div class="figure">
+<div class="figure-inner">
+<svg viewbox="0 0 960 380" xmlns="http://www.w3.org/2000/svg">
+<rect fill="rgba(5,8,16,0.98)" height="380" width="960"></rect>
+<text fill="#edf3ff" font-family="Syne, sans-serif" font-size="17" font-weight="700" text-anchor="middle" x="480" y="36">The Four-Action Residency Decision</text>
+<text fill="#607090" font-family="IBM Plex Mono, monospace" font-size="10" text-anchor="middle" x="480" y="56">traditional policies use 3 actions — the recompute path is the missing fourth</text>
+<!-- Keep -->
+<rect fill="rgba(91,232,122,0.06)" height="120" rx="14" stroke="rgba(91,232,122,0.25)" stroke-width="1.5" width="200" x="40" y="90"></rect>
+<text fill="#5be87a" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" text-anchor="middle" x="140" y="118">KEEP</text>
+<text fill="#9ab5cf" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="140" y="140">page stays in GPU HBM</text>
+<text fill="#9ab5cf" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="140" y="158">cost: 0 (already resident)</text>
+<text fill="#5be87a" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="140" y="176">access: ~1μs</text>
+<text fill="#607090" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="140" y="196">occupies fast-tier capacity</text>
+<!-- Demote -->
+<rect fill="rgba(131,188,255,0.06)" height="120" rx="14" stroke="rgba(131,188,255,0.2)" stroke-width="1.5" width="200" x="260" y="90"></rect>
+<text fill="#83bcff" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" text-anchor="middle" x="360" y="118">DEMOTE</text>
+<text fill="#9ab5cf" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="360" y="140">page moves to host RAM</text>
+<text fill="#9ab5cf" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="360" y="158">cost: PCIe write + later read</text>
+<text fill="#83bcff" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="360" y="176">re-access: ~200μs</text>
+<text fill="#607090" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="360" y="196">bandwidth-limited</text>
+<!-- Evict -->
+<rect fill="rgba(255,135,154,0.06)" height="120" rx="14" stroke="rgba(255,135,154,0.2)" stroke-width="1.5" width="200" x="480" y="90"></rect>
+<text fill="#ff879a" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" text-anchor="middle" x="580" y="118">EVICT</text>
+<text fill="#9ab5cf" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="580" y="140">page discarded entirely</text>
+<text fill="#9ab5cf" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="580" y="158">cost: permanent loss</text>
+<text fill="#ff879a" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="580" y="176">re-access: impossible</text>
+<text fill="#607090" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="580" y="196">quality degradation</text>
+<!-- Recompute (highlighted) -->
+<rect fill="rgba(210,168,255,0.08)" height="120" rx="14" stroke="rgba(210,168,255,0.35)" stroke-width="2" width="220" x="700" y="90"></rect>
+<text fill="#d2a8ff" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" text-anchor="middle" x="810" y="118">RECOMPUTE ★</text>
+<text fill="#9ab5cf" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="810" y="140">page discarded, rebuilt on demand</text>
+<text fill="#9ab5cf" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="810" y="158">cost: attention recomputation</text>
+<text fill="#d2a8ff" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="810" y="176">re-access: ~50μs (compute-bound)</text>
+<text fill="#607090" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="810" y="196">uses idle compute, no bandwidth</text>
+<!-- Decision flow -->
+<rect fill="rgba(210,168,255,0.04)" height="110" rx="14" stroke="rgba(210,168,255,0.15)" width="880" x="40" y="240"></rect>
+<text fill="#d2a8ff" font-family="Syne, sans-serif" font-size="14" font-weight="700" text-anchor="middle" x="480" y="268">The Decision Frontier</text>
+<text fill="#edf3ff" font-family="IBM Plex Mono, monospace" font-size="10" text-anchor="middle" x="480" y="292">if recompute_cost(page) &lt; transfer_cost(page) AND gpu_compute_available &gt; threshold:</text>
+<text fill="#d2a8ff" font-family="IBM Plex Mono, monospace" font-size="10" text-anchor="middle" x="480" y="312">→ discard and recompute on demand (no bandwidth consumed, no storage needed)</text>
+<text fill="#607090" font-family="IBM Plex Mono, monospace" font-size="10" text-anchor="middle" x="480" y="332">this is the recompute-vs-transfer frontier</text>
+</svg>
 </div>
-
-<h2>When recompute wins</h2>
+<div class="figcap"><strong>Figure 1.</strong> The four-action residency decision. Traditional policies operate on keep/demote/evict. Recompute adds a fourth path that trades idle GPU compute for bandwidth — useful when compute is abundant and bandwidth is scarce.</div>
+</div>
+<h2 id="when-recompute-wins">When recompute wins</h2>
 <p>The recompute-vs-transfer decision depends on a ratio: <strong>the compute cost of regenerating a KV page versus the bandwidth cost of fetching it from wherever it was stored</strong>. This ratio is not fixed — it varies with model architecture, sequence position, hardware generation, and current system load.</p>
-
 <h3>The cost model</h3>
 <p>For a single KV page covering <em>T</em> tokens across <em>L</em> layers with <em>H</em> attention heads and head dimension <em>D</em>:</p>
-
-<div class='callout'>
-  <strong>Recompute cost:</strong> <code>~2 × T × L × H × D × D</code> FLOPs (attention QKV projection + softmax + output projection)<br>
-  <strong>Transfer cost:</strong> <code>T × L × H × D × 2 × bytes_per_element / bandwidth</code> (PCIe or NVLink transfer time)<br><br>
+<div class="callout">
+<strong>Recompute cost:</strong> <code>~2 × T × L × H × D × D</code> FLOPs (attention QKV projection + softmax + output projection)<br/>
+<strong>Transfer cost:</strong> <code>T × L × H × D × 2 × bytes_per_element / bandwidth</code> (PCIe or NVLink transfer time)<br/><br/>
   On H100: recompute a 128-token, single-layer page ≈ <strong>50μs</strong>. Transfer the same page from host RAM via PCIe 5.0 ≈ <strong>200μs</strong>. Recompute wins by 4×.
 </div>
-
 <p>The critical variable is <strong>GPU compute utilization</strong>. During autoregressive decode, the GPU is severely memory-bound — the arithmetic units are idle 60–80% of the time, waiting for HBM reads to complete. Those idle FLOPS are free. Using them for KV recomputation converts waste heat into useful work, without contending for the memory bandwidth that is already saturated.</p>
-
 <h3>Where the frontier lies</h3>
 <p>Recompute is cheaper than transfer when:</p>
 <ul>
-  <li><strong>Few layers need recomputation.</strong> Regenerating KV for 1–4 layers is fast. Regenerating all 32 layers (full-depth recompute) is almost always more expensive than a host-RAM fetch.</li>
-  <li><strong>The page is small.</strong> Pages covering 64–256 tokens have low recompute cost. Pages covering 4K+ tokens begin to cross over — the compute cost grows linearly while transfer cost grows at the bandwidth-limited rate.</li>
-  <li><strong>Compute is idle.</strong> During decode steps, GPU compute is underutilized. During prefill, compute is fully occupied — recompute would compete with the main workload.</li>
-  <li><strong>The alternative is slow.</strong> Fetching from host RAM (PCIe 5.0: ~64 GB/s) is 50× slower than HBM access. Fetching from NVMe is 500× slower. The slower the alternative, the more attractive recompute becomes.</li>
-  <li><strong>Reuse is uncertain.</strong> If a page has low reuse probability, the cost of storing it (demotion bandwidth + storage + future promotion bandwidth) exceeds the cost of discarding it and recomputing only if it is actually needed.</li>
+<li><strong>Few layers need recomputation.</strong> Regenerating KV for 1–4 layers is fast. Regenerating all 32 layers (full-depth recompute) is almost always more expensive than a host-RAM fetch.</li>
+<li><strong>The page is small.</strong> Pages covering 64–256 tokens have low recompute cost. Pages covering 4K+ tokens begin to cross over — the compute cost grows linearly while transfer cost grows at the bandwidth-limited rate.</li>
+<li><strong>Compute is idle.</strong> During decode steps, GPU compute is underutilized. During prefill, compute is fully occupied — recompute would compete with the main workload.</li>
+<li><strong>The alternative is slow.</strong> Fetching from host RAM (PCIe 5.0: ~64 GB/s) is 50× slower than HBM access. Fetching from NVMe is 500× slower. The slower the alternative, the more attractive recompute becomes.</li>
+<li><strong>Reuse is uncertain.</strong> If a page has low reuse probability, the cost of storing it (demotion bandwidth + storage + future promotion bandwidth) exceeds the cost of discarding it and recomputing only if it is actually needed.</li>
 </ul>
-
 <!-- DIAGRAM 2: Frontier Surface -->
-<div class='figure'>
-  <div class='figure-inner'>
-    <svg viewBox='0 0 960 340' xmlns='http://www.w3.org/2000/svg'>
-      <rect width='960' height='340' fill='rgba(5,8,16,0.98)'/>
-      <text x='480' y='32' text-anchor='middle' font-family='Syne, sans-serif' font-weight='700' font-size='16' fill='#edf3ff'>The Recompute-Transfer Frontier</text>
-      <text x='480' y='52' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#607090'>page size × layer depth → which action is cheaper</text>
-
-      <!-- Chart area -->
-      <rect x='80' y='70' width='400' height='240' rx='10' fill='rgba(10,16,26,0.8)' stroke='rgba(255,255,255,0.05)'/>
-
-      <!-- Axes -->
-      <line x1='120' y1='80' x2='120' y2='290' stroke='rgba(255,255,255,0.1)' stroke-width='1'/>
-      <line x1='120' y1='290' x2='460' y2='290' stroke='rgba(255,255,255,0.1)' stroke-width='1'/>
-      <text x='112' y='88' text-anchor='end' font-family='IBM Plex Mono, monospace' font-size='8' fill='#607090'>high</text>
-      <text x='112' y='290' text-anchor='end' font-family='IBM Plex Mono, monospace' font-size='8' fill='#607090'>low</text>
-      <text x='80' y='185' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='8' fill='#607090' transform='rotate(-90,80,185)'>cost (μs)</text>
-      <text x='290' y='307' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#607090'>page size (tokens) →</text>
-
-      <!-- Transfer cost line (flat-ish, limited by bandwidth) -->
-      <polyline points='120,240 180,230 240,215 300,200 360,188 420,178 460,170' fill='none' stroke='#83bcff' stroke-width='2.5' stroke-linecap='round'/>
-
-      <!-- Recompute cost line (starts low, grows linearly) -->
-      <polyline points='120,275 180,260 240,240 300,210 360,170 420,125 460,90' fill='none' stroke='#d2a8ff' stroke-width='2.5' stroke-linecap='round'/>
-
-      <!-- Crossover point -->
-      <circle cx='330' cy='198' r='6' fill='#f7c973' stroke='#f7c973'/>
-      <text x='345' y='195' font-family='IBM Plex Mono, monospace' font-size='9' fill='#f7c973'>crossover</text>
-
-      <!-- Regions -->
-      <text x='200' y='268' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#d2a8ff' font-weight='500'>RECOMPUTE WINS</text>
-      <text x='420' y='118' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='10' fill='#83bcff' font-weight='500'>TRANSFER WINS</text>
-
-      <!-- Legend -->
-      <line x1='140' y1='310' x2='160' y2='310' stroke='#d2a8ff' stroke-width='2'/>
-      <text x='165' y='314' font-family='IBM Plex Mono, monospace' font-size='9' fill='#d2a8ff'>recompute cost</text>
-      <line x1='290' y1='310' x2='310' y2='310' stroke='#83bcff' stroke-width='2'/>
-      <text x='315' y='314' font-family='IBM Plex Mono, monospace' font-size='9' fill='#83bcff'>transfer cost (PCIe)</text>
-
-      <!-- Right panel: conditions -->
-      <rect x='520' y='70' width='400' height='240' rx='14' fill='rgba(10,18,30,0.8)' stroke='rgba(210,168,255,0.2)' stroke-width='1.5'/>
-      <text x='720' y='100' text-anchor='middle' font-family='Syne, sans-serif' font-weight='700' font-size='14' fill='#d2a8ff'>When Recompute Wins</text>
-
-      <rect x='545' y='115' width='350' height='36' rx='8' fill='rgba(91,232,122,0.06)' stroke='rgba(91,232,122,0.15)'/>
-      <text x='720' y='138' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#5be87a'>✓ page covers few tokens (64–256)</text>
-
-      <rect x='545' y='157' width='350' height='36' rx='8' fill='rgba(91,232,122,0.06)' stroke='rgba(91,232,122,0.15)'/>
-      <text x='720' y='180' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#5be87a'>✓ only 1–4 layers need recomputation</text>
-
-      <rect x='545' y='199' width='350' height='36' rx='8' fill='rgba(91,232,122,0.06)' stroke='rgba(91,232,122,0.15)'/>
-      <text x='720' y='222' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#5be87a'>✓ GPU compute utilization < 40% (decode phase)</text>
-
-      <rect x='545' y='241' width='350' height='36' rx='8' fill='rgba(91,232,122,0.06)' stroke='rgba(91,232,122,0.15)'/>
-      <text x='720' y='264' text-anchor='middle' font-family='IBM Plex Mono, monospace' font-size='9' fill='#5be87a'>✓ alternative is PCIe/NVMe (slow transfer)</text>
-    </svg>
-  </div>
-  <div class='figcap'><strong>Figure 2.</strong> Left: recompute cost grows linearly with page size while transfer cost is bandwidth-limited (flatter curve). Below the crossover, recompute is cheaper. Right: conditions that shift the crossover in recompute's favor.</div>
+<div class="figure">
+<div class="figure-inner">
+<svg viewbox="0 0 960 340" xmlns="http://www.w3.org/2000/svg">
+<rect fill="rgba(5,8,16,0.98)" height="340" width="960"></rect>
+<text fill="#edf3ff" font-family="Syne, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="480" y="32">The Recompute-Transfer Frontier</text>
+<text fill="#607090" font-family="IBM Plex Mono, monospace" font-size="10" text-anchor="middle" x="480" y="52">page size × layer depth → which action is cheaper</text>
+<!-- Chart area -->
+<rect fill="rgba(10,16,26,0.8)" height="240" rx="10" stroke="rgba(255,255,255,0.05)" width="400" x="80" y="70"></rect>
+<!-- Axes -->
+<line stroke="rgba(255,255,255,0.1)" stroke-width="1" x1="120" x2="120" y1="80" y2="290"></line>
+<line stroke="rgba(255,255,255,0.1)" stroke-width="1" x1="120" x2="460" y1="290" y2="290"></line>
+<text fill="#607090" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="end" x="112" y="88">high</text>
+<text fill="#607090" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="end" x="112" y="290">low</text>
+<text fill="#607090" font-family="IBM Plex Mono, monospace" font-size="8" text-anchor="middle" transform="rotate(-90,80,185)" x="80" y="185">cost (μs)</text>
+<text fill="#607090" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="290" y="307">page size (tokens) →</text>
+<!-- Transfer cost line (flat-ish, limited by bandwidth) -->
+<polyline fill="none" points="120,240 180,230 240,215 300,200 360,188 420,178 460,170" stroke="#83bcff" stroke-linecap="round" stroke-width="2.5"></polyline>
+<!-- Recompute cost line (starts low, grows linearly) -->
+<polyline fill="none" points="120,275 180,260 240,240 300,210 360,170 420,125 460,90" stroke="#d2a8ff" stroke-linecap="round" stroke-width="2.5"></polyline>
+<!-- Crossover point -->
+<circle cx="330" cy="198" fill="#f7c973" r="6" stroke="#f7c973"></circle>
+<text fill="#f7c973" font-family="IBM Plex Mono, monospace" font-size="9" x="345" y="195">crossover</text>
+<!-- Regions -->
+<text fill="#d2a8ff" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="500" text-anchor="middle" x="200" y="268">RECOMPUTE WINS</text>
+<text fill="#83bcff" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="500" text-anchor="middle" x="420" y="118">TRANSFER WINS</text>
+<!-- Legend -->
+<line stroke="#d2a8ff" stroke-width="2" x1="140" x2="160" y1="310" y2="310"></line>
+<text fill="#d2a8ff" font-family="IBM Plex Mono, monospace" font-size="9" x="165" y="314">recompute cost</text>
+<line stroke="#83bcff" stroke-width="2" x1="290" x2="310" y1="310" y2="310"></line>
+<text fill="#83bcff" font-family="IBM Plex Mono, monospace" font-size="9" x="315" y="314">transfer cost (PCIe)</text>
+<!-- Right panel: conditions -->
+<rect fill="rgba(10,18,30,0.8)" height="240" rx="14" stroke="rgba(210,168,255,0.2)" stroke-width="1.5" width="400" x="520" y="70"></rect>
+<text fill="#d2a8ff" font-family="Syne, sans-serif" font-size="14" font-weight="700" text-anchor="middle" x="720" y="100">When Recompute Wins</text>
+<rect fill="rgba(91,232,122,0.06)" height="36" rx="8" stroke="rgba(91,232,122,0.15)" width="350" x="545" y="115"></rect>
+<text fill="#5be87a" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="720" y="138">✓ page covers few tokens (64–256)</text>
+<rect fill="rgba(91,232,122,0.06)" height="36" rx="8" stroke="rgba(91,232,122,0.15)" width="350" x="545" y="157"></rect>
+<text fill="#5be87a" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="720" y="180">✓ only 1–4 layers need recomputation</text>
+<rect fill="rgba(91,232,122,0.06)" height="36" rx="8" stroke="rgba(91,232,122,0.15)" width="350" x="545" y="199"></rect>
+<text fill="#5be87a" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="720" y="222">✓ GPU compute utilization &lt; 40% (decode phase)</text>
+<rect fill="rgba(91,232,122,0.06)" height="36" rx="8" stroke="rgba(91,232,122,0.15)" width="350" x="545" y="241"></rect>
+<text fill="#5be87a" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle" x="720" y="264">✓ alternative is PCIe/NVMe (slow transfer)</text>
+</svg>
 </div>
-
-<h2>FlashAttention already proved the concept</h2>
+<div class="figcap"><strong>Figure 2.</strong> Left: recompute cost grows linearly with page size while transfer cost is bandwidth-limited (flatter curve). Below the crossover, recompute is cheaper. Right: conditions that shift the crossover in recompute's favor.</div>
+</div>
+<h2 id="flashattention-already-proved-the-concept">FlashAttention already proved the concept</h2>
 <p>The recompute-vs-transfer tradeoff is not new in attention computation — FlashAttention demonstrated it at a different scale. Instead of materializing the full <code>N×N</code> attention matrix in HBM and reading it back, FlashAttention recomputes attention scores from Q and K in SRAM, trading ~50% more FLOPs for dramatically less HBM bandwidth. The insight was that HBM bandwidth was scarcer than compute, so burning extra FLOPs to avoid a large materialization was a net win.</p>
 <p>The KV-cache recompute-vs-transfer frontier extends this same principle from <em>within a single attention computation</em> to <em>across the memory hierarchy</em>. Instead of asking "should I materialize the attention matrix?", the question becomes "should I even store this KV page, or should I regenerate it from tokens when needed?"</p>
-
-<div class='callout'>
-  <strong>The FlashAttention parallel:</strong> FlashAttention trades FLOPs for HBM bandwidth within a single kernel. Recompute-vs-transfer trades FLOPs for PCIe/NVLink bandwidth across the memory hierarchy. Both exploit the same asymmetry: bandwidth is scarcer than compute in modern GPU systems.
+<div class="callout">
+<strong>The FlashAttention parallel:</strong> FlashAttention trades FLOPs for HBM bandwidth within a single kernel. Recompute-vs-transfer trades FLOPs for PCIe/NVLink bandwidth across the memory hierarchy. Both exploit the same asymmetry: bandwidth is scarcer than compute in modern GPU systems.
 </div>
-
-<h2>Implications for eviction policy design</h2>
+<h2 id="implications-for-eviction-policy-design">Implications for eviction policy design</h2>
 <p>If recompute is sometimes cheaper than transfer, then eviction policies need a richer action space. Instead of deciding "which page to evict," the policy decides "which action to take for each page under pressure."</p>
-
-<div class='table-wrap'><table>
+<div class="table-wrap"><table>
 <thead><tr><th>Page Property</th><th>Best Action</th><th>Reasoning</th></tr></thead>
 <tbody>
 <tr><td>High reuse, small, few layers</td><td><strong>Keep</strong></td><td>Access cost is low and reuse is likely — not worth evicting</td></tr>
@@ -269,32 +235,26 @@ code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid r
 <tr><td>Any page during prefill phase</td><td><strong>Demote preferred</strong></td><td>Compute is saturated during prefill; bandwidth is available</td></tr>
 </tbody>
 </table></div>
-
-<h2>The compression dimension</h2>
+<h2 id="the-compression-dimension">The compression dimension</h2>
 <p>There is actually a fifth action that sits between "keep at full precision" and "recompute from scratch": <strong>compress in place</strong>. Quantizing a KV page from fp16 to int4 reduces its footprint by 4× while retaining the data in fast tier — no bandwidth consumed, no recomputation needed, but with a quality cost from quantization error.</p>
 <p>This creates a rich action lattice: <code>keep_fp16 → compress_to_int4 → demote_to_host → recompute_on_demand → evict</code>. Each action trades a different resource (capacity, quality, compute, bandwidth) and the optimal choice depends on the page's reuse probability, the current system load, and the quality tolerance of the request.</p>
-
-<h2>What remains hard</h2>
+<h2 id="what-remains-hard">What remains hard</h2>
 <ul>
-  <li><strong>Reuse prediction.</strong> The recompute decision depends on whether the page will be re-accessed. Predicting reuse from the access trace alone is the same hard problem that makes eviction policy design difficult in general. Without reuse prediction, the policy must use heuristics (recent access frequency, position in the sequence, attention-score history).</li>
-  <li><strong>Compute scheduling.</strong> Recompute must be scheduled alongside the main inference workload. On GPUs, this means either interleaving recompute kernels with decode kernels (adding scheduling complexity) or using separate CUDA streams (risking resource contention). The idle-compute argument only holds if the recompute work genuinely fits in the gaps between memory-bound operations.</li>
-  <li><strong>Latency variance.</strong> Recompute latency depends on current compute load, which varies per decode step. Transfer latency is more predictable (bounded by PCIe bandwidth). SLO-sensitive systems may prefer the predictability of transfer even when recompute is cheaper on average.</li>
-  <li><strong>Multi-layer depth.</strong> Recomputing KV for a single layer is cheap. But if the required page's KV depends on earlier layers' KV (which it does, in a transformer), then recomputing layer <em>L</em> requires the KV from layers 1 through <em>L-1</em> to be available. This creates a dependency chain that can make deep recomputation impractical without checkpointing intermediate KV at strategic layer boundaries.</li>
+<li><strong>Reuse prediction.</strong> The recompute decision depends on whether the page will be re-accessed. Predicting reuse from the access trace alone is the same hard problem that makes eviction policy design difficult in general. Without reuse prediction, the policy must use heuristics (recent access frequency, position in the sequence, attention-score history).</li>
+<li><strong>Compute scheduling.</strong> Recompute must be scheduled alongside the main inference workload. On GPUs, this means either interleaving recompute kernels with decode kernels (adding scheduling complexity) or using separate CUDA streams (risking resource contention). The idle-compute argument only holds if the recompute work genuinely fits in the gaps between memory-bound operations.</li>
+<li><strong>Latency variance.</strong> Recompute latency depends on current compute load, which varies per decode step. Transfer latency is more predictable (bounded by PCIe bandwidth). SLO-sensitive systems may prefer the predictability of transfer even when recompute is cheaper on average.</li>
+<li><strong>Multi-layer depth.</strong> Recomputing KV for a single layer is cheap. But if the required page's KV depends on earlier layers' KV (which it does, in a transformer), then recomputing layer <em>L</em> requires the KV from layers 1 through <em>L-1</em> to be available. This creates a dependency chain that can make deep recomputation impractical without checkpointing intermediate KV at strategic layer boundaries.</li>
 </ul>
-
 <blockquote>The recompute-vs-transfer frontier is not a single number — it is a surface that moves with every decode step. The policy that navigates this surface well will define the next generation of memory-efficient long-context inference.</blockquote>
-
-<h2>Where this leads</h2>
+<h2 id="where-this-leads">Where this leads</h2>
 <p>The recompute-vs-transfer frontier suggests that the future of KV-cache management is not "better eviction policies" but "richer action spaces." A policy that can choose between keep, compress, demote, recompute, and evict — and that can reason about the cost of each action under current system conditions — operates on a fundamentally more expressive design surface than one that can only choose "which page to kick out."</p>
 <p>This connects to several open research directions: compiler-emitted recompute hints (the compiler knows which layers are cheap to recompute), hardware-assisted recompute scheduling (dedicated recompute engines that run alongside the main datapath), and combined compression-recompute policies that choose the minimum-cost action per page per step.</p>
 <p>The broader principle is that <strong>compute and bandwidth are fungible under the right conditions</strong>, and the memory system should be designed to exploit that fungibility rather than treating them as independent resources.</p>
-
-<div class='footer-note'>
-  <code>recompute-vs-transfer-frontier-inference.html</code> · <time datetime="2026-04-14">April 2026</time> · <a href='https://manishklach.github.io/writings.html'>← All writings</a>
+<div class="footer-note">
+<code>recompute-vs-transfer-frontier-inference.html</code> · <time datetime="2026-04-14">April 2026</time> · <a href="https://manishklach.github.io/writings.html">← All writings</a>
 </div>
-<div class="essay-copyright">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a>. All rights reserved.</div>
-</article>
+<div class="essay-copyright">© 2026 <a href="https://github.com/manishklach" rel="noopener noreferrer" target="_blank">Manish KL</a>. All rights reserved.</div>
+<hr/><footer class="post-footer">© 2026 Manish K. Lach · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer></article>
 </div>
-
 </body>
 </html>

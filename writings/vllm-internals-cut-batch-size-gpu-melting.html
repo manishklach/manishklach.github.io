@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="en" class="scroll-smooth">
+
+<html class="scroll-smooth" lang="en">
 <head>
 <!-- Playables SDK -->
 <script>// Playables SDK v1.0.0
@@ -191,33 +192,33 @@
   }
 })();</script>
 <script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting | Manish K. Lach</title>
-    <meta name="description" content="A systems essay on where thermal control actually belongs inside vLLM, covering scheduler paths, KV pressure, swap behavior, tensor-parallel failure modes, and batch-cut policy when GPUs overheat.">
-    <meta name="keywords" content="vLLM internals, batch size control, GPU thermals, thermal throttling, KV cache pressure, scheduler internals, tensor parallelism, inference systems, HBM thermals">
-    <meta name="author" content="Manish KL">
-    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
-    <link rel="canonical" href="https://manishklach.github.io/writings/vllm-internals-cut-batch-size-gpu-melting.html">
-    <meta property="og:type" content="article">
-    <meta property="og:title" content="vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting | Manish K. Lach">
-    <meta property="og:description" content="A systems essay on where thermal control actually belongs inside vLLM, covering scheduler paths, KV pressure, swap behavior, tensor-parallel failure modes, and batch-cut policy when GPUs overheat.">
-    <meta property="og:url" content="https://manishklach.github.io/writings/vllm-internals-cut-batch-size-gpu-melting.html">
-    <meta property="og:site_name" content="Manish KL">
-    <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
-    <meta property="og:image:alt" content="Preview image for vLLM Internals thermal control essay">
-    <meta property="article:published_time" content="2026-04-13T00:00:00Z">
-    <meta property="article:modified_time" content="2026-04-13T00:00:00Z">
-    <meta property="article:author" content="Manish KL">
-    <meta property="article:section" content="AI Infrastructure">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting | Manish K. Lach">
-    <meta name="twitter:description" content="A systems essay on where thermal control actually belongs inside vLLM, and how to cut batch size without making decode behavior worse.">
-    <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
-    <meta name="twitter:image:alt" content="Preview image for vLLM Internals thermal control essay">
-    <meta name="twitter:creator" content="@manishkl">
-    <meta name="twitter:site" content="@manishkl">
-    <script type="application/ld+json">
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<title>vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting | Manish K. Lach</title>
+<meta content="A systems essay on where thermal control actually belongs inside vLLM, covering scheduler paths, KV pressure, swap behavior, tensor-parallel failure modes, and batch-cut policy when GPUs overheat." name="description"/>
+<meta content="vLLM internals, batch size control, GPU thermals, thermal throttling, KV cache pressure, scheduler internals, tensor parallelism, inference systems, HBM thermals" name="keywords"/>
+<meta content="Manish KL" name="author"/>
+<meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/>
+<link href="https://manishklach.github.io/writings/vllm-internals-cut-batch-size-gpu-melting.html" rel="canonical"/>
+<meta content="article" property="og:type"/>
+<meta content="vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting | Manish K. Lach" property="og:title"/>
+<meta content="A systems essay on where thermal control actually belongs inside vLLM, covering scheduler paths, KV pressure, swap behavior, tensor-parallel failure modes, and batch-cut policy when GPUs overheat." property="og:description"/>
+<meta content="https://manishklach.github.io/writings/vllm-internals-cut-batch-size-gpu-melting.html" property="og:url"/>
+<meta content="Manish KL" property="og:site_name"/>
+<meta content="https://manishklach.github.io/og/vllm-internals-cut-batch-size-gpu-melting.png" property="og:image"/>
+<meta content="Preview image for vLLM Internals thermal control essay" property="og:image:alt"/>
+<meta content="2026-04-13T00:00:00Z" property="article:published_time"/>
+<meta content="2026-04-13T00:00:00Z" property="article:modified_time"/>
+<meta content="Manish KL" property="article:author"/>
+<meta content="AI Infrastructure" property="article:section"/>
+<meta content="summary_large_image" name="twitter:card"/>
+<meta content="vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting" name="twitter:title"/>
+<meta content="A systems essay on where thermal control actually belongs inside vLLM, covering scheduler paths, KV pressure, swap behavior, tensor-parallel failure modes, and batch-cut policy when GPUs overheat." name="twitter:description"/>
+<meta content="https://manishklach.github.io/og/vllm-internals-cut-batch-size-gpu-melting.png" name="twitter:image"/>
+<meta content="Preview image for vLLM Internals thermal control essay" name="twitter:image:alt"/>
+<meta content="@manishkl" name="twitter:creator"/>
+<meta content="@manishkl" name="twitter:site"/>
+<script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "BlogPosting",
@@ -239,8 +240,8 @@
   }
 }
 </script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
         tailwind.config = {
             darkMode: 'class',
             theme: {
@@ -269,16 +270,16 @@
             }
         }
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-yaml.min.js"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-yaml.min.js"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<style>
         .prose pre {
             background: #1e1e2e !important;
             border: 1px solid #313244;
@@ -318,95 +319,89 @@
             background: rgba(239, 68, 0.1);
         }
     </style>
-<meta name="color-scheme" content="light dark">
-</head>
-<body class="bg-zinc-950 text-zinc-100 font-sans antialiased">
-    <header class="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-lg">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <div class="flex items-center gap-3">
-                    <svg class="w-8 h-8 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                    </svg>
-                    <span class="font-bold text-xl">vLLM Deep Dives</span>
-                </div>
-                <div class="flex items-center gap-4">
-                    <a href="https://github.com/vllm-project/vllm" target="_blank" class="text-sm text-zinc-400 hover:text-zinc-100 transition">vLLM Repo</a>
-                    <a href="#rfc" class="text-sm px-4 py-2 bg-brand-600 hover:bg-brand-700 rounded-md font-medium transition">Jump to RFC</a>
-                </div>
-            </div>
-        </div>
-    </header>
-
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12">
-            <!-- TOC -->
-            <aside class="hidden lg:block lg:col-span-3">
-                <div class="sticky top-24">
-                    <p class="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-4">Table of Contents</p>
-                    <nav id="toc" class="space-y-2 text-sm text-zinc-400">
-                        <a href="#intro" class="toc-link block hover:text-zinc-100 transition">Introduction</a>
-                        <a href="#scheduler-walk" class="toc-link block hover:text-zinc-100 transition">1. Scheduler.schedule() Walk</a>
-                        <a href="#max-num-seqs" class="toc-link block hover:text-zinc-100 transition">2. Why max_num_seqs Isn't Enough</a>
-                        <a href="#block-manager" class="toc-link block hover:text-zinc-100 transition">3. KV Cache & swap_out()</a>
-                        <a href="#admin-api" class="toc-link block hover:text-zinc-100 transition">4. Proposed /v1/admin/batch API</a>
-                        <a href="#gotchas" class="toc-link block hover:text-zinc-100 transition pl-4">4.1 Production Gotchas</a>
-                        <a href="#hysteresis" class="toc-link block hover:text-zinc-100 transition pl-6">4.1.1 Hysteresis</a>
-                        <a href="#swap-thrashing" class="toc-link block hover:text-zinc-100 transition pl-6">4.1.2 Swap Thrashing</a>
-                        <a href="#multi-gpu" class="toc-link block hover:text-zinc-100 transition pl-6">4.1.3 Multi-GPU/TP</a>
-
-                        <a href="#lifecycle" class="toc-link block hover:text-zinc-100 transition">5. Thermal Interrupt Lifecycle</a>
-                        <a href="#plugin-rfc" class="toc-link block hover:text-zinc-100 transition">6. SchedulerThermalPolicy RFC</a>
-                        <a href="#promql" class="toc-link block hover:text-zinc-100 transition">7. Observability: PromQL</a>
-                        <a href="#rfc" class="toc-link block hover:text-zinc-100 transition">Upstream RFC</a>
-                        <a href="#checklist" class="toc-link block hover:text-zinc-100 transition">Validation Checklist</a>
-                    </nav>
-                    <div class="mt-8 p-4 border border-zinc-800 rounded-lg bg-zinc-900/50">
-                        <p class="text-xs text-zinc-500">Reference Implementation</p>
-                        <a href="https://github.com/example/thermal-ctrl-harness" target="_blank" class="text-sm text-brand-500 hover:text-brand-400 font-semibold mt-1 block">thermal-ctrl-harness</a>
-                    </div>
-                </div>
-            </aside>
-
-            <!-- Main Content -->
-            <main class="lg:col-span-9 prose prose-invert prose-zinc max-w-none prose-pre:bg-[#1e1e2e] prose-pre:border prose-pre:border-zinc-800 prose-headings:font-bold prose-a:text-brand-500 hover:prose-a:text-brand-400">
-                <article data-pagefind-body>
-                    <div class="not-prose mb-12">
-                        <div class="flex items-center gap-2 text-xs text-zinc-500 mb-4">
-                            <span>September 4, 2025</span>
-                            <span>•</span>
-                            <span>Technical Deep Dive</span>
-                            <span>•</span>
-                            <span>~22 min read</span>
-                        </div>
-                        <h1 id="intro" class="text-4xl sm:text-5xl font-extrabold tracking-tight text-white mb-6">
+<meta content="light dark" name="color-scheme"/>
+<script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><link href="/assets/site.css" rel="stylesheet"/><script defer="" src="/assets/site.js"></script><link href="/feed.xml" rel="alternate" title="Manish K. Lach RSS" type="application/rss+xml"/></head>
+<body class="bg-zinc-950 text-zinc-100 font-sans antialiased"><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
+<header class="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-lg">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex items-center justify-between h-16">
+<div class="flex items-center gap-3">
+<svg class="w-8 h-8 text-brand-500" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span class="font-bold text-xl">vLLM Deep Dives</span>
+</div>
+<div class="flex items-center gap-4">
+<a class="text-sm text-zinc-400 hover:text-zinc-100 transition" href="https://github.com/vllm-project/vllm" target="_blank">vLLM Repo</a>
+<a class="text-sm px-4 py-2 bg-brand-600 hover:bg-brand-700 rounded-md font-medium transition" href="#rfc">Jump to RFC</a>
+</div>
+</div>
+</div>
+</header>
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-12">
+<!-- TOC -->
+<aside class="hidden lg:block lg:col-span-3">
+<div class="sticky top-24">
+<p class="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-4">Table of Contents</p>
+<nav class="space-y-2 text-sm text-zinc-400" id="toc">
+<a class="toc-link block hover:text-zinc-100 transition" href="#intro">Introduction</a>
+<a class="toc-link block hover:text-zinc-100 transition" href="#scheduler-walk">1. Scheduler.schedule() Walk</a>
+<a class="toc-link block hover:text-zinc-100 transition" href="#max-num-seqs">2. Why max_num_seqs Isn't Enough</a>
+<a class="toc-link block hover:text-zinc-100 transition" href="#block-manager">3. KV Cache &amp; swap_out()</a>
+<a class="toc-link block hover:text-zinc-100 transition" href="#admin-api">4. Proposed /v1/admin/batch API</a>
+<a class="toc-link block hover:text-zinc-100 transition pl-4" href="#gotchas">4.1 Production Gotchas</a>
+<a class="toc-link block hover:text-zinc-100 transition pl-6" href="#hysteresis">4.1.1 Hysteresis</a>
+<a class="toc-link block hover:text-zinc-100 transition pl-6" href="#swap-thrashing">4.1.2 Swap Thrashing</a>
+<a class="toc-link block hover:text-zinc-100 transition pl-6" href="#multi-gpu">4.1.3 Multi-GPU/TP</a>
+<a class="toc-link block hover:text-zinc-100 transition" href="#lifecycle">5. Thermal Interrupt Lifecycle</a>
+<a class="toc-link block hover:text-zinc-100 transition" href="#plugin-rfc">6. SchedulerThermalPolicy RFC</a>
+<a class="toc-link block hover:text-zinc-100 transition" href="#promql">7. Observability: PromQL</a>
+<a class="toc-link block hover:text-zinc-100 transition" href="#rfc">Upstream RFC</a>
+<a class="toc-link block hover:text-zinc-100 transition" href="#checklist">Validation Checklist</a>
+</nav>
+<div class="mt-8 p-4 border border-zinc-800 rounded-lg bg-zinc-900/50">
+<p class="text-xs text-zinc-500">Reference Implementation</p>
+<a class="text-sm text-brand-500 hover:text-brand-400 font-semibold mt-1 block" href="https://github.com/example/thermal-ctrl-harness" target="_blank">thermal-ctrl-harness</a>
+</div>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="lg:col-span-9 prose prose-invert prose-zinc max-w-none prose-pre:bg-[#1e1e2e] prose-pre:border prose-pre:border-zinc-800 prose-headings:font-bold prose-a:text-brand-500 hover:prose-a:text-brand-400">
+<article data-pagefind-body="">
+<div class="not-prose mb-12">
+<div class="flex items-center gap-2 text-xs text-zinc-500 mb-4">
+<span>September 4, 2025</span>
+<span>•</span>
+<span>Technical Deep Dive</span>
+<span>•</span>
+<span>~22 min read</span>
+</div>
+<h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight text-white mb-6" id="intro">
                             vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting
-                        </h1>
-                        <p class="text-xl text-zinc-400 leading-relaxed">
+                        </h1><div class="meta reading-meta">Published <time datetime="2026-04-13">Apr 13, 2026</time> · 13 min read</div>
+<p class="text-xl text-zinc-400 leading-relaxed">
                             Production vLLM deployments running at 90%+ GPU util will eventually hit thermal limits. Counterintuitively, reducing <code>max_num_seqs</code> during a thermal event often does nothing. This post traces exactly where batch size is enforced, why decode batches ignore your knobs, and how to build a thermal-aware scheduler that actually saves your GPUs.
                         </p>
-                        <div class="flex flex-wrap gap-2 mt-6">
-                            <span class="px-3 py-1 bg-zinc-800 text-zinc-300 rounded-full text-xs font-medium">vLLM >= 0.5.4</span>
-                            <span class="px-3 py-1 bg-zinc-800 text-zinc-300 rounded-full text-xs font-medium">CUDA 12.1+</span>
-                            <span class="px-3 py-1 bg-zinc-800 text-zinc-300 rounded-full text-xs font-medium">Scheduler</span>
-                            <span class="px-3 py-1 bg-zinc-800 text-zinc-300 rounded-full text-xs font-medium">KV Cache</span>
-                        </div>
-                    </div>
-
-                    <div class="callout callout-warning mb-8">
-                        <p class="font-semibold text-amber-500 m-0 mb-2">Target Audience</p>
-                        <p class="m-0 text-zinc-300">This post assumes familiarity with vLLM architecture, KV cache semantics, and GPU profiling. We reference commit <code>8f3a2c1</code> from vllm-project/vllm. YMMV on forks.</p>
-                    </div>
-
-                    <h2 id="scheduler-walk" class="group scroll-mt-20">1. Code Walk: <code>vllm/core/scheduler.py</code> <code>schedule()</code> Loop <a href="#scheduler-walk" class="anchor-link">#</a></h2>
-                    <p>
+<div class="flex flex-wrap gap-2 mt-6">
+<span class="px-3 py-1 bg-zinc-800 text-zinc-300 rounded-full text-xs font-medium">vLLM &gt;= 0.5.4</span>
+<span class="px-3 py-1 bg-zinc-800 text-zinc-300 rounded-full text-xs font-medium">CUDA 12.1+</span>
+<span class="px-3 py-1 bg-zinc-800 text-zinc-300 rounded-full text-xs font-medium">Scheduler</span>
+<span class="px-3 py-1 bg-zinc-800 text-zinc-300 rounded-full text-xs font-medium">KV Cache</span>
+</div>
+</div>
+<div class="callout callout-warning mb-8">
+<p class="font-semibold text-amber-500 m-0 mb-2">Target Audience</p>
+<p class="m-0 text-zinc-300">This post assumes familiarity with vLLM architecture, KV cache semantics, and GPU profiling. We reference commit <code>8f3a2c1</code> from vllm-project/vllm. YMMV on forks.</p>
+</div>
+<nav class="toc"><strong>Contents</strong><ul><li><a href="#scheduler-walk">1. Code Walk: vllm/core/scheduler.py schedule() Loop #</a></li><li><a href="#max-num-seqs">2. Why Cutting max_num_seqs Alone Doesn't Help Running Decode Requests #</a></li><li><a href="#block-manager">3. KV Cache Block Manager and How to Trigger swap_out() #</a></li><li><a href="#admin-api">4. Proposed /v1/admin/batch API Design #</a></li><li><a href="#lifecycle">5. Request Lifecycle with Thermal Interrupts #</a></li><li><a href="#plugin-rfc">6. SchedulerThermalPolicy Plugin Interface RFC #</a></li><li><a href="#promql">7. Observability: Detecting When to Cut Batch Size #</a></li><li><a href="#rfc">Upstream RFC: Thermal-Aware Scheduling #</a></li><li><a href="#checklist">Validation Checklist #</a></li><li><a href="#gotchas">4.1 Production Gotchas #</a></li></ul></nav><h2 class="group scroll-mt-20" id="scheduler-walk">1. Code Walk: <code>vllm/core/scheduler.py</code> <code>schedule()</code> Loop <a class="anchor-link" href="#scheduler-walk">#</a></h2>
+<p>
                         The core scheduling decision lives in <code>Scheduler.schedule()</code>. As of v0.5.4, the method signature hasn't changed materially since the 0.4.0 refactor. The loop enforces <code>max_num_seqs</code> at multiple points, but the ordering matters.
                     </p>
+<p>Key excerpt from <code>vllm/core/scheduler.py:470</code>:</p>
+<pre><code class="language-python">class Scheduler:
 
-                    <p>Key excerpt from <code>vllm/core/scheduler.py:470</code>:</p>
-                    <pre><code class="language-python">class Scheduler:
-
-    def schedule(self) -> SchedulerOutputs:
+    def schedule(self) -&gt; SchedulerOutputs:
         # 1. Schedule running requests that can make progress
         running_scheduled: List[SequenceGroup] = []
         running_queue = self.running
@@ -415,7 +410,7 @@
         while running_queue:
             seq_group = running_queue[0]
             num_new_seqs = seq_group.num_seqs()
-            if num_new_seqs > budget:
+            if num_new_seqs &gt; budget:
                 break
             
             # Check if we can allocate KV blocks for decode
@@ -428,10 +423,10 @@
 
         # 2. Schedule waiting requests only if budget remains
         waiting_scheduled: List[SequenceGroup] = []
-        while self.waiting and budget > 0:
+        while self.waiting and budget &gt; 0:
             seq_group = self.waiting[0]
             num_new_seqs = seq_group.num_seqs()
-            if num_new_seqs > budget:
+            if num_new_seqs &gt; budget:
                 break
                 
             # Prefill: requires full context_length blocks
@@ -451,56 +446,48 @@
             scheduled_seq_groups=running_scheduled + waiting_scheduled,
             # ...
         )</code></pre>
-
-                    <p>
+<p>
                         Critical observation: <code>max_num_seqs</code> becomes <code>budget</code> and is decremented <i>per SequenceGroup</i>, not per token. A SequenceGroup with <code>n=4</code> for beam search consumes 4 from budget. Once <code>running_queue</code> is exhausted, new prefills only run if budget remains. 
                     </p>
-
-                    <p>
+<p>
                         The subtle part: <code>self.running</code> is populated every iteration from the previous step's <code>scheduled_seq_groups</code> plus any resumed requests. If you hot-reload <code>scheduler_config.max_num_seqs</code>, it takes effect immediately <i>but only for new scheduling decisions</i>.
                     </p>
-
-                    <h2 id="max-num-seqs" class="group scroll-mt-20">2. Why Cutting <code>max_num_seqs</code> Alone Doesn't Help Running Decode Requests <a href="#max-num-seqs" class="anchor-link">#</a></h2>
-                    <p>
+<h2 class="group scroll-mt-20" id="max-num-seqs">2. Why Cutting <code>max_num_seqs</code> Alone Doesn't Help Running Decode Requests <a class="anchor-link" href="#max-num-seqs">#</a></h2>
+<p>
                         When operators see GPU temp at 89°C, the naive fix is: <code>POST /v1/admin/config {"max_num_seqs": 8}</code>. This works if your workload is prefill-bound. It does nothing for decode-bound serving because decode is not gated by <code>max_num_seqs</code> once the request is <code>RUNNING</code>.
                     </p>
-
-                    <p>Three reasons:</p>
-                    <ol>
-                        <li><strong>No mid-generation eviction:</strong> Once a seq is in <code>self.running</code>, <code>schedule()</code> keeps scheduling it unless <code>_can_allocate()</code> returns False. For decode, <code>_can_allocate</code> only checks if 1 new token block is needed. If the block is already mapped, it always returns True.</li>
-                        <li><strong>Budget is advisory, not preemptive:</strong> The budget check <code>if num_new_seqs > budget: break</code> only applies to adding new items to <code>running_scheduled</code>. It never kicks existing items out.</li>
-                        <li><strong>KV blocks are sticky:</strong> The <code>BlockSpaceManager</code> doesn't reclaim blocks from <code>RUNNING</code> sequences unless <code>swap_out</code> or <code>free</code> is called explicitly. Thermal pressure is not an existing trigger.</li>
-                    </ol>
-
-                    <div class="callout callout-danger mb-8">
-                        <p class="font-semibold text-red-400 m-0 mb-2">Production Gotcha</p>
-                        <p class="m-0 text-zinc-300">At 8k context length, 64 decode sequences = 64 * 8192 tokens * 2 * 2 bytes * 80 layers ≈ 168 GB KV cache. If you hit thermal throttling here, reducing <code>max_num_seqs</code> from 64 to 32 changes nothing until requests complete. Your GPU will stay at TjMax.</p>
-                    </div>
-
-                    <p>
-                        The only way to shrink the active batch is to move requests from <code>RUNNING -> SWAPPED</code> or <code>RUNNING -> WAITING</code>. vLLM can preempt, but the preemption policy in <code>schedule()</code> only triggers when a prefill can't allocate. We need a new trigger: <code>THERMAL_PRESSURE</code>.
+<p>Three reasons:</p>
+<ol>
+<li><strong>No mid-generation eviction:</strong> Once a seq is in <code>self.running</code>, <code>schedule()</code> keeps scheduling it unless <code>_can_allocate()</code> returns False. For decode, <code>_can_allocate</code> only checks if 1 new token block is needed. If the block is already mapped, it always returns True.</li>
+<li><strong>Budget is advisory, not preemptive:</strong> The budget check <code>if num_new_seqs &gt; budget: break</code> only applies to adding new items to <code>running_scheduled</code>. It never kicks existing items out.</li>
+<li><strong>KV blocks are sticky:</strong> The <code>BlockSpaceManager</code> doesn't reclaim blocks from <code>RUNNING</code> sequences unless <code>swap_out</code> or <code>free</code> is called explicitly. Thermal pressure is not an existing trigger.</li>
+</ol>
+<div class="callout callout-danger mb-8">
+<p class="font-semibold text-red-400 m-0 mb-2">Production Gotcha</p>
+<p class="m-0 text-zinc-300">At 8k context length, 64 decode sequences = 64 * 8192 tokens * 2 * 2 bytes * 80 layers ≈ 168 GB KV cache. If you hit thermal throttling here, reducing <code>max_num_seqs</code> from 64 to 32 changes nothing until requests complete. Your GPU will stay at TjMax.</p>
+</div>
+<p>
+                        The only way to shrink the active batch is to move requests from <code>RUNNING -&gt; SWAPPED</code> or <code>RUNNING -&gt; WAITING</code>. vLLM can preempt, but the preemption policy in <code>schedule()</code> only triggers when a prefill can't allocate. We need a new trigger: <code>THERMAL_PRESSURE</code>.
                     </p>
-
-                    <h2 id="block-manager" class="group scroll-mt-20">3. KV Cache Block Manager and How to Trigger <code>swap_out()</code> <a href="#block-manager" class="anchor-link">#</a></h2>
-                    <p>
+<h2 class="group scroll-mt-20" id="block-manager">3. KV Cache Block Manager and How to Trigger <code>swap_out()</code> <a class="anchor-link" href="#block-manager">#</a></h2>
+<p>
                         The <code>BlockSpaceManagerV1</code> in <code>vllm/core/block_manager.py:285</code> owns all GPU/CPU block tables. Swapping is implemented via <code>swap_out(seq_group)</code> which calls CUDA async H2D copies.
                     </p>
-
-                    <pre><code class="language-python"># vllm/core/block_manager.py
+<pre><code class="language-python"># vllm/core/block_manager.py
 class BlockSpaceManagerV1:
 
-    def can_swap_out(self, seq_group: SequenceGroup) -> bool:
+    def can_swap_out(self, seq_group: SequenceGroup) -&gt; bool:
         num_required_blocks = self._get_num_required_blocks(seq_group)
         num_free_blocks = self.gpu_allocator.get_num_free_blocks()
         num_required_blocks += (num_required_blocks 
                                 * self.watermark)  # 0.01 default
-        return num_required_blocks <= num_free_blocks
+        return num_required_blocks &lt;= num_free_blocks
 
-    def swap_out(self, seq_group: SequenceGroup) -> None:
+    def swap_out(self, seq_group: SequenceGroup) -&gt; None:
         seqs = seq_group.get_seqs(status=SequenceStatus.RUNNING)
         for seq in seqs:
             blocks = self.block_tables[seq.seq_id]
-            # Asynchronously copy blocks GPU -> CPU
+            # Asynchronously copy blocks GPU -&gt; CPU
             self._swap_blocks(blocks, self.gpu_allocator, self.cpu_allocator)
             
         self._last_access_time_table[seq_group.request_id] = time.time()
@@ -511,18 +498,16 @@ class BlockSpaceManagerV1:
             if block.computed:  # Only swap computed blocks
                 dst.allocate_block(block.block_number)
                 src.swap_out(block)  # cudaMemcpyAsync under the hood</code></pre>
-
-                    <p>
+<p>
                         To forcibly reduce GPU load, we must: 1) Select victim <code>SequenceGroups</code> from <code>self.running</code>, 2) Call <code>block_manager.swap_out()</code>, 3) Move them to <code>self.swapped</code>. This is exactly what <code>_preempt()</code> does, but preempt is only called during prefill starvation.
                     </p>
-
-                    <p>Minimal thermal policy implementation sketched:</p>
-                    <pre><code class="language-python"># Extension to Scheduler
-def schedule_thermal_aware(self, gpu_temp_c: float) -> SchedulerOutputs:
+<p>Minimal thermal policy implementation sketched:</p>
+<pre><code class="language-python"># Extension to Scheduler
+def schedule_thermal_aware(self, gpu_temp_c: float) -&gt; SchedulerOutputs:
     target_running = self._calc_thermal_target_batch(gpu_temp_c)
     current_running = len(self.running)
     
-    if current_running > target_running:
+    if current_running &gt; target_running:
         # Sort by lowest priority: longest remaining, lowest QPS
         victims = self._select_victims(current_running - target_running)
         for sg in victims:
@@ -532,19 +517,16 @@ def schedule_thermal_aware(self, gpu_temp_c: float) -> SchedulerOutputs:
             self._last_preemption[sg.request_id] = time.time()
             
     return self.schedule()  # Continue normal scheduling</code></pre>
-
-                    <p>
+<p>
                         The missing piece is <code>_calc_thermal_target_batch</code>. Empirically, decode power draw is ~linear with batch size at fixed context length. On H100 SXM, we measured ~3.2W per decode token at 4k ctx. So to drop 100W, evict ~31 running sequences.
                     </p>
-
-                    <h2 id="admin-api" class="group scroll-mt-20">4. Proposed <code>/v1/admin/batch</code> API Design <a href="#admin-api" class="anchor-link">#</a></h2>
-                    <p>
+<h2 class="group scroll-mt-20" id="admin-api">4. Proposed <code>/v1/admin/batch</code> API Design <a class="anchor-link" href="#admin-api">#</a></h2>
+<p>
                         vLLM's OpenAI-compatible server lacks runtime control planes. We propose a namespaced admin API for dataplane operators. This should be behind <code>--enable-admin-api</code> flag and mTLS.
                     </p>
-
-                    <p><strong>Endpoint:</strong> <code>POST /v1/admin/batch</code></p>
-                    <p><strong>Request Body:</strong></p>
-                    <pre><code class="language-python"># pydantic model
+<p><strong>Endpoint:</strong> <code>POST /v1/admin/batch</code></p>
+<p><strong>Request Body:</strong></p>
+<pre><code class="language-python"># pydantic model
 class BatchControlRequest(BaseModel):
     max_num_seqs: Optional[int] = Field(
         None, description="New max_num_seqs for scheduler_config")
@@ -554,46 +536,40 @@ class BatchControlRequest(BaseModel):
         None, le=95.0, description="Target GPU temp. vLLM will evict until reached")
     policy: Literal["lru", "largest_kv", "lowest_priority"] = "lru"
     dry_run: bool = False</code></pre>
-
-                    <p><strong>Example:</strong> NVML reports 91°C, we want 80°C ceiling.</p>
-                    <pre><code class="language-bash">curl -X POST https://vllm-0:8000/v1/admin/batch \
+<p><strong>Example:</strong> NVML reports 91°C, we want 80°C ceiling.</p>
+<pre><code class="language-bash">curl -X POST https://vllm-0:8000/v1/admin/batch \
   -H "Authorization: Bearer $VLLM_ADMIN_TOKEN" \
   -d '{"target_temp_c": 80.0, "policy": "largest_kv"}'</code></pre>
-
-                    <p><strong>Response:</strong></p>
-                    <pre><code class="language-python">class BatchControlResponse(BaseModel):
+<p><strong>Response:</strong></p>
+<pre><code class="language-python">class BatchControlResponse(BaseModel):
     previous_running: int
     new_running: int
     evicted_request_ids: List[str]
     estimated_watts_saved: float
     new_max_num_seqs: int</code></pre>
-
-                    <p>
+<p>
                         Implementation: The API handler injects a <code>ControlEvent</code> into the <code>AsyncLLMEngine</code> event loop. The scheduler checks for pending events at the top of <code>step()</code>. If <code>target_temp_c</code> is set, the scheduler enters a control loop until <code>nvidia_smi</code> reports temp below target. See reference implementation in <a href="https://github.com/manishklach/thermal-ctrl-harness" target="_blank">thermal-ctrl-harness</a> which uses DCGM + gRPC.
                     </p>
-
-                    <div class="callout callout-tip mb-8">
-                        <p class="font-semibold text-brand-500 m-0 mb-2">Safety Note</p>
-                        <p class="m-0 text-zinc-300">Evicting too aggressively causes swap thrashing. Empirically keep swap bandwidth < 20 GB/s or H2D copies will dominate step time. Always combine with <code>enable_chunked_prefill=True</code> to avoid head-of-line blocking.</p>
-                    </div>
-
-                    <h2 id="lifecycle" class="group scroll-mt-20">5. Request Lifecycle with Thermal Interrupts <a href="#lifecycle" class="anchor-link">#</a></h2>
-                    <p>
-                        The standard vLLM state machine is <code>WAITING -> RUNNING -> FINISHED</code>. With thermal interrupts we add <code>RUNNING -> SWAPPED -> RUNNING</code> transitions that are not prefill-driven.
+<div class="callout callout-tip mb-8">
+<p class="font-semibold text-brand-500 m-0 mb-2">Safety Note</p>
+<p class="m-0 text-zinc-300">Evicting too aggressively causes swap thrashing. Empirically keep swap bandwidth &lt; 20 GB/s or H2D copies will dominate step time. Always combine with <code>enable_chunked_prefill=True</code> to avoid head-of-line blocking.</p>
+</div>
+<h2 class="group scroll-mt-20" id="lifecycle">5. Request Lifecycle with Thermal Interrupts <a class="anchor-link" href="#lifecycle">#</a></h2>
+<p>
+                        The standard vLLM state machine is <code>WAITING -&gt; RUNNING -&gt; FINISHED</code>. With thermal interrupts we add <code>RUNNING -&gt; SWAPPED -&gt; RUNNING</code> transitions that are not prefill-driven.
                     </p>
-
-                    <div class="not-prose bg-zinc-900 border border-zinc-800 rounded-lg p-6 my-8">
-                        <div class="mermaid">
+<div class="not-prose bg-zinc-900 border border-zinc-800 rounded-lg p-6 my-8">
+<div class="mermaid">
                             %%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#0ea5e9', 'primaryTextColor': '#fff', 'primaryBorderColor': '#0284c7', 'lineColor': '#52525b', 'secondaryColor': '#27272a', 'tertiaryColor': '#18181b' }}}%%
                             stateDiagram-v2
-                                [*] --> WAITING: New request
-                                WAITING --> RUNNING: schedule() + KV allocate
-                                RUNNING --> FINISHED: EOS or max_tokens
-                                RUNNING --> SWAPPED: Thermal preemption
-                                RUNNING --> SWAPPED: KV cache full
-                                SWAPPED --> RUNNING: Resume + KV allocate
-                                SWAPPED --> WAITING: Cancelled by client
-                                FINISHED --> [*]
+                                [*] --&gt; WAITING: New request
+                                WAITING --&gt; RUNNING: schedule() + KV allocate
+                                RUNNING --&gt; FINISHED: EOS or max_tokens
+                                RUNNING --&gt; SWAPPED: Thermal preemption
+                                RUNNING --&gt; SWAPPED: KV cache full
+                                SWAPPED --&gt; RUNNING: Resume + KV allocate
+                                SWAPPED --&gt; WAITING: Cancelled by client
+                                FINISHED --&gt; [*]
                                 
                                 note right of RUNNING
                                     Thermal Control Hook
@@ -607,18 +583,15 @@ class BatchControlRequest(BaseModel):
                                     swap_out() latency ~40us/block
                                 end note
                         </div>
-                    </div>
-
-                    <p>
+</div>
+<p>
                         Key insight: after a thermal interrupt, the swapped request re-enters <code>WAITING</code> priority queue. If you don't also reduce <code>max_num_seqs</code>, it will be immediately rescheduled and you'll oscillate. The <code>/v1/admin/batch</code> call should atomically set both <code>force_evict</code> and a lower <code>max_num_seqs</code>.
                     </p>
-
-                    <h2 id="plugin-rfc" class="group scroll-mt-20">6. <code>SchedulerThermalPolicy</code> Plugin Interface RFC <a href="#plugin-rfc" class="anchor-link">#</a></h2>
-                    <p>
+<h2 class="group scroll-mt-20" id="plugin-rfc">6. <code>SchedulerThermalPolicy</code> Plugin Interface RFC <a class="anchor-link" href="#plugin-rfc">#</a></h2>
+<p>
                         Hardcoding thermal logic in <code>Scheduler</code> is not tenable. Different orgs use DCGM, nvidia-smi, ROCm-SMI, or custom BMC telemetry. We propose a plugin interface merged into <code>vllm/core/policy.py</code>.
                     </p>
-
-                    <pre><code class="language-python"># vllm/core/policy.py - proposed new file
+<pre><code class="language-python"># vllm/core/policy.py - proposed new file
 from abc import ABC, abstractmethod
 from typing import List, TYPE_CHECKING
 if TYPE_CHECKING:
@@ -629,18 +602,18 @@ class SchedulerThermalPolicy(ABC):
     """Decides which sequences to evict under thermal/gpu pressure."""
     
     @abstractmethod
-    def get_max_running_seqs(self, scheduler: "Scheduler") -> int:
-        """Return dynamic cap for len(self.running). Must be <= max_num_seqs."""
+    def get_max_running_seqs(self, scheduler: "Scheduler") -&gt; int:
+        """Return dynamic cap for len(self.running). Must be &lt;= max_num_seqs."""
         raise NotImplementedError
     
     @abstractmethod
     def select_victims(self, 
                        running: List["SequenceGroup"], 
-                       num_to_evict: int) -> List["SequenceGroup"]:
-        """Pick N sequences to swap_out. Called when len(running) > cap."""
+                       num_to_evict: int) -&gt; List["SequenceGroup"]:
+        """Pick N sequences to swap_out. Called when len(running) &gt; cap."""
         raise NotImplementedError
         
-    def on_temp_reading(self, gpu_idx: int, temp_c: float) -> None:
+    def on_temp_reading(self, gpu_idx: int, temp_c: float) -&gt; None:
         """Optional: scheduler calls this every step with latest DCGM reading."""
         pass
 
@@ -654,10 +627,10 @@ class NVIDIADCGMThermalPolicy(SchedulerThermalPolicy):
     def on_temp_reading(self, gpu_idx: int, temp_c: float):
         self._last_temp = temp_c
         
-    def get_max_running_seqs(self, scheduler: "Scheduler") -> int:
+    def get_max_running_seqs(self, scheduler: "Scheduler") -&gt; int:
         # Simple P-controller: error = temp - target
         error = self._last_temp - self.target
-        if error <= 0:
+        if error &lt;= 0:
             return scheduler.scheduler_config.max_num_seqs
         # Drop 1 seq per 2°C over target, tunable via k_p
         reduction = int(error * self.k_p)
@@ -668,12 +641,10 @@ class NVIDIADCGMThermalPolicy(SchedulerThermalPolicy):
         return sorted(running, 
                       key=lambda sg: sg.get_num_kv_blocks(), 
                       reverse=True)[:num_to_evict]</code></pre>
-
-                    <p>
+<p>
                         The <code>Scheduler</code> then loads the policy via entrypoints:
                     </p>
-
-                    <pre><code class="language-python"># vllm/core/scheduler.py
+<pre><code class="language-python"># vllm/core/scheduler.py
 class Scheduler:
     def __init__(self, scheduler_config, cache_config, ...):
         # ...
@@ -689,18 +660,15 @@ class Scheduler:
             self._enforce_dynamic_cap(dynamic_cap)
             
         # ... continue normal scheduling</code></pre>
-
-                    <p>
+<p>
                         This interface lets cloud providers ship proprietary policies without upstream changes. The <code>thermal-ctrl-harness</code> repo provides a reference <code>DCGMThermalPolicy</code> and sidecar.
                     </p>
-
-                    <h2 id="promql" class="group scroll-mt-20">7. Observability: Detecting When to Cut Batch Size <a href="#promql" class="anchor-link">#</a></h2>
-                    <p>
+<h2 class="group scroll-mt-20" id="promql">7. Observability: Detecting When to Cut Batch Size <a class="anchor-link" href="#promql">#</a></h2>
+<p>
                         You cannot control what you don't measure. vLLM already exports Prometheus metrics. Combine with DCGM for full picture.
                     </p>
-
-                    <p><strong>Key metrics:</strong></p>
-                    <pre><code class="language-yaml"># vllm metrics
+<p><strong>Key metrics:</strong></p>
+<pre><code class="language-yaml"># vllm metrics
 vllm:num_requests_running          # Current batch
 vllm:num_requests_swapped          # Evicted due to capacity
 vllm:gpu_cache_usage_perc          # 0-1, KV cache util
@@ -710,153 +678,138 @@ vllm:time_to_first_token_seconds   # Prefill SLO
 DCGM_FI_DEV_GPU_TEMP               # Gauge Celcius
 DCGM_FI_DEV_POWER_USAGE            # Watts
 DCGM_FI_PROF_PCIE_TX_BYTES         # Detect swap thrashing</code></pre>
-
-                    <p><strong>Alert rule:</strong> Fire when temp > 85C AND batch isn't shrinking.</p>
-                    <pre><code class="language-yaml">groups:
+<p><strong>Alert rule:</strong> Fire when temp &gt; 85C AND batch isn't shrinking.</p>
+<pre><code class="language-yaml">groups:
 - name: vllm_thermal.rules
   rules:
   - alert: VLLMThermalRunaway
     expr: |
-      max_over_time(DCGM_FI_DEV_GPU_TEMP{pod=~"vllm-.*"}[2m]) > 85
+      max_over_time(DCGM_FI_DEV_GPU_TEMP{pod=~"vllm-.*"}[2m]) &gt; 85
       and
-      deriv(vllm:num_requests_running[2m]) >= 0
+      deriv(vllm:num_requests_running[2m]) &gt;= 0
     for: 30s
     labels:
       severity: page
     annotations:
       summary: "vLLM GPU {{ $labels.gpu }} at {{ $value }}C but batch not reducing"
       runbook: "curl -X POST .../v1/admin/batch -d '{\"target_temp_c\": 80}'"</code></pre>
-
-                    <p><strong>Dashboard PromQL:</strong> Estimate watts per request to tune eviction.</p>
-                    <pre><code class="language-bash"># Watts per running decode seq
+<p><strong>Dashboard PromQL:</strong> Estimate watts per request to tune eviction.</p>
+<pre><code class="language-bash"># Watts per running decode seq
 DCGM_FI_DEV_POWER_USAGE 
 / 
 vllm:num_requests_running</code></pre>
-
-                    <h2 id="rfc" class="group scroll-mt-20">Upstream RFC: Thermal-Aware Scheduling <a href="#rfc" class="anchor-link">#</a></h2>
-                    <p>
-                        <strong>Summary:</strong> Add optional <code>SchedulerThermalPolicy</code> plugin and <code>/v1/admin/batch</code> endpoint to allow dynamic batch reduction under thermal/power constraints. This addresses production incidents where vLLM nodes hit TjMax and trigger host-level XID 79 without recourse.
+<h2 class="group scroll-mt-20" id="rfc">Upstream RFC: Thermal-Aware Scheduling <a class="anchor-link" href="#rfc">#</a></h2>
+<p>
+<strong>Summary:</strong> Add optional <code>SchedulerThermalPolicy</code> plugin and <code>/v1/admin/batch</code> endpoint to allow dynamic batch reduction under thermal/power constraints. This addresses production incidents where vLLM nodes hit TjMax and trigger host-level XID 79 without recourse.
                     </p>
-
-                    <p><strong>Motivation:</strong> Large-context serving on H100/A100 often runs at 700W+. Datacenter cooling failures or co-located noisy neighbors can push GPUs to thermal throttle. Current <code>max_num_seqs</code> is insufficient as it doesn't preempt. We need programmatic control.</p>
-
-                    <p><strong>Detailed Design:</strong></p>
-                    <ol>
-                        <li>Add <code>vllm/core/policy.py</code> with ABC shown above.</li>
-                        <li>Add <code>--thermal-policy</code> flag to load via <code>entry_points</code>.</li>
-                        <li>Extend <code>LLMEngine</code> with <code>abort_and_swap(request_ids)</code> API.</li>
-                        <li>Add <code>/v1/admin/batch</code> to OpenAI server behind <code>--enable-admin-api</code>.</li>
-                        <li>DCGM sidecar optional, default policy can use <code>pynvml</code>.</li>
-                    </ol>
-
-                    <p><strong>Drawbacks:</strong> Increases API surface. Risk of operator shooting themselves in foot by evicting too aggressively. Mitigated by <code>dry_run</code> and rate limits.</p>
-
-                    <p><strong>Alternatives:</strong> Keep it out-of-tree. We believe thermal handling is table-stakes for large providers and should be in-tree but optional.</p>
-
-                    <h2 id="checklist" class="group scroll-mt-20">Validation Checklist <a href="#checklist" class="anchor-link">#</a></h2>
-                    <p>If you implement this, validate with:</p>
-                    <ul class="list-none pl-0">
-                        <li class="flex items-start gap-2 mb-3">
-                            <svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
-                            <span><strong>Thermal soak test:</strong> Pin GPU at 700W with synthetic load. Trigger <code>target_temp_c=80</code>. Verify <code>vllm:num_requests_running</code> drops within 2 steps and temp stabilizes without oscillation.</span>
-                        </li>
-                        <li class="flex items-start gap-2 mb-3">
-                            <svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
-                            <span><strong>TTFT SLO:</strong> Ensure swapped requests don't starve. P99 TTFT should not regress >20% when policy is enabled but idle.</span>
-                        </li>
-                        <li class="flex items-start gap-2 mb-3">
-                            <svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
-                            <span><strong>PCIE health:</strong> Monitor <code>DCGM_FI_PROF_PCIE_TX_BYTES</code>. Swap rate must stay < 25 GB/s on H100. Higher means thrashing.</span>
-                        </li>
-                        <li class="flex items-start gap-2 mb-3">
-                            <svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
-                            <span><strong>Beam search correctness:</strong> Run <code>lm-eval --model vllm --tasks gsm8k --num_fewshot 5 --limit 100</code> with <code>n=4</code>. Score must match baseline within 0.5% after thermal events.</span>
-                        </li>
-                        <li class="flex items-start gap-2 mb-3">
-                            <svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
-                            <span><strong>Multi-LoRA safety:</strong> Confirm evicted adapters are also swapped. No VRAM leak via orphaned adapter slots.</span>
-                        </li>
-                        <li class="flex items-start gap-2 mb-3">
-                            <svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
-                            <span><strong>Graceful degradation:</strong> With <code>--enable-chunked-prefill</code>, a forced evict mid-prefill must not corrupt KV cache. Test via fault injection.</span>
-                        </li>
-                    </ul>
-
-                    <p class="mt-12 text-zinc-500 text-sm">
+<p><strong>Motivation:</strong> Large-context serving on H100/A100 often runs at 700W+. Datacenter cooling failures or co-located noisy neighbors can push GPUs to thermal throttle. Current <code>max_num_seqs</code> is insufficient as it doesn't preempt. We need programmatic control.</p>
+<p><strong>Detailed Design:</strong></p>
+<ol>
+<li>Add <code>vllm/core/policy.py</code> with ABC shown above.</li>
+<li>Add <code>--thermal-policy</code> flag to load via <code>entry_points</code>.</li>
+<li>Extend <code>LLMEngine</code> with <code>abort_and_swap(request_ids)</code> API.</li>
+<li>Add <code>/v1/admin/batch</code> to OpenAI server behind <code>--enable-admin-api</code>.</li>
+<li>DCGM sidecar optional, default policy can use <code>pynvml</code>.</li>
+</ol>
+<p><strong>Drawbacks:</strong> Increases API surface. Risk of operator shooting themselves in foot by evicting too aggressively. Mitigated by <code>dry_run</code> and rate limits.</p>
+<p><strong>Alternatives:</strong> Keep it out-of-tree. We believe thermal handling is table-stakes for large providers and should be in-tree but optional.</p>
+<h2 class="group scroll-mt-20" id="checklist">Validation Checklist <a class="anchor-link" href="#checklist">#</a></h2>
+<p>If you implement this, validate with:</p>
+<ul class="list-none pl-0">
+<li class="flex items-start gap-2 mb-3">
+<svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" fill="currentColor" viewbox="0 0 20 20"><path clip-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fill-rule="evenodd"></path></svg>
+<span><strong>Thermal soak test:</strong> Pin GPU at 700W with synthetic load. Trigger <code>target_temp_c=80</code>. Verify <code>vllm:num_requests_running</code> drops within 2 steps and temp stabilizes without oscillation.</span>
+</li>
+<li class="flex items-start gap-2 mb-3">
+<svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" fill="currentColor" viewbox="0 0 20 20"><path clip-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fill-rule="evenodd"></path></svg>
+<span><strong>TTFT SLO:</strong> Ensure swapped requests don't starve. P99 TTFT should not regress &gt;20% when policy is enabled but idle.</span>
+</li>
+<li class="flex items-start gap-2 mb-3">
+<svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" fill="currentColor" viewbox="0 0 20 20"><path clip-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fill-rule="evenodd"></path></svg>
+<span><strong>PCIE health:</strong> Monitor <code>DCGM_FI_PROF_PCIE_TX_BYTES</code>. Swap rate must stay &lt; 25 GB/s on H100. Higher means thrashing.</span>
+</li>
+<li class="flex items-start gap-2 mb-3">
+<svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" fill="currentColor" viewbox="0 0 20 20"><path clip-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fill-rule="evenodd"></path></svg>
+<span><strong>Beam search correctness:</strong> Run <code>lm-eval --model vllm --tasks gsm8k --num_fewshot 5 --limit 100</code> with <code>n=4</code>. Score must match baseline within 0.5% after thermal events.</span>
+</li>
+<li class="flex items-start gap-2 mb-3">
+<svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" fill="currentColor" viewbox="0 0 20 20"><path clip-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fill-rule="evenodd"></path></svg>
+<span><strong>Multi-LoRA safety:</strong> Confirm evicted adapters are also swapped. No VRAM leak via orphaned adapter slots.</span>
+</li>
+<li class="flex items-start gap-2 mb-3">
+<svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" fill="currentColor" viewbox="0 0 20 20"><path clip-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fill-rule="evenodd"></path></svg>
+<span><strong>Graceful degradation:</strong> With <code>--enable-chunked-prefill</code>, a forced evict mid-prefill must not corrupt KV cache. Test via fault injection.</span>
+</li>
+</ul>
+<p class="mt-12 text-zinc-500 text-sm">
                         Comments? Open a thread on the <a href="https://github.com/vllm-project/vllm/discussions" target="_blank">vLLM Discussion Board</a> or ping @runtime-metrics-team. Reference implementation: <a href="https://github.com/manishklach/thermal-ctrl-harness" target="_blank">thermal-ctrl-harness</a>. PRs welcome.
                     </p>
-                
-                    <h2 id="gotchas" class="group scroll-mt-20">4.1 Production Gotchas <a href="#gotchas" class="anchor-link">#</a></h2>
-                    
-                    <h3 id="hysteresis" class="group scroll-mt-20">4.1.1 P-Controller Hysteresis: Prevent Thrashing <a href="#hysteresis" class="anchor-link">#</a></h3>
-                    <p>
+<h2 class="group scroll-mt-20" id="gotchas">4.1 Production Gotchas <a class="anchor-link" href="#gotchas">#</a></h2>
+<h3 class="group scroll-mt-20" id="hysteresis">4.1.1 P-Controller Hysteresis: Prevent Thrashing <a class="anchor-link" href="#hysteresis">#</a></h3>
+<p>
                         A naive P-controller will thrash at the threshold. If you evict at 82.0°C and resume at 81.9°C, you’ll oscillate and kill p99 worse than doing nothing.
                     </p>
-                    <pre><code class="language-python">class NVIDIADCGMThermalPolicy:
+<pre><code class="language-python">class NVIDIADCGMThermalPolicy:
     def __init__(self, target_c=82, k_p=0.1, hysteresis_c=3.0):
         self.target_c = target_c
         self.hysteresis_c = hysteresis_c # 2-3C buffer required
         self.throttling = False
 
     def should_throttle(self, temp_c):
-        if not self.throttling and temp_c >= self.target_c:
+        if not self.throttling and temp_c &gt;= self.target_c:
             self.throttling = True
             return True
-        elif self.throttling and temp_c < self.target_c - self.hysteresis_c:
+        elif self.throttling and temp_c &lt; self.target_c - self.hysteresis_c:
             self.throttling = False
             return False
         return self.throttling</code></pre>
-                    <div class="callout callout-danger mb-8">
-                        <p class="font-semibold text-red-500 m-0 mb-2">Critical</p>
-                        <p class="m-0 text-zinc-300">Without hysteresis, you’ll evict/resume every 100ms at 81.9°C/82.0°C. Set <code>hysteresis_c >= 2.0</code> for production.</p>
-                    </div>
-
-                    <h3 id="swap-thrashing" class="group scroll-mt-20">4.1.2 Swap Thrashing: The Victim Request TTFT Spike <a href="#swap-thrashing" class="anchor-link">#</a></h3>
-                    <p>
-                        <code>swap_out()</code> moves KV cache H2D. While H2D bandwidth is high, latency kills the "victim" request.
+<div class="callout callout-danger mb-8">
+<p class="font-semibold text-red-500 m-0 mb-2">Critical</p>
+<p class="m-0 text-zinc-300">Without hysteresis, you’ll evict/resume every 100ms at 81.9°C/82.0°C. Set <code>hysteresis_c &gt;= 2.0</code> for production.</p>
+</div>
+<h3 class="group scroll-mt-20" id="swap-thrashing">4.1.2 Swap Thrashing: The Victim Request TTFT Spike <a class="anchor-link" href="#swap-thrashing">#</a></h3>
+<p>
+<code>swap_out()</code> moves KV cache H2D. While H2D bandwidth is high, latency kills the "victim" request.
                     </p>
-                    <p>
-                        <strong>Math</strong>: PCIe 5.0 x16 = 64 GB/s theoretical, ~40 GB/s sustained. 16GB of KV cache = 400ms just for H2D transfer, before kernel launch overhead.
+<p>
+<strong>Math</strong>: PCIe 5.0 x16 = 64 GB/s theoretical, ~40 GB/s sustained. 16GB of KV cache = 400ms just for H2D transfer, before kernel launch overhead.
                     </p>
-                    <p>
-                        <strong>Rule</strong>: Only <code>swap_out()</code> if <code>estimated_queue_time_for_new_request > estimated_swap_in_latency_for_victim</code>. Otherwise you’re making p99 worse to save p50.
+<p>
+<strong>Rule</strong>: Only <code>swap_out()</code> if <code>estimated_queue_time_for_new_request &gt; estimated_swap_in_latency_for_victim</code>. Otherwise you’re making p99 worse to save p50.
                     </p>
-                    <p><strong>Monitor with</strong>:</p>
-                    <pre><code class="language-bash">histogram_quantile(0.99,
+<p><strong>Monitor with</strong>:</p>
+<pre><code class="language-bash">histogram_quantile(0.99,
   rate(vllm_time_to_first_token_seconds_bucket{request_status="swapped"}[1m])
 )</code></pre>
-                    <div class="callout callout-warning mb-8">
-                        <p class="font-semibold text-amber-500 m-0 mb-2">Warning</p>
-                        <p class="m-0 text-zinc-300">Keep D2H swap bandwidth below 20 GB/s cluster-wide or you’ll saturate PCIe and cause TTFT spikes across all requests.</p>
-                    </div>
-
-                    <h3 id="multi-gpu" class="group scroll-mt-20">4.1.3 Multi-GPU / Tensor Parallel: One Hot GPU Poisons the Pipeline <a href="#multi-gpu" class="anchor-link">#</a></h3>
-                    <p>
+<div class="callout callout-warning mb-8">
+<p class="font-semibold text-amber-500 m-0 mb-2">Warning</p>
+<p class="m-0 text-zinc-300">Keep D2H swap bandwidth below 20 GB/s cluster-wide or you’ll saturate PCIe and cause TTFT spikes across all requests.</p>
+</div>
+<h3 class="group scroll-mt-20" id="multi-gpu">4.1.3 Multi-GPU / Tensor Parallel: One Hot GPU Poisons the Pipeline <a class="anchor-link" href="#multi-gpu">#</a></h3>
+<p>
                         In TP=8 deployments, thermal throttling often hits one GPU first. But every NCCL all-reduce in every transformer layer blocks on the slowest GPU.
                     </p>
-                    <p>
-                        <strong>Result</strong>: GPU3 at 85°C makes GPUs 0,1,2,4,5,6,7 idle. The whole pipeline throttles.
+<p>
+<strong>Result</strong>: GPU3 at 85°C makes GPUs 0,1,2,4,5,6,7 idle. The whole pipeline throttles.
                     </p>
-                    <p>
-                        <strong>Solution</strong>: Thermal policy must be global across the TP group:
+<p>
+<strong>Solution</strong>: Thermal policy must be global across the TP group:
                     </p>
-                    <pre><code class="language-python">import torch.distributed as dist
+<pre><code class="language-python">import torch.distributed as dist
 
 local_temp = get_hbm_temp()
 global_temp = torch.tensor(local_temp).cuda()
 dist.all_reduce(global_temp, op=dist.ReduceOp.MAX) # worst GPU wins
 
-if global_temp.item() >= target_c:
+if global_temp.item() &gt;= target_c:
     # All ranks reduce batch together
     throttle_batch_globally()</code></pre>
-                    <p><strong>DCGM tip</strong>: Use <code>dcgmi group -c &lt;tp_group_ids&gt;</code> to monitor all TP GPUs atomically. If any GPU in the group is hot, treat all as hot.</p>
-
-                </article>
-            </main>
-        </div>
-    </div>
-
-    <script>
+<p><strong>DCGM tip</strong>: Use <code>dcgmi group -c &lt;tp_group_ids&gt;</code> to monitor all TP GPUs atomically. If any GPU in the group is hot, treat all as hot.</p>
+<hr/><footer class="post-footer">© 2026 Manish K. Lach · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer></article>
+</main>
+</div>
+</div>
+<script>
         mermaid.initialize({ startOnLoad: true });
         
         // TOC active state
@@ -880,8 +833,8 @@ if global_temp.item() >= target_c:
             Prism.highlightAll();
         });
     </script>
-    <footer class="max-w-7xl mx-auto px-6 pb-10 pt-2 text-sm text-zinc-500">
-        © 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer" class="text-brand-500 hover:text-brand-400">Manish KL</a>. All rights reserved.
+<footer class="max-w-7xl mx-auto px-6 pb-10 pt-2 text-sm text-zinc-500">
+        © 2026 <a class="text-brand-500 hover:text-brand-400" href="https://github.com/manishklach" rel="noopener noreferrer" target="_blank">Manish KL</a>. All rights reserved.
     </footer>
 </body>
 </html>

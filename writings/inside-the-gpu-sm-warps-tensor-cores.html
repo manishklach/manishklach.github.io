@@ -1,29 +1,30 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>Inside the GPU: SMs, Warps, Tensor Cores, and Why the Architecture Looks the Way It Does | Manish K. Lach</title>
-<meta name="description" content="A technical essay explaining GPU architecture from SMs and warps to tensor cores, register files, shared memory, and why these design choices matter for AI workloads.">
-<meta name="keywords" content="GPU SM warp tensor cores explained, inside the GPU architecture, H100 SM architecture, tensor core warp scheduling, GPU architecture for AI, streaming multiprocessor explained">
-<meta name="author" content="Manish KL">
-<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
-<link rel="canonical" href="https://manishklach.github.io/writings/inside-the-gpu-sm-warps-tensor-cores.html">
-<meta property="og:type" content="article">
-<meta property="og:title" content="Inside the GPU: SMs, Warps, Tensor Cores, and Why the Architecture Looks the Way It Does | Manish K. Lach">
-<meta property="og:description" content="A technical essay explaining GPU architecture from SMs and warps to tensor cores, register files, shared memory, and why these design choices matter for AI workloads.">
-<meta property="og:url" content="https://manishklach.github.io/writings/inside-the-gpu-sm-warps-tensor-cores.html">
-<meta property="og:site_name" content="Manish KL">
-<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
-<meta property="og:image:alt" content="Preview image for the Inside the GPU essay by Manish KL">
-<meta property="article:published_time" content="2026-04-17T00:00:00Z">
-<meta property="article:modified_time" content="2026-04-17T00:00:00Z">
-<meta property="article:author" content="Manish KL">
-<meta property="article:section" content="GPU Architecture">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Inside the GPU: SMs, Warps, Tensor Cores, and Why the Architecture Looks the Way It Does | Manish K. Lach">
-<meta name="twitter:description" content="A technical essay explaining GPU architecture from SMs and warps to tensor cores, register files, shared memory, and why these design choices matter for AI workloads.">
-<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta content="A technical essay explaining GPU architecture from SMs and warps to tensor cores, register files, shared memory, and why these design choices matter for AI workloads." name="description"/>
+<meta content="GPU SM warp tensor cores explained, inside the GPU architecture, H100 SM architecture, tensor core warp scheduling, GPU architecture for AI, streaming multiprocessor explained" name="keywords"/>
+<meta content="Manish KL" name="author"/>
+<meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/>
+<link href="https://manishklach.github.io/writings/inside-the-gpu-sm-warps-tensor-cores.html" rel="canonical"/>
+<meta content="article" property="og:type"/>
+<meta content="Inside the GPU: SMs, Warps, Tensor Cores, and Why the Architecture Looks the Way It Does | Manish K. Lach" property="og:title"/>
+<meta content="A technical essay explaining GPU architecture from SMs and warps to tensor cores, register files, shared memory, and why these design choices matter for AI workloads." property="og:description"/>
+<meta content="https://manishklach.github.io/writings/inside-the-gpu-sm-warps-tensor-cores.html" property="og:url"/>
+<meta content="Manish KL" property="og:site_name"/>
+<meta content="https://manishklach.github.io/og/inside-the-gpu-sm-warps-tensor-cores.png" property="og:image"/>
+<meta content="Preview image for the Inside the GPU essay by Manish KL" property="og:image:alt"/>
+<meta content="2026-04-17T00:00:00Z" property="article:published_time"/>
+<meta content="2026-04-17T00:00:00Z" property="article:modified_time"/>
+<meta content="Manish KL" property="article:author"/>
+<meta content="GPU Architecture" property="article:section"/>
+<meta content="summary_large_image" name="twitter:card"/>
+<meta content="Inside the GPU: SMs, Warps, Tensor Cores, and Why the Architecture Looks the Way It Does" name="twitter:title"/>
+<meta content="A technical essay explaining GPU architecture from SMs and warps to tensor cores, register files, shared memory, and why these design choices matter for AI workloads." name="twitter:description"/>
+<meta content="https://manishklach.github.io/og/inside-the-gpu-sm-warps-tensor-cores.png" name="twitter:image"/>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -101,256 +102,192 @@ hr{border:none;border-top:1px solid var(--border);margin:3rem 0;}
 .footer a{color:var(--accent);text-decoration:none;}
 @media(max-width:600px){h1{font-size:1.7rem;}.stats-row{grid-template-columns:repeat(2,1fr);}}
 </style>
-<meta name="color-scheme" content="light dark">
-</head>
-<body>
-<div class="wrapper" data-pagefind-body>
-
+<meta content="light dark" name="color-scheme"/>
+<script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><link href="/assets/site.css" rel="stylesheet"/><script defer="" src="/assets/site.js"></script><link href="/feed.xml" rel="alternate" title="Manish K. Lach RSS" type="application/rss+xml"/></head>
+<body><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
+<div class="wrapper" data-pagefind-body="">
 <div class="nav"><a href="https://manishklach.github.io/index.html">Home</a> · <a href="https://manishklach.github.io/writings.html">← Back to writings</a></div>
 <div class="tags"><span>GPU Architecture</span><span>AI Hardware</span><span>Tensor Cores</span><span>Warp Scheduling</span></div>
-
-<h1>Inside the GPU: SMs, Warps, Tensor Cores, and Why the Architecture Looks the Way It Does</h1>
+<h1>Inside the GPU: SMs, Warps, Tensor Cores, and Why the Architecture Looks the Way It Does</h1><div class="meta reading-meta">Published <time datetime="2026-04-17">Apr 17, 2026</time> · 17 min read</div>
 <p class="subtitle">The GPU is the central hardware artefact of the AI era, yet it is almost always treated as a black box — a thing that runs matrix multiplies and produces tokens. This essay opens the box: what lives inside an SM, why warps exist, how tensor cores achieve their throughput, and what the architecture's design choices mean for AI workloads specifically.</p>
-
 <div class="byline">By <a href="https://manishklach.github.io/index.html">Manish KL</a> · <time datetime="2026-04-17">April 2026</time> · ~19 min read · Hardware Essay</div>
-
 <div class="abstract">
 <strong>Abstract.</strong> A modern NVIDIA GPU like the H100 contains 132 Streaming Multiprocessors (SMs), each of which is itself a significant compute system. This essay builds up the GPU architecture from first principles: starting with the problem that led to massively parallel design, explaining how warps solve the memory latency problem through latency hiding, how tensor cores achieve 10–20× the throughput of CUDA cores for matrix operations, and what the register file, shared memory, and L1 cache inside each SM are actually used for. The goal is to make the GPU's architecture comprehensible — not as a list of specifications, but as a set of design decisions that follow logically from the workload.
 </div>
-
 <div class="stats-row">
-  <div class="stat-cell"><span class="stat-num">132</span><span class="stat-label">SMs in H100 SXM5 — each an independent multiprocessor with its own schedulers, cores, and SRAM</span></div>
-  <div class="stat-cell"><span class="stat-num">32</span><span class="stat-label">threads in a warp — the atomic unit of GPU execution, always dispatched and executed together</span></div>
-  <div class="stat-cell"><span class="stat-num">989 TFLOP/s</span><span class="stat-label">H100 FP8 tensor core peak — vs. ~60 TFLOP/s for FP32 CUDA cores on the same chip</span></div>
-  <div class="stat-cell"><span class="stat-num">256 KB</span><span class="stat-label">register file per SM in H100 — the largest, fastest on-chip storage, and most architecturally critical</span></div>
+<div class="stat-cell"><span class="stat-num">132</span><span class="stat-label">SMs in H100 SXM5 — each an independent multiprocessor with its own schedulers, cores, and SRAM</span></div>
+<div class="stat-cell"><span class="stat-num">32</span><span class="stat-label">threads in a warp — the atomic unit of GPU execution, always dispatched and executed together</span></div>
+<div class="stat-cell"><span class="stat-num">989 TFLOP/s</span><span class="stat-label">H100 FP8 tensor core peak — vs. ~60 TFLOP/s for FP32 CUDA cores on the same chip</span></div>
+<div class="stat-cell"><span class="stat-num">256 KB</span><span class="stat-label">register file per SM in H100 — the largest, fastest on-chip storage, and most architecturally critical</span></div>
 </div>
-
 <div class="toc">
 <div class="toc-title">Contents</div>
 <ol>
-  <li><a href="#why">Why the GPU looks nothing like a CPU</a></li>
-  <li><a href="#sm">The Streaming Multiprocessor: the GPU's unit of compute</a></li>
-  <li><a href="#warp">Warps: how the GPU hides memory latency</a></li>
-  <li><a href="#regfile">The register file: the fastest memory you've never thought about</a></li>
-  <li><a href="#shared">Shared memory and L1 cache: programmer-visible SRAM</a></li>
-  <li><a href="#cuda-cores">CUDA cores: FP32 and INT32 execution units</a></li>
-  <li><a href="#tensor-cores">Tensor cores: what they are and how they achieve 16× throughput</a></li>
-  <li><a href="#tc-ai">Why tensor cores were the architectural unlock for AI</a></li>
-  <li><a href="#occupancy">Occupancy: the real metric of GPU utilisation</a></li>
-  <li><a href="#h100-numbers">The H100 SM by the numbers</a></li>
-  <li><a href="#limits">Where GPU architecture hits its limits for AI inference</a></li>
+<li><a href="#why">Why the GPU looks nothing like a CPU</a></li>
+<li><a href="#sm">The Streaming Multiprocessor: the GPU's unit of compute</a></li>
+<li><a href="#warp">Warps: how the GPU hides memory latency</a></li>
+<li><a href="#regfile">The register file: the fastest memory you've never thought about</a></li>
+<li><a href="#shared">Shared memory and L1 cache: programmer-visible SRAM</a></li>
+<li><a href="#cuda-cores">CUDA cores: FP32 and INT32 execution units</a></li>
+<li><a href="#tensor-cores">Tensor cores: what they are and how they achieve 16× throughput</a></li>
+<li><a href="#tc-ai">Why tensor cores were the architectural unlock for AI</a></li>
+<li><a href="#occupancy">Occupancy: the real metric of GPU utilisation</a></li>
+<li><a href="#h100-numbers">The H100 SM by the numbers</a></li>
+<li><a href="#limits">Where GPU architecture hits its limits for AI inference</a></li>
 </ol>
 </div>
-
 <h2 id="why">1. Why the GPU looks nothing like a CPU</h2>
-
 <p>A modern CPU core — an Intel Raptor Cove, an ARM Cortex-X4 — devotes the majority of its transistor budget to <strong>managing complexity</strong>: out-of-order execution buffers, branch predictors, large L1/L2/L3 caches, instruction prefetch queues, speculative execution machinery. These are not compute engines — they are mechanisms to make one thread of sequential code run as fast as possible by predicting what it will do next and pre-executing it.</p>
-
 <p>A GPU core makes the opposite trade. It eliminates nearly all complexity-management hardware. No deep out-of-order buffers. No branch prediction. Minimal caches. In its place: <strong>an enormous number of simple execution units</strong> and a <strong>warp-based threading model</strong> designed to tolerate memory latency by switching between hundreds of in-flight threads instead of predicting around it.</p>
-
 <p>This is not the GPU being unsophisticated. It is the GPU making a deliberate trade optimised for a specific class of workload: tasks with massive data parallelism, where the same operation is applied to thousands of independent data elements simultaneously, and where memory latency is unavoidable but can be hidden by keeping enough work in flight.</p>
-
 <blockquote><strong>The CPU optimises for latency of a single thread. The GPU optimises for throughput of thousands of threads.</strong> Both are correct — they serve different workloads. The key is understanding which one you have.</blockquote>
-
 <h2 id="sm">2. The Streaming Multiprocessor: the GPU's unit of compute</h2>
-
 <p>The Streaming Multiprocessor (SM) is the fundamental building block of the GPU. Every GPU is a collection of SMs connected to an HBM interface and an L2 cache. The H100 SXM5 has 132 SMs. The H200 SXM5 has the same 132 SMs with more HBM.</p>
-
 <p>Each SM is itself a complete, independent compute system with its own instruction scheduler, register file, CUDA cores, tensor cores, special function units, shared memory, and L1 cache. SMs run independently and can execute entirely different programs simultaneously — this is what makes GPUs suitable for running different kernels concurrently.</p>
-
 <div class="svg-wrap">
-<svg viewBox="0 0 720 400" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,sans-serif">
-  <defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
-
-  <text x="360" y="20" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a5c" letter-spacing=".5">H100 SM internal structure (Hopper architecture)</text>
-
-  <!-- SM outer border -->
-  <rect x="40" y="32" width="640" height="350" rx="8" fill="#f7f7f3" stroke="#1a3a5c" stroke-width="1.5"/>
-  <text x="360" y="52" text-anchor="middle" font-size="11" font-weight="600" fill="#1a3a5c">Streaming Multiprocessor (SM) — 1 of 132 in H100 SXM5</text>
-
-  <!-- L1 cache / shared memory (top right) -->
-  <rect x="500" y="62" width="165" height="66" rx="4" fill="#e8f4ec" stroke="#1a5c3a" stroke-width="1"/>
-  <text x="582" y="84" text-anchor="middle" font-size="11" font-weight="600" fill="#1a5c3a">L1 / Shared Memory</text>
-  <text x="582" y="98" text-anchor="middle" font-size="10" fill="#2a7a4a">256 KB configurable</text>
-  <text x="582" y="112" text-anchor="middle" font-size="10" fill="#2a7a4a">L1 cache + shared SRAM</text>
-
-  <!-- Register file (top left) -->
-  <rect x="55" y="62" width="165" height="66" rx="4" fill="#e8eef4" stroke="#1a3a5c" stroke-width="1"/>
-  <text x="137" y="84" text-anchor="middle" font-size="11" font-weight="600" fill="#1a3a5c">Register File</text>
-  <text x="137" y="98" text-anchor="middle" font-size="10" fill="#3a6a9c">256 KB (65,536 × 32-bit)</text>
-  <text x="137" y="112" text-anchor="middle" font-size="10" fill="#3a6a9c">fastest on-chip storage</text>
-
-  <!-- Warp schedulers (middle top) -->
-  <rect x="240" y="62" width="240" height="66" rx="4" fill="#faf0e0" stroke="#c8a96e" stroke-width="1"/>
-  <text x="360" y="84" text-anchor="middle" font-size="11" font-weight="600" fill="#8a5a00">4 Warp Schedulers</text>
-  <text x="360" y="98" text-anchor="middle" font-size="10" fill="#a07030">each issues 1 instruction/cycle</text>
-  <text x="360" y="112" text-anchor="middle" font-size="10" fill="#a07030">up to 64 warps in flight per SM</text>
-
-  <!-- CUDA Cores FP32 (bottom left) -->
-  <rect x="55" y="155" width="190" height="66" rx="4" fill="#f8f0f8" stroke="#8844aa" stroke-width="1"/>
-  <text x="150" y="177" text-anchor="middle" font-size="11" font-weight="600" fill="#6622aa">128 FP32 CUDA Cores</text>
-  <text x="150" y="191" text-anchor="middle" font-size="10" fill="#8844bb">32-bit float multiply-add</text>
-  <text x="150" y="205" text-anchor="middle" font-size="10" fill="#8844bb">64 INT32 cores alongside</text>
-
-  <!-- Tensor Cores (bottom middle) -->
-  <rect x="265" y="155" width="190" height="66" rx="4" fill="#fff0e8" stroke="#b35a00" stroke-width="1.5"/>
-  <text x="360" y="177" text-anchor="middle" font-size="11" font-weight="600" fill="#b35a00">4 Tensor Core Units</text>
-  <text x="360" y="191" text-anchor="middle" font-size="10" fill="#c06a10">4th gen (Hopper) — FP8/16/TF32</text>
-  <text x="360" y="205" text-anchor="middle" font-size="10" fill="#c06a10">MMA: D = A×B + C per cycle</text>
-
-  <!-- SFU (bottom right) -->
-  <rect x="475" y="155" width="190" height="66" rx="4" fill="#f0f4f8" stroke="#4a8aaa" stroke-width="1"/>
-  <text x="570" y="177" text-anchor="middle" font-size="11" font-weight="600" fill="#2a6a8a">16 SFUs + 32 LD/ST</text>
-  <text x="570" y="191" text-anchor="middle" font-size="10" fill="#3a7a9a">sin, cos, sqrt, rcp</text>
-  <text x="570" y="205" text-anchor="middle" font-size="10" fill="#3a7a9a">load/store to L1/shared</text>
-
-  <!-- Async copy / DMA engine -->
-  <rect x="55" y="245" width="610" height="44" rx="4" fill="#f0ede6" stroke="#888" stroke-width=".8"/>
-  <text x="360" y="263" text-anchor="middle" font-size="11" font-weight="600" fill="#555">Asynchronous Copy Engine (Hopper)</text>
-  <text x="360" y="277" text-anchor="middle" font-size="10" fill="#777">Tensor Memory Accelerator (TMA) — moves data HBM→shared mem without occupying warp slots</text>
-
-  <!-- L2 connection (bottom) -->
-  <rect x="55" y="310" width="610" height="52" rx="4" fill="#e8eef4" stroke="#1a3a5c" stroke-width=".8" stroke-dasharray="5,3"/>
-  <text x="360" y="332" text-anchor="middle" font-size="11" fill="#1a3a5c">50 MB L2 Cache (shared across all 132 SMs)</text>
-  <text x="360" y="348" text-anchor="middle" font-size="10" fill="#4a6a8a">~12 TB/s aggregate bandwidth to SMs · slice-banked across GPU · feeds from HBM3e</text>
-  <text x="360" y="362" text-anchor="middle" font-size="10" fill="#4a6a8a">L2 miss → 3.35 TB/s HBM · L2 hit → ~12 TB/s on-die</text>
-
-  <!-- Arrows from schedulers to execution units -->
-  <line x1="300" y1="128" x2="165" y2="155" stroke="#c8a96e" stroke-width="1" marker-end="url(#a)"/>
-  <line x1="360" y1="128" x2="360" y2="155" stroke="#c8a96e" stroke-width="1" marker-end="url(#a)"/>
-  <line x1="420" y1="128" x2="555" y2="155" stroke="#c8a96e" stroke-width="1" marker-end="url(#a)"/>
+<svg font-family="system-ui,sans-serif" viewbox="0 0 720 400" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="a" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="8" refy="5" viewbox="0 0 10 10"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></marker></defs>
+<text fill="#1a3a5c" font-size="12" font-weight="600" letter-spacing=".5" text-anchor="middle" x="360" y="20">H100 SM internal structure (Hopper architecture)</text>
+<!-- SM outer border -->
+<rect fill="#f7f7f3" height="350" rx="8" stroke="#1a3a5c" stroke-width="1.5" width="640" x="40" y="32"></rect>
+<text fill="#1a3a5c" font-size="11" font-weight="600" text-anchor="middle" x="360" y="52">Streaming Multiprocessor (SM) — 1 of 132 in H100 SXM5</text>
+<!-- L1 cache / shared memory (top right) -->
+<rect fill="#e8f4ec" height="66" rx="4" stroke="#1a5c3a" stroke-width="1" width="165" x="500" y="62"></rect>
+<text fill="#1a5c3a" font-size="11" font-weight="600" text-anchor="middle" x="582" y="84">L1 / Shared Memory</text>
+<text fill="#2a7a4a" font-size="10" text-anchor="middle" x="582" y="98">256 KB configurable</text>
+<text fill="#2a7a4a" font-size="10" text-anchor="middle" x="582" y="112">L1 cache + shared SRAM</text>
+<!-- Register file (top left) -->
+<rect fill="#e8eef4" height="66" rx="4" stroke="#1a3a5c" stroke-width="1" width="165" x="55" y="62"></rect>
+<text fill="#1a3a5c" font-size="11" font-weight="600" text-anchor="middle" x="137" y="84">Register File</text>
+<text fill="#3a6a9c" font-size="10" text-anchor="middle" x="137" y="98">256 KB (65,536 × 32-bit)</text>
+<text fill="#3a6a9c" font-size="10" text-anchor="middle" x="137" y="112">fastest on-chip storage</text>
+<!-- Warp schedulers (middle top) -->
+<rect fill="#faf0e0" height="66" rx="4" stroke="#c8a96e" stroke-width="1" width="240" x="240" y="62"></rect>
+<text fill="#8a5a00" font-size="11" font-weight="600" text-anchor="middle" x="360" y="84">4 Warp Schedulers</text>
+<text fill="#a07030" font-size="10" text-anchor="middle" x="360" y="98">each issues 1 instruction/cycle</text>
+<text fill="#a07030" font-size="10" text-anchor="middle" x="360" y="112">up to 64 warps in flight per SM</text>
+<!-- CUDA Cores FP32 (bottom left) -->
+<rect fill="#f8f0f8" height="66" rx="4" stroke="#8844aa" stroke-width="1" width="190" x="55" y="155"></rect>
+<text fill="#6622aa" font-size="11" font-weight="600" text-anchor="middle" x="150" y="177">128 FP32 CUDA Cores</text>
+<text fill="#8844bb" font-size="10" text-anchor="middle" x="150" y="191">32-bit float multiply-add</text>
+<text fill="#8844bb" font-size="10" text-anchor="middle" x="150" y="205">64 INT32 cores alongside</text>
+<!-- Tensor Cores (bottom middle) -->
+<rect fill="#fff0e8" height="66" rx="4" stroke="#b35a00" stroke-width="1.5" width="190" x="265" y="155"></rect>
+<text fill="#b35a00" font-size="11" font-weight="600" text-anchor="middle" x="360" y="177">4 Tensor Core Units</text>
+<text fill="#c06a10" font-size="10" text-anchor="middle" x="360" y="191">4th gen (Hopper) — FP8/16/TF32</text>
+<text fill="#c06a10" font-size="10" text-anchor="middle" x="360" y="205">MMA: D = A×B + C per cycle</text>
+<!-- SFU (bottom right) -->
+<rect fill="#f0f4f8" height="66" rx="4" stroke="#4a8aaa" stroke-width="1" width="190" x="475" y="155"></rect>
+<text fill="#2a6a8a" font-size="11" font-weight="600" text-anchor="middle" x="570" y="177">16 SFUs + 32 LD/ST</text>
+<text fill="#3a7a9a" font-size="10" text-anchor="middle" x="570" y="191">sin, cos, sqrt, rcp</text>
+<text fill="#3a7a9a" font-size="10" text-anchor="middle" x="570" y="205">load/store to L1/shared</text>
+<!-- Async copy / DMA engine -->
+<rect fill="#f0ede6" height="44" rx="4" stroke="#888" stroke-width=".8" width="610" x="55" y="245"></rect>
+<text fill="#555" font-size="11" font-weight="600" text-anchor="middle" x="360" y="263">Asynchronous Copy Engine (Hopper)</text>
+<text fill="#777" font-size="10" text-anchor="middle" x="360" y="277">Tensor Memory Accelerator (TMA) — moves data HBM→shared mem without occupying warp slots</text>
+<!-- L2 connection (bottom) -->
+<rect fill="#e8eef4" height="52" rx="4" stroke="#1a3a5c" stroke-dasharray="5,3" stroke-width=".8" width="610" x="55" y="310"></rect>
+<text fill="#1a3a5c" font-size="11" text-anchor="middle" x="360" y="332">50 MB L2 Cache (shared across all 132 SMs)</text>
+<text fill="#4a6a8a" font-size="10" text-anchor="middle" x="360" y="348">~12 TB/s aggregate bandwidth to SMs · slice-banked across GPU · feeds from HBM3e</text>
+<text fill="#4a6a8a" font-size="10" text-anchor="middle" x="360" y="362">L2 miss → 3.35 TB/s HBM · L2 hit → ~12 TB/s on-die</text>
+<!-- Arrows from schedulers to execution units -->
+<line marker-end="url(#a)" stroke="#c8a96e" stroke-width="1" x1="300" x2="165" y1="128" y2="155"></line>
+<line marker-end="url(#a)" stroke="#c8a96e" stroke-width="1" x1="360" x2="360" y1="128" y2="155"></line>
+<line marker-end="url(#a)" stroke="#c8a96e" stroke-width="1" x1="420" x2="555" y1="128" y2="155"></line>
 </svg>
 <div class="fig-caption">Fig 1. Internal structure of one H100 SM (Hopper architecture). The SM contains four warp schedulers, 128 FP32 CUDA cores, four 4th-generation tensor core units, 16 SFUs, 32 LD/ST units, a 256 KB register file, 256 KB of configurable L1/shared memory, and a Tensor Memory Accelerator for async HBM→shared copies. The L2 cache (50 MB total, ~380 KB per SM) is shared across all SMs.</div>
 </div>
-
 <h2 id="warp">3. Warps: how the GPU hides memory latency</h2>
-
 <p>A <strong>warp</strong> is a group of 32 threads that execute together in lockstep — the same instruction, applied to 32 different data elements simultaneously. This is Single Instruction Multiple Threads (SIMT) execution. The warp is the atomic unit of GPU scheduling: you cannot schedule part of a warp, and all 32 threads in a warp execute the same instruction at the same time.</p>
-
 <p>Why 32? This reflects the width of the execution units. A GPU's CUDA cores are grouped in sets of 32 (a "lane" per thread), so one warp's worth of FP32 additions — 32 simultaneous multiplications — fills the execution unit naturally. It also reflects the register file organisation: registers are banked in 32-thread groups for simultaneous access.</p>
-
 <p>The critical insight is what warps do when they encounter a memory access — a load from HBM or L2 that takes hundreds of clock cycles to return. On a CPU, this causes a cache miss stall: the pipeline freezes and waits. A GPU does something entirely different:</p>
-
 <div class="ann-row"><div class="ann-num">1</div><div class="ann-body"><strong>Warp issues a memory load instruction.</strong> The load is dispatched to the memory subsystem. The warp cannot proceed to the next instruction until the data returns (typically 200–800 cycles for an HBM miss).</div></div>
 <div class="ann-row"><div class="ann-num">2</div><div class="ann-body"><strong>The warp scheduler does not wait.</strong> Instead of stalling the SM, the scheduler marks this warp as "waiting for memory" and immediately selects another warp that has all its operands ready. That warp's next instruction is dispatched in the very next cycle.</div></div>
 <div class="ann-row"><div class="ann-num">3</div><div class="ann-body"><strong>Latency is hidden behind other work.</strong> If enough warps are resident in the SM (a condition called high occupancy), by the time the scheduler has cycled through all ready warps, the original memory load has returned and the stalled warp is ready to continue. The SM never actually stalls — it always has something to do.</div></div>
-
 <p>This is called <strong>latency hiding through thread-level parallelism</strong>, and it is the GPU's fundamental answer to slow memory. A CPU uses a different strategy (caches and prefetch) but a GPU simply keeps so many threads in flight that memory latency becomes invisible.</p>
-
 <div class="eq">
 <div class="eq-label">Warp occupancy and latency hiding — H100 SM</div>
-HBM access latency:     ~700 cycles (round trip)<br>
-SM warp execution rate: 4 warps issued per cycle (4 schedulers)<br>
-Warps needed to hide latency = 700 cycles / 1 warp·cycle × 4 issue slots<br>
-                             ≈ 28 warps needed to keep SM fully occupied during HBM miss<br><br>
-H100 SM supports:         up to 64 resident warps<br>
-→ With 64 warps, even at ~700 cycle HBM latency, the SM can hide all memory stalls.<br>
+HBM access latency:     ~700 cycles (round trip)<br/>
+SM warp execution rate: 4 warps issued per cycle (4 schedulers)<br/>
+Warps needed to hide latency = 700 cycles / 1 warp·cycle × 4 issue slots<br/>
+                             ≈ 28 warps needed to keep SM fully occupied during HBM miss<br/><br/>
+H100 SM supports:         up to 64 resident warps<br/>
+→ With 64 warps, even at ~700 cycle HBM latency, the SM can hide all memory stalls.<br/>
 → With fewer warps (low occupancy), stalls become visible.
 </div>
-
 <h2 id="regfile">4. The register file: the fastest memory you've never thought about</h2>
-
 <p>The register file is the fastest memory in the GPU — faster than L1 cache, faster than shared memory, faster than anything else on the chip. It is also enormous by cache standards: the H100 SM has a 256 KB register file, providing 65,536 individual 32-bit registers. These registers are the working memory for all the warps resident in the SM.</p>
-
 <p>The reason the register file is so large is that all resident warps share it. If the SM has 64 warps resident and each warp's 32 threads uses 128 registers each: <code>64 × 32 × 128 = 262,144 registers</code> — exactly the SM's capacity. This is not a coincidence. The register file is sized to hold the register state of all possible resident warps simultaneously, so that context-switching between warps costs zero cycles — there is no save/restore, no register spill. The warp's state is always live in the register file.</p>
-
 <p>This zero-cost context switching is what makes warp-based latency hiding efficient. Unlike CPU thread switching, which requires saving registers to memory (hundreds of cycles), GPU warp switching takes <strong>one cycle</strong> — just a pointer to a different warp's register file bank.</p>
-
 <h2 id="shared">5. Shared memory and L1 cache: programmer-visible SRAM</h2>
-
 <p>The H100 SM has 256 KB of on-chip SRAM that serves as a unified pool for two distinct purposes: <strong>L1 cache</strong> (managed automatically by hardware) and <strong>shared memory</strong> (managed explicitly by the programmer or compiler). The split between them is configurable per kernel — a programmer can allocate up to 228 KB as shared memory, leaving the remainder as L1 cache.</p>
-
 <p>Shared memory is the closest thing a GPU has to a software-managed scratchpad. It allows threads within the same thread block (a group of up to 1,024 threads spanning multiple warps on the same SM) to communicate through fast on-chip SRAM without going to HBM. For tiled matrix multiplication — the core operation of transformer attention and FFN layers — shared memory is used to load tiles of the A and B matrices from HBM into SRAM, perform the multiply-accumulate, and then move to the next tile. This tile-based approach is what allows GPU matrix multiply to reuse data in SRAM for multiple operations rather than reading it fresh from HBM each time.</p>
-
 <h2 id="cuda-cores">6. CUDA cores: FP32 and INT32 execution units</h2>
-
 <p>CUDA cores are the general-purpose arithmetic units of the SM — each one can perform one 32-bit floating-point multiply-add (FMA) per clock cycle. With 128 FP32 CUDA cores per SM and 132 SMs in the H100:</p>
-
 <div class="eq">
 <div class="eq-label">H100 FP32 CUDA core peak throughput</div>
-FP32 CUDA cores = 128 per SM × 132 SMs = 16,896 CUDA cores<br>
-2 ops per FMA (multiply + add) × 16,896 cores × 1,979 MHz clock<br>
-= <strong>~66.9 TFLOP/s FP32 (CUDA cores only)</strong><br><br>
-Compare: H100 FP16 tensor cores: ~989 TFLOP/s<br>
+FP32 CUDA cores = 128 per SM × 132 SMs = 16,896 CUDA cores<br/>
+2 ops per FMA (multiply + add) × 16,896 cores × 1,979 MHz clock<br/>
+= <strong>~66.9 TFLOP/s FP32 (CUDA cores only)</strong><br/><br/>
+Compare: H100 FP16 tensor cores: ~989 TFLOP/s<br/>
 → Tensor cores deliver ~14.8× more throughput than CUDA cores for matrix operations.
 </div>
-
 <p>CUDA cores are general-purpose: they can execute any FP32 or INT32 instruction, including non-matrix operations like element-wise activations (ReLU, GELU), normalisation, and control flow. They are the fallback for anything that doesn't fit the tensor core's specific matrix-multiply-accumulate operation.</p>
-
 <h2 id="tensor-cores">7. Tensor cores: what they are and how they achieve 16× throughput</h2>
-
 <p>Tensor cores are specialised compute units that perform one operation that CUDA cores cannot: a <strong>matrix multiply-accumulate (MMA)</strong> on entire tiles of matrices in a single instruction. A 4th-generation Hopper tensor core performs the operation:</p>
-
 <pre>D = A × B + C</pre>
-
 <p>where A, B, C, D are small matrices — for FP8, the tile size is 16×16×16 (a 16×16 result from a 16×16 × 16×16 multiplication). In one clock cycle, one tensor core unit computes 16 × 16 × 16 × 2 = 8,192 FP8 multiply-add operations. Compare this to a CUDA core, which performs 2 FP32 operations per cycle.</p>
-
 <div class="svg-wrap">
-<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,sans-serif">
-  <text x="360" y="20" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a5c" letter-spacing=".5">Tensor core MMA operation — D = A×B + C</text>
-
-  <!-- A matrix -->
-  <rect x="50" y="50" width="120" height="120" rx="4" fill="#e8f0f8" stroke="#1a3a5c" stroke-width="1.2"/>
-  <text x="110" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#1a3a5c">A</text>
-  <text x="110" y="126" text-anchor="middle" font-size="11" fill="#3a6a9c">16 × 16 (FP8)</text>
-  <text x="110" y="142" text-anchor="middle" font-size="10" fill="#5a8ab0">256 elements</text>
-  <text x="110" y="158" text-anchor="middle" font-size="10" fill="#5a8ab0">loaded from</text>
-  <text x="110" y="170" text-anchor="middle" font-size="10" fill="#5a8ab0">register file</text>
-
-  <!-- × -->
-  <text x="195" y="118" text-anchor="middle" font-size="22" fill="#888">×</text>
-
-  <!-- B matrix -->
-  <rect x="215" y="50" width="120" height="120" rx="4" fill="#e8f0f8" stroke="#1a3a5c" stroke-width="1.2"/>
-  <text x="275" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#1a3a5c">B</text>
-  <text x="275" y="126" text-anchor="middle" font-size="11" fill="#3a6a9c">16 × 16 (FP8)</text>
-  <text x="275" y="142" text-anchor="middle" font-size="10" fill="#5a8ab0">weight tile from</text>
-  <text x="275" y="154" text-anchor="middle" font-size="10" fill="#5a8ab0">shared memory</text>
-
-  <!-- + -->
-  <text x="360" y="118" text-anchor="middle" font-size="22" fill="#888">+</text>
-
-  <!-- C matrix -->
-  <rect x="380" y="50" width="120" height="120" rx="4" fill="#faf0e0" stroke="#c8a96e" stroke-width="1.2"/>
-  <text x="440" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#8a5a00">C</text>
-  <text x="440" y="126" text-anchor="middle" font-size="11" fill="#a07030">16 × 16 (FP32)</text>
-  <text x="440" y="142" text-anchor="middle" font-size="10" fill="#c08040">accumulator</text>
-  <text x="440" y="154" text-anchor="middle" font-size="10" fill="#c08040">higher precision</text>
-
-  <!-- = -->
-  <text x="525" y="118" text-anchor="middle" font-size="22" fill="#888">=</text>
-
-  <!-- D matrix -->
-  <rect x="545" y="50" width="130" height="120" rx="4" fill="#fff0e8" stroke="#b35a00" stroke-width="1.5"/>
-  <text x="610" y="105" text-anchor="middle" font-size="14" font-weight="700" fill="#b35a00">D</text>
-  <text x="610" y="122" text-anchor="middle" font-size="11" fill="#b35a00">16 × 16 result</text>
-  <text x="610" y="138" text-anchor="middle" font-size="10" fill="#c06a10">8,192 FMA ops</text>
-  <text x="610" y="152" text-anchor="middle" font-size="10" fill="#c06a10">in 1 clock cycle</text>
-  <text x="610" y="168" text-anchor="middle" font-size="10" fill="#c06a10">per tensor core unit</text>
-
-  <!-- Comparison bar -->
-  <text x="110" y="220" text-anchor="middle" font-size="11" fill="#555" font-weight="600">CUDA core: 2 FP32 ops/cycle</text>
-  <rect x="50" y="228" width="24" height="16" rx="2" fill="#8844aa" opacity=".7"/>
-  <text x="360" y="220" text-anchor="middle" font-size="11" fill="#555" font-weight="600">Tensor core: 8,192 FP8 ops/cycle</text>
-  <rect x="215" y="228" width="296" height="16" rx="2" fill="#b35a00" opacity=".7"/>
-  <text x="610" y="220" text-anchor="middle" font-size="11" fill="#b35a00" font-weight="600">4,096× more ops</text>
-  <text x="360" y="258" text-anchor="middle" font-size="10" fill="#888" font-style="italic">Tensor cores perform matrix tiles in hardware; CUDA cores perform one FMA at a time.</text>
+<svg font-family="system-ui,sans-serif" viewbox="0 0 720 280" xmlns="http://www.w3.org/2000/svg">
+<text fill="#1a3a5c" font-size="12" font-weight="600" letter-spacing=".5" text-anchor="middle" x="360" y="20">Tensor core MMA operation — D = A×B + C</text>
+<!-- A matrix -->
+<rect fill="#e8f0f8" height="120" rx="4" stroke="#1a3a5c" stroke-width="1.2" width="120" x="50" y="50"></rect>
+<text fill="#1a3a5c" font-size="14" font-weight="700" text-anchor="middle" x="110" y="108">A</text>
+<text fill="#3a6a9c" font-size="11" text-anchor="middle" x="110" y="126">16 × 16 (FP8)</text>
+<text fill="#5a8ab0" font-size="10" text-anchor="middle" x="110" y="142">256 elements</text>
+<text fill="#5a8ab0" font-size="10" text-anchor="middle" x="110" y="158">loaded from</text>
+<text fill="#5a8ab0" font-size="10" text-anchor="middle" x="110" y="170">register file</text>
+<!-- × -->
+<text fill="#888" font-size="22" text-anchor="middle" x="195" y="118">×</text>
+<!-- B matrix -->
+<rect fill="#e8f0f8" height="120" rx="4" stroke="#1a3a5c" stroke-width="1.2" width="120" x="215" y="50"></rect>
+<text fill="#1a3a5c" font-size="14" font-weight="700" text-anchor="middle" x="275" y="108">B</text>
+<text fill="#3a6a9c" font-size="11" text-anchor="middle" x="275" y="126">16 × 16 (FP8)</text>
+<text fill="#5a8ab0" font-size="10" text-anchor="middle" x="275" y="142">weight tile from</text>
+<text fill="#5a8ab0" font-size="10" text-anchor="middle" x="275" y="154">shared memory</text>
+<!-- + -->
+<text fill="#888" font-size="22" text-anchor="middle" x="360" y="118">+</text>
+<!-- C matrix -->
+<rect fill="#faf0e0" height="120" rx="4" stroke="#c8a96e" stroke-width="1.2" width="120" x="380" y="50"></rect>
+<text fill="#8a5a00" font-size="14" font-weight="700" text-anchor="middle" x="440" y="108">C</text>
+<text fill="#a07030" font-size="11" text-anchor="middle" x="440" y="126">16 × 16 (FP32)</text>
+<text fill="#c08040" font-size="10" text-anchor="middle" x="440" y="142">accumulator</text>
+<text fill="#c08040" font-size="10" text-anchor="middle" x="440" y="154">higher precision</text>
+<!-- = -->
+<text fill="#888" font-size="22" text-anchor="middle" x="525" y="118">=</text>
+<!-- D matrix -->
+<rect fill="#fff0e8" height="120" rx="4" stroke="#b35a00" stroke-width="1.5" width="130" x="545" y="50"></rect>
+<text fill="#b35a00" font-size="14" font-weight="700" text-anchor="middle" x="610" y="105">D</text>
+<text fill="#b35a00" font-size="11" text-anchor="middle" x="610" y="122">16 × 16 result</text>
+<text fill="#c06a10" font-size="10" text-anchor="middle" x="610" y="138">8,192 FMA ops</text>
+<text fill="#c06a10" font-size="10" text-anchor="middle" x="610" y="152">in 1 clock cycle</text>
+<text fill="#c06a10" font-size="10" text-anchor="middle" x="610" y="168">per tensor core unit</text>
+<!-- Comparison bar -->
+<text fill="#555" font-size="11" font-weight="600" text-anchor="middle" x="110" y="220">CUDA core: 2 FP32 ops/cycle</text>
+<rect fill="#8844aa" height="16" opacity=".7" rx="2" width="24" x="50" y="228"></rect>
+<text fill="#555" font-size="11" font-weight="600" text-anchor="middle" x="360" y="220">Tensor core: 8,192 FP8 ops/cycle</text>
+<rect fill="#b35a00" height="16" opacity=".7" rx="2" width="296" x="215" y="228"></rect>
+<text fill="#b35a00" font-size="11" font-weight="600" text-anchor="middle" x="610" y="220">4,096× more ops</text>
+<text fill="#888" font-size="10" font-style="italic" text-anchor="middle" x="360" y="258">Tensor cores perform matrix tiles in hardware; CUDA cores perform one FMA at a time.</text>
 </svg>
 <div class="fig-caption">Fig 2. Tensor core MMA operation: D = A×B + C, where all matrices are 16×16 tiles. One tensor core unit performs 8,192 FP8 multiply-add operations per clock cycle by executing the full tile multiply in dedicated silicon rather than computing one element at a time. Accumulation is done in higher-precision FP32 to avoid numerical degradation.</div>
 </div>
-
 <p>The key distinction: a CUDA core is a scalar unit. It adds two numbers or multiplies two numbers. A tensor core is a <em>matrix unit</em> — it operates on an entire tile of a matrix simultaneously. The silicon is organised differently: instead of a general-purpose ALU, a tensor core contains a fixed-function array of multiply-accumulate cells arranged in a matrix pattern, with dedicated wiring to fan operands across the array in parallel.</p>
-
 <p>The accumulator precision deserves attention. Although the input matrices A and B can be FP8 (8-bit floating point), the accumulator C and result D are kept in FP32. This is deliberate: 8-bit arithmetic has limited range and loses precision quickly when summing many products. By accumulating in 32-bit, the tensor core trades some throughput reduction in the accumulation step for numerical stability in the final result. The input data movement is FP8 (fewer bytes to read from memory), while the arithmetic accuracy is FP32.</p>
-
 <h2 id="tc-ai">8. Why tensor cores were the architectural unlock for AI</h2>
-
 <p>Before tensor cores (pre-Volta, 2017), running a neural network on a GPU meant using CUDA cores to do scalar matrix multiplication — one element at a time. A matrix multiply of two 4096×4096 matrices required 4096³ = 68.7 billion FMA operations, each executed serially through the CUDA core pipeline. The throughput was limited by the number of CUDA cores and their clock rate.</p>
-
 <p>With tensor cores, the same matrix multiply is decomposed into tiles of 16×16 matrices, each tile computed in a single tensor core operation. The arithmetic intensity per clock cycle jumps by over 4,000×. The H100's 989 TFLOP/s FP8 peak is almost entirely tensor core throughput — CUDA cores contribute only ~67 TFLOP/s.</p>
-
 <p>This is why the H100's AI benchmark numbers are so much higher than its FP32 FLOP count suggests. The FP32 FLOP count reflects CUDA core capacity. The AI throughput reflects tensor core capacity. They are different silicon doing different work.</p>
-
 <div class="table-wrap">
 <table>
 <thead><tr><th>GPU</th><th>Architecture</th><th class="num">FP32 CUDA cores (TFLOP/s)</th><th class="num">FP16 Tensor (TFLOP/s)</th><th class="num">FP8 Tensor (TFLOP/s)</th><th class="num">TC / CUDA ratio</th></tr></thead>
@@ -362,23 +299,15 @@ Compare: H100 FP16 tensor cores: ~989 TFLOP/s<br>
 </tbody>
 </table>
 </div>
-
 <h2 id="occupancy">9. Occupancy: the real metric of GPU utilisation</h2>
-
 <p>GPU utilisation as reported by <code>nvidia-smi</code> is often misleading for AI workloads. A GPU can report 100% utilisation while its tensor cores are actually idle — the utilisation metric reflects whether the GPU is executing <em>any</em> instructions, not whether its most powerful execution units are busy.</p>
-
 <p>The more meaningful metric is <strong>occupancy</strong> — the ratio of active warps to the maximum possible warps per SM. Low occupancy means the SM has fewer warps in flight than it needs to hide memory latency, and stalls become visible. High occupancy means memory latency is hidden and execution units are kept busy.</p>
-
 <p>Occupancy is limited by three resources, and the most constrained of the three determines the ceiling:</p>
-
 <div class="ann-row"><div class="ann-num">1</div><div class="ann-body"><strong>Register file pressure.</strong> If a kernel uses many registers per thread, fewer total threads fit in the register file. A kernel using 128 registers per thread at full 64-warp occupancy would need 64 × 32 × 128 = 262,144 registers — exactly the H100 SM's limit. A kernel using 255 registers per thread could only achieve 32 warps (50% occupancy) before the register file is full.</div></div>
 <div class="ann-row"><div class="ann-num">2</div><div class="ann-body"><strong>Shared memory allocation.</strong> If a kernel allocates a large shared memory buffer per thread block, fewer thread blocks fit per SM simultaneously. A kernel using 200 KB of shared memory can only run one thread block per SM (since the SM has 256 KB total), limiting occupancy to however many warps that one block contains.</div></div>
 <div class="ann-row"><div class="ann-num">3</div><div class="ann-body"><strong>Thread block configuration.</strong> The SM can host up to 32 thread blocks simultaneously, but they must collectively stay within the register and shared memory limits. The configuration of threads-per-block is a tunable parameter that affects how these resources are partitioned.</div></div>
-
 <p>The practical consequence for AI: matrix multiply kernels (FlashAttention, cuBLAS GEMM) are carefully hand-tuned to maximise occupancy by controlling tile sizes, register usage, and shared memory allocation. A poorly tuned kernel can achieve 30% of peak throughput on the same hardware as an optimised kernel achieving 85%.</p>
-
 <h2 id="h100-numbers">10. The H100 SM by the numbers</h2>
-
 <div class="table-wrap">
 <table>
 <thead><tr><th>Resource</th><th>H100 SXM5</th><th>Per SM</th><th>AI implication</th></tr></thead>
@@ -395,28 +324,20 @@ Compare: H100 FP16 tensor cores: ~989 TFLOP/s<br>
 </tbody>
 </table>
 </div>
-
 <h2 id="limits">11. Where GPU architecture hits its limits for AI inference</h2>
-
 <p>The GPU's architecture is extraordinarily well-matched to one phase of AI inference: <strong>prefill</strong>. Prefill — processing the full input prompt — is a large batch matrix multiply: a matrix of input activations against the model's weight matrices. Tensor cores exist precisely for this operation. Prefill at 989 TFLOP/s is the GPU operating in its designed regime.</p>
-
 <p>Decode — generating tokens one at a time — is the opposite. At batch size 1, each decode step is a <em>matrix-vector</em> multiply, not a matrix-matrix multiply. A matrix-vector multiply does not fill the tensor cores efficiently: the "B matrix" has only one column. The tensor core tile is 16×16, but the batch is 1×16 — 15 of the 16 tile rows are wasted. Arithmetic intensity collapses to ~1.6 FLOP/byte. The GPU reverts to waiting for HBM at 3.35 TB/s.</p>
-
 <p>This is the fundamental architectural mismatch between GPU design and autoregressive inference: the tensor cores that give the GPU its headline throughput numbers are structurally underutilised during the token generation phase that dominates real serving workloads. The SM, the warp scheduler, the register file — all of this infrastructure exists to support massive parallelism, but decode is an inherently serial workload where the next token depends on the previous one.</p>
-
 <blockquote><strong>The GPU's tensor cores are a remarkable engineering achievement — and they are nearly irrelevant during autoregressive decode.</strong> Prefill uses them well. Decode doesn't. And decode is where users wait. This architectural reality is the deepest motivation for every alternative inference accelerator architecture: wafer-scale SRAM chips, near-memory compute, and specialised decode accelerators that trade tensor core throughput for memory bandwidth.</blockquote>
-
-<hr>
+<hr/>
 <div class="callout">
 <div class="callout-label">What this essay does not cover</div>
 This essay covers the H100 Hopper SM architecture. It does not cover: the Blackwell architecture (B100/B200) which introduces 5th-generation tensor cores and a new FP4 precision mode; the specific microcode and instruction encoding of GPU ISAs (PTX and SASS); multi-instance GPU (MIG) partitioning; NVLink topology and the NVSwitch fabric; or the software model (CUDA programming model, thread blocks, grid dimensions) in detail. Each of those deserves its own treatment.
 </div>
-
 <div class="footer">
 <p><a href="https://manishklach.github.io/index.html">Manish KL</a> · Essays · <time datetime="2026-04-17">April 2026</time> · <a href="https://manishklach.github.io/writings.html">← All writings</a></p>
 <p style="margin-top:.5rem">© 2026 <a href="https://github.com/manishklach">Manish KL</a>. All rights reserved.</p>
 </div>
-
-</div>
+<hr/><footer class="post-footer">© 2026 Manish K. Lach · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer></div>
 </body>
 </html>

@@ -1,32 +1,33 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>The Attention Sink Problem: Why Transformer Inference Wastes More Memory Than You Think | Manish K. Lach</title>
-<meta name="description" content="A deep systems essay on attention sink tokens, structural KV cache waste in transformer inference, and why the first token quietly steals disproportionate residency budget in long-context serving.">
-<meta name="keywords" content="attention sink, KV cache, transformer inference, LLM memory, softmax normalization, StreamingLLM, initial token, long-context serving, AI infrastructure">
-<meta name="author" content="Manish KL">
-<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
-<link rel="canonical" href="https://manishklach.github.io/writings/attention-sink-problem-transformer-inference-memory-waste.html">
-<meta property="og:type" content="article">
-<meta property="og:title" content="The Attention Sink Problem: Why Transformer Inference Wastes More Memory Than You Think | Manish K. Lach">
-<meta property="og:description" content="A deep systems essay on attention sink tokens, structural KV cache waste in transformer inference, and why the first token quietly steals disproportionate residency budget in long-context serving.">
-<meta property="og:url" content="https://manishklach.github.io/writings/attention-sink-problem-transformer-inference-memory-waste.html">
-<meta property="og:site_name" content="Manish KL">
-<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
-<meta property="og:image:alt" content="Preview image for The Attention Sink Problem essay">
-<meta property="article:published_time" content="2026-04-12T00:00:00Z">
-<meta property="article:modified_time" content="2026-04-12T00:00:00Z">
-<meta property="article:author" content="Manish KL">
-<meta property="article:section" content="AI Infrastructure">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="The Attention Sink Problem: Why Transformer Inference Wastes More Memory Than You Think | Manish K. Lach">
-<meta name="twitter:description" content="A systems essay on attention sink tokens, KV cache waste, and why transformer inference needs memory-policy-aware serving.">
-<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
-<meta name="twitter:image:alt" content="Preview image for The Attention Sink Problem essay">
-<meta name="twitter:creator" content="@manishkl">
-<meta name="twitter:site" content="@manishkl">
+<meta content="A deep systems essay on attention sink tokens, structural KV cache waste in transformer inference, and why the first token quietly steals disproportionate residency budget in long-context serving." name="description"/>
+<meta content="attention sink, KV cache, transformer inference, LLM memory, softmax normalization, StreamingLLM, initial token, long-context serving, AI infrastructure" name="keywords"/>
+<meta content="Manish KL" name="author"/>
+<meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/>
+<link href="https://manishklach.github.io/writings/attention-sink-problem-transformer-inference-memory-waste.html" rel="canonical"/>
+<meta content="article" property="og:type"/>
+<meta content="The Attention Sink Problem: Why Transformer Inference Wastes More Memory Than You Think | Manish K. Lach" property="og:title"/>
+<meta content="A deep systems essay on attention sink tokens, structural KV cache waste in transformer inference, and why the first token quietly steals disproportionate residency budget in long-context serving." property="og:description"/>
+<meta content="https://manishklach.github.io/writings/attention-sink-problem-transformer-inference-memory-waste.html" property="og:url"/>
+<meta content="Manish KL" property="og:site_name"/>
+<meta content="https://manishklach.github.io/og/attention-sink-problem-transformer-inference-memory-waste.png" property="og:image"/>
+<meta content="Preview image for The Attention Sink Problem essay" property="og:image:alt"/>
+<meta content="2026-04-12T00:00:00Z" property="article:published_time"/>
+<meta content="2026-04-12T00:00:00Z" property="article:modified_time"/>
+<meta content="Manish KL" property="article:author"/>
+<meta content="AI Infrastructure" property="article:section"/>
+<meta content="summary_large_image" name="twitter:card"/>
+<meta content="The Attention Sink Problem: Why Transformer Inference Wastes More Memory Than You Think" name="twitter:title"/>
+<meta content="A deep systems essay on attention sink tokens, structural KV cache waste in transformer inference, and why the first token quietly steals disproportionate residency budget in long-context serving." name="twitter:description"/>
+<meta content="https://manishklach.github.io/og/attention-sink-problem-transformer-inference-memory-waste.png" name="twitter:image"/>
+<meta content="Preview image for The Attention Sink Problem essay" name="twitter:image:alt"/>
+<meta content="@manishkl" name="twitter:creator"/>
+<meta content="@manishkl" name="twitter:site"/>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -210,388 +211,281 @@
     body { padding: 2rem 1.25rem 4rem; }
   }
 </style>
-<meta name="color-scheme" content="light dark">
-</head>
-<body data-pagefind-body>
-
+<meta content="light dark" name="color-scheme"/>
+<script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><link href="/assets/site.css" rel="stylesheet"/><script defer="" src="/assets/site.js"></script><link href="/feed.xml" rel="alternate" title="Manish K. Lach RSS" type="application/rss+xml"/></head>
+<body data-pagefind-body=""><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
 <div class="nav">
-  <a href="https://manishklach.github.io/index.html">Home</a> ·
+<a href="https://manishklach.github.io/index.html">Home</a> ·
   <a href="https://manishklach.github.io/writings.html">← Back to writings</a>
 </div>
-
 <div class="tag-row">
-  <span class="tag">Transformer Inference</span>
-  <span class="tag">KV Cache</span>
-  <span class="tag">Memory Policy</span>
-  <span class="tag">Attention Mechanisms</span>
-  <span class="tag">Long-Context Serving</span>
+<span class="tag">Transformer Inference</span>
+<span class="tag">KV Cache</span>
+<span class="tag">Memory Policy</span>
+<span class="tag">Attention Mechanisms</span>
+<span class="tag">Long-Context Serving</span>
 </div>
-
-<h1>The Attention Sink Problem: Why Transformer Inference Wastes More Memory Than You Think</h1>
-
+<h1>The Attention Sink Problem: Why Transformer Inference Wastes More Memory Than You Think</h1><div class="meta reading-meta">Published <time datetime="2026-04-12">Apr 12, 2026</time> · 17 min read</div>
 <p class="lede">Transformers are forced by softmax to attend somewhere — and when there is no semantically meaningful target, they pile attention mass onto a single structural artifact: the first token. That token is useless for prediction. But its KV state must live in memory forever. This is the attention sink problem, and it is quietly inflating your cache budget at every sequence length.</p>
-
 <div class="meta">Manish KL · <time datetime="2026-04-12">April 2026</time> · ~17 min read · Systems Essay</div>
-
 <div class="toc">
-  <div class="toc-title">Contents</div>
-  <ol>
-    <li><a href="#why-now">Why this matters now</a></li>
-    <li><a href="#softmax-problem">The softmax mass conservation problem</a></li>
-    <li><a href="#sink-formation">How attention sinks form</a></li>
-    <li><a href="#memory-footprint">The memory footprint of a sink</a></li>
-    <li><a href="#diagram-flow">Visualizing the waste</a></li>
-    <li><a href="#long-context-amplification">Long-context amplification</a></li>
-    <li><a href="#current-blind-spots">Where current systems are blind</a></li>
-    <li><a href="#policy-responses">Policy responses that actually help</a></li>
-    <li><a href="#sink-aware-tier">Toward sink-aware tier placement</a></li>
-    <li><a href="#close">Final thought</a></li>
-  </ol>
+<div class="toc-title">Contents</div>
+<ol>
+<li><a href="#why-now">Why this matters now</a></li>
+<li><a href="#softmax-problem">The softmax mass conservation problem</a></li>
+<li><a href="#sink-formation">How attention sinks form</a></li>
+<li><a href="#memory-footprint">The memory footprint of a sink</a></li>
+<li><a href="#diagram-flow">Visualizing the waste</a></li>
+<li><a href="#long-context-amplification">Long-context amplification</a></li>
+<li><a href="#current-blind-spots">Where current systems are blind</a></li>
+<li><a href="#policy-responses">Policy responses that actually help</a></li>
+<li><a href="#sink-aware-tier">Toward sink-aware tier placement</a></li>
+<li><a href="#close">Final thought</a></li>
+</ol>
 </div>
-
 <h2 id="why-now">Why this matters now</h2>
-
 <p>The last two years have been defined by a race toward longer and longer context windows. What started as 4K tokens has marched through 32K, 128K, and now into the millions. The infrastructure response has been to build bigger KV caches, add more HBM, design smarter eviction policies, and reach for tiered memory hierarchies that spill to DRAM and NVMe when the fast tier fills up.</p>
-
 <p>All of that work is necessary. But almost none of it addresses a more fundamental issue that sits upstream of eviction policy and tier placement: a structurally mandated class of KV entries that cannot be evicted regardless of access pattern, because removing them causes model output to degrade in a sharp and nonlinear way.</p>
-
 <p>These entries are not hot because they are semantically relevant. They are hot because softmax forces attention mass onto them as a pressure valve when the model has no better option. They are the <em>attention sinks</em> — and the first token in nearly every transformer sequence is one.</p>
-
 <blockquote>The first token in your sequence is not important. But its KV state must stay in memory for the entire inference run. That is not a policy choice. It is a mathematical consequence of how transformers distribute attention.</blockquote>
-
 <p>The implications for serving infrastructure are deeper than they first appear. This essay traces the mechanism from softmax arithmetic through to KV residency requirements, quantifies the memory overhead at scale, and then asks what a memory policy layer should actually do about it.</p>
-
 <h2 id="softmax-problem">The softmax mass conservation problem</h2>
-
 <p>To understand sinks, you have to start with what softmax actually does to attention scores.</p>
-
 <p>In the standard attention mechanism, a query vector <code>q</code> is dotted with every key vector <code>k_i</code> in the context, scaled, and then passed through softmax to produce a probability distribution over positions. The output at each position is a weighted sum of value vectors.</p>
-
 <pre>attention(Q, K, V) = softmax(QK^T / √d_k) · V</pre>
-
 <p>The critical property is that softmax outputs must sum to exactly 1.0 across all positions in the distribution. Every probability mass assigned to one position is probability mass taken away from others. This is conservation of attention.</p>
-
 <p>Under ideal conditions this is fine. The model has learned which positions are contextually relevant, and it concentrates mass on them. But consider the case where a token genuinely has no useful contextual precedent — where no prior token carries information that would help predict the current output. In that situation, the model still has to put the attention mass somewhere. Softmax does not allow a "none of the above" option. It will push probability onto whatever positions have the least-negative logit scores, even if those logits are semantically meaningless.</p>
-
 <p>That is the structural pressure. And it creates a reliable pattern across transformer architectures: certain positions in the sequence become <em>attentional sinks</em> — positions that absorb excess mass without contributing meaningfully to output quality.</p>
-
 <h2 id="sink-formation">How attention sinks form</h2>
-
 <p>The canonical sink is the first token — typically the beginning-of-sequence marker, a system prompt token, or whatever appears at position zero. The reasons are partly architectural and partly numerical.</p>
-
 <p>During pretraining, the model learns that position zero is always visible. It never needs to be attended to for positional or recency reasons; it just sits there, reliably present, accumulating low-but-stable attention from every position that has nowhere better to direct its mass. Over billions of training steps, the value vectors at position zero get shaped to absorb this diffuse load gracefully — their gradient signal is dominated by "receive mass from confused queries." The result is a position whose value vector has been tuned to be a good sink rather than a good contributor to predictions.</p>
-
 <p>The sink pattern has been documented empirically across GPT-2, LLaMA, Mistral, and most major open-weight model families. In every case, when you visualize attention weights across heads and layers, you find a consistent bright column at position zero that cannot be explained by semantic content.</p>
-
 <div class="callout">
-  <strong>The sink is not a bug — it is a learned structural response.</strong> The model has been trained on a softmax constraint that requires mass conservation, and it has learned to route surplus mass onto a stable, always-present token. From the model's perspective, this is working as intended. From the memory system's perspective, it means the first token's KV state must remain resident at all times, because the model has built a dependency on it at every layer.
+<strong>The sink is not a bug — it is a learned structural response.</strong> The model has been trained on a softmax constraint that requires mass conservation, and it has learned to route surplus mass onto a stable, always-present token. From the model's perspective, this is working as intended. From the memory system's perspective, it means the first token's KV state must remain resident at all times, because the model has built a dependency on it at every layer.
 </div>
-
 <p>The first token is the most reliable sink, but it is not the only one. In models with very long context, additional sinks can form at other structurally stable positions — punctuation tokens, separator tokens, and special formatting markers are common candidates. Any token that is always present and always visible becomes a candidate for the sink role.</p>
-
 <h2 id="memory-footprint">The memory footprint of a sink</h2>
-
 <p>A single KV entry for one token across all layers of a modern large model is not trivial. For a 70B-parameter model with 80 transformer layers, 8 KV heads per layer, and a head dimension of 128, stored in BF16:</p>
-
 <pre>per-token KV = 2 (K and V) × 80 layers × 8 heads × 128 dim × 2 bytes
              = 2 × 80 × 8 × 128 × 2
              = 327,680 bytes
              ≈ 320 KB per token</pre>
-
 <p>That is 320 KB that must stay in the fast tier — in HBM — for the entire duration of the inference run, because the model will query against it at every single decode step. For a long-context job running for 10,000 generated tokens, that one sink entry will be accessed roughly 10,000 times, but the cost is not just bandwidth. It is residency: 320 KB of HBM locked to a single token whose semantic contribution to output quality is approximately zero.</p>
-
 <p>Now multiply that across batched serving. A serving system running a batch of 64 concurrent requests, each with 128K context, has 64 sinks. That is 64 × 320 KB = 20 MB of guaranteed-resident HBM for tokens that carry no semantic information. Across a fleet of 64 serving instances, that is 1.28 GB of HBM holding worthless KV state.</p>
-
 <p>The absolute number sounds manageable. But the issue is not just the absolute bytes — it is the interaction with eviction policy. Standard eviction algorithms, from simple LRU through to more sophisticated recency-weighted schemes, see the sink as one of the hottest entries in the cache because it is accessed at every decode step. The eviction policy will never touch it. It will correctly protect it because it is genuinely hot. But hotness and utility are different things, and memory systems currently have no way to distinguish between them.</p>
-
 <h2 id="diagram-flow">Visualizing the waste</h2>
-
 <p>The diagram below maps the lifecycle of a sink token's KV entry through a standard serving stack. Notice that the sink entry never leaves the hot tier: it is admitted at prefill, protected by eviction policy throughout decode, and only released when the request completes. The system behaves correctly by its own rules — which is precisely the problem.</p>
-
 <div class="diagram-wrap">
-<svg width="100%" viewBox="0 0 680 480" role="img">
+<svg role="img" viewbox="0 0 680 480" width="100%">
 <title>Attention sink KV residency lifecycle</title>
 <desc>Diagram showing how a sink token's KV entry enters HBM at prefill, is protected by LRU eviction throughout every decode step, and is never released until request completion — even though its semantic utility is zero.</desc>
 <defs>
-  <marker id="arr1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-    <path d="M2 1L8 5L2 9" fill="none" stroke="#888" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  </marker>
-  <marker id="arr-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-    <path d="M2 1L8 5L2 9" fill="none" stroke="#c04828" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  </marker>
-  <marker id="arr-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-    <path d="M2 1L8 5L2 9" fill="none" stroke="#3B6D11" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  </marker>
+<marker id="arr1" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="8" refy="5" viewbox="0 0 10 10">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#888" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+</marker>
+<marker id="arr-red" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="8" refy="5" viewbox="0 0 10 10">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#c04828" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+</marker>
+<marker id="arr-green" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="8" refy="5" viewbox="0 0 10 10">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#3B6D11" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+</marker>
 </defs>
-
 <!-- Phase labels -->
-<text x="100" y="28" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#888" font-weight="500" letter-spacing="0.06em">PREFILL</text>
-<text x="310" y="28" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#888" font-weight="500" letter-spacing="0.06em">DECODE (N steps)</text>
-<text x="570" y="28" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#888" font-weight="500" letter-spacing="0.06em">COMPLETION</text>
-
+<text fill="#888" font-family="system-ui,sans-serif" font-size="11" font-weight="500" letter-spacing="0.06em" text-anchor="middle" x="100" y="28">PREFILL</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="11" font-weight="500" letter-spacing="0.06em" text-anchor="middle" x="310" y="28">DECODE (N steps)</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="11" font-weight="500" letter-spacing="0.06em" text-anchor="middle" x="570" y="28">COMPLETION</text>
 <!-- Phase dividers -->
-<line x1="190" y1="16" x2="190" y2="460" stroke="#e2e0d8" stroke-width="1" stroke-dasharray="4 3"/>
-<line x1="455" y1="16" x2="455" y2="460" stroke="#e2e0d8" stroke-width="1" stroke-dasharray="4 3"/>
-
+<line stroke="#e2e0d8" stroke-dasharray="4 3" stroke-width="1" x1="190" x2="190" y1="16" y2="460"></line>
+<line stroke="#e2e0d8" stroke-dasharray="4 3" stroke-width="1" x1="455" x2="455" y1="16" y2="460"></line>
 <!-- HBM tier band -->
-<rect x="40" y="50" width="610" height="100" rx="6" fill="#fef3ee" stroke="#e8bba0" stroke-width="0.8"/>
-<text x="55" y="70" font-family="system-ui,sans-serif" font-size="11" fill="#c04828" font-weight="600">HBM (fast tier)</text>
-
+<rect fill="#fef3ee" height="100" rx="6" stroke="#e8bba0" stroke-width="0.8" width="610" x="40" y="50"></rect>
+<text fill="#c04828" font-family="system-ui,sans-serif" font-size="11" font-weight="600" x="55" y="70">HBM (fast tier)</text>
 <!-- Useful KV block -->
-<rect x="60" y="82" width="100" height="52" rx="4" fill="#fff" stroke="#c5c2b8" stroke-width="0.8"/>
-<text x="110" y="103" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#444">Useful KV</text>
-<text x="110" y="120" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">tokens 1…N</text>
-
+<rect fill="#fff" height="52" rx="4" stroke="#c5c2b8" stroke-width="0.8" width="100" x="60" y="82"></rect>
+<text fill="#444" font-family="system-ui,sans-serif" font-size="11" text-anchor="middle" x="110" y="103">Useful KV</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="110" y="120">tokens 1…N</text>
 <!-- Sink KV block — in HBM, red border -->
-<rect x="175" y="82" width="100" height="52" rx="4" fill="#fff0ec" stroke="#c04828" stroke-width="1.5"/>
-<text x="225" y="103" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#c04828" font-weight="600">Sink KV</text>
-<text x="225" y="120" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#c04828">token 0</text>
-
+<rect fill="#fff0ec" height="52" rx="4" stroke="#c04828" stroke-width="1.5" width="100" x="175" y="82"></rect>
+<text fill="#c04828" font-family="system-ui,sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="225" y="103">Sink KV</text>
+<text fill="#c04828" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="225" y="120">token 0</text>
 <!-- Lock icon for sink -->
-<text x="290" y="108" font-family="system-ui,sans-serif" font-size="16" fill="#c04828">🔒</text>
-
+<text fill="#c04828" font-family="system-ui,sans-serif" font-size="16" x="290" y="108">🔒</text>
 <!-- Decode step blocks -->
-<rect x="210" y="190" width="82" height="44" rx="4" fill="#fff" stroke="#c5c2b8" stroke-width="0.8"/>
-<text x="251" y="210" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#444">Decode t=1</text>
-<text x="251" y="226" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">query all keys</text>
-
-<rect x="306" y="190" width="82" height="44" rx="4" fill="#fff" stroke="#c5c2b8" stroke-width="0.8"/>
-<text x="347" y="210" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#444">Decode t=2</text>
-<text x="347" y="226" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">query all keys</text>
-
-<text x="403" y="214" text-anchor="middle" font-family="system-ui,sans-serif" font-size="18" fill="#bbb">…</text>
-
+<rect fill="#fff" height="44" rx="4" stroke="#c5c2b8" stroke-width="0.8" width="82" x="210" y="190"></rect>
+<text fill="#444" font-family="system-ui,sans-serif" font-size="11" text-anchor="middle" x="251" y="210">Decode t=1</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="251" y="226">query all keys</text>
+<rect fill="#fff" height="44" rx="4" stroke="#c5c2b8" stroke-width="0.8" width="82" x="306" y="190"></rect>
+<text fill="#444" font-family="system-ui,sans-serif" font-size="11" text-anchor="middle" x="347" y="210">Decode t=2</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="347" y="226">query all keys</text>
+<text fill="#bbb" font-family="system-ui,sans-serif" font-size="18" text-anchor="middle" x="403" y="214">…</text>
 <!-- Attention arrows: sink accessed at every decode step -->
-<path d="M225 134 C225 165, 251 175, 251 190" fill="none" stroke="#c04828" stroke-width="1" stroke-dasharray="3 2" marker-end="url(#arr-red)"/>
-<path d="M225 134 C255 158, 347 175, 347 190" fill="none" stroke="#c04828" stroke-width="1" stroke-dasharray="3 2" marker-end="url(#arr-red)"/>
-
+<path d="M225 134 C225 165, 251 175, 251 190" fill="none" marker-end="url(#arr-red)" stroke="#c04828" stroke-dasharray="3 2" stroke-width="1"></path>
+<path d="M225 134 C255 158, 347 175, 347 190" fill="none" marker-end="url(#arr-red)" stroke="#c04828" stroke-dasharray="3 2" stroke-width="1"></path>
 <!-- LRU protection label -->
-<rect x="198" y="250" width="168" height="38" rx="4" fill="#fff7ed" stroke="#e8bba0" stroke-width="0.8"/>
-<text x="282" y="267" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#c04828" font-weight="500">LRU eviction protects it</text>
-<text x="282" y="282" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">hot = always accessed</text>
-
+<rect fill="#fff7ed" height="38" rx="4" stroke="#e8bba0" stroke-width="0.8" width="168" x="198" y="250"></rect>
+<text fill="#c04828" font-family="system-ui,sans-serif" font-size="11" font-weight="500" text-anchor="middle" x="282" y="267">LRU eviction protects it</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="282" y="282">hot = always accessed</text>
 <!-- Useful KV eviction path (can leave) -->
-<rect x="60" y="310" width="100" height="44" rx="4" fill="#f0f8ec" stroke="#639922" stroke-width="0.8"/>
-<text x="110" y="331" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#3B6D11">Useful KV</text>
-<text x="110" y="346" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#639922">can be evicted →DRAM</text>
-
-<line x1="110" y1="134" x2="110" y2="310" stroke="#639922" stroke-width="0.8" stroke-dasharray="3 3" marker-end="url(#arr-green)"/>
-
+<rect fill="#f0f8ec" height="44" rx="4" stroke="#639922" stroke-width="0.8" width="100" x="60" y="310"></rect>
+<text fill="#3B6D11" font-family="system-ui,sans-serif" font-size="11" text-anchor="middle" x="110" y="331">Useful KV</text>
+<text fill="#639922" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="110" y="346">can be evicted →DRAM</text>
+<line marker-end="url(#arr-green)" stroke="#639922" stroke-dasharray="3 3" stroke-width="0.8" x1="110" x2="110" y1="134" y2="310"></line>
 <!-- Sink stays locked label -->
-<rect x="175" y="310" width="120" height="44" rx="4" fill="#fff0ec" stroke="#c04828" stroke-width="1.2"/>
-<text x="235" y="331" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#c04828" font-weight="600">Sink KV stays</text>
-<text x="235" y="346" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#c04828">pinned in HBM</text>
-
+<rect fill="#fff0ec" height="44" rx="4" stroke="#c04828" stroke-width="1.2" width="120" x="175" y="310"></rect>
+<text fill="#c04828" font-family="system-ui,sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="235" y="331">Sink KV stays</text>
+<text fill="#c04828" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="235" y="346">pinned in HBM</text>
 <!-- Semantic utility: zero -->
-<rect x="310" y="310" width="130" height="44" rx="4" fill="#f8f6f0" stroke="#c5c2b8" stroke-width="0.8"/>
-<text x="375" y="331" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#888">Semantic utility</text>
-<text x="375" y="346" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#c04828" font-weight="600">≈ 0</text>
-
+<rect fill="#f8f6f0" height="44" rx="4" stroke="#c5c2b8" stroke-width="0.8" width="130" x="310" y="310"></rect>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="11" text-anchor="middle" x="375" y="331">Semantic utility</text>
+<text fill="#c04828" font-family="system-ui,sans-serif" font-size="10" font-weight="600" text-anchor="middle" x="375" y="346">≈ 0</text>
 <!-- Completion: release -->
-<rect x="490" y="190" width="120" height="44" rx="4" fill="#f4f2ec" stroke="#c5c2b8" stroke-width="0.8"/>
-<text x="550" y="210" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#444">Request ends</text>
-<text x="550" y="226" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">all KV released</text>
-
-<line x1="392" y1="214" x2="488" y2="214" stroke="#888" stroke-width="0.8" marker-end="url(#arr1)"/>
-
+<rect fill="#f4f2ec" height="44" rx="4" stroke="#c5c2b8" stroke-width="0.8" width="120" x="490" y="190"></rect>
+<text fill="#444" font-family="system-ui,sans-serif" font-size="11" text-anchor="middle" x="550" y="210">Request ends</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="550" y="226">all KV released</text>
+<line marker-end="url(#arr1)" stroke="#888" stroke-width="0.8" x1="392" x2="488" y1="214" y2="214"></line>
 <!-- Summary bar at bottom -->
-<rect x="40" y="395" width="610" height="62" rx="6" fill="#f8f6f0" stroke="#e2e0d8" stroke-width="0.8"/>
-<text x="345" y="418" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#5c5c58" font-weight="600">Memory cost summary per request (70B model, 128K context, BF16)</text>
-<text x="345" y="437" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#888">Sink KV size: ~320 KB · Residency duration: entire decode · Eviction probability: 0</text>
-<text x="345" y="455" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#888">Semantic contribution: near-zero · Current policy awareness of this distinction: none</text>
+<rect fill="#f8f6f0" height="62" rx="6" stroke="#e2e0d8" stroke-width="0.8" width="610" x="40" y="395"></rect>
+<text fill="#5c5c58" font-family="system-ui,sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="345" y="418">Memory cost summary per request (70B model, 128K context, BF16)</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="11" text-anchor="middle" x="345" y="437">Sink KV size: ~320 KB · Residency duration: entire decode · Eviction probability: 0</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="11" text-anchor="middle" x="345" y="455">Semantic contribution: near-zero · Current policy awareness of this distinction: none</text>
 </svg>
 <div class="diagram-caption"><strong>Figure 1.</strong> Lifecycle of a sink token's KV entry through a standard serving stack. The sink is admitted during prefill, accessed at every decode step (making it appear hot to LRU), and never evicted until request completion — despite carrying zero semantic utility.</div>
 </div>
-
 <h2 id="long-context-amplification">Long-context amplification</h2>
-
 <p>The sink problem is annoying at short context lengths. At long context lengths, it compounds in ways that interact badly with the tiered memory architectures the industry is building to handle them.</p>
-
 <p>Consider a request with 1M token context. The KV cache for that context is enormous — on the order of several GB for a large model. The serving system has to make hard choices about what stays in HBM versus what spills to DRAM or NVMe. It will use attention-access frequency as the primary signal for what to keep hot, because that is the best signal available.</p>
-
 <p>Attention frequency, however, does not distinguish between "hot because important" and "hot because it is a sink." Both will be protected. But the sink takes up HBM headroom that could have been used for a token whose value content genuinely mattered for the next generated token. When the system needs to evict something to make room, it will evict a slightly less-hot semantic token — causing a cache miss and a fetch from DRAM or NVMe that adds latency to the decode step.</p>
-
 <p>The causal chain is: sink consumes HBM → useful token evicted → fetch on next access → decode latency increases → tail latency degrades. This is not a hypothetical. It is the mechanical consequence of conflating access frequency with utility, and it happens every time the cache fills up under load.</p>
-
 <p>There is a second compounding effect. In models that exhibit multiple sinks — at position zero and at a few other structurally stable positions — the number of locked HBM entries grows. A model with five reliable sinks has five permanently resident entries per layer per request. For a batch of 128 requests with 1M context each, that is 5 × 80 layers × 128 requests entries that will never be evicted, each occupying the KV equivalent of 320 KB aggregated across their per-layer footprints. The locks compound across the batch.</p>
-
 <h2 id="current-blind-spots">Where current systems are blind</h2>
-
 <p>Most KV cache management systems today operate on one of three approaches: static maximum length limits that discard oldest tokens first, LRU-style recency weighting, or more recent attention-frequency-weighted schemes that try to approximate which tokens the model "cares about."</p>
-
 <p>All three approaches share the same blind spot: they treat access frequency as a proxy for utility. The sink entries score maximally on all three metrics. They are always accessed, always recent in the attention pattern, and appear maximally important by frequency analysis. Any system that uses access frequency as its primary signal will correctly identify sinks as high-priority cache residents. And then it will make exactly the wrong decision, because frequency and utility are not the same thing.</p>
-
 <p>The research community has identified this problem. The StreamingLLM work from MIT and Meta proposed reserving a fixed set of "sink slots" in the KV cache — explicitly setting aside a small number of positions for sink tokens and managing the rest of the cache independently. That approach works well in streaming inference settings where you need to process text beyond the model's native context window. But it does not fully address the residency problem in serving systems that are managing tiered memory hierarchies under real batch load.</p>
-
 <p>What is needed is a richer semantic signal that can distinguish between "hot because sink" and "hot because relevant." That signal exists — it is latent in the attention pattern itself — but it requires the memory scheduler to be attention-aware in a way that current systems are not.</p>
-
 <div class="diagram-wrap">
-<svg width="100%" viewBox="0 0 680 350" role="img">
+<svg role="img" viewbox="0 0 680 350" width="100%">
 <title>Attention weight distribution across token positions in a transformer layer</title>
 <desc>Diagram contrasting the attention weight profile of a sink token at position zero versus semantically useful tokens across a 16K context window. The sink shows uniformly high attention from all query positions while useful tokens show sparse, query-dependent patterns.</desc>
 <defs>
-  <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-    <path d="M2 1L8 5L2 9" fill="none" stroke="#888" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  </marker>
+<marker id="arr2" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="8" refy="5" viewbox="0 0 10 10">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#888" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+</marker>
 </defs>
-
 <!-- Left: sink attention profile -->
-<text x="160" y="30" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#c04828" font-weight="600">Sink token (position 0)</text>
-<text x="160" y="46" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">receives attention from every query position</text>
-
+<text fill="#c04828" font-family="system-ui,sans-serif" font-size="12" font-weight="600" text-anchor="middle" x="160" y="30">Sink token (position 0)</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="160" y="46">receives attention from every query position</text>
 <!-- Y-axis label left -->
-<text x="42" y="185" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888" transform="rotate(-90,42,185)">attention weight received</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" transform="rotate(-90,42,185)" x="42" y="185">attention weight received</text>
 <!-- X-axis label left -->
-<text x="160" y="296" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">query position (0 → sequence end)</text>
-
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="160" y="296">query position (0 → sequence end)</text>
 <!-- Left axis and bars (uniformly high) -->
-<line x1="65" y1="60" x2="65" y2="280" stroke="#c5c2b8" stroke-width="0.8"/>
-<line x1="65" y1="280" x2="265" y2="280" stroke="#c5c2b8" stroke-width="0.8"/>
-
+<line stroke="#c5c2b8" stroke-width="0.8" x1="65" x2="65" y1="60" y2="280"></line>
+<line stroke="#c5c2b8" stroke-width="0.8" x1="65" x2="265" y1="280" y2="280"></line>
 <!-- Uniform high bars for sink -->
-<rect x="70"  y="90" width="13" height="190" rx="1" fill="#c04828" opacity="0.8"/>
-<rect x="87"  y="85" width="13" height="195" rx="1" fill="#c04828" opacity="0.8"/>
-<rect x="104" y="92" width="13" height="188" rx="1" fill="#c04828" opacity="0.8"/>
-<rect x="121" y="88" width="13" height="192" rx="1" fill="#c04828" opacity="0.8"/>
-<rect x="138" y="84" width="13" height="196" rx="1" fill="#c04828" opacity="0.8"/>
-<rect x="155" y="90" width="13" height="190" rx="1" fill="#c04828" opacity="0.8"/>
-<rect x="172" y="86" width="13" height="194" rx="1" fill="#c04828" opacity="0.8"/>
-<rect x="189" y="91" width="13" height="189" rx="1" fill="#c04828" opacity="0.8"/>
-<rect x="206" y="87" width="13" height="193" rx="1" fill="#c04828" opacity="0.8"/>
-<rect x="223" y="89" width="13" height="191" rx="1" fill="#c04828" opacity="0.8"/>
-<rect x="240" y="85" width="13" height="195" rx="1" fill="#c04828" opacity="0.8"/>
-
-<text x="155" y="316" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#c04828">uniformly high → LRU never evicts</text>
-
+<rect fill="#c04828" height="190" opacity="0.8" rx="1" width="13" x="70" y="90"></rect>
+<rect fill="#c04828" height="195" opacity="0.8" rx="1" width="13" x="87" y="85"></rect>
+<rect fill="#c04828" height="188" opacity="0.8" rx="1" width="13" x="104" y="92"></rect>
+<rect fill="#c04828" height="192" opacity="0.8" rx="1" width="13" x="121" y="88"></rect>
+<rect fill="#c04828" height="196" opacity="0.8" rx="1" width="13" x="138" y="84"></rect>
+<rect fill="#c04828" height="190" opacity="0.8" rx="1" width="13" x="155" y="90"></rect>
+<rect fill="#c04828" height="194" opacity="0.8" rx="1" width="13" x="172" y="86"></rect>
+<rect fill="#c04828" height="189" opacity="0.8" rx="1" width="13" x="189" y="91"></rect>
+<rect fill="#c04828" height="193" opacity="0.8" rx="1" width="13" x="206" y="87"></rect>
+<rect fill="#c04828" height="191" opacity="0.8" rx="1" width="13" x="223" y="89"></rect>
+<rect fill="#c04828" height="195" opacity="0.8" rx="1" width="13" x="240" y="85"></rect>
+<text fill="#c04828" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="155" y="316">uniformly high → LRU never evicts</text>
 <!-- Center divider -->
-<line x1="340" y1="40" x2="340" y2="320" stroke="#e2e0d8" stroke-width="1" stroke-dasharray="4 3"/>
-
+<line stroke="#e2e0d8" stroke-dasharray="4 3" stroke-width="1" x1="340" x2="340" y1="40" y2="320"></line>
 <!-- Right: useful token attention profile -->
-<text x="520" y="30" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#185FA5" font-weight="600">Useful token (mid-context)</text>
-<text x="520" y="46" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">receives attention only from semantically related queries</text>
-
+<text fill="#185FA5" font-family="system-ui,sans-serif" font-size="12" font-weight="600" text-anchor="middle" x="520" y="30">Useful token (mid-context)</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="520" y="46">receives attention only from semantically related queries</text>
 <!-- Y-axis label right -->
-<text x="398" y="185" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888" transform="rotate(-90,398,185)">attention weight received</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" transform="rotate(-90,398,185)" x="398" y="185">attention weight received</text>
 <!-- X-axis label right -->
-<text x="520" y="296" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">query position (0 → sequence end)</text>
-
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="520" y="296">query position (0 → sequence end)</text>
 <!-- Right axis -->
-<line x1="420" y1="60" x2="420" y2="280" stroke="#c5c2b8" stroke-width="0.8"/>
-<line x1="420" y1="280" x2="620" y2="280" stroke="#c5c2b8" stroke-width="0.8"/>
-
+<line stroke="#c5c2b8" stroke-width="0.8" x1="420" x2="420" y1="60" y2="280"></line>
+<line stroke="#c5c2b8" stroke-width="0.8" x1="420" x2="620" y1="280" y2="280"></line>
 <!-- Sparse, query-dependent bars for useful token -->
-<rect x="425" y="268" width="13" height="12"  rx="1" fill="#185FA5" opacity="0.7"/>
-<rect x="442" y="255" width="13" height="25"  rx="1" fill="#185FA5" opacity="0.7"/>
-<rect x="459" y="240" width="13" height="40"  rx="1" fill="#185FA5" opacity="0.7"/>
-<rect x="476" y="270" width="13" height="10"  rx="1" fill="#185FA5" opacity="0.7"/>
-<rect x="493" y="130" width="13" height="150" rx="1" fill="#185FA5" opacity="0.9"/>
-<rect x="510" y="145" width="13" height="135" rx="1" fill="#185FA5" opacity="0.9"/>
-<rect x="527" y="268" width="13" height="12"  rx="1" fill="#185FA5" opacity="0.7"/>
-<rect x="544" y="175" width="13" height="105" rx="1" fill="#185FA5" opacity="0.8"/>
-<rect x="561" y="271" width="13" height="9"   rx="1" fill="#185FA5" opacity="0.7"/>
-<rect x="578" y="265" width="13" height="15"  rx="1" fill="#185FA5" opacity="0.7"/>
-<rect x="595" y="260" width="13" height="20"  rx="1" fill="#185FA5" opacity="0.7"/>
-
-<text x="512" y="316" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#185FA5">sparse spikes → evictable when inactive</text>
-
+<rect fill="#185FA5" height="12" opacity="0.7" rx="1" width="13" x="425" y="268"></rect>
+<rect fill="#185FA5" height="25" opacity="0.7" rx="1" width="13" x="442" y="255"></rect>
+<rect fill="#185FA5" height="40" opacity="0.7" rx="1" width="13" x="459" y="240"></rect>
+<rect fill="#185FA5" height="10" opacity="0.7" rx="1" width="13" x="476" y="270"></rect>
+<rect fill="#185FA5" height="150" opacity="0.9" rx="1" width="13" x="493" y="130"></rect>
+<rect fill="#185FA5" height="135" opacity="0.9" rx="1" width="13" x="510" y="145"></rect>
+<rect fill="#185FA5" height="12" opacity="0.7" rx="1" width="13" x="527" y="268"></rect>
+<rect fill="#185FA5" height="105" opacity="0.8" rx="1" width="13" x="544" y="175"></rect>
+<rect fill="#185FA5" height="9" opacity="0.7" rx="1" width="13" x="561" y="271"></rect>
+<rect fill="#185FA5" height="15" opacity="0.7" rx="1" width="13" x="578" y="265"></rect>
+<rect fill="#185FA5" height="20" opacity="0.7" rx="1" width="13" x="595" y="260"></rect>
+<text fill="#185FA5" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="512" y="316">sparse spikes → evictable when inactive</text>
 </svg>
 <div class="diagram-caption"><strong>Figure 2.</strong> Attention weight profiles contrasted. A sink token (left) receives uniformly high attention from every query position — it will always appear maximally hot to any frequency-based eviction policy. A semantically useful mid-context token (right) receives attention only from related query positions and is a legitimate eviction candidate when those positions are not actively decoding. Current eviction policies cannot distinguish these profiles.</div>
 </div>
-
 <h2 id="policy-responses">Policy responses that actually help</h2>
-
 <p>There are several directions that a well-designed memory scheduler can take once it is aware of the sink phenomenon.</p>
-
 <h3>Explicit sink slot reservation</h3>
-
 <p>The simplest intervention is to give sinks their own reserved tier slot that is tracked separately from the general eviction pool. Instead of allowing the sink to compete for HBM space against semantic tokens — and silently winning every time — the scheduler reserves a small fixed number of slots specifically for sink entries and manages the rest of the cache independently.</p>
-
 <p>This does not reduce the memory footprint of the sink. The 320 KB is still consumed. But it removes the sink from the eviction competition, which means it stops crowding out semantic tokens that have a real chance of being useful to the next decode step. The effective cache utilization for semantically relevant content goes up without adding any memory.</p>
-
 <h3>Sink-type labeling in the memory intent IR</h3>
-
 <p>A stronger intervention is to surface sink classification as a first-class signal in the interface between the compiler and the memory scheduler. If the compiler can emit a memory intent annotation that says "this KV entry is a structural sink, not a semantic entry," the scheduler can make much better decisions: place it in a lower-cost tier, deprioritize it when choosing between promotion candidates, and never count it against the utilization budget for the semantic portion of the cache.</p>
-
 <p>This requires the compiler to have some model of which positions will behave as sinks. For most current architectures, that classification is learnable from attention statistics gathered during profiling — it does not require changes to the model weights or training procedure.</p>
-
 <h3>Attention-entropy-gated residency</h3>
-
 <p>A more sophisticated approach uses attention entropy as a residency signal. A genuine sink produces a very low-entropy attention-received distribution: mass arrives from nearly every query position, so the distribution is flat and entropy is low in a characteristic way. A semantically useful token produces a high-entropy distribution: mass arrives only from semantically related queries, and the distribution is sparse and peaked.</p>
-
 <p>A scheduler that tracks per-entry attention entropy across decode steps can automatically classify entries as sink-like or semantic-like and route them to different eviction tiers accordingly. This is more expensive to compute than simple recency tracking, but the signal is accurate and does not require offline profiling or model-specific tuning.</p>
-
 <h2 id="sink-aware-tier">Toward sink-aware tier placement</h2>
-
 <p>The broader principle behind all of these interventions is the same: access frequency is a necessary but not sufficient signal for KV cache management. A mature memory scheduler needs at minimum two independent signals — frequency (how often is this entry accessed) and utility (how much does this entry contribute to output quality) — and it needs to make tier placement decisions based on the combination of both, not frequency alone.</p>
-
 <p>Sinks are the clearest example of the frequency-utility divergence, but they are not the only one. Tokens from the very beginning of a long system prompt may also be accessed frequently by early-context queries without contributing useful information to the current generation position. Repeated delimiter tokens across a structured document may accumulate high access counts without carrying semantic weight.</p>
-
 <p>The right mental model is not "hot tokens stay in HBM, cold tokens spill to DRAM." The right model is: "semantically load-bearing tokens stay in HBM. Structurally mandated but semantically inert tokens should be tracked separately and given a different residency policy — perhaps reserved slots, perhaps a compressed representation, perhaps selective eviction with graceful degradation rather than hard pinning."</p>
-
 <div class="diagram-wrap">
-<svg width="100%" viewBox="0 0 680 300" role="img">
+<svg role="img" viewbox="0 0 680 300" width="100%">
 <title>Proposed sink-aware KV cache tier architecture</title>
 <desc>Architecture diagram showing separation of the KV cache into a sink reservation zone and a semantic eviction pool, both sitting in HBM, with semantic overflow spilling to DRAM and NVMe tiers. The sink zone is managed separately and does not compete with the semantic pool for eviction decisions.</desc>
 <defs>
-  <marker id="arr3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-    <path d="M2 1L8 5L2 9" fill="none" stroke="#888" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  </marker>
-  <marker id="arr-b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-    <path d="M2 1L8 5L2 9" fill="none" stroke="#185FA5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  </marker>
+<marker id="arr3" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="8" refy="5" viewbox="0 0 10 10">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#888" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+</marker>
+<marker id="arr-b" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="8" refy="5" viewbox="0 0 10 10">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#185FA5" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+</marker>
 </defs>
-
 <!-- HBM outer container -->
-<rect x="40" y="40" width="600" height="140" rx="10" fill="#fef3ee" stroke="#e8bba0" stroke-width="1"/>
-<text x="56" y="62" font-family="system-ui,sans-serif" font-size="11" fill="#c04828" font-weight="600">HBM</text>
-
+<rect fill="#fef3ee" height="140" rx="10" stroke="#e8bba0" stroke-width="1" width="600" x="40" y="40"></rect>
+<text fill="#c04828" font-family="system-ui,sans-serif" font-size="11" font-weight="600" x="56" y="62">HBM</text>
 <!-- Sink reservation zone -->
-<rect x="60" y="72" width="160" height="90" rx="6" fill="#fff0ec" stroke="#c04828" stroke-width="1.2"/>
-<text x="140" y="94" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#c04828" font-weight="600">Sink reservation zone</text>
-<text x="140" y="110" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">fixed slots for sink entries</text>
-<text x="140" y="126" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">separate from eviction pool</text>
-<text x="140" y="149" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#c04828">no eviction competition</text>
-
+<rect fill="#fff0ec" height="90" rx="6" stroke="#c04828" stroke-width="1.2" width="160" x="60" y="72"></rect>
+<text fill="#c04828" font-family="system-ui,sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="140" y="94">Sink reservation zone</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="140" y="110">fixed slots for sink entries</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="140" y="126">separate from eviction pool</text>
+<text fill="#c04828" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="140" y="149">no eviction competition</text>
 <!-- Semantic eviction pool -->
-<rect x="240" y="72" width="380" height="90" rx="6" fill="#e6f1fb" stroke="#185FA5" stroke-width="1"/>
-<text x="430" y="94" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#185FA5" font-weight="600">Semantic KV pool</text>
-<text x="430" y="110" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">managed by frequency + utility signals</text>
-<text x="430" y="126" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">eviction based on entropy-gated policy</text>
-<text x="430" y="149" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#185FA5">full HBM headroom available</text>
-
+<rect fill="#e6f1fb" height="90" rx="6" stroke="#185FA5" stroke-width="1" width="380" x="240" y="72"></rect>
+<text fill="#185FA5" font-family="system-ui,sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="430" y="94">Semantic KV pool</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="430" y="110">managed by frequency + utility signals</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="430" y="126">eviction based on entropy-gated policy</text>
+<text fill="#185FA5" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="430" y="149">full HBM headroom available</text>
 <!-- Overflow arrow to DRAM -->
-<rect x="240" y="215" width="175" height="52" rx="6" fill="#f0f8f4" stroke="#3B6D11" stroke-width="0.8"/>
-<text x="327" y="239" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#3B6D11" font-weight="600">DRAM tier</text>
-<text x="327" y="256" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">semantic overflow, prefetch staging</text>
-
+<rect fill="#f0f8f4" height="52" rx="6" stroke="#3B6D11" stroke-width="0.8" width="175" x="240" y="215"></rect>
+<text fill="#3B6D11" font-family="system-ui,sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="327" y="239">DRAM tier</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="327" y="256">semantic overflow, prefetch staging</text>
 <!-- Overflow arrow to NVMe -->
-<rect x="445" y="215" width="175" height="52" rx="6" fill="#f8f6f0" stroke="#888" stroke-width="0.8"/>
-<text x="532" y="239" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#5c5c58" font-weight="600">NVMe tier</text>
-<text x="532" y="256" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#888">cold semantic context, demand-paged</text>
-
-<path d="M430 162 L430 190 L327 190 L327 215" fill="none" stroke="#185FA5" stroke-width="0.8" stroke-dasharray="3 2" marker-end="url(#arr-b)"/>
-<path d="M430 162 L430 190 L532 190 L532 215" fill="none" stroke="#888" stroke-width="0.8" stroke-dasharray="3 2" marker-end="url(#arr3)"/>
-
+<rect fill="#f8f6f0" height="52" rx="6" stroke="#888" stroke-width="0.8" width="175" x="445" y="215"></rect>
+<text fill="#5c5c58" font-family="system-ui,sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="532" y="239">NVMe tier</text>
+<text fill="#888" font-family="system-ui,sans-serif" font-size="10" text-anchor="middle" x="532" y="256">cold semantic context, demand-paged</text>
+<path d="M430 162 L430 190 L327 190 L327 215" fill="none" marker-end="url(#arr-b)" stroke="#185FA5" stroke-dasharray="3 2" stroke-width="0.8"></path>
+<path d="M430 162 L430 190 L532 190 L532 215" fill="none" marker-end="url(#arr3)" stroke="#888" stroke-dasharray="3 2" stroke-width="0.8"></path>
 </svg>
 <div class="diagram-caption"><strong>Figure 3.</strong> Proposed sink-aware KV cache tier architecture. The sink reservation zone is a fixed allocation outside the eviction pool — sinks occupy it for the duration of the request but never compete with semantic tokens for HBM headroom. The semantic pool can be managed with normal eviction policy, and its full capacity is available for useful content, with graceful overflow to DRAM and NVMe for cold but semantically valid entries.</div>
 </div>
-
 <h2 id="close">Final thought</h2>
-
 <p>The attention sink problem is a good example of what happens when a system is built around one signal — access frequency — without asking whether that signal is actually a proxy for the thing you care about.</p>
-
 <p>In most caching problems, hot means important. That assumption is so deeply embedded in cache design that it rarely gets questioned. But transformers have a structural property that breaks the assumption: softmax forces attention mass to go somewhere even when there is no meaningful destination, and the resulting "hot" entries are hot because of mathematical necessity, not semantic content.</p>
-
 <p>A memory scheduler that does not know about sinks will do exactly the right thing by its own rules and produce exactly the wrong outcome. It will protect the sink, evict the useful token, and then wonder why the cache is underperforming at long context lengths.</p>
-
 <p>Fixing this requires the memory system to have a richer model of what it is caching. Access frequency needs to be joined by utility estimation — and utility, in a transformer serving context, is fundamentally an attention-derived concept. The systems that figure out how to bring that signal into the scheduler will build materially better long-context serving infrastructure. Not because they added more memory. Because they learned to tell the difference between hot and important.</p>
-
-<hr class="section-divider">
-
+<hr class="section-divider"/>
 <div class="footnote">
-  <p>Manish KL writes about AI infrastructure, memory systems, and accelerator architecture. Related essays: <a href="https://manishklach.github.io/writings/speculative-decoding-is-a-memory-problem.html">Speculative Decoding Is a Memory Problem</a> · <a href="https://manishklach.github.io/writings/long-context-inference-needs-better-memory-policy.html">Long-Context Inference Needs Better Memory Policy, Not Just More Memory</a> · <a href="https://manishklach.github.io/writings/mcos-memory-centric-operating-system-ai-systems.html">MCOS: A Memory-Centric Operating System for AI</a></p>
-  <p>&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a></p>
+<p>Manish KL writes about AI infrastructure, memory systems, and accelerator architecture. Related essays: <a href="https://manishklach.github.io/writings/speculative-decoding-is-a-memory-problem.html">Speculative Decoding Is a Memory Problem</a> · <a href="https://manishklach.github.io/writings/long-context-inference-needs-better-memory-policy.html">Long-Context Inference Needs Better Memory Policy, Not Just More Memory</a> · <a href="https://manishklach.github.io/writings/mcos-memory-centric-operating-system-ai-systems.html">MCOS: A Memory-Centric Operating System for AI</a></p>
+<p>© 2026 <a href="https://github.com/manishklach" rel="noopener noreferrer" target="_blank">Manish KL</a></p>
 </div>
-
-</body>
+<hr/><footer class="post-footer">© 2026 Manish K. Lach · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer></body>
 </html>

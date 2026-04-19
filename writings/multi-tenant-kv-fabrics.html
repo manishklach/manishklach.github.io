@@ -1,17 +1,14 @@
-<!DOCTYPE html><html lang="en"><head>
-<meta name="description" content="KV cache bandwidth must be partitioned like network bandwidth. With compiler contracts, token buckets in hardware, and page coloring, multi-tenant tail latency improves 3.6x and throughput improves 28 to 31 percent. Includes Addendum on Power Contract SLO." />
-<meta name="keywords" content="Multi-Tenant, KV Fabrics, Bandwidth Contracts, Shared LLM Memory Systems, Power Contract SLO, Manish KL" />
-<meta name="author" content="Manish KL" />
+<!DOCTYPE html>
 
-</title>
-<style>body{font-family:Georgia,serif;max-width:920px;margin:auto;padding:2rem;line-height:1.75}h1,h2,h3{font-family:system-ui}pre{background:#f6f8fa;padding:1rem;overflow:auto}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:0.5rem}.figure{background:#f9f9f9;padding:1rem;margin:2rem 0;text-align:center;border:1px solid #ddd}</style><meta name="color-scheme" content="light dark">
-</head><body data-pagefind-body>
-<h1>Multi-Tenant KV Fabrics: Bandwidth Contracts for Shared LLM Memory Systems</h1>
+<html lang="en"><head>
+<meta content="KV cache bandwidth must be partitioned like network bandwidth. With compiler contracts, token buckets in hardware, and page coloring, multi-tenant tail latency improves 3.6x and throughput improves 28 to 31 percent. Includes Addendum on Power Contract SLO." name="description"/>
+<meta content="Multi-Tenant, KV Fabrics, Bandwidth Contracts, Shared LLM Memory Systems, Power Contract SLO, Manish KL" name="keywords"/>
+<meta content="Manish KL" name="author"/>
+<style>body{font-family:Georgia,serif;max-width:920px;margin:auto;padding:2rem;line-height:1.75}h1,h2,h3{font-family:system-ui}pre{background:#f6f8fa;padding:1rem;overflow:auto}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:0.5rem}.figure{background:#f9f9f9;padding:1rem;margin:2rem 0;text-align:center;border:1px solid #ddd}</style><meta content="light dark" name="color-scheme"/>
+<script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><link href="/assets/site.css" rel="stylesheet"/><script defer="" src="/assets/site.js"></script><link href="/feed.xml" rel="alternate" title="Manish K. Lach RSS" type="application/rss+xml"/><meta content="https://manishklach.github.io/og/multi-tenant-kv-fabrics.png" property="og:image"/><meta content="summary_large_image" name="twitter:card"/><meta content="Multi-Tenant KV Fabrics: Bandwidth Contracts for Shared LLM Memory Systems" name="twitter:title"/><meta content="KV cache bandwidth must be partitioned like network bandwidth. With compiler contracts, token buckets in hardware, and page coloring, multi-tenant tail latency improves 3.6x and throughput improves 28 to 31 percent. Includes Addendum on Power Contract SLO." name="twitter:description"/></head><body data-pagefind-body=""><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
+<h1>Multi-Tenant KV Fabrics: Bandwidth Contracts for Shared LLM Memory Systems</h1><div class="meta reading-meta">Published <time datetime="2026-04-19">Apr 19, 2026</time> · 12 min read</div>
 <p><em>Manish K L — April 2026. MCOS series, essay 2 of 7. Full version.</em></p>
-
-
-
-<h2>0.1 Primer: terms for beginners</h2>
+<nav class="toc"><strong>Contents</strong><ul><li><a href="#01-primer-terms-for-beginners">0.1 Primer: terms for beginners</a></li><li><a href="#02-evidence-basis-and-scope">0.2 Evidence basis and scope</a></li><li><a href="#0-preface">0. Preface</a></li><li><a href="#1-the-kv-cache-is-the-network">1. The KV cache is the network</a></li><li><a href="#2-why-current-isolation-fails">2. Why current isolation fails</a></li><li><a href="#25-why-not-just-use-existing-mechanisms">2.5 Why not just use existing mechanisms</a></li><li><a href="#3-fabric-architecture">3. Fabric architecture</a></li><li><a href="#4-bandwidth-as-a-contract">4. Bandwidth as a contract</a></li><li><a href="#5-token-bucket-and-wfq-math">5. Token bucket and WFQ math</a></li><li><a href="#6-compiler-generating-contracts">6. Compiler: generating contracts</a></li><li><a href="#7-hardware-implementation">7. Hardware implementation</a></li><li><a href="#8-page-coloring-and-bank-partitioning">8. Page coloring and bank partitioning</a></li><li><a href="#9-runtime-integration">9. Runtime integration</a></li><li><a href="#10-case-studies-detailed">10. Case studies detailed</a></li><li><a href="#11-limitations">11. Limitations</a></li><li><a href="#12-conclusion">12. Conclusion</a></li><li><a href="#addendum-the-power-contract-slo">Addendum: The Power Contract SLO</a></li><li><a href="#01-primer">0.1 Primer</a></li><li><a href="#02-evidence-basis-and-scope">0.2 Evidence basis and scope</a></li><li><a href="#1-the-power-wall">1. The power wall</a></li><li><a href="#2-why-joules-per-token">2. Why joules per token</a></li><li><a href="#4-why-not-just-throttle">4. Why not just throttle</a></li><li><a href="#5-resource-intent-interface">5. Resource Intent Interface</a></li><li><a href="#6-compiler-generates-frontier">6. Compiler generates frontier</a></li><li><a href="#8-handling-transients">8. Handling transients</a></li><li><a href="#9-case-studies">9. Case studies</a></li><li><a href="#10-conclusion">10. Conclusion</a></li></ul></nav><h2 id="01-primer-terms-for-beginners">0.1 Primer: terms for beginners</h2>
 <ul>
 <li><strong>KV cache:</strong> The model’s memory of previous tokens, stored as Key and Value matrices to avoid recomputation.</li>
 <li><strong>Prefill:</strong> Processing the full prompt at once. Bandwidth heavy.</li>
@@ -26,9 +23,7 @@
 <li><strong>Tenant:</strong> One user/model sharing the GPU.</li>
 <li><strong>p99 latency:</strong> Worst-case latency experienced by 99% of requests.</li>
 </ul>
-
-
-<h2>0.2 Evidence basis and scope</h2>
+<h2 id="02-evidence-basis-and-scope">0.2 Evidence basis and scope</h2>
 <p>This essay blends three kinds of claims, and I label them explicitly to maintain credibility.</p>
 <ul>
 <li><strong>Measured on public hardware:</strong> HBM bandwidth 3.35 TB/s on H200, CXL 2.0 x16 ~128 GB/s, and power per GB/s ~0.023 W are taken from vendor datasheets and published MLPerf inference numbers from late 2025.</li>
@@ -37,15 +32,13 @@
 <li><strong>Design proposal:</strong> the RIIR bandwidth contract, token bucket in the memory controller, and page coloring policy are proposed architecture, not yet silicon. The pseudo-RTL is intentionally simplified to convey mechanism.</li>
 </ul>
 <p>Where I use exact numbers below, assume they refer to the simulated configuration unless stated otherwise.</p>
-<h2>0. Preface</h2>
+<h2 id="0-preface">0. Preface</h2>
 <p>In Essay 4 we made joules per token schedulable. Here we make gigabytes per second schedulable. The two are inseparable. Power follows bandwidth. If you cannot partition HBM bandwidth, you cannot honor power contracts in multi-tenant settings. This essay provides the missing fabric.</p>
-
-<h2>1. The KV cache is the network</h2>
+<h2 id="1-the-kv-cache-is-the-network">1. The KV cache is the network</h2>
 <p>In our trace-driven simulations based on anonymized production traces from March 2026, for decode-heavy workloads, about 68 percent of GPU stall cycles were memory stalls in the simulated decode-heavy mix, not compute stalls. For a representative 70B model at batch 64, an analytic estimate suggests each decode step reads roughly 1.3 MB per token from KV cache. At a modeled 3,800 tokens per second, that corresponds to about 5 GB/s sustained per request stream. With 8 tenants, aggregate demand is 39.8 GB/s, only 1.2 percent of HBM peak. So why does contention occur?</p>
 <p>Because prefill is bursty. In one representative configuration, a 32k context prefill moves roughly 42 GB, which at full HBM bandwidth would occupy the bus for on the order of 50 ms, 24 percent of HBM. During that burst, decode requests from other tenants queue behind 1,200 memory requests. The memory controller FCFS policy gives no priority. In simulation, p99 decode latency rose from about 20 ms to roughly 84 ms under FCFS, a greater than 4x increase.</p>
 <p>This is a classic network congestion problem, but inside the GPU.</p>
-
-<h2>2. Why current isolation fails</h2>
+<h2 id="2-why-current-isolation-fails">2. Why current isolation fails</h2>
 <p>Existing isolation partitions SMs via MPS, partitions HBM capacity via CUDA virtual memory, and partitions power via nvidia-smi. None partitions bandwidth. The memory controller sees a flat stream of requests tagged only by physical address.</p>
 <p>Attempted workarounds:</p>
 <ul>
@@ -54,9 +47,7 @@
 <li>Software throttling: insert sleeps in prefill kernel. Increases latency by 22 percent and does not guarantee isolation.</li>
 </ul>
 <p>We need hardware enforced bandwidth contracts.</p>
-
-
-<h2>2.5 Why not just use existing mechanisms</h2>
+<h2 id="25-why-not-just-use-existing-mechanisms">2.5 Why not just use existing mechanisms</h2>
 <p>Readers often ask why we cannot reuse existing QoS.</p>
 <p><strong>CUDA stream priority:</strong> Priorities affect kernel launch order, not memory controller arbitration. Once kernels are in flight, their memory requests intermix at the HBM controller with no tenant tag.</p>
 <p><strong>Software throttling:</strong> Inserting sleeps reduces average bandwidth but provides no worst-case guarantee. A burst still arrives eventually, and tail latency remains uncontrolled. In simulation, software throttling reduced p99 by only 18 percent while hurting throughput 22 percent.</p>
@@ -64,33 +55,31 @@
 <p><strong>Static bank partitioning:</strong> Assigning banks statically eliminates interference but wastes capacity. If tenant A is idle, its banks sit empty while tenant B is throttled. Our dynamic WFQ shares unused bandwidth automatically.</p>
 <p><strong>MIG/MPS:</strong> These partition compute and capacity, not bandwidth. MIG on Hopper still shares the same HBM controllers across instances.</p>
 <p>The gap is not a lack of ideas, it is a lack of enforcement at the memory controller.</p>
-
 <div class="figure"><p><strong>Figure 4: Prefill burst disrupting decode</strong></p>
-<svg width="680" height="220" viewBox="0 0 680 220" xmlns="http://www.w3.org/2000/svg">
-  <text x="40" y="30" font-size="12">FCFS (no fabric)</text>
-  <rect x="40" y="40" width="600" height="30" fill="#eee" stroke="#999"/>
-  <rect x="40" y="40" width="180" height="30" fill="#ef9a9a"/><text x="130" y="60" text-anchor="middle" font-size="11" fill="#000">Prefill burst</text>
-  <rect x="220" y="40" width="20" height="30" fill="#90caf9"/><rect x="250" y="40" width="20" height="30" fill="#90caf9"/><rect x="280" y="40" width="20" height="30" fill="#90caf9"/>
-  <text x="40" y="110" font-size="12">With fabric (WFQ)</text>
-  <rect x="40" y="120" width="600" height="30" fill="#eee" stroke="#999"/>
-  <rect x="40" y="120" width="60" height="30" fill="#ef9a9a"/><rect x="110" y="120" width="20" height="30" fill="#90caf9"/><rect x="140" y="120" width="60" height="30" fill="#ef9a9a"/><rect x="210" y="120" width="20" height="30" fill="#90caf9"/>
-  <text x="40" y="180" font-size="11" fill="#555">Red = prefill, Blue = decode requests. Fabric interleaves every ~4k tokens.</text>
+<svg height="220" viewbox="0 0 680 220" width="680" xmlns="http://www.w3.org/2000/svg">
+<text font-size="12" x="40" y="30">FCFS (no fabric)</text>
+<rect fill="#eee" height="30" stroke="#999" width="600" x="40" y="40"></rect>
+<rect fill="#ef9a9a" height="30" width="180" x="40" y="40"></rect><text fill="#000" font-size="11" text-anchor="middle" x="130" y="60">Prefill burst</text>
+<rect fill="#90caf9" height="30" width="20" x="220" y="40"></rect><rect fill="#90caf9" height="30" width="20" x="250" y="40"></rect><rect fill="#90caf9" height="30" width="20" x="280" y="40"></rect>
+<text font-size="12" x="40" y="110">With fabric (WFQ)</text>
+<rect fill="#eee" height="30" stroke="#999" width="600" x="40" y="120"></rect>
+<rect fill="#ef9a9a" height="30" width="60" x="40" y="120"></rect><rect fill="#90caf9" height="30" width="20" x="110" y="120"></rect><rect fill="#ef9a9a" height="30" width="60" x="140" y="120"></rect><rect fill="#90caf9" height="30" width="20" x="210" y="120"></rect>
+<text fill="#555" font-size="11" x="40" y="180">Red = prefill, Blue = decode requests. Fabric interleaves every ~4k tokens.</text>
 </svg></div>
-<h2>3. Fabric architecture</h2>
+<h2 id="3-fabric-architecture">3. Fabric architecture</h2>
 <div class="figure"><p><strong>Figure 1: Three-tier KV fabric</strong></p>
-<svg width="720" height="320" viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg">
-  <rect x="40" y="100" width="110" height="50" fill="#e3f2fd" stroke="#000"/><text x="95" y="130" text-anchor="middle">T0</text>
-  <rect x="40" y="170" width="110" height="50" fill="#e3f2fd" stroke="#000"/><text x="95" y="200" text-anchor="middle">T1</text>
-  <rect x="40" y="240" width="110" height="50" fill="#e3f2fd" stroke="#000"/><text x="95" y="270" text-anchor="middle">T2</text>
-  <rect x="230" y="140" width="160" height="100" fill="#fff3e0" stroke="#000"/><text x="310" y="195" text-anchor="middle">Fabric Arbiter</text>
-  <rect x="470" y="60" width="140" height="50" fill="#f3e5f5" stroke="#000"/><text x="540" y="90" text-anchor="middle">HBM 3.35 TB/s</text>
-  <rect x="470" y="130" width="140" height="50" fill="#f3e5f5" stroke="#000"/><text x="540" y="160" text-anchor="middle">CXL 128 GB/s</text>
-  <rect x="470" y="200" width="140" height="50" fill="#f3e5f5" stroke="#000"/><text x="540" y="230" text-anchor="middle">NVLink remote</text>
-  <rect x="470" y="270" width="140" height="40" fill="#e8f5e9" stroke="#000"/><text x="540" y="295" text-anchor="middle" font-size="11">SSD 7 GB/s</text>
+<svg height="320" viewbox="0 0 720 320" width="720" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#e3f2fd" height="50" stroke="#000" width="110" x="40" y="100"></rect><text text-anchor="middle" x="95" y="130">T0</text>
+<rect fill="#e3f2fd" height="50" stroke="#000" width="110" x="40" y="170"></rect><text text-anchor="middle" x="95" y="200">T1</text>
+<rect fill="#e3f2fd" height="50" stroke="#000" width="110" x="40" y="240"></rect><text text-anchor="middle" x="95" y="270">T2</text>
+<rect fill="#fff3e0" height="100" stroke="#000" width="160" x="230" y="140"></rect><text text-anchor="middle" x="310" y="195">Fabric Arbiter</text>
+<rect fill="#f3e5f5" height="50" stroke="#000" width="140" x="470" y="60"></rect><text text-anchor="middle" x="540" y="90">HBM 3.35 TB/s</text>
+<rect fill="#f3e5f5" height="50" stroke="#000" width="140" x="470" y="130"></rect><text text-anchor="middle" x="540" y="160">CXL 128 GB/s</text>
+<rect fill="#f3e5f5" height="50" stroke="#000" width="140" x="470" y="200"></rect><text text-anchor="middle" x="540" y="230">NVLink remote</text>
+<rect fill="#e8f5e9" height="40" stroke="#000" width="140" x="470" y="270"></rect><text font-size="11" text-anchor="middle" x="540" y="295">SSD 7 GB/s</text>
 </svg></div>
 <p>Tiers: HBM for pages with reuse distance less than 10 ms, CXL for 10 to 200 ms, remote for greater than 200 ms. The arbiter lives in the HBM controller, with shadow copies in CXL root complex.</p>
-
-<h2>4. Bandwidth as a contract</h2>
+<h2 id="4-bandwidth-as-a-contract">4. Bandwidth as a contract</h2>
 <p>We extend RIIR from Essay 4:</p>
 <pre>
 riir.memory = {
@@ -109,22 +98,19 @@ riir.memory = {
 }
 </pre>
 <p>Guaranteed is enforced. Burst is opportunistic. Priority resolves contention when sum of guaranteed exceeds capacity.</p>
-
-<h2>5. Token bucket and WFQ math</h2>
+<h2 id="5-token-bucket-and-wfq-math">5. Token bucket and WFQ math</h2>
 <p>Each tenant i has bucket Bi refilled at rate ri bytes per microsecond. Bucket capacity Ci = ri * burst_duration.</p>
 <p>At time t, on request of size s:</p>
 <pre>
-if Bi >= s: admit, Bi -= s
-else if sum_j rj < capacity: admit using burst, Bi = 0
+if Bi &gt;= s: admit, Bi -= s
+else if sum_j rj &lt; capacity: admit using burst, Bi = 0
 else: queue
 </pre>
 <p>WFQ weight wi = ri / sum rj. The scheduler computes virtual finish time Fi = max(V, Ai) + s/wi, where V is virtual time, Ai arrival. Requests issued in increasing Fi order.</p>
 <p>In simulation, this provided isolation within about 3 percent of the target share in simulation, versus 340 percent with FCFS.</p>
-
-
 <h3>6.1 Where this lives in today's stack</h3>
 <p>In practice, the contract is not emitted by a mythical new compiler. For PyTorch 2.x, this is a TorchInductor post-lowering pass that runs after graph capture: it walks the FX graph, annotates each attention and GEMM node with estimated bytes and reuse distance from the profile, and emits the RIIR bandwidth alternatives as metadata attached to the compiled kernel. For XLA/JAX, it is an HLO pass just before codegen that inserts the same metadata into custom call attributes. For vLLM and TensorRT-LLM serving, the runtime reads the metadata at model load and registers the contracts with MCOS-HFC; the scheduler then chooses the plan at request dispatch, not at compile time. The compiler proposes the Pareto frontier, the runtime selects based on live fabric and power state.</p>
-<h2>6. Compiler: generating contracts</h2>
+<h2 id="6-compiler-generating-contracts">6. Compiler: generating contracts</h2>
 <p>The compiler performs reuse analysis on KV accesses. For each loop nest:</p>
 <ol>
 <li>Compute reuse distance distribution from profiling</li>
@@ -141,113 +127,85 @@ for chunk in range(8):
   release bandwidth_token
 </pre>
 <p>Yield points allow other tenants to interleave.</p>
-
-<h2>7. Hardware implementation</h2>
+<h2 id="7-hardware-implementation">7. Hardware implementation</h2>
 <div class="figure"><p><strong>Figure 2: Token bucket in memory controller</strong></p>
-<svg width="620" height="260" viewBox="0 0 620 260" xmlns="http://www.w3.org/2000/svg">
-  <rect x="60" y="60" width="140" height="70" fill="#e8f5e9" stroke="#000"/><text x="130" y="100" text-anchor="middle">Bucket 0</text>
-  <rect x="60" y="150" width="140" height="70" fill="#e8f5e9" stroke="#000"/><text x="130" y="190" text-anchor="middle">Bucket 1</text>
-  <rect x="300" y="100" width="160" height="70" fill="#fff" stroke="#000"/><text x="380" y="140" text-anchor="middle">WFQ Scheduler</text>
+<svg height="260" viewbox="0 0 620 260" width="620" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#e8f5e9" height="70" stroke="#000" width="140" x="60" y="60"></rect><text text-anchor="middle" x="130" y="100">Bucket 0</text>
+<rect fill="#e8f5e9" height="70" stroke="#000" width="140" x="60" y="150"></rect><text text-anchor="middle" x="130" y="190">Bucket 1</text>
+<rect fill="#fff" height="70" stroke="#000" width="160" x="300" y="100"></rect><text text-anchor="middle" x="380" y="140">WFQ Scheduler</text>
 </svg></div>
 <p>Implementation cost: 8 tenants * 64 bits for bucket state = 64 bytes per memory channel. On H200 with 8 channels, 512 bytes total. Logic runs at 1 GHz, 1 cycle per request.</p>
 <p>Pseudo-RTL (simplified, omits starvation prevention, multi-channel coordination, and reorder buffer effects):</p>
 <pre>
 always @(posedge clk) begin
-  for (i=0; i<N_TENANTS; i++) begin
-    bucket[i] <= min(bucket[i] + rate[i], capacity[i]);
-    if (req_valid[i] && bucket[i] >= req_size[i]) begin
-      grant[i] <= 1; bucket[i] <= bucket[i] - req_size[i];
+  for (i=0; i<n_tenants; &&="" (req_valid[i]="" +="" <="min(bucket[i]" begin="" bucket[i]="" capacity[i]);="" i++)="" if="" rate[i],="">= req_size[i]) begin
+      grant[i] &lt;= 1; bucket[i] &lt;= bucket[i] - req_size[i];
     end
   end
 end
-</pre>
-
-<h2>8. Page coloring and bank partitioning</h2>
+</n_tenants;></pre>
+<h2 id="8-page-coloring-and-bank-partitioning">8. Page coloring and bank partitioning</h2>
 <p>HBM3e has 16 banks per stack, 8 stacks. Without coloring, tenant A and B collide on same bank, serializing requests. We assign colors:</p>
 <p>tenant 0: banks 0-3, tenant 1: banks 4-7, etc. The OS allocator respects color in physical page allocation. In our modeled system, bank conflict rate dropped from roughly 23 percent to about 4 percent with coloring.</p>
-
-<h2>9. Runtime integration</h2>
+<h2 id="9-runtime-integration">9. Runtime integration</h2>
 <p>The fabric arbiter exports metrics to MCOS-HFC every 10 ms: bytes served per tenant, queue depth, violations. The power contract negotiator from Essay 4 reads these and computes power = bytes * 0.023 W/GB/s + baseline. If power exceeds budget, it reduces burst_gbps for low priority tenants.</p>
 <p>This closes the loop between bandwidth and joules per token.</p>
-
-<h2>10. Case studies detailed</h2>
-
+<h2 id="10-case-studies-detailed">10. Case studies detailed</h2>
 <div style="background:#f5f5f5;padding:0.8rem;border-left:3px solid #999;font-size:0.9em;margin:0.5rem 0;">
 <strong>Assumptions:</strong> GB200 NVL72, 8 tenants all decode except 2 periodic prefills, 50 percent KV spill to CXL 2.0, CXL latency modeled at 320 ns, page coloring enabled, WFQ weights equal.
 </div>
 <p>With CXL spill, tail latency without fabric was about 112 ms in simulation. With fabric and coloring, about 29 ms. Effective HBM utilization rose from roughly 58 percent to about 87 percent in the model, driven by reduced bank conflicts.</p>
-
-
 <p><strong>Power interaction.</strong> During same test, HBM power drops from 78 W average to 69 W because fewer bank conflicts mean fewer row activations. Analytic modeling suggests this could save on the order of 5 to 10 W per GPU from reduced row activations, 648 W per rack, directly improving joules per token by 4.2 percent.</p>
-
-<h2>11. Limitations</h2>
-<p>Token buckets work for steady state, not for synchronized bursts from all tenants. If 8 tenants start prefill simultaneously, sum of guaranteed exceeds capacity. Solution: admission control at scheduler, reject new prefill if sum guaranteed + new > 0.85 * capacity.</p>
-
-<h2>12. Conclusion</h2>
+<h2 id="11-limitations">11. Limitations</h2>
+<p>Token buckets work for steady state, not for synchronized bursts from all tenants. If 8 tenants start prefill simultaneously, sum of guaranteed exceeds capacity. Solution: admission control at scheduler, reject new prefill if sum guaranteed + new &gt; 0.85 * capacity.</p>
+<h2 id="12-conclusion">12. Conclusion</h2>
 <p>KV cache bandwidth must be partitioned like network bandwidth. With compiler contracts, token buckets in hardware, and page coloring, multi-tenant tail latency improves 3.6x and throughput improves 28 to 31 percent. Combined with power contracts, this yields a full resource fabric for LLM inference.</p>
-
 <div class="figure"><p><strong>Figure 3: Tail latency with and without fabric (simulated)</strong></p>
-<svg width="680" height="280" viewBox="0 0 680 280" xmlns="http://www.w3.org/2000/svg">
-  <line x1="80" y1="230" x2="620" y2="230" stroke="#000"/>
-  <line x1="80" y1="230" x2="80" y2="40" stroke="#000"/>
-  <text x="350" y="270" text-anchor="middle">Configuration</text>
-  <text x="30" y="135" transform="rotate(-90 30 135)" text-anchor="middle">p99 latency (ms)</text>
-  <rect x="150" y="80" width="80" height="150" fill="#ef9a9a"/><text x="190" y="70" text-anchor="middle">84 ms</text><text x="190" y="250" text-anchor="middle">FCFS</text>
-  <rect x="350" y="185" width="80" height="45" fill="#a5d6a7"/><text x="390" y="175" text-anchor="middle">23 ms</text><text x="390" y="250" text-anchor="middle">Fabric</text>
-  <line x1="70" y1="180" x2="80" y2="180" stroke="#999"/><text x="65" y="184" text-anchor="end" font-size="10">50</text>
-  <line x1="70" y1="130" x2="80" y2="130" stroke="#999"/><text x="65" y="134" text-anchor="end" font-size="10">100</text>
+<svg height="280" viewbox="0 0 680 280" width="680" xmlns="http://www.w3.org/2000/svg">
+<line stroke="#000" x1="80" x2="620" y1="230" y2="230"></line>
+<line stroke="#000" x1="80" x2="80" y1="230" y2="40"></line>
+<text text-anchor="middle" x="350" y="270">Configuration</text>
+<text text-anchor="middle" transform="rotate(-90 30 135)" x="30" y="135">p99 latency (ms)</text>
+<rect fill="#ef9a9a" height="150" width="80" x="150" y="80"></rect><text text-anchor="middle" x="190" y="70">84 ms</text><text text-anchor="middle" x="190" y="250">FCFS</text>
+<rect fill="#a5d6a7" height="45" width="80" x="350" y="185"></rect><text text-anchor="middle" x="390" y="175">23 ms</text><text text-anchor="middle" x="390" y="250">Fabric</text>
+<line stroke="#999" x1="70" x2="80" y1="180" y2="180"></line><text font-size="10" text-anchor="end" x="65" y="184">50</text>
+<line stroke="#999" x1="70" x2="80" y1="130" y2="130"></line><text font-size="10" text-anchor="end" x="65" y="134">100</text>
 </svg>
 <p style="font-size:0.85em;color:#555;margin-top:0.5rem;">Simulated H200, 4 tenants, 1 prefill + 3 decode. Bars show p99 decode latency.</p>
 </div>
-
-<br><br><br><br><hr style='border: none; border-top: 2px solid #000; margin: 2rem 0; clear: both;'>
-
-<h2 style="font-size: 2.2rem; font-weight: bold; margin-bottom: 2rem;">Addendum: The Power Contract SLO</h2>
+<br/><br/><br/><br/><hr style="border: none; border-top: 2px solid #000; margin: 2rem 0; clear: both;"/>
+<h2 id="addendum-the-power-contract-slo" style="font-size: 2.2rem; font-weight: bold; margin-bottom: 2rem;">Addendum: The Power Contract SLO</h2>
 <p><em>Making Joules-per-Token Schedulable from Grid to SRAM</em></p>
-
-
-<h2>0.1 Primer</h2>
+<h2 id="01-primer">0.1 Primer</h2>
 <ul><li><strong>Joules per token:</strong> Energy divided by useful output tokens</li><li><strong>PDU:</strong> Power distribution unit</li><li><strong>DVFS:</strong> Dynamic voltage/frequency scaling</li><li><strong>CPO/LPO:</strong> Co-packaged optics / linear-drive optics</li></ul>
-
-<h2>0.2 Evidence basis and scope</h2>
+<h2 id="02-evidence-basis-and-scope">0.2 Evidence basis and scope</h2>
 <ul><li><strong>Measured:</strong> GB200 120kW, H200 power from vendor datasheets and MLPerf 2025</li><li><strong>Trace-driven simulation:</strong> throughput under caps, latency from production traces</li><li><strong>Analytic estimates:</strong> joules per token, capacitor energy</li><li><strong>Design proposal:</strong> RIIR power contracts, fabric arbiter</li></ul>
-
-<h2>1. The power wall</h2>
+<h2 id="1-the-power-wall">1. The power wall</h2>
 <p>In modeled deployments, a GB200 NVL72 rack draws roughly 120 kW sustained, with peaks near 135 kW during all-reduce. At 10k GPU scale, this approaches 17–20 MW.</p>
-
-<h2>2. Why joules per token</h2>
+<h2 id="2-why-joules-per-token">2. Why joules per token</h2>
 <p>Throughput per watt is the right metric. Representative numbers: H200 FP16 ~0.42 J/token, FP8 with LPO ~0.28 J/token, GB200 FP4 with CPO sleep ~0.17 J/token.</p>
-
-<h2>4. Why not just throttle</h2>
+<h2 id="4-why-not-just-throttle">4. Why not just throttle</h2>
 <p>Firmware throttling reacts to temperature, not SLOs. Static caps waste headroom. DVFS alone ignores memory and links which are ~55% of power.</p>
-
-<h2>5. Resource Intent Interface</h2>
+<h2 id="5-resource-intent-interface">5. Resource Intent Interface</h2>
 <pre>power = { target_jpt=0.30, alternatives=[A, B, C] }</pre>
-
 <h3>5.1 Where contracts are emitted</h3>
 <p>In practice, the contract is not emitted by a new compiler. For PyTorch 2.x, this is a TorchInductor post-lowering pass that annotates each kernel with estimated joules and emits RIIR power alternatives as metadata. For XLA/JAX, it is an HLO pass before codegen that inserts power metadata into custom calls. For vLLM and TensorRT-LLM, the runtime reads the metadata at model load and registers contracts with MCOS; the scheduler selects the plan at request dispatch based on live PDU forecasts. The compiler proposes the Pareto frontier, the runtime selects.</p>
-
-<h2>6. Compiler generates frontier</h2>
+<h2 id="6-compiler-generates-frontier">6. Compiler generates frontier</h2>
 <p>Search yields 7–14 Pareto-optimal plans. Model error ~4% for joules in simulation.</p>
-
-<h2>8. Handling transients</h2>
+<h2 id="8-handling-transients">8. Handling transients</h2>
 <p>Two-tier control: 5s forecast for utility, 200µs local override using PSU capacitors (~32J) and arbiter broadcast.</p>
-
-<h2>9. Case studies</h2>
+<h2 id="9-case-studies">9. Case studies</h2>
 <h3>9.1 GB200 training</h3>
 <div style="background:#f5f5f5;padding:0.8rem;border-left:3px solid #999;">Assumptions: 800 racks, simulated, PDU cap 94.5 MW</div>
 <p>Effective token throughput per MW rose from ~81% to ~96% of theoretical in simulation.</p>
-
-<h2>10. Conclusion</h2>
+<h2 id="10-conclusion">10. Conclusion</h2>
 <p>Power is not a limit to hit. It is a budget to allocate. Once joules per token becomes schedulable, the datacenter stops throttling and starts negotiating.</p>
 <p><strong>Make power a contract, not a crisis.</strong></p>
-
-
-<hr style="margin-top: 3rem; border: none; border-top: 1px solid #ddd;" />
+<hr style="margin-top: 3rem; border: none; border-top: 1px solid #ddd;"/>
 <p style="text-align:center; color:#666; font-size:0.9rem;">
-  <a href="../writings.html" style="color:#0366d6; text-decoration:none;">← All writings</a><br><br>
-  © 2026 <a href="https://github.com/manishklach" style="color:#0366d6; text-decoration:none;">Manish KL</a>. All rights reserved.<br>
-  <span style="display:block; margin-top:8px;">Systems architecture notes on infrastructure boundaries.</span>
+<a href="../writings.html" style="color:#0366d6; text-decoration:none;">← All writings</a><br/><br/>
+  © 2026 <a href="https://github.com/manishklach" style="color:#0366d6; text-decoration:none;">Manish KL</a>. All rights reserved.<br/>
+<span style="display:block; margin-top:8px;">Systems architecture notes on infrastructure boundaries.</span>
 </p>
-</body>
+<hr/><footer class="post-footer">© 2026 Manish K. Lach · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer></body>
 </html>

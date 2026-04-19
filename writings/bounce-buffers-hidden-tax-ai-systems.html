@@ -1,30 +1,31 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Bounce Buffers: The Hidden Tax on Modern AI Systems | Manish K. Lach</title>
-  <meta name="description" content="A detailed technical essay on bounce buffers, why they exist, where they appear in modern AI stacks, and why eliminating them matters for GPU-era systems.">
-  <meta name="keywords" content="bounce buffers, AI infrastructure, GPUDirect Storage, GPUDirect RDMA, DMA, zero-copy, GPU systems, data movement, systems engineering" />
-  <meta name="author" content="Manish KL">
-  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
-  <meta name="theme-color" content="#08090d" />
-  <link rel="canonical" href="https://manishklach.github.io/writings/bounce-buffers-hidden-tax-ai-systems.html">
-  <meta property="og:type" content="article">
-  <meta property="og:title" content="Bounce Buffers: The Hidden Tax on Modern AI Systems | Manish K. Lach">
-  <meta property="og:description" content="A detailed technical essay on bounce buffers, why they exist, where they appear in modern AI stacks, and why eliminating them matters for GPU-era systems.">
-  <meta property="og:url" content="https://manishklach.github.io/writings/bounce-buffers-hidden-tax-ai-systems.html">
-  <meta property="og:site_name" content="Manish KL" />
-  <meta property="og:locale" content="en_US" />
-  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png" />
-  <meta property="og:image:alt" content="Bounce Buffers essay cover image for AI systems and data movement." />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Bounce Buffers: The Hidden Tax on Modern AI Systems | Manish K. Lach" />
-  <meta name="twitter:description" content="A technical essay on bounce buffers, hidden staging, and why eliminating unnecessary copies matters in GPU-era AI systems." />
-  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png" />
-  <meta name="twitter:image:alt" content="Bounce Buffers essay cover image for AI systems and data movement." />
-  <meta name="twitter:site" content="@manishkl_" />
-  <script type="application/ld+json">
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<title>Bounce Buffers: The Hidden Tax on Modern AI Systems | Manish K. Lach</title>
+<meta content="A detailed technical essay on bounce buffers, why they exist, where they appear in modern AI stacks, and why eliminating them matters for GPU-era systems." name="description"/>
+<meta content="bounce buffers, AI infrastructure, GPUDirect Storage, GPUDirect RDMA, DMA, zero-copy, GPU systems, data movement, systems engineering" name="keywords"/>
+<meta content="Manish KL" name="author">
+<meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/>
+<meta content="#08090d" name="theme-color"/>
+<link href="https://manishklach.github.io/writings/bounce-buffers-hidden-tax-ai-systems.html" rel="canonical"/>
+<meta content="article" property="og:type">
+<meta content="Bounce Buffers: The Hidden Tax on Modern AI Systems | Manish K. Lach" property="og:title"/>
+<meta content="A detailed technical essay on bounce buffers, why they exist, where they appear in modern AI stacks, and why eliminating them matters for GPU-era systems." property="og:description"/>
+<meta content="https://manishklach.github.io/writings/bounce-buffers-hidden-tax-ai-systems.html" property="og:url"/>
+<meta content="Manish KL" property="og:site_name"/>
+<meta content="en_US" property="og:locale"/>
+<meta content="https://manishklach.github.io/og/bounce-buffers-hidden-tax-ai-systems.png" property="og:image"/>
+<meta content="Bounce Buffers essay cover image for AI systems and data movement." property="og:image:alt"/>
+<meta content="summary_large_image" name="twitter:card"/>
+<meta content="Bounce Buffers: The Hidden Tax on Modern AI Systems" name="twitter:title"/>
+<meta content="A detailed technical essay on bounce buffers, why they exist, where they appear in modern AI stacks, and why eliminating them matters for GPU-era systems." name="twitter:description">
+<meta content="https://manishklach.github.io/og/bounce-buffers-hidden-tax-ai-systems.png" name="twitter:image">
+<meta content="Bounce Buffers essay cover image for AI systems and data movement." name="twitter:image:alt">
+<meta content="@manishkl_" name="twitter:site">
+<script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "BlogPosting",
@@ -46,12 +47,10 @@
   }
 }
 </script>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;500;600&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
-
-  <style>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,500;12..96,700;12..96,800&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Lora:ital,wght@0,400;0,500;1,400&amp;display=swap" rel="stylesheet"/>
+<style>
     :root {
       --bg:         #08090d;
       --bg2:        #0d1018;
@@ -338,583 +337,519 @@
       .four-col { grid-template-columns: 1fr; }
     }
   </style>
-<meta name="color-scheme" content="light dark">
-</head>
-<body>
-
+<meta content="light dark" name="color-scheme">
+</meta></meta></meta></meta></meta></meta></meta><script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><link href="/assets/site.css" rel="stylesheet"/><script defer="" src="/assets/site.js"></script><link href="/feed.xml" rel="alternate" title="Manish K. Lach RSS" type="application/rss+xml"/></head>
+<body><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
 <!-- ── NAV ── -->
 <nav class="site-nav">
-  <div class="wrap nav-inner">
-      <a class="brand" href="../index.html">Home</a>
-      <a class="back-link" href="../writings.html">← Back to writings</a>
-  </div>
+<div class="wrap nav-inner">
+<a class="brand" href="../index.html">Home</a>
+<a class="back-link" href="../writings.html">← Back to writings</a>
+</div>
 </nav>
-
 <!-- ── HERO ── -->
 <header class="hero">
-  <div class="wrap">
-    <div class="eyebrow"><span class="eyebrow-dot"></span> Systems for AI · Data Movement · GPU Infrastructure</div>
-    <h1>Bounce Buffers:<br>The <em>Hidden Tax</em> on Modern AI Systems</h1>
-    <p class="subhead">
+<div class="wrap">
+<div class="eyebrow"><span class="eyebrow-dot"></span> Systems for AI · Data Movement · GPU Infrastructure</div>
+<h1>Bounce Buffers:<br/>The <em>Hidden Tax</em> on Modern AI Systems</h1><div class="meta reading-meta">Published <time datetime="2026-04-07">Apr 7, 2026</time> · 16 min read</div>
+<p class="subhead">
       Why extra copies and intermediate staging buffers have become one of the least visible,
       yet most consequential, bottlenecks in long-context inference, retrieval-heavy serving,
       agentic loops, and modern GPU-centric infrastructure.
     </p>
-    <div class="meta">
-          <span>Manish KL</span>
-      <span class="meta-accent"><time datetime="2026-04-07">April 2026</time></span>
-      <span>~18 min read</span>
-      <span>Technical essay</span>
-    </div>
-
-    <!-- Hero concept diagram -->
-    <div class="hero-diagram">
-      <svg viewBox="0 0 860 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
-        <defs>
-          <linearGradient id="h-fast" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stop-color="#5b9cf6"/>
-            <stop offset="100%" stop-color="#4ade80"/>
-          </linearGradient>
-          <linearGradient id="h-bounce" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stop-color="#ff9f3e"/>
-            <stop offset="100%" stop-color="#f97070"/>
-          </linearGradient>
-          <marker id="arrf" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L7,3 z" fill="#4ade80"/>
-          </marker>
-          <marker id="arrb" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L7,3 z" fill="#ff9f3e"/>
-          </marker>
-        </defs>
-        <rect width="860" height="200" fill="rgba(8,10,18,0.97)"/>
-
-        <!-- Row labels -->
-        <text x="24" y="70" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#4ade80" letter-spacing="0.08em" text-anchor="middle" transform="rotate(-90,24,70)">FAST</text>
-        <text x="24" y="148" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#ff9f3e" letter-spacing="0.08em" text-anchor="middle" transform="rotate(-90,24,148)">BOUNCE</text>
-
-        <!-- FAST PATH row -->
-        <!-- Source -->
-        <rect x="48" y="42" width="110" height="48" rx="10" fill="rgba(91,156,246,0.1)" stroke="rgba(91,156,246,0.4)" stroke-width="1.5"/>
-        <text x="103" y="62" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#eef2fa" font-weight="600">NIC / NVMe</text>
-        <text x="103" y="79" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a6880">source</text>
-        <!-- Arrow fast -->
-        <line x1="158" y1="66" x2="332" y2="66" stroke="url(#h-fast)" stroke-width="2.5" marker-end="url(#arrf)"/>
-        <text x="245" y="58" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#4ade80">P2P / GPUDirect</text>
-        <text x="245" y="78" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#3a5040">no host staging</text>
-        <!-- GPU -->
-        <rect x="332" y="42" width="110" height="48" rx="10" fill="rgba(74,222,128,0.1)" stroke="rgba(74,222,128,0.4)" stroke-width="1.5"/>
-        <text x="387" y="62" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#eef2fa" font-weight="600">GPU VRAM</text>
-        <text x="387" y="79" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a6880">destination</text>
-
-        <!-- BOUNCE PATH row -->
-        <!-- Source -->
-        <rect x="48" y="118" width="110" height="48" rx="10" fill="rgba(91,156,246,0.07)" stroke="rgba(91,156,246,0.25)" stroke-width="1.5"/>
-        <text x="103" y="138" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#eef2fa" font-weight="600">NIC / NVMe</text>
-        <text x="103" y="155" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a6880">source</text>
-
-        <!-- Arrow 1 -->
-        <line x1="158" y1="142" x2="222" y2="142" stroke="#ff9f3e" stroke-width="1.8" marker-end="url(#arrb)" opacity="0.8"/>
-
-        <!-- Kernel buffer -->
-        <rect x="222" y="118" width="100" height="48" rx="10" fill="rgba(255,159,62,0.12)" stroke="rgba(255,159,62,0.45)" stroke-width="1.5"/>
-        <text x="272" y="137" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#ffcc7a" font-weight="600">Kernel</text>
-        <text x="272" y="152" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#ffcc7a">Buffer</text>
-        <!-- copy dot -->
-        <circle cx="216" cy="142" r="4" fill="#ff9f3e"/>
-        <text x="195" y="130" font-family="JetBrains Mono, monospace" font-size="8" fill="#ff9f3e">copy</text>
-
-        <!-- Arrow 2 -->
-        <line x1="322" y1="142" x2="386" y2="142" stroke="#ff9f3e" stroke-width="1.8" marker-end="url(#arrb)" opacity="0.8"/>
-        <!-- User buffer -->
-        <rect x="386" y="118" width="100" height="48" rx="10" fill="rgba(255,159,62,0.12)" stroke="rgba(255,159,62,0.45)" stroke-width="1.5"/>
-        <text x="436" y="137" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#ffcc7a" font-weight="600">User</text>
-        <text x="436" y="152" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#ffcc7a">Buffer</text>
-        <!-- copy dot -->
-        <circle cx="380" cy="142" r="4" fill="#ff9f3e"/>
-        <text x="359" y="130" font-family="JetBrains Mono, monospace" font-size="8" fill="#ff9f3e">copy</text>
-
-        <!-- Arrow 3 -->
-        <line x1="486" y1="142" x2="550" y2="142" stroke="#ff9f3e" stroke-width="1.8" marker-end="url(#arrb)" opacity="0.8"/>
-        <!-- Pinned pool -->
-        <rect x="550" y="118" width="100" height="48" rx="10" fill="rgba(255,159,62,0.12)" stroke="rgba(255,159,62,0.45)" stroke-width="1.5"/>
-        <text x="600" y="137" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#ffcc7a" font-weight="600">Pinned</text>
-        <text x="600" y="152" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#ffcc7a">Pool</text>
-        <!-- copy dot -->
-        <circle cx="544" cy="142" r="4" fill="#ff9f3e"/>
-        <text x="523" y="130" font-family="JetBrains Mono, monospace" font-size="8" fill="#ff9f3e">copy</text>
-
-        <!-- Arrow 4 -->
-        <line x1="650" y1="142" x2="714" y2="142" stroke="#ff9f3e" stroke-width="1.8" marker-end="url(#arrb)" opacity="0.6"/>
-        <!-- GPU -->
-        <rect x="714" y="118" width="110" height="48" rx="10" fill="rgba(74,222,128,0.07)" stroke="rgba(74,222,128,0.25)" stroke-width="1.5"/>
-        <text x="769" y="138" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#eef2fa" font-weight="600">GPU VRAM</text>
-        <text x="769" y="155" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a6880">destination</text>
-        <!-- copy dot -->
-        <circle cx="708" cy="142" r="4" fill="#f97070"/>
-        <text x="655" y="130" font-family="JetBrains Mono, monospace" font-size="8" fill="#ff9f3e">copy</text>
-
-        <!-- Separator line -->
-        <line x1="40" y1="108" x2="820" y2="108" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-
-        <!-- Legend bottom right -->
-        <circle cx="490" cy="186" r="4" fill="#4ade80"/>
-        <text x="500" y="190" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a6880">direct / admissible</text>
-        <circle cx="610" cy="186" r="4" fill="#ff9f3e"/>
-        <text x="620" y="190" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a6880">bounce / copy point</text>
-      </svg>
-    </div>
-  </div>
+<div class="meta">
+<span>Manish KL</span>
+<span class="meta-accent"><time datetime="2026-04-07">April 2026</time></span>
+<span>~18 min read</span>
+<span>Technical essay</span>
+</div>
+<!-- Hero concept diagram -->
+<div class="hero-diagram">
+<svg style="width:100%;height:auto;display:block;" viewbox="0 0 860 200" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<lineargradient id="h-fast" x1="0" x2="1" y1="0" y2="0">
+<stop offset="0%" stop-color="#5b9cf6"></stop>
+<stop offset="100%" stop-color="#4ade80"></stop>
+</lineargradient>
+<lineargradient id="h-bounce" x1="0" x2="1" y1="0" y2="0">
+<stop offset="0%" stop-color="#ff9f3e"></stop>
+<stop offset="100%" stop-color="#f97070"></stop>
+</lineargradient>
+<marker id="arrf" markerheight="7" markerwidth="7" orient="auto" refx="5" refy="3">
+<path d="M0,0 L0,6 L7,3 z" fill="#4ade80"></path>
+</marker>
+<marker id="arrb" markerheight="7" markerwidth="7" orient="auto" refx="5" refy="3">
+<path d="M0,0 L0,6 L7,3 z" fill="#ff9f3e"></path>
+</marker>
+</defs>
+<rect fill="rgba(8,10,18,0.97)" height="200" width="860"></rect>
+<!-- Row labels -->
+<text fill="#4ade80" font-family="JetBrains Mono, monospace" font-size="9.5" letter-spacing="0.08em" text-anchor="middle" transform="rotate(-90,24,70)" x="24" y="70">FAST</text>
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="9.5" letter-spacing="0.08em" text-anchor="middle" transform="rotate(-90,24,148)" x="24" y="148">BOUNCE</text>
+<!-- FAST PATH row -->
+<!-- Source -->
+<rect fill="rgba(91,156,246,0.1)" height="48" rx="10" stroke="rgba(91,156,246,0.4)" stroke-width="1.5" width="110" x="48" y="42"></rect>
+<text fill="#eef2fa" font-family="JetBrains Mono, monospace" font-size="11" font-weight="600" text-anchor="middle" x="103" y="62">NIC / NVMe</text>
+<text fill="#5a6880" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="103" y="79">source</text>
+<!-- Arrow fast -->
+<line marker-end="url(#arrf)" stroke="url(#h-fast)" stroke-width="2.5" x1="158" x2="332" y1="66" y2="66"></line>
+<text fill="#4ade80" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="245" y="58">P2P / GPUDirect</text>
+<text fill="#3a5040" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="245" y="78">no host staging</text>
+<!-- GPU -->
+<rect fill="rgba(74,222,128,0.1)" height="48" rx="10" stroke="rgba(74,222,128,0.4)" stroke-width="1.5" width="110" x="332" y="42"></rect>
+<text fill="#eef2fa" font-family="JetBrains Mono, monospace" font-size="11" font-weight="600" text-anchor="middle" x="387" y="62">GPU VRAM</text>
+<text fill="#5a6880" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="387" y="79">destination</text>
+<!-- BOUNCE PATH row -->
+<!-- Source -->
+<rect fill="rgba(91,156,246,0.07)" height="48" rx="10" stroke="rgba(91,156,246,0.25)" stroke-width="1.5" width="110" x="48" y="118"></rect>
+<text fill="#eef2fa" font-family="JetBrains Mono, monospace" font-size="11" font-weight="600" text-anchor="middle" x="103" y="138">NIC / NVMe</text>
+<text fill="#5a6880" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="103" y="155">source</text>
+<!-- Arrow 1 -->
+<line marker-end="url(#arrb)" opacity="0.8" stroke="#ff9f3e" stroke-width="1.8" x1="158" x2="222" y1="142" y2="142"></line>
+<!-- Kernel buffer -->
+<rect fill="rgba(255,159,62,0.12)" height="48" rx="10" stroke="rgba(255,159,62,0.45)" stroke-width="1.5" width="100" x="222" y="118"></rect>
+<text fill="#ffcc7a" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600" text-anchor="middle" x="272" y="137">Kernel</text>
+<text fill="#ffcc7a" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="272" y="152">Buffer</text>
+<!-- copy dot -->
+<circle cx="216" cy="142" fill="#ff9f3e" r="4"></circle>
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="8" x="195" y="130">copy</text>
+<!-- Arrow 2 -->
+<line marker-end="url(#arrb)" opacity="0.8" stroke="#ff9f3e" stroke-width="1.8" x1="322" x2="386" y1="142" y2="142"></line>
+<!-- User buffer -->
+<rect fill="rgba(255,159,62,0.12)" height="48" rx="10" stroke="rgba(255,159,62,0.45)" stroke-width="1.5" width="100" x="386" y="118"></rect>
+<text fill="#ffcc7a" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600" text-anchor="middle" x="436" y="137">User</text>
+<text fill="#ffcc7a" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="436" y="152">Buffer</text>
+<!-- copy dot -->
+<circle cx="380" cy="142" fill="#ff9f3e" r="4"></circle>
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="8" x="359" y="130">copy</text>
+<!-- Arrow 3 -->
+<line marker-end="url(#arrb)" opacity="0.8" stroke="#ff9f3e" stroke-width="1.8" x1="486" x2="550" y1="142" y2="142"></line>
+<!-- Pinned pool -->
+<rect fill="rgba(255,159,62,0.12)" height="48" rx="10" stroke="rgba(255,159,62,0.45)" stroke-width="1.5" width="100" x="550" y="118"></rect>
+<text fill="#ffcc7a" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600" text-anchor="middle" x="600" y="137">Pinned</text>
+<text fill="#ffcc7a" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="600" y="152">Pool</text>
+<!-- copy dot -->
+<circle cx="544" cy="142" fill="#ff9f3e" r="4"></circle>
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="8" x="523" y="130">copy</text>
+<!-- Arrow 4 -->
+<line marker-end="url(#arrb)" opacity="0.6" stroke="#ff9f3e" stroke-width="1.8" x1="650" x2="714" y1="142" y2="142"></line>
+<!-- GPU -->
+<rect fill="rgba(74,222,128,0.07)" height="48" rx="10" stroke="rgba(74,222,128,0.25)" stroke-width="1.5" width="110" x="714" y="118"></rect>
+<text fill="#eef2fa" font-family="JetBrains Mono, monospace" font-size="11" font-weight="600" text-anchor="middle" x="769" y="138">GPU VRAM</text>
+<text fill="#5a6880" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="769" y="155">destination</text>
+<!-- copy dot -->
+<circle cx="708" cy="142" fill="#f97070" r="4"></circle>
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="8" x="655" y="130">copy</text>
+<!-- Separator line -->
+<line stroke="rgba(255,255,255,0.05)" stroke-width="1" x1="40" x2="820" y1="108" y2="108"></line>
+<!-- Legend bottom right -->
+<circle cx="490" cy="186" fill="#4ade80" r="4"></circle>
+<text fill="#5a6880" font-family="JetBrains Mono, monospace" font-size="9" x="500" y="190">direct / admissible</text>
+<circle cx="610" cy="186" fill="#ff9f3e" r="4"></circle>
+<text fill="#5a6880" font-family="JetBrains Mono, monospace" font-size="9" x="620" y="190">bounce / copy point</text>
+</svg>
+</div>
+</div>
 </header>
-
 <!-- ── MAIN ── -->
 <main>
-  <div class="wrap">
-    <article data-pagefind-body>
-
-      <!-- TABLE OF CONTENTS -->
-      <nav class="toc" aria-label="Table of contents">
-        <div class="toc-title">Contents</div>
-        <ol>
-          <li><a href="#intro">Why this matters now</a></li>
-          <li><a href="#definition">What a bounce buffer is</a></li>
-          <li><a href="#why-exist">Why bounce buffers exist</a></li>
-          <li><a href="#ai-era">Why they matter more in the AI era</a></li>
-          <li><a href="#cost">The real cost of a bounce buffer</a></li>
-          <li><a href="#diagram-tax">Visualizing the tax</a></li>
-          <li><a href="#where">Where they show up in modern AI stacks</a></li>
-          <li><a href="#taxonomy">A practical taxonomy</a></li>
-          <li><a href="#hardware">The hardware seam: PCIe, IOMMU, and pinned memory</a></li>
-          <li><a href="#zero-copy">The illusion of zero-copy</a></li>
-          <li><a href="#better">What good systems do instead</a></li>
-          <li><a href="#close">Final thought</a></li>
-        </ol>
-      </nav>
-
-      <!-- ── 1. INTRO ── -->
-      <section id="intro">
-        <p class="lede">
+<div class="wrap">
+<article data-pagefind-body="">
+<!-- TABLE OF CONTENTS -->
+<nav aria-label="Table of contents" class="toc">
+<div class="toc-title">Contents</div>
+<ol>
+<li><a href="#intro">Why this matters now</a></li>
+<li><a href="#definition">What a bounce buffer is</a></li>
+<li><a href="#why-exist">Why bounce buffers exist</a></li>
+<li><a href="#ai-era">Why they matter more in the AI era</a></li>
+<li><a href="#cost">The real cost of a bounce buffer</a></li>
+<li><a href="#diagram-tax">Visualizing the tax</a></li>
+<li><a href="#where">Where they show up in modern AI stacks</a></li>
+<li><a href="#taxonomy">A practical taxonomy</a></li>
+<li><a href="#hardware">The hardware seam: PCIe, IOMMU, and pinned memory</a></li>
+<li><a href="#zero-copy">The illusion of zero-copy</a></li>
+<li><a href="#better">What good systems do instead</a></li>
+<li><a href="#close">Final thought</a></li>
+</ol>
+</nav>
+<!-- ── 1. INTRO ── -->
+<section id="intro">
+<p class="lede">
           For a long time, performance discussions in computing centered on compute itself:
           faster processors, more cores, better accelerators, more FLOPS. In that world,
           extra memory copies were treated as second-order annoyances — they mattered,
           but they were rarely the main event.
         </p>
-        <p>
+<p>
           That is no longer true. In modern AI systems — especially those built around long-context
           inference, retrieval-heavy pipelines, distributed serving, agent loops, and multi-stage
           data orchestration — the dominant cost is often not arithmetic. It is data movement.
         </p>
-        <p>
+<p>
           More specifically, it is the set of places where data cannot go directly from producer to
           consumer and is forced to stop somewhere in the middle. Those intermediate stops hide inside
           kernels, frameworks, drivers, runtimes, or "optimized" middleware. But they are still there,
           and they still cost real time.
         </p>
-        <blockquote>
-          <p>A bounce buffer is the tax you pay when the data path is not truly end to end.</p>
-        </blockquote>
-      </section>
-
-      <!-- ── 2. DEFINITION ── -->
-      <section id="definition">
-        <h2>What a bounce buffer is</h2>
-        <p>
+<blockquote>
+<p>A bounce buffer is the tax you pay when the data path is not truly end to end.</p>
+</blockquote>
+</section>
+<!-- ── 2. DEFINITION ── -->
+<section id="definition">
+<h2 id="what-a-bounce-buffer-is">What a bounce buffer is</h2>
+<p>
           A bounce buffer is a temporary intermediate memory region used when data cannot move
           directly from its source to its final destination. Instead of flowing straight through,
           the data is staged, copied, or mapped into a safe or convenient location first, then
           moved again to where it was actually needed.
         </p>
-        <pre><code>source  →  [temporary buffer]  →  final destination</code></pre>
-        <p>
+<pre><code>source  →  [temporary buffer]  →  final destination</code></pre>
+<p>
           That temporary region is not the point of the operation — it is a compromise. The data
           "bounces" through it because the system cannot complete the transfer directly.
         </p>
-        <p>
+<p>
           At a systems level, bounce buffers appear when one endpoint cannot directly address the
           memory of another, when mappings are missing, when alignment or pinning constraints are
           not satisfied, or when the software stack wants additional control over the bytes.
         </p>
-      </section>
-
-      <!-- ── 3. WHY EXIST ── -->
-      <section id="why-exist">
-        <h2>Why bounce buffers exist</h2>
-        <p>
+</section>
+<!-- ── 3. WHY EXIST ── -->
+<section id="why-exist">
+<h2 id="why-bounce-buffers-exist">Why bounce buffers exist</h2>
+<p>
           Bounce buffers are not always signs of bad engineering. Sometimes they are the practical
           glue that makes an otherwise incompatible system function at all. But they always indicate
           some form of impedance mismatch between producer and consumer.
         </p>
-
-        <div class="two-col">
-          <div class="mini-card">
-            <div class="label">Addressability mismatch</div>
-            <p>A device cannot directly DMA into the final target memory region, so the transfer is staged through a region it can safely reach.</p>
-          </div>
-          <div class="mini-card">
-            <div class="label">Protection or mapping mismatch</div>
-            <p>Memory is not pinned, not registered, not mapped correctly, or not valid for direct access under the current IOMMU or driver model.</p>
-          </div>
-          <div class="mini-card">
-            <div class="label">Format or semantic mismatch</div>
-            <p>Raw bytes need to become message objects, tensors, token blocks, or RPC payloads before downstream components can consume them.</p>
-          </div>
-          <div class="mini-card">
-            <div class="label">Scheduling mismatch</div>
-            <p>One subsystem produces data asynchronously and stages it so another subsystem can consume it later, with explicit ownership transfer and synchronization.</p>
-          </div>
-        </div>
-
-        <p>
+<div class="two-col">
+<div class="mini-card">
+<div class="label">Addressability mismatch</div>
+<p>A device cannot directly DMA into the final target memory region, so the transfer is staged through a region it can safely reach.</p>
+</div>
+<div class="mini-card">
+<div class="label">Protection or mapping mismatch</div>
+<p>Memory is not pinned, not registered, not mapped correctly, or not valid for direct access under the current IOMMU or driver model.</p>
+</div>
+<div class="mini-card">
+<div class="label">Format or semantic mismatch</div>
+<p>Raw bytes need to become message objects, tensors, token blocks, or RPC payloads before downstream components can consume them.</p>
+</div>
+<div class="mini-card">
+<div class="label">Scheduling mismatch</div>
+<p>One subsystem produces data asynchronously and stages it so another subsystem can consume it later, with explicit ownership transfer and synchronization.</p>
+</div>
+</div>
+<p>
           The deeper rule is simple: bounce buffers appear at architectural impedance mismatches.
           The source can produce the data. The destination can consume the data. But the path between
           them is not yet direct.
         </p>
-      </section>
-
-      <!-- ── 4. AI ERA ── -->
-      <section id="ai-era">
-        <h2>Why they matter more in the AI era</h2>
-        <p>
+</section>
+<!-- ── 4. AI ERA ── -->
+<section id="ai-era">
+<h2 id="why-they-matter-more-in-the-ai-era">Why they matter more in the AI era</h2>
+<p>
           AI changes the economics of system design. Modern GPUs can execute extraordinary amounts of
           work per second — but only if they are continuously fed. At the same time, AI workloads are
           increasingly iterative, streaming, and context-heavy. Data is not loaded once and computed
           on in isolation. It is constantly retrieved, transformed, staged, batched, streamed, cached,
           spilled, and reloaded.
         </p>
-        <p>
+<p>
           That means even "small" extra copies become expensive when repeated at token-scale or
           request-scale across large fleets. What used to hide in the noise becomes the actual limiter.
         </p>
-        <div class="callout">
-          <p>
+<div class="callout">
+<p>
             In older systems, compute often hid data movement inefficiency. In AI systems, data movement
             often determines whether expensive compute stays busy at all.
           </p>
-        </div>
-        <p>
+</div>
+<p>
           This is why modern accelerator-centric technologies keep emphasizing direct paths,
           peer-to-peer transfers, and DMA-driven movement. They are not chasing elegance. They are
           reacting to a system bottleneck that has become too expensive to ignore.
         </p>
-      </section>
-
-      <!-- ── 5. REAL COST ── -->
-      <section id="cost">
-        <h2>The real cost of a bounce buffer</h2>
-        <p>
+</section>
+<!-- ── 5. REAL COST ── -->
+<section id="cost">
+<h2 id="the-real-cost-of-a-bounce-buffer">The real cost of a bounce buffer</h2>
+<p>
           It is tempting to think of a bounce buffer as "just one extra memcpy." That is too narrow.
           A bounce buffer imposes multiple forms of cost simultaneously.
         </p>
-        <ul>
-          <li><strong>Extra memory bandwidth:</strong> data gets read and written again, often across already-contended memory channels.</li>
-          <li><strong>CPU overhead:</strong> software may need to copy, map, synchronize, track, or repackage the data.</li>
-          <li><strong>Latency amplification:</strong> each extra stage adds delay, and multiple stages stack quickly.</li>
-          <li><strong>Cache pollution:</strong> host caches fill with data that was never meant to be processed there.</li>
-          <li><strong>Coordination overhead:</strong> ownership handoffs, fences, wakeups, and bookkeeping often cost nearly as much as the copy itself.</li>
-        </ul>
-        <p>
+<ul>
+<li><strong>Extra memory bandwidth:</strong> data gets read and written again, often across already-contended memory channels.</li>
+<li><strong>CPU overhead:</strong> software may need to copy, map, synchronize, track, or repackage the data.</li>
+<li><strong>Latency amplification:</strong> each extra stage adds delay, and multiple stages stack quickly.</li>
+<li><strong>Cache pollution:</strong> host caches fill with data that was never meant to be processed there.</li>
+<li><strong>Coordination overhead:</strong> ownership handoffs, fences, wakeups, and bookkeeping often cost nearly as much as the copy itself.</li>
+</ul>
+<p>
           That last point is underrated. Bounce buffers do not only waste bandwidth — they force
           more control-plane work. Every extra staging point creates more synchronization and more
           chances for queueing, head-of-line blocking, and subtle jitter.
         </p>
-        <p>
+<p>
           In inference systems, that jitter shows up as <strong>tail latency</strong>, not just average latency.
           A request that briefly stalls because a software bounce window is congested, a fallback
           path is taken, or memory was not prepared the way the fast path expected can create
           exactly the kind of p99 spike that makes a model feel erratic — even when median latency looks fine.
         </p>
-        <p>
+<p>
           There is also a security dimension. Every time sensitive data bounces into an extra kernel,
           runtime, or application-managed buffer, the number of places where model weights, prompts,
           retrieved context, or tool outputs are temporarily parked in memory goes up. A cleaner
           direct path is not only faster; it reduces exposure by shrinking the number of intermediate
           surfaces that need to be trusted, scrubbed, or monitored.
         </p>
-      </section>
-
-      <!-- ── 6. VISUALIZING THE TAX ── -->
-      <section id="diagram-tax">
-        <h2>Visualizing the tax</h2>
-        <p>
+</section>
+<!-- ── 6. VISUALIZING THE TAX ── -->
+<section id="diagram-tax">
+<h2 id="visualizing-the-tax">Visualizing the tax</h2>
+<p>
           For a systems audience, the easiest way to see a bounce buffer is to draw the whole
           path rather than talk about it abstractly. The key seam is usually the CPU and
           host-memory domain: the place where data stages because the producer and the
           accelerator still do not have a direct admissible path between them.
         </p>
-
-        <!-- FIGURE 1: Fast path vs bounce path full architecture -->
-        <figure class="figure">
-          <div class="figure-inner">
-            <svg viewBox="0 0 880 480" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
-              <defs>
-                <linearGradient id="fast-grad" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stop-color="#5b9cf6" stop-opacity="0.9"/>
-                  <stop offset="100%" stop-color="#4ade80" stop-opacity="0.9"/>
-                </linearGradient>
-                <linearGradient id="bounce-grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="rgba(255,159,62,0.14)"/>
-                  <stop offset="100%" stop-color="rgba(255,159,62,0.04)"/>
-                </linearGradient>
-                <marker id="af" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4ade80"/></marker>
-                <marker id="ab" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#ff9f3e"/></marker>
-                <marker id="ab2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#f97070"/></marker>
-                <filter id="glow-f"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-              </defs>
-              <rect width="880" height="480" fill="rgba(6,8,14,0.98)"/>
-
-              <!-- Header -->
-              <text x="440" y="34" text-anchor="middle" font-family="Bricolage Grotesque, sans-serif" font-weight="700" font-size="17" fill="#eef2fa">NIC/NVMe → GPU: Fast Path vs Bounce Path</text>
-              <text x="440" y="54" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#3a4858">the host-memory domain is where the tax is collected</text>
-
-              <!-- ── FAST PATH ── -->
-              <text x="40" y="90" font-family="JetBrains Mono, monospace" font-size="10" fill="#4ade80" letter-spacing="0.08em">FAST PATH</text>
-
-              <!-- NIC/NVMe box -->
-              <rect x="40" y="100" width="120" height="56" rx="12" fill="rgba(91,156,246,0.1)" stroke="rgba(91,156,246,0.4)" stroke-width="1.5"/>
-              <text x="100" y="123" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" fill="#eef2fa" font-weight="600">NIC / NVMe</text>
-              <text x="100" y="142" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#3a6090">producer</text>
-
-              <!-- Fast path arrow -->
-              <line x1="160" y1="128" x2="716" y2="128" stroke="url(#fast-grad)" stroke-width="3.5" marker-end="url(#af)" filter="url(#glow-f)"/>
-              <text x="440" y="118" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#4ade80" font-weight="600">P2P / GPUDirect — descriptor-driven, no host staging</text>
-              <text x="440" y="148" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#2a4030">memory registered · IOMMU mapped · peer-to-peer admissible</text>
-
-              <!-- GPU box fast -->
-              <rect x="720" y="100" width="120" height="56" rx="12" fill="rgba(74,222,128,0.1)" stroke="rgba(74,222,128,0.4)" stroke-width="1.5"/>
-              <text x="780" y="123" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" fill="#eef2fa" font-weight="600">GPU VRAM</text>
-              <text x="780" y="142" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#2a5030">destination</text>
-
-              <!-- Divider -->
-              <line x1="40" y1="178" x2="840" y2="178" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
-
-              <!-- ── BOUNCE PATH ── -->
-              <text x="40" y="202" font-family="JetBrains Mono, monospace" font-size="10" fill="#ff9f3e" letter-spacing="0.08em">BOUNCE PATH</text>
-
-              <!-- Host memory zone background -->
-              <rect x="190" y="210" width="450" height="200" rx="16" fill="url(#bounce-grad)" stroke="rgba(255,159,62,0.2)" stroke-dasharray="7,4" stroke-width="1.5"/>
-              <text x="415" y="402" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="rgba(255,159,62,0.7)" font-style="italic">Host Memory Seam — "The Tax Collection Office"</text>
-
-              <!-- NIC/NVMe bounce -->
-              <rect x="40" y="250" width="120" height="56" rx="12" fill="rgba(91,156,246,0.07)" stroke="rgba(91,156,246,0.25)" stroke-width="1.5"/>
-              <text x="100" y="273" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" fill="#eef2fa" font-weight="600">NIC / NVMe</text>
-              <text x="100" y="292" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#3a5060">producer</text>
-
-              <!-- Step 1: kernel buffer -->
-              <line x1="160" y1="278" x2="208" y2="278" stroke="#ff9f3e" stroke-width="2" marker-end="url(#ab)" opacity="0.9"/>
-              <circle cx="155" cy="278" r="5" fill="#ff9f3e" opacity="0.9"/>
-              <text x="184" y="268" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#ff9f3e">copy ①</text>
-
-              <rect x="208" y="250" width="110" height="56" rx="12" fill="rgba(255,159,62,0.1)" stroke="rgba(255,159,62,0.4)" stroke-width="1.5"/>
-              <text x="263" y="274" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#ffcc7a" font-weight="600">Kernel</text>
-              <text x="263" y="291" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#ffcc7a">Buffer</text>
-
-              <!-- Step 2: user buffer -->
-              <line x1="318" y1="278" x2="366" y2="278" stroke="#ff9f3e" stroke-width="2" marker-end="url(#ab)" opacity="0.9"/>
-              <circle cx="313" cy="278" r="5" fill="#ff9f3e" opacity="0.9"/>
-              <text x="342" y="268" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#ff9f3e">copy ②</text>
-
-              <rect x="366" y="250" width="110" height="56" rx="12" fill="rgba(255,159,62,0.1)" stroke="rgba(255,159,62,0.4)" stroke-width="1.5"/>
-              <text x="421" y="274" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#ffcc7a" font-weight="600">User</text>
-              <text x="421" y="291" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#ffcc7a">Buffer</text>
-
-              <!-- Step 3: pinned pool -->
-              <line x1="476" y1="278" x2="524" y2="278" stroke="#ff9f3e" stroke-width="2" marker-end="url(#ab)" opacity="0.9"/>
-              <circle cx="471" cy="278" r="5" fill="#ff9f3e" opacity="0.9"/>
-              <text x="500" y="268" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#ff9f3e">copy ③</text>
-
-              <rect x="524" y="250" width="110" height="56" rx="12" fill="rgba(255,159,62,0.1)" stroke="rgba(255,159,62,0.4)" stroke-width="1.5"/>
-              <text x="579" y="274" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#ffcc7a" font-weight="600">Pinned</text>
-              <text x="579" y="291" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#ffcc7a">Pool</text>
-
-              <!-- Step 4 to GPU -->
-              <line x1="634" y1="278" x2="716" y2="278" stroke="#f97070" stroke-width="2" marker-end="url(#ab2)" opacity="0.8"/>
-              <circle cx="629" cy="278" r="5" fill="#f97070" opacity="0.9"/>
-              <text x="675" y="268" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#f97070">copy ④</text>
-
-              <!-- GPU bounce -->
-              <rect x="720" y="250" width="120" height="56" rx="12" fill="rgba(74,222,128,0.07)" stroke="rgba(74,222,128,0.25)" stroke-width="1.5"/>
-              <text x="780" y="273" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" fill="#eef2fa" font-weight="600">GPU VRAM</text>
-              <text x="780" y="292" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#2a5030">destination</text>
-
-              <!-- cost annotations below -->
-              <rect x="40" y="428" width="800" height="40" rx="10" fill="rgba(255,159,62,0.04)" stroke="rgba(255,159,62,0.12)"/>
-              <text x="440" y="443" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#5a6880">bounce path cost: ×4 memory bandwidth · CPU involvement · cache pollution · p99 jitter · coordination overhead</text>
-              <text x="440" y="460" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#4d3520">each copy point is a latency stage and a potential queueing / head-of-line event</text>
-            </svg>
-          </div>
-          <figcaption><strong>Figure 1.</strong> Architectural contrast between a native P2P/GPUDirect path (top) and the staged bounce path through the host-memory seam (bottom). Each ④ copy point is a tax collection event.</figcaption>
-        </figure>
-
-        <p>
+<!-- FIGURE 1: Fast path vs bounce path full architecture -->
+<figure class="figure">
+<div class="figure-inner">
+<svg style="width:100%;height:auto;display:block;" viewbox="0 0 880 480" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<lineargradient id="fast-grad" x1="0" x2="1" y1="0" y2="0">
+<stop offset="0%" stop-color="#5b9cf6" stop-opacity="0.9"></stop>
+<stop offset="100%" stop-color="#4ade80" stop-opacity="0.9"></stop>
+</lineargradient>
+<lineargradient id="bounce-grad" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="rgba(255,159,62,0.14)"></stop>
+<stop offset="100%" stop-color="rgba(255,159,62,0.04)"></stop>
+</lineargradient>
+<marker id="af" markerheight="8" markerwidth="8" orient="auto" refx="6" refy="3"><path d="M0,0 L0,6 L8,3 z" fill="#4ade80"></path></marker>
+<marker id="ab" markerheight="8" markerwidth="8" orient="auto" refx="6" refy="3"><path d="M0,0 L0,6 L8,3 z" fill="#ff9f3e"></path></marker>
+<marker id="ab2" markerheight="8" markerwidth="8" orient="auto" refx="6" refy="3"><path d="M0,0 L0,6 L8,3 z" fill="#f97070"></path></marker>
+<filter id="glow-f"><fegaussianblur result="b" stddeviation="3"></fegaussianblur><femerge><femergenode in="b"></femergenode><femergenode in="SourceGraphic"></femergenode></femerge></filter>
+</defs>
+<rect fill="rgba(6,8,14,0.98)" height="480" width="880"></rect>
+<!-- Header -->
+<text fill="#eef2fa" font-family="Bricolage Grotesque, sans-serif" font-size="17" font-weight="700" text-anchor="middle" x="440" y="34">NIC/NVMe → GPU: Fast Path vs Bounce Path</text>
+<text fill="#3a4858" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="440" y="54">the host-memory domain is where the tax is collected</text>
+<!-- ── FAST PATH ── -->
+<text fill="#4ade80" font-family="JetBrains Mono, monospace" font-size="10" letter-spacing="0.08em" x="40" y="90">FAST PATH</text>
+<!-- NIC/NVMe box -->
+<rect fill="rgba(91,156,246,0.1)" height="56" rx="12" stroke="rgba(91,156,246,0.4)" stroke-width="1.5" width="120" x="40" y="100"></rect>
+<text fill="#eef2fa" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600" text-anchor="middle" x="100" y="123">NIC / NVMe</text>
+<text fill="#3a6090" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="100" y="142">producer</text>
+<!-- Fast path arrow -->
+<line filter="url(#glow-f)" marker-end="url(#af)" stroke="url(#fast-grad)" stroke-width="3.5" x1="160" x2="716" y1="128" y2="128"></line>
+<text fill="#4ade80" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600" text-anchor="middle" x="440" y="118">P2P / GPUDirect — descriptor-driven, no host staging</text>
+<text fill="#2a4030" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="440" y="148">memory registered · IOMMU mapped · peer-to-peer admissible</text>
+<!-- GPU box fast -->
+<rect fill="rgba(74,222,128,0.1)" height="56" rx="12" stroke="rgba(74,222,128,0.4)" stroke-width="1.5" width="120" x="720" y="100"></rect>
+<text fill="#eef2fa" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600" text-anchor="middle" x="780" y="123">GPU VRAM</text>
+<text fill="#2a5030" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="780" y="142">destination</text>
+<!-- Divider -->
+<line stroke="rgba(255,255,255,0.06)" stroke-width="1" x1="40" x2="840" y1="178" y2="178"></line>
+<!-- ── BOUNCE PATH ── -->
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="10" letter-spacing="0.08em" x="40" y="202">BOUNCE PATH</text>
+<!-- Host memory zone background -->
+<rect fill="url(#bounce-grad)" height="200" rx="16" stroke="rgba(255,159,62,0.2)" stroke-dasharray="7,4" stroke-width="1.5" width="450" x="190" y="210"></rect>
+<text fill="rgba(255,159,62,0.7)" font-family="JetBrains Mono, monospace" font-size="11" font-style="italic" text-anchor="middle" x="415" y="402">Host Memory Seam — "The Tax Collection Office"</text>
+<!-- NIC/NVMe bounce -->
+<rect fill="rgba(91,156,246,0.07)" height="56" rx="12" stroke="rgba(91,156,246,0.25)" stroke-width="1.5" width="120" x="40" y="250"></rect>
+<text fill="#eef2fa" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600" text-anchor="middle" x="100" y="273">NIC / NVMe</text>
+<text fill="#3a5060" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="100" y="292">producer</text>
+<!-- Step 1: kernel buffer -->
+<line marker-end="url(#ab)" opacity="0.9" stroke="#ff9f3e" stroke-width="2" x1="160" x2="208" y1="278" y2="278"></line>
+<circle cx="155" cy="278" fill="#ff9f3e" opacity="0.9" r="5"></circle>
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="middle" x="184" y="268">copy ①</text>
+<rect fill="rgba(255,159,62,0.1)" height="56" rx="12" stroke="rgba(255,159,62,0.4)" stroke-width="1.5" width="110" x="208" y="250"></rect>
+<text fill="#ffcc7a" font-family="JetBrains Mono, monospace" font-size="11" font-weight="600" text-anchor="middle" x="263" y="274">Kernel</text>
+<text fill="#ffcc7a" font-family="JetBrains Mono, monospace" font-size="11" text-anchor="middle" x="263" y="291">Buffer</text>
+<!-- Step 2: user buffer -->
+<line marker-end="url(#ab)" opacity="0.9" stroke="#ff9f3e" stroke-width="2" x1="318" x2="366" y1="278" y2="278"></line>
+<circle cx="313" cy="278" fill="#ff9f3e" opacity="0.9" r="5"></circle>
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="middle" x="342" y="268">copy ②</text>
+<rect fill="rgba(255,159,62,0.1)" height="56" rx="12" stroke="rgba(255,159,62,0.4)" stroke-width="1.5" width="110" x="366" y="250"></rect>
+<text fill="#ffcc7a" font-family="JetBrains Mono, monospace" font-size="11" font-weight="600" text-anchor="middle" x="421" y="274">User</text>
+<text fill="#ffcc7a" font-family="JetBrains Mono, monospace" font-size="11" text-anchor="middle" x="421" y="291">Buffer</text>
+<!-- Step 3: pinned pool -->
+<line marker-end="url(#ab)" opacity="0.9" stroke="#ff9f3e" stroke-width="2" x1="476" x2="524" y1="278" y2="278"></line>
+<circle cx="471" cy="278" fill="#ff9f3e" opacity="0.9" r="5"></circle>
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="middle" x="500" y="268">copy ③</text>
+<rect fill="rgba(255,159,62,0.1)" height="56" rx="12" stroke="rgba(255,159,62,0.4)" stroke-width="1.5" width="110" x="524" y="250"></rect>
+<text fill="#ffcc7a" font-family="JetBrains Mono, monospace" font-size="11" font-weight="600" text-anchor="middle" x="579" y="274">Pinned</text>
+<text fill="#ffcc7a" font-family="JetBrains Mono, monospace" font-size="11" text-anchor="middle" x="579" y="291">Pool</text>
+<!-- Step 4 to GPU -->
+<line marker-end="url(#ab2)" opacity="0.8" stroke="#f97070" stroke-width="2" x1="634" x2="716" y1="278" y2="278"></line>
+<circle cx="629" cy="278" fill="#f97070" opacity="0.9" r="5"></circle>
+<text fill="#f97070" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="middle" x="675" y="268">copy ④</text>
+<!-- GPU bounce -->
+<rect fill="rgba(74,222,128,0.07)" height="56" rx="12" stroke="rgba(74,222,128,0.25)" stroke-width="1.5" width="120" x="720" y="250"></rect>
+<text fill="#eef2fa" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600" text-anchor="middle" x="780" y="273">GPU VRAM</text>
+<text fill="#2a5030" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="780" y="292">destination</text>
+<!-- cost annotations below -->
+<rect fill="rgba(255,159,62,0.04)" height="40" rx="10" stroke="rgba(255,159,62,0.12)" width="800" x="40" y="428"></rect>
+<text fill="#5a6880" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="440" y="443">bounce path cost: ×4 memory bandwidth · CPU involvement · cache pollution · p99 jitter · coordination overhead</text>
+<text fill="#4d3520" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="440" y="460">each copy point is a latency stage and a potential queueing / head-of-line event</text>
+</svg>
+</div>
+<figcaption><strong>Figure 1.</strong> Architectural contrast between a native P2P/GPUDirect path (top) and the staged bounce path through the host-memory seam (bottom). Each ④ copy point is a tax collection event.</figcaption>
+</figure>
+<p>
           The important thing is not the exact naming of every box — different stacks rename these
           stages. What matters is the pattern: once a byte stops in host memory for compatibility,
           ownership transfer, or convenience, the system starts paying tax in bandwidth,
           latency, coordination, and p99 jitter.
         </p>
-
-        <!-- 4-box tax summary -->
-        <div class="four-col">
-          <div class="mini-card">
-            <div class="label">Bandwidth tax</div>
-            <p>Host memory fabric charged twice or more: once to receive data, again to move it toward the real consumer.</p>
-          </div>
-          <div class="mini-card">
-            <div class="label">Latency tax</div>
-            <p>Each stage introduces delay; under load those delays become queueing points that dominate p99 behavior.</p>
-          </div>
-          <div class="mini-card">
-            <div class="label">CPU tax</div>
-            <p>Copy, synchronize, map, repackage — the CPU ends up in a path it should never need to touch.</p>
-          </div>
-          <div class="mini-card">
-            <div class="label">Control-plane tax</div>
-            <p>More buffers → more bookkeeping, fencing, ownership handoff, cleanup, and fallback cases.</p>
-          </div>
-        </div>
-      </section>
-
-      <!-- ── 7. WHERE THEY SHOW UP ── -->
-      <section id="where">
-        <h2>Where bounce buffers show up in modern AI stacks</h2>
-
-        <h3>1. Storage to GPU paths</h3>
-        <p>
+<!-- 4-box tax summary -->
+<div class="four-col">
+<div class="mini-card">
+<div class="label">Bandwidth tax</div>
+<p>Host memory fabric charged twice or more: once to receive data, again to move it toward the real consumer.</p>
+</div>
+<div class="mini-card">
+<div class="label">Latency tax</div>
+<p>Each stage introduces delay; under load those delays become queueing points that dominate p99 behavior.</p>
+</div>
+<div class="mini-card">
+<div class="label">CPU tax</div>
+<p>Copy, synchronize, map, repackage — the CPU ends up in a path it should never need to touch.</p>
+</div>
+<div class="mini-card">
+<div class="label">Control-plane tax</div>
+<p>More buffers → more bookkeeping, fencing, ownership handoff, cleanup, and fallback cases.</p>
+</div>
+</div>
+</section>
+<!-- ── 7. WHERE THEY SHOW UP ── -->
+<section id="where">
+<h2 id="where-bounce-buffers-show-up-in-modern-ai-stacks">Where bounce buffers show up in modern AI stacks</h2>
+<h3>1. Storage to GPU paths</h3>
+<p>
           The classic path is still one of the most important. A naive or traditional flow stages
           data through kernel buffers, user-space buffers, and pinned host memory before it ever
           reaches GPU memory.
         </p>
-        <pre><code>storage → kernel/page cache → user buffer → pinned host buffer → GPU buffer</code></pre>
-        <p>
+<pre><code>storage → kernel/page cache → user buffer → pinned host buffer → GPU buffer</code></pre>
+<p>
           Each stage may exist for a seemingly reasonable reason, but together they form a buffer
           chain rather than a direct stream.
         </p>
-
-        <h3>2. Network to GPU paths</h3>
-        <p>
+<h3>2. Network to GPU paths</h3>
+<p>
           In distributed AI systems, incoming data frequently lands in kernel-managed or
           host-resident buffers before it is ready for device consumption. Even when the network
           path looks optimized at a high level, staging often persists inside NIC, driver, or
           runtime boundaries.
         </p>
-
-        <h3>3. KV-cache spill and reload paths</h3>
-        <p>
+<h3>3. KV-cache spill and reload paths</h3>
+<p>
           Long-context inference creates a newer and subtler hotspot. When GPU memory pressure
           rises, context state and KV structures may spill into host memory or lower tiers. When
           needed again, they are rehydrated and moved back — often through multiple staged
           transitions rather than a clean direct path.
         </p>
-
-        <h3>4. Framework preprocessing pipelines</h3>
-        <p>
+<h3>4. Framework preprocessing pipelines</h3>
+<p>
           Data loaders, tokenizers, collators, batch assemblers, tensor converters, and host-side
           preprocessors often introduce software-level bounce buffers. They are easy to miss
           because they are framed as normal pipeline stages rather than copies.
         </p>
-
-        <h3>5. Agentic and tool-calling systems</h3>
-        <p>
+<h3>5. Agentic and tool-calling systems</h3>
+<p>
           Agent loops repeatedly move tool outputs, retrieval results, serialized state, and
           structured responses between runtimes, APIs, host memory, and model-serving components.
           Even if no single step looks large, the system as a whole can become deeply bounce-buffered.
         </p>
-      </section>
-
-      <!-- ── 8. TAXONOMY ── -->
-      <section id="taxonomy">
-        <h2>A practical taxonomy of bounce buffers</h2>
-        <p>Not all bounce buffers are the same, and knowing which layer is responsible matters for knowing how to fix them.</p>
-
-        <!-- FIGURE 2: Taxonomy stack diagram -->
-        <figure class="figure">
-          <div class="figure-inner">
-            <svg viewBox="0 0 860 440" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
-              <defs>
-                <linearGradient id="tax-bg" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="rgba(255,159,62,0.08)"/>
-                  <stop offset="100%" stop-color="rgba(255,159,62,0.02)"/>
-                </linearGradient>
-              </defs>
-              <rect width="860" height="440" fill="rgba(6,8,14,0.98)"/>
-              <text x="430" y="34" text-anchor="middle" font-family="Bricolage Grotesque, sans-serif" font-weight="700" font-size="17" fill="#eef2fa">Bounce Buffer Taxonomy by Layer</text>
-              <text x="430" y="54" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#3a4858">each layer has different causes, different fixes</text>
-
-              <!-- Layer bars - stacked from bottom (hardware) to top (application) -->
-              <!-- HW layer -->
-              <rect x="40" y="376" width="780" height="48" rx="12" fill="rgba(249,112,112,0.07)" stroke="rgba(249,112,112,0.3)" stroke-width="1.5"/>
-              <text x="80" y="396" font-family="JetBrains Mono, monospace" font-size="10" fill="#f97070" font-weight="600" letter-spacing="0.05em">HARDWARE</text>
-              <text x="80" y="414" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a4040">DMA mask limits · PCIe topology (no P2P) · alignment constraints · IOMMU gaps</text>
-              <text x="790" y="404" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a3030">hardest to eliminate</text>
-
-              <!-- Kernel layer -->
-              <rect x="40" y="316" width="780" height="48" rx="12" fill="rgba(255,159,62,0.07)" stroke="rgba(255,159,62,0.28)" stroke-width="1.5"/>
-              <text x="80" y="336" font-family="JetBrains Mono, monospace" font-size="10" fill="#ff9f3e" font-weight="600" letter-spacing="0.05em">KERNEL</text>
-              <text x="80" y="354" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a4428">OS compatibility buffers · driver abstraction staging · safety/protection regions · fallback paths</text>
-              <text x="790" y="344" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="9" fill="#4a3820">often invisible to apps</text>
-
-              <!-- Runtime layer -->
-              <rect x="40" y="256" width="780" height="48" rx="12" fill="rgba(255,204,122,0.06)" stroke="rgba(255,204,122,0.25)" stroke-width="1.5"/>
-              <text x="80" y="276" font-family="JetBrains Mono, monospace" font-size="10" fill="#ffcc7a" font-weight="600" letter-spacing="0.05em">RUNTIME</text>
-              <text x="80" y="294" font-family="JetBrains Mono, monospace" font-size="9" fill="#4a4020">queue managers · ownership transfer · async handoff · retry/monitoring buffers</text>
-              <text x="790" y="284" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="9" fill="#4a3e20">often justified locally</text>
-
-              <!-- Framework layer -->
-              <rect x="40" y="196" width="780" height="48" rx="12" fill="rgba(147,197,253,0.06)" stroke="rgba(147,197,253,0.22)" stroke-width="1.5"/>
-              <text x="80" y="216" font-family="JetBrains Mono, monospace" font-size="10" fill="#93c5fd" font-weight="600" letter-spacing="0.05em">FRAMEWORK</text>
-              <text x="80" y="234" font-family="JetBrains Mono, monospace" font-size="9" fill="#2a3a50">temp tensors · pinned memory queues · host-side staging · conversion buffers · preprocessing outputs</text>
-              <text x="790" y="224" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="9" fill="#2a3a50">look like "pipeline stages"</text>
-
-              <!-- Application layer -->
-              <rect x="40" y="136" width="780" height="48" rx="12" fill="rgba(74,222,128,0.05)" stroke="rgba(74,222,128,0.2)" stroke-width="1.5"/>
-              <text x="80" y="156" font-family="JetBrains Mono, monospace" font-size="10" fill="#4ade80" font-weight="600" letter-spacing="0.05em">APPLICATION</text>
-              <text x="80" y="174" font-family="JetBrains Mono, monospace" font-size="9" fill="#204030">RPC payload copies · serialization buffers · HTTP intermediates · JSON→tensor churn in agent loops</text>
-              <text x="790" y="164" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="9" fill="#204030">often self-inflicted</text>
-
-              <!-- Connecting lines / data flow indicator -->
-              <line x1="30" y1="136" x2="30" y2="424" stroke="rgba(255,159,62,0.15)" stroke-width="2"/>
-              <text x="22" y="280" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="rgba(255,159,62,0.4)" transform="rotate(-90,22,280)">data flows down — tax collected at each seam</text>
-
-              <!-- Fix column -->
-              <rect x="42" y="72" width="776" height="52" rx="12" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.06)"/>
-              <text x="430" y="92" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#5a6880" font-weight="600">HOW TO FIX AT EACH LAYER</text>
-              <text x="80" y="110" font-family="JetBrains Mono, monospace" font-size="9" fill="#3a4858">HW: P2P / GPUDirect · kernel: registered memory / io_uring · runtime: descriptor-driven design · framework: pinned pre-allocation · app: zero-copy serialization</text>
-            </svg>
-          </div>
-          <figcaption><strong>Figure 2.</strong> Bounce buffer taxonomy by system layer. Each layer has distinct causes and distinct remedies. The deepest layers are hardest to eliminate; the application layer is often the most self-inflicted.</figcaption>
-        </figure>
-
-        <h3>Hardware bounce buffers</h3>
-        <p>
+</section>
+<!-- ── 8. TAXONOMY ── -->
+<section id="taxonomy">
+<h2 id="a-practical-taxonomy-of-bounce-buffers">A practical taxonomy of bounce buffers</h2>
+<p>Not all bounce buffers are the same, and knowing which layer is responsible matters for knowing how to fix them.</p>
+<!-- FIGURE 2: Taxonomy stack diagram -->
+<figure class="figure">
+<div class="figure-inner">
+<svg style="width:100%;height:auto;display:block;" viewbox="0 0 860 440" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<lineargradient id="tax-bg" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="rgba(255,159,62,0.08)"></stop>
+<stop offset="100%" stop-color="rgba(255,159,62,0.02)"></stop>
+</lineargradient>
+</defs>
+<rect fill="rgba(6,8,14,0.98)" height="440" width="860"></rect>
+<text fill="#eef2fa" font-family="Bricolage Grotesque, sans-serif" font-size="17" font-weight="700" text-anchor="middle" x="430" y="34">Bounce Buffer Taxonomy by Layer</text>
+<text fill="#3a4858" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="430" y="54">each layer has different causes, different fixes</text>
+<!-- Layer bars - stacked from bottom (hardware) to top (application) -->
+<!-- HW layer -->
+<rect fill="rgba(249,112,112,0.07)" height="48" rx="12" stroke="rgba(249,112,112,0.3)" stroke-width="1.5" width="780" x="40" y="376"></rect>
+<text fill="#f97070" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600" letter-spacing="0.05em" x="80" y="396">HARDWARE</text>
+<text fill="#5a4040" font-family="JetBrains Mono, monospace" font-size="9" x="80" y="414">DMA mask limits · PCIe topology (no P2P) · alignment constraints · IOMMU gaps</text>
+<text fill="#5a3030" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="end" x="790" y="404">hardest to eliminate</text>
+<!-- Kernel layer -->
+<rect fill="rgba(255,159,62,0.07)" height="48" rx="12" stroke="rgba(255,159,62,0.28)" stroke-width="1.5" width="780" x="40" y="316"></rect>
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600" letter-spacing="0.05em" x="80" y="336">KERNEL</text>
+<text fill="#5a4428" font-family="JetBrains Mono, monospace" font-size="9" x="80" y="354">OS compatibility buffers · driver abstraction staging · safety/protection regions · fallback paths</text>
+<text fill="#4a3820" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="end" x="790" y="344">often invisible to apps</text>
+<!-- Runtime layer -->
+<rect fill="rgba(255,204,122,0.06)" height="48" rx="12" stroke="rgba(255,204,122,0.25)" stroke-width="1.5" width="780" x="40" y="256"></rect>
+<text fill="#ffcc7a" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600" letter-spacing="0.05em" x="80" y="276">RUNTIME</text>
+<text fill="#4a4020" font-family="JetBrains Mono, monospace" font-size="9" x="80" y="294">queue managers · ownership transfer · async handoff · retry/monitoring buffers</text>
+<text fill="#4a3e20" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="end" x="790" y="284">often justified locally</text>
+<!-- Framework layer -->
+<rect fill="rgba(147,197,253,0.06)" height="48" rx="12" stroke="rgba(147,197,253,0.22)" stroke-width="1.5" width="780" x="40" y="196"></rect>
+<text fill="#93c5fd" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600" letter-spacing="0.05em" x="80" y="216">FRAMEWORK</text>
+<text fill="#2a3a50" font-family="JetBrains Mono, monospace" font-size="9" x="80" y="234">temp tensors · pinned memory queues · host-side staging · conversion buffers · preprocessing outputs</text>
+<text fill="#2a3a50" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="end" x="790" y="224">look like "pipeline stages"</text>
+<!-- Application layer -->
+<rect fill="rgba(74,222,128,0.05)" height="48" rx="12" stroke="rgba(74,222,128,0.2)" stroke-width="1.5" width="780" x="40" y="136"></rect>
+<text fill="#4ade80" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600" letter-spacing="0.05em" x="80" y="156">APPLICATION</text>
+<text fill="#204030" font-family="JetBrains Mono, monospace" font-size="9" x="80" y="174">RPC payload copies · serialization buffers · HTTP intermediates · JSON→tensor churn in agent loops</text>
+<text fill="#204030" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="end" x="790" y="164">often self-inflicted</text>
+<!-- Connecting lines / data flow indicator -->
+<line stroke="rgba(255,159,62,0.15)" stroke-width="2" x1="30" x2="30" y1="136" y2="424"></line>
+<text fill="rgba(255,159,62,0.4)" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" transform="rotate(-90,22,280)" x="22" y="280">data flows down — tax collected at each seam</text>
+<!-- Fix column -->
+<rect fill="rgba(255,255,255,0.02)" height="52" rx="12" stroke="rgba(255,255,255,0.06)" width="776" x="42" y="72"></rect>
+<text fill="#5a6880" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600" text-anchor="middle" x="430" y="92">HOW TO FIX AT EACH LAYER</text>
+<text fill="#3a4858" font-family="JetBrains Mono, monospace" font-size="9" x="80" y="110">HW: P2P / GPUDirect · kernel: registered memory / io_uring · runtime: descriptor-driven design · framework: pinned pre-allocation · app: zero-copy serialization</text>
+</svg>
+</div>
+<figcaption><strong>Figure 2.</strong> Bounce buffer taxonomy by system layer. Each layer has distinct causes and distinct remedies. The deepest layers are hardest to eliminate; the application layer is often the most self-inflicted.</figcaption>
+</figure>
+<h3>Hardware bounce buffers</h3>
+<p>
           These arise because a device cannot directly access the desired target memory region.
           The system stages data in a DMA-safe region the hardware can actually reach.
         </p>
-
-        <h3>Kernel bounce buffers</h3>
-        <p>
+<h3>Kernel bounce buffers</h3>
+<p>
           These are introduced by the operating system for compatibility, safety, abstraction,
           or fallback handling. They are often invisible from application code but still show up
           in the data path.
         </p>
-
-        <h3>Runtime bounce buffers</h3>
-        <p>
+<h3>Runtime bounce buffers</h3>
+<p>
           These appear inside serving runtimes, queue managers, schedulers, and middleware.
           They are often justified in the name of ownership transfer, asynchronous handling,
           batching, retries, or monitoring.
         </p>
-
-        <h3>Framework bounce buffers</h3>
-        <p>
+<h3>Framework bounce buffers</h3>
+<p>
           These live inside the ML stack itself: temporary tensors, pinned memory queues,
           host-side staging structures, conversion buffers, and preprocessing outputs.
         </p>
-
-        <h3>Application bounce buffers</h3>
-        <p>
+<h3>Application bounce buffers</h3>
+<p>
           These are often self-inflicted: RPC payload copies, serialization buffers, HTTP
           intermediates, message wrappers, and convenience allocations that turn what should
           have been a direct stream into a chain of temporary objects.
         </p>
-        <p>
+<p>
           In agentic systems this shows up as serialization churn. A tool emits JSON or
           Protobuf, the CPU parses it into objects, another layer converts those objects into
           framework tensors, and only then does useful model-side consumption begin. The
@@ -922,315 +857,274 @@
           whole chain of temporary host-side representations created while converting a tool
           response into something the model stack can actually use.
         </p>
-
-        <blockquote>
-          <p>Not all bounce buffers are forced by hardware. Many are artifacts of software convenience, abstraction layering, or local optimization that ignores the global data path.</p>
-        </blockquote>
-      </section>
-
-      <!-- ── 9. HARDWARE SEAM ── -->
-      <section id="hardware">
-        <h2>The hardware seam: PCIe topology, IOMMU, and pinned memory</h2>
-        <p>
+<blockquote>
+<p>Not all bounce buffers are forced by hardware. Many are artifacts of software convenience, abstraction layering, or local optimization that ignores the global data path.</p>
+</blockquote>
+</section>
+<!-- ── 9. HARDWARE SEAM ── -->
+<section id="hardware">
+<h2 id="the-hardware-seam-pcie-topology-iommu-and-pinned-memory">The hardware seam: PCIe topology, IOMMU, and pinned memory</h2>
+<p>
           To understand why bounce buffers exist so stubbornly, it helps to look below the
           software stack. Devices do not just "see memory" in a flat, universal pool — they
           operate through a physical topology and a strict address-translation regime. This
           means the producer and the consumer can be logically connected in software while
           remaining physically awkward peers in hardware.
         </p>
-
-        <!-- FIGURE 3: PCIe topology diagram -->
-        <figure class="figure">
-          <div class="figure-inner">
-            <svg viewBox="0 0 860 400" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
-              <defs>
-                <marker id="at" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#5b9cf6"/></marker>
-                <marker id="at-r" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#f97070"/></marker>
-                <marker id="at-g" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#4ade80"/></marker>
-              </defs>
-              <rect width="860" height="400" fill="rgba(6,8,14,0.98)"/>
-              <text x="430" y="32" text-anchor="middle" font-family="Bricolage Grotesque, sans-serif" font-weight="700" font-size="16" fill="#eef2fa">PCIe Topology: Why Host Memory Becomes the Rendezvous Point</text>
-              <text x="430" y="50" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#3a4858">without P2P support, data must travel up to CPU root complex before going down to accelerator</text>
-
-              <!-- CPU / Root Complex (center top) -->
-              <rect x="310" y="70" width="240" height="64" rx="14" fill="rgba(255,159,62,0.1)" stroke="rgba(255,159,62,0.35)" stroke-width="2"/>
-              <text x="430" y="97" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" fill="#eef2fa" font-weight="600">CPU + Root Complex</text>
-              <text x="430" y="116" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#ff9f3e">IOMMU · memory controller · host RAM</text>
-              <text x="430" y="130" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#3a3020">← the mandatory transit point without P2P</text>
-
-              <!-- NIC (left) -->
-              <rect x="60" y="250" width="160" height="60" rx="12" fill="rgba(91,156,246,0.1)" stroke="rgba(91,156,246,0.35)" stroke-width="1.5"/>
-              <text x="140" y="276" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" fill="#eef2fa" font-weight="600">NIC</text>
-              <text x="140" y="294" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#3a6090">PCIe device · DMA engine</text>
-
-              <!-- GPU (right) -->
-              <rect x="640" y="250" width="160" height="60" rx="12" fill="rgba(74,222,128,0.1)" stroke="rgba(74,222,128,0.35)" stroke-width="1.5"/>
-              <text x="720" y="276" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" fill="#eef2fa" font-weight="600">GPU</text>
-              <text x="720" y="294" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#2a5030">PCIe device · VRAM</text>
-
-              <!-- NVMe (far left bottom) -->
-              <rect x="60" y="340" width="160" height="50" rx="12" fill="rgba(147,197,253,0.07)" stroke="rgba(147,197,253,0.22)" stroke-width="1.5"/>
-              <text x="140" y="362" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" fill="#eef2fa" font-weight="600">NVMe SSD</text>
-              <text x="140" y="378" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#2a3a50">PCIe storage device</text>
-
-              <!-- BOUNCE path: NIC → up to CPU → down to GPU -->
-              <!-- NIC up to root complex -->
-              <path d="M 140 250 Q 140 134 310 102" fill="none" stroke="#ff9f3e" stroke-width="2.2" stroke-dasharray="6,4" marker-end="url(#at-r)" opacity="0.85"/>
-              <text x="175" y="175" font-family="JetBrains Mono, monospace" font-size="9" fill="#ff9f3e">① up to root</text>
-              <!-- CPU down to GPU -->
-              <path d="M 550 102 Q 720 134 720 250" fill="none" stroke="#ff9f3e" stroke-width="2.2" stroke-dasharray="6,4" marker-end="url(#at-r)" opacity="0.85"/>
-              <text x="685" y="175" font-family="JetBrains Mono, monospace" font-size="9" fill="#ff9f3e">② down to GPU</text>
-
-              <!-- FAST path: NIC → direct to GPU (if P2P) -->
-              <path d="M 220 280 Q 430 340 640 280" fill="none" stroke="#4ade80" stroke-width="2.5" marker-end="url(#at-g)" opacity="0.8"/>
-              <text x="430" y="330" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#4ade80">P2P direct path (if supported + configured)</text>
-
-              <!-- DMA mask note -->
-              <rect x="240" y="220" width="200" height="40" rx="8" fill="rgba(255,159,62,0.06)" stroke="rgba(255,159,62,0.15)"/>
-              <text x="340" y="237" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#ff9f3e">DMA mask too narrow?</text>
-              <text x="340" y="252" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a4020">forced staging in low-memory window</text>
-
-              <!-- Legend -->
-              <line x1="310" y1="382" x2="340" y2="382" stroke="#ff9f3e" stroke-width="2" stroke-dasharray="5,3"/>
-              <text x="348" y="386" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a6880">bounce route (via host)</text>
-              <line x1="490" y1="382" x2="520" y2="382" stroke="#4ade80" stroke-width="2"/>
-              <text x="528" y="386" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a6880">P2P direct path</text>
-            </svg>
-          </div>
-          <figcaption><strong>Figure 3.</strong> PCIe topology and why host memory becomes the mandatory rendezvous. Without peer-to-peer support, data from a NIC must travel up to the CPU root complex before going back down to the GPU — turning host RAM into the forced bounce point.</figcaption>
-        </figure>
-
-        <h3>Addressing gaps and DMA masks</h3>
-        <p>
+<!-- FIGURE 3: PCIe topology diagram -->
+<figure class="figure">
+<div class="figure-inner">
+<svg style="width:100%;height:auto;display:block;" viewbox="0 0 860 400" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="at" markerheight="7" markerwidth="7" orient="auto" refx="5" refy="3"><path d="M0,0 L0,6 L7,3 z" fill="#5b9cf6"></path></marker>
+<marker id="at-r" markerheight="7" markerwidth="7" orient="auto" refx="5" refy="3"><path d="M0,0 L0,6 L7,3 z" fill="#f97070"></path></marker>
+<marker id="at-g" markerheight="7" markerwidth="7" orient="auto" refx="5" refy="3"><path d="M0,0 L0,6 L7,3 z" fill="#4ade80"></path></marker>
+</defs>
+<rect fill="rgba(6,8,14,0.98)" height="400" width="860"></rect>
+<text fill="#eef2fa" font-family="Bricolage Grotesque, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="430" y="32">PCIe Topology: Why Host Memory Becomes the Rendezvous Point</text>
+<text fill="#3a4858" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="430" y="50">without P2P support, data must travel up to CPU root complex before going down to accelerator</text>
+<!-- CPU / Root Complex (center top) -->
+<rect fill="rgba(255,159,62,0.1)" height="64" rx="14" stroke="rgba(255,159,62,0.35)" stroke-width="2" width="240" x="310" y="70"></rect>
+<text fill="#eef2fa" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600" text-anchor="middle" x="430" y="97">CPU + Root Complex</text>
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="430" y="116">IOMMU · memory controller · host RAM</text>
+<text fill="#3a3020" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="middle" x="430" y="130">← the mandatory transit point without P2P</text>
+<!-- NIC (left) -->
+<rect fill="rgba(91,156,246,0.1)" height="60" rx="12" stroke="rgba(91,156,246,0.35)" stroke-width="1.5" width="160" x="60" y="250"></rect>
+<text fill="#eef2fa" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600" text-anchor="middle" x="140" y="276">NIC</text>
+<text fill="#3a6090" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="140" y="294">PCIe device · DMA engine</text>
+<!-- GPU (right) -->
+<rect fill="rgba(74,222,128,0.1)" height="60" rx="12" stroke="rgba(74,222,128,0.35)" stroke-width="1.5" width="160" x="640" y="250"></rect>
+<text fill="#eef2fa" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600" text-anchor="middle" x="720" y="276">GPU</text>
+<text fill="#2a5030" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="720" y="294">PCIe device · VRAM</text>
+<!-- NVMe (far left bottom) -->
+<rect fill="rgba(147,197,253,0.07)" height="50" rx="12" stroke="rgba(147,197,253,0.22)" stroke-width="1.5" width="160" x="60" y="340"></rect>
+<text fill="#eef2fa" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600" text-anchor="middle" x="140" y="362">NVMe SSD</text>
+<text fill="#2a3a50" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="140" y="378">PCIe storage device</text>
+<!-- BOUNCE path: NIC → up to CPU → down to GPU -->
+<!-- NIC up to root complex -->
+<path d="M 140 250 Q 140 134 310 102" fill="none" marker-end="url(#at-r)" opacity="0.85" stroke="#ff9f3e" stroke-dasharray="6,4" stroke-width="2.2"></path>
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="9" x="175" y="175">① up to root</text>
+<!-- CPU down to GPU -->
+<path d="M 550 102 Q 720 134 720 250" fill="none" marker-end="url(#at-r)" opacity="0.85" stroke="#ff9f3e" stroke-dasharray="6,4" stroke-width="2.2"></path>
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="9" x="685" y="175">② down to GPU</text>
+<!-- FAST path: NIC → direct to GPU (if P2P) -->
+<path d="M 220 280 Q 430 340 640 280" fill="none" marker-end="url(#at-g)" opacity="0.8" stroke="#4ade80" stroke-width="2.5"></path>
+<text fill="#4ade80" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="430" y="330">P2P direct path (if supported + configured)</text>
+<!-- DMA mask note -->
+<rect fill="rgba(255,159,62,0.06)" height="40" rx="8" stroke="rgba(255,159,62,0.15)" width="200" x="240" y="220"></rect>
+<text fill="#ff9f3e" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="340" y="237">DMA mask too narrow?</text>
+<text fill="#5a4020" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="340" y="252">forced staging in low-memory window</text>
+<!-- Legend -->
+<line stroke="#ff9f3e" stroke-dasharray="5,3" stroke-width="2" x1="310" x2="340" y1="382" y2="382"></line>
+<text fill="#5a6880" font-family="JetBrains Mono, monospace" font-size="9" x="348" y="386">bounce route (via host)</text>
+<line stroke="#4ade80" stroke-width="2" x1="490" x2="520" y1="382" y2="382"></line>
+<text fill="#5a6880" font-family="JetBrains Mono, monospace" font-size="9" x="528" y="386">P2P direct path</text>
+</svg>
+</div>
+<figcaption><strong>Figure 3.</strong> PCIe topology and why host memory becomes the mandatory rendezvous. Without peer-to-peer support, data from a NIC must travel up to the CPU root complex before going back down to the GPU — turning host RAM into the forced bounce point.</figcaption>
+</figure>
+<h3>Addressing gaps and DMA masks</h3>
+<p>
           Some devices — particularly older or specialized I/O controllers — cannot address the
           full 64-bit memory space that modern AI clusters use. When a producer cannot directly
           reach the high-memory target region where a tensor or KV-cache lives, the system is
           forced to stage the transfer through a lower-memory window it <em>can</em> reach, then
           copy it onward via the CPU.
         </p>
-
-        <h3>The seam at the PCIe bus</h3>
-        <p>
+<h3>The seam at the PCIe bus</h3>
+<p>
           In many standard server architectures, the PCIe fabric is effectively a tree rooted at
           the CPU complex. Without direct Peer-to-Peer (P2P) support, data traveling from a NIC
           to a GPU must travel "up" to the CPU root complex and "down" again to the accelerator.
           Host memory becomes the handoff point not because it is the optimal destination, but
           because the topology makes it the only authorized rendezvous point for the two devices.
         </p>
-
-        <h3>Pinned memory and alignment constraints</h3>
-        <p>
+<h3>Pinned memory and alignment constraints</h3>
+<p>
           DMA engines are pickier than CPUs. They often require memory that is suitably aligned
           and <strong>pinned</strong> — locked in physical RAM so the OS cannot relocate it during
           a high-speed transfer. If an application hands the system a generic pageable buffer,
           the kernel or runtime may synthesize an admissible pinned staging region and copy the
           data into it before the hardware-level movement can begin.
         </p>
-
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th>Component</th><th>Hardware constraint</th><th>Bounce consequence</th></tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><strong>IOMMU</strong></td>
-                <td>Address translation and protection</td>
-                <td>Data stages in a safe window if the desired high-memory mapping is restricted or unavailable on the fast path.</td>
-              </tr>
-              <tr>
-                <td><strong>PCIe Root Complex</strong></td>
-                <td>Topology / P2P routing</td>
-                <td>Data hits system RAM if peer-to-peer routing is unsupported or not admitted for the path.</td>
-              </tr>
-              <tr>
-                <td><strong>DMA Controller</strong></td>
-                <td>Alignment and transfer-shape requirements</td>
-                <td>Data is copied to a suitably aligned, DMA-safe buffer before burst transfer proceeds.</td>
-              </tr>
-              <tr>
-                <td><strong>Memory Controller / OS</strong></td>
-                <td>Non-pinned pageable RAM</td>
-                <td>Data is moved to a locked region to prevent faults or relocation during transfer.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <p>
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Component</th><th>Hardware constraint</th><th>Bounce consequence</th></tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>IOMMU</strong></td>
+<td>Address translation and protection</td>
+<td>Data stages in a safe window if the desired high-memory mapping is restricted or unavailable on the fast path.</td>
+</tr>
+<tr>
+<td><strong>PCIe Root Complex</strong></td>
+<td>Topology / P2P routing</td>
+<td>Data hits system RAM if peer-to-peer routing is unsupported or not admitted for the path.</td>
+</tr>
+<tr>
+<td><strong>DMA Controller</strong></td>
+<td>Alignment and transfer-shape requirements</td>
+<td>Data is copied to a suitably aligned, DMA-safe buffer before burst transfer proceeds.</td>
+</tr>
+<tr>
+<td><strong>Memory Controller / OS</strong></td>
+<td>Non-pinned pageable RAM</td>
+<td>Data is moved to a locked region to prevent faults or relocation during transfer.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>
           The broader insight: good orchestration is not just about scheduling compute — it is
           about pre-arranging the hardware data path so the direct path is admissible before the
           request even arrives. Once a system has to discover the path reactively, it almost
           always falls back into the expensive cycle of buffering, copying, and jitter.
         </p>
-      </section>
-
-      <!-- ── 10. ZERO-COPY ILLUSION ── -->
-      <section id="zero-copy">
-        <h2>The illusion of zero-copy</h2>
-        <p>
+</section>
+<!-- ── 10. ZERO-COPY ILLUSION ── -->
+<section id="zero-copy">
+<h2 id="the-illusion-of-zero-copy">The illusion of zero-copy</h2>
+<p>
           One of the most misleading labels in systems engineering is <em>zero-copy</em>. Many
           systems are zero-copy only relative to one layer. They remove one visible copy while
           leaving several others intact elsewhere in the path.
         </p>
-        <p>
+<p>
           A pipeline can bypass one user-space memcpy and still stage through a kernel-managed
           DMA-safe region. It can remove a host-side tensor copy and still bounce through a
           runtime-owned queue. It can support peer-to-peer transfer under ideal conditions and
           still fall back to hidden staging regions in common cases.
         </p>
-        <p>So the better question is not, "does this support zero-copy?" It is:</p>
-        <pre><code>Exactly which copies were removed, and exactly which bounce buffers remain?</code></pre>
-        <p>
+<p>So the better question is not, "does this support zero-copy?" It is:</p>
+<pre><code>Exactly which copies were removed, and exactly which bounce buffers remain?</code></pre>
+<p>
           That question is harder, but it is the one that actually exposes whether the data path
           is clean.
         </p>
-      </section>
-
-      <!-- ── 11. WHAT GOOD SYSTEMS DO ── -->
-      <section id="better">
-        <h2>What good systems do instead</h2>
-        <p>
+</section>
+<!-- ── 11. WHAT GOOD SYSTEMS DO ── -->
+<section id="better">
+<h2 id="what-good-systems-do-instead">What good systems do instead</h2>
+<p>
           Better systems reduce or eliminate bounce buffers by making producer and consumer
           genuinely interoperable. That usually requires some combination of direct DMA, pinned
           or registered memory, compatible mappings, peer-to-peer accessibility, tighter endpoint
           integration, and software that thinks in descriptors rather than in repeated
           ownership-and-copy cycles.
         </p>
-
-        <!-- FIGURE 4: memcpy-driven vs descriptor-driven -->
-        <figure class="figure">
-          <div class="figure-inner">
-            <svg viewBox="0 0 860 340" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
-              <defs>
-                <marker id="am" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#f97070"/></marker>
-                <marker id="ad" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#4ade80"/></marker>
-              </defs>
-              <rect width="860" height="340" fill="rgba(6,8,14,0.98)"/>
-              <text x="430" y="32" text-anchor="middle" font-family="Bricolage Grotesque, sans-serif" font-weight="700" font-size="16" fill="#eef2fa">Memcpy-Driven vs Descriptor-Driven Design</text>
-              <text x="430" y="50" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#3a4858">a philosophy shift, not just a micro-optimization</text>
-
-              <!-- LEFT: memcpy-driven -->
-              <rect x="30" y="66" width="380" height="254" rx="16" fill="rgba(249,112,112,0.04)" stroke="rgba(249,112,112,0.2)" stroke-width="1.5"/>
-              <text x="220" y="93" text-anchor="middle" font-family="Bricolage Grotesque, sans-serif" font-weight="700" font-size="13" fill="#f97070">Memcpy-driven design</text>
-              <text x="220" y="110" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a3030">software asserts ownership of bytes at every hop</text>
-
-              <!-- Steps with boxes and copy arrows -->
-              <rect x="60" y="120" width="140" height="40" rx="8" fill="rgba(249,112,112,0.08)" stroke="rgba(249,112,112,0.25)"/>
-              <text x="130" y="135" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#f0a0a0">Producer buffer</text>
-              <text x="130" y="150" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#5a3030">owned by producer</text>
-
-              <line x1="200" y1="140" x2="238" y2="140" stroke="#f97070" stroke-width="1.8" marker-end="url(#am)"/>
-              <text x="219" y="132" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#f97070">copy</text>
-
-              <rect x="238" y="120" width="140" height="40" rx="8" fill="rgba(249,112,112,0.08)" stroke="rgba(249,112,112,0.25)"/>
-              <text x="308" y="135" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#f0a0a0">Staging buffer</text>
-              <text x="308" y="150" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#5a3030">repackaged</text>
-
-              <!-- arrow down to next layer -->
-              <line x1="220" y1="160" x2="220" y2="185" stroke="#f97070" stroke-width="1.8" marker-end="url(#am)" opacity="0.7"/>
-              <text x="235" y="177" font-family="JetBrains Mono, monospace" font-size="8" fill="#f97070">copy</text>
-
-              <rect x="80" y="185" width="280" height="40" rx="8" fill="rgba(249,112,112,0.08)" stroke="rgba(249,112,112,0.25)"/>
-              <text x="220" y="200" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#f0a0a0">Runtime-owned intermediate buffer</text>
-              <text x="220" y="216" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#5a3030">ownership asserted again</text>
-
-              <line x1="220" y1="225" x2="220" y2="248" stroke="#f97070" stroke-width="1.8" marker-end="url(#am)" opacity="0.7"/>
-              <text x="235" y="241" font-family="JetBrains Mono, monospace" font-size="8" fill="#f97070">copy</text>
-
-              <rect x="80" y="248" width="280" height="40" rx="8" fill="rgba(249,112,112,0.06)" stroke="rgba(249,112,112,0.2)"/>
-              <text x="220" y="263" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#c07878">Consumer / GPU buffer</text>
-              <text x="220" y="279" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#5a3030">finally arrives, 3 copies later</text>
-
-              <!-- RIGHT: descriptor-driven -->
-              <rect x="450" y="66" width="380" height="254" rx="16" fill="rgba(74,222,128,0.04)" stroke="rgba(74,222,128,0.2)" stroke-width="1.5"/>
-              <text x="640" y="93" text-anchor="middle" font-family="Bricolage Grotesque, sans-serif" font-weight="700" font-size="13" fill="#4ade80">Descriptor-driven design</text>
-              <text x="640" y="110" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#2a5030">software orchestrates movement without becoming the path</text>
-
-              <!-- Descriptor pointing to source -->
-              <rect x="480" y="120" width="160" height="40" rx="8" fill="rgba(74,222,128,0.08)" stroke="rgba(74,222,128,0.25)"/>
-              <text x="560" y="137" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#80e8a0" font-weight="600">Transfer descriptor</text>
-              <text x="560" y="153" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#2a5030">src addr · dst addr · len · keys</text>
-
-              <!-- Arrow: descriptor to HW -->
-              <line x1="560" y1="160" x2="560" y2="183" stroke="#4ade80" stroke-width="2" marker-end="url(#ad)"/>
-              <text x="578" y="176" font-family="JetBrains Mono, monospace" font-size="8" fill="#4ade80">hand to HW</text>
-
-              <rect x="480" y="183" width="160" height="40" rx="8" fill="rgba(74,222,128,0.1)" stroke="rgba(74,222,128,0.3)"/>
-              <text x="560" y="200" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#80e8a0" font-weight="600">DMA engine / RNIC</text>
-              <text x="560" y="216" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#2a5030">executes transfer directly</text>
-
-              <!-- Arrow: HW to dest -->
-              <line x1="560" y1="223" x2="560" y2="248" stroke="#4ade80" stroke-width="2" marker-end="url(#ad)"/>
-              <text x="578" y="241" font-family="JetBrains Mono, monospace" font-size="8" fill="#4ade80">direct write</text>
-
-              <rect x="480" y="248" width="160" height="40" rx="8" fill="rgba(74,222,128,0.08)" stroke="rgba(74,222,128,0.25)"/>
-              <text x="560" y="265" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#80e8a0">Consumer / GPU buffer</text>
-              <text x="560" y="281" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#2a5030">arrives, 0 intermediate copies</text>
-
-              <!-- "zero copy" label -->
-              <rect x="660" y="190" width="148" height="54" rx="10" fill="rgba(74,222,128,0.06)" stroke="rgba(74,222,128,0.2)"/>
-              <text x="734" y="212" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="22" fill="#4ade80" font-weight="700">0</text>
-              <text x="734" y="234" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#2a5030">intermediate copies</text>
-
-              <!-- "3 copies" label on left -->
-              <rect x="52" y="190" width="76" height="54" rx="10" fill="rgba(249,112,112,0.06)" stroke="rgba(249,112,112,0.2)"/>
-              <text x="90" y="212" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="22" fill="#f97070" font-weight="700">3×</text>
-              <text x="90" y="234" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#5a3030">bandwidth used</text>
-            </svg>
-          </div>
-          <figcaption><strong>Figure 4.</strong> Memcpy-driven vs descriptor-driven design. In the memcpy model, software keeps asserting ownership of bytes at every hop. In the descriptor model, software orchestrates movement while trying not to become the movement path itself.</figcaption>
-        </figure>
-
-        <p>
+<!-- FIGURE 4: memcpy-driven vs descriptor-driven -->
+<figure class="figure">
+<div class="figure-inner">
+<svg style="width:100%;height:auto;display:block;" viewbox="0 0 860 340" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="am" markerheight="7" markerwidth="7" orient="auto" refx="5" refy="3"><path d="M0,0 L0,6 L7,3 z" fill="#f97070"></path></marker>
+<marker id="ad" markerheight="7" markerwidth="7" orient="auto" refx="5" refy="3"><path d="M0,0 L0,6 L7,3 z" fill="#4ade80"></path></marker>
+</defs>
+<rect fill="rgba(6,8,14,0.98)" height="340" width="860"></rect>
+<text fill="#eef2fa" font-family="Bricolage Grotesque, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="430" y="32">Memcpy-Driven vs Descriptor-Driven Design</text>
+<text fill="#3a4858" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="430" y="50">a philosophy shift, not just a micro-optimization</text>
+<!-- LEFT: memcpy-driven -->
+<rect fill="rgba(249,112,112,0.04)" height="254" rx="16" stroke="rgba(249,112,112,0.2)" stroke-width="1.5" width="380" x="30" y="66"></rect>
+<text fill="#f97070" font-family="Bricolage Grotesque, sans-serif" font-size="13" font-weight="700" text-anchor="middle" x="220" y="93">Memcpy-driven design</text>
+<text fill="#5a3030" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="220" y="110">software asserts ownership of bytes at every hop</text>
+<!-- Steps with boxes and copy arrows -->
+<rect fill="rgba(249,112,112,0.08)" height="40" rx="8" stroke="rgba(249,112,112,0.25)" width="140" x="60" y="120"></rect>
+<text fill="#f0a0a0" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="130" y="135">Producer buffer</text>
+<text fill="#5a3030" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="middle" x="130" y="150">owned by producer</text>
+<line marker-end="url(#am)" stroke="#f97070" stroke-width="1.8" x1="200" x2="238" y1="140" y2="140"></line>
+<text fill="#f97070" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="middle" x="219" y="132">copy</text>
+<rect fill="rgba(249,112,112,0.08)" height="40" rx="8" stroke="rgba(249,112,112,0.25)" width="140" x="238" y="120"></rect>
+<text fill="#f0a0a0" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="308" y="135">Staging buffer</text>
+<text fill="#5a3030" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="middle" x="308" y="150">repackaged</text>
+<!-- arrow down to next layer -->
+<line marker-end="url(#am)" opacity="0.7" stroke="#f97070" stroke-width="1.8" x1="220" x2="220" y1="160" y2="185"></line>
+<text fill="#f97070" font-family="JetBrains Mono, monospace" font-size="8" x="235" y="177">copy</text>
+<rect fill="rgba(249,112,112,0.08)" height="40" rx="8" stroke="rgba(249,112,112,0.25)" width="280" x="80" y="185"></rect>
+<text fill="#f0a0a0" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="220" y="200">Runtime-owned intermediate buffer</text>
+<text fill="#5a3030" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="middle" x="220" y="216">ownership asserted again</text>
+<line marker-end="url(#am)" opacity="0.7" stroke="#f97070" stroke-width="1.8" x1="220" x2="220" y1="225" y2="248"></line>
+<text fill="#f97070" font-family="JetBrains Mono, monospace" font-size="8" x="235" y="241">copy</text>
+<rect fill="rgba(249,112,112,0.06)" height="40" rx="8" stroke="rgba(249,112,112,0.2)" width="280" x="80" y="248"></rect>
+<text fill="#c07878" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="220" y="263">Consumer / GPU buffer</text>
+<text fill="#5a3030" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="middle" x="220" y="279">finally arrives, 3 copies later</text>
+<!-- RIGHT: descriptor-driven -->
+<rect fill="rgba(74,222,128,0.04)" height="254" rx="16" stroke="rgba(74,222,128,0.2)" stroke-width="1.5" width="380" x="450" y="66"></rect>
+<text fill="#4ade80" font-family="Bricolage Grotesque, sans-serif" font-size="13" font-weight="700" text-anchor="middle" x="640" y="93">Descriptor-driven design</text>
+<text fill="#2a5030" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="640" y="110">software orchestrates movement without becoming the path</text>
+<!-- Descriptor pointing to source -->
+<rect fill="rgba(74,222,128,0.08)" height="40" rx="8" stroke="rgba(74,222,128,0.25)" width="160" x="480" y="120"></rect>
+<text fill="#80e8a0" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600" text-anchor="middle" x="560" y="137">Transfer descriptor</text>
+<text fill="#2a5030" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="middle" x="560" y="153">src addr · dst addr · len · keys</text>
+<!-- Arrow: descriptor to HW -->
+<line marker-end="url(#ad)" stroke="#4ade80" stroke-width="2" x1="560" x2="560" y1="160" y2="183"></line>
+<text fill="#4ade80" font-family="JetBrains Mono, monospace" font-size="8" x="578" y="176">hand to HW</text>
+<rect fill="rgba(74,222,128,0.1)" height="40" rx="8" stroke="rgba(74,222,128,0.3)" width="160" x="480" y="183"></rect>
+<text fill="#80e8a0" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600" text-anchor="middle" x="560" y="200">DMA engine / RNIC</text>
+<text fill="#2a5030" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="middle" x="560" y="216">executes transfer directly</text>
+<!-- Arrow: HW to dest -->
+<line marker-end="url(#ad)" stroke="#4ade80" stroke-width="2" x1="560" x2="560" y1="223" y2="248"></line>
+<text fill="#4ade80" font-family="JetBrains Mono, monospace" font-size="8" x="578" y="241">direct write</text>
+<rect fill="rgba(74,222,128,0.08)" height="40" rx="8" stroke="rgba(74,222,128,0.25)" width="160" x="480" y="248"></rect>
+<text fill="#80e8a0" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="middle" x="560" y="265">Consumer / GPU buffer</text>
+<text fill="#2a5030" font-family="JetBrains Mono, monospace" font-size="8" text-anchor="middle" x="560" y="281">arrives, 0 intermediate copies</text>
+<!-- "zero copy" label -->
+<rect fill="rgba(74,222,128,0.06)" height="54" rx="10" stroke="rgba(74,222,128,0.2)" width="148" x="660" y="190"></rect>
+<text fill="#4ade80" font-family="JetBrains Mono, monospace" font-size="22" font-weight="700" text-anchor="middle" x="734" y="212">0</text>
+<text fill="#2a5030" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="734" y="234">intermediate copies</text>
+<!-- "3 copies" label on left -->
+<rect fill="rgba(249,112,112,0.06)" height="54" rx="10" stroke="rgba(249,112,112,0.2)" width="76" x="52" y="190"></rect>
+<text fill="#f97070" font-family="JetBrains Mono, monospace" font-size="22" font-weight="700" text-anchor="middle" x="90" y="212">3×</text>
+<text fill="#5a3030" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle" x="90" y="234">bandwidth used</text>
+</svg>
+</div>
+<figcaption><strong>Figure 4.</strong> Memcpy-driven vs descriptor-driven design. In the memcpy model, software keeps asserting ownership of bytes at every hop. In the descriptor model, software orchestrates movement while trying not to become the movement path itself.</figcaption>
+</figure>
+<p>
           That shift is not just a micro-optimization. It is a different philosophy of system
           design. In a memcpy-driven system, the software stack keeps reasserting control over
           the bytes. In a descriptor-driven system, the software stack orchestrates movement
           while trying not to become the movement path itself.
         </p>
-      </section>
-
-      <!-- ── 12. FINAL THOUGHT ── -->
-      <section id="close">
-        <h2>Final thought</h2>
-        <p>
+</section>
+<!-- ── 12. FINAL THOUGHT ── -->
+<section id="close">
+<h2 id="final-thought">Final thought</h2>
+<p>
           Bounce buffers persist because heterogeneous systems are hard. Disks, NICs, CPUs,
           GPUs, file systems, drivers, runtimes, and applications were not designed as one
           seamless addressable fabric. So they negotiate through temporary agreements: staging
           regions, mapped pools, copied payloads, pinned queues, and compatibility buffers.
         </p>
-        <p>
+<p>
           In earlier eras, those compromises were easier to tolerate. In the AI era — where
           systems are increasingly context-heavy, retrieval-heavy, and accelerator-bound — the
           cost of those compromises rises dramatically.
         </p>
-        <p>
+<p>
           The future of AI infrastructure will not be defined only by faster compute. It will
           also be defined by how cleanly systems move data between storage, network, memory,
           and accelerators without unnecessary staging.
         </p>
-        <blockquote>
-          <p>Every bounce buffer is evidence that the system still lacks direct dataflow between producer and consumer.</p>
-        </blockquote>
-        <p>
+<blockquote>
+<p>Every bounce buffer is evidence that the system still lacks direct dataflow between producer and consumer.</p>
+</blockquote>
+<p>
           That is why bounce buffers deserve more attention than they get. They are not a
           low-level implementation detail. They are a visible symptom of where the architecture
           still has friction.
         </p>
-
-        <div class="divider"></div>
-
-        <p class="footer-note">
-          <code>bounce-buffers-hidden-tax-ai-systems-v3.html</code> · Revised <time datetime="2026-04-07">April 2026</time><br>
-          Social teaser: <em>"Most AI infra is not compute-bound anymore. It is bounce-buffer bound — and p99 is where the tax gets collected."</em><br>
-          <a href="https://manishklach.github.io/writings.html">← All writings</a>
-        </p>
-        <div class="essay-copyright">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a></div>
-      </section>
-
-    </article>
-  </div>
+<div class="divider"></div>
+<p class="footer-note">
+<code>bounce-buffers-hidden-tax-ai-systems-v3.html</code> · Revised <time datetime="2026-04-07">April 2026</time><br/>
+          Social teaser: <em>"Most AI infra is not compute-bound anymore. It is bounce-buffer bound — and p99 is where the tax gets collected."</em><br/>
+<a href="https://manishklach.github.io/writings.html">← All writings</a>
+</p>
+<div class="essay-copyright">© 2026 <a href="https://github.com/manishklach" rel="noopener noreferrer" target="_blank">Manish KL</a></div>
+</section>
+<hr/><footer class="post-footer">© 2026 Manish K. Lach · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer></article>
+</div>
 </main>
-
 </body>
 </html>

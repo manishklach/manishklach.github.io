@@ -1,28 +1,29 @@
 ﻿<!DOCTYPE html>
+
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Predictive Weight Orchestration — Runtime Control for Multi-Tier Weight Residency | Manish K. Lach</title>
-  <meta name="description" content="A detailed technical blog post on predictive multi-tier weight residency and precision orchestration: HBM pressure, runtime placement, precision states, guardrails, MoE router-history signals, and bandwidth-aware scheduling.">
-  <meta name="keywords" content="predictive weight orchestration, multi-tier weight residency, HBM pressure, LLM inference memory policy, MoE router history, runtime weight placement, precision orchestration, bandwidth-aware scheduling" />
-  <meta name="author" content="Manish KL">
-  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
-  <link rel="canonical" href="https://manishklach.github.io/writings/predictive-weight-orchestration-runtime-control-for-multi-tier-weight-residency.html">
-  <meta property="og:type" content="article">
-  <meta property="og:title" content="Predictive Weight Orchestration — Runtime Control for Multi-Tier Weight Residency | Manish K. Lach">
-  <meta property="og:description" content="A detailed technical blog post on predictive multi-tier weight residency and precision orchestration: HBM pressure, runtime placement, precision states, guardrails, MoE router-history signals, and bandwidth-aware scheduling.">
-  <meta property="og:url" content="https://manishklach.github.io/writings/predictive-weight-orchestration-runtime-control-for-multi-tier-weight-residency.html">
-  <meta property="og:site_name" content="Manish KL" />
-  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png" />
-  <meta property="og:image:alt" content="Preview image for the Predictive Weight Orchestration technical essay." />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Predictive Weight Orchestration — Runtime Control for Multi-Tier Weight Residency | Manish K. Lach" />
-  <meta name="twitter:description" content="A detailed technical blog post on predictive multi-tier weight residency and precision orchestration: HBM pressure, runtime placement, precision states, guardrails, MoE router-history signals, and bandwidth-aware scheduling." />
-  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png" />
-  <meta name="twitter:image:alt" content="Preview image for the Predictive Weight Orchestration technical essay." />
-  <meta name="twitter:site" content="@manishkl_" />
-  <script type="application/ld+json">
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<title>Predictive Weight Orchestration — Runtime Control for Multi-Tier Weight Residency | Manish K. Lach</title>
+<meta content="A detailed technical blog post on predictive multi-tier weight residency and precision orchestration: HBM pressure, runtime placement, precision states, guardrails, MoE router-history signals, and bandwidth-aware scheduling." name="description"/>
+<meta content="predictive weight orchestration, multi-tier weight residency, HBM pressure, LLM inference memory policy, MoE router history, runtime weight placement, precision orchestration, bandwidth-aware scheduling" name="keywords"/>
+<meta content="Manish KL" name="author">
+<meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/>
+<link href="https://manishklach.github.io/writings/predictive-weight-orchestration-runtime-control-for-multi-tier-weight-residency.html" rel="canonical"/>
+<meta content="article" property="og:type"/>
+<meta content="Predictive Weight Orchestration — Runtime Control for Multi-Tier Weight Residency | Manish K. Lach" property="og:title"/>
+<meta content="A detailed technical blog post on predictive multi-tier weight residency and precision orchestration: HBM pressure, runtime placement, precision states, guardrails, MoE router-history signals, and bandwidth-aware scheduling." property="og:description"/>
+<meta content="https://manishklach.github.io/writings/predictive-weight-orchestration-runtime-control-for-multi-tier-weight-residency.html" property="og:url"/>
+<meta content="Manish KL" property="og:site_name"/>
+<meta content="https://manishklach.github.io/og/predictive-weight-orchestration-runtime-control-for-multi-tier-weight-residency.png" property="og:image"/>
+<meta content="Preview image for the Predictive Weight Orchestration technical essay." property="og:image:alt"/>
+<meta content="summary_large_image" name="twitter:card"/>
+<meta content="Not static quantization. Not simple weight offload. A runtime controller for multi-tier weight residency." name="twitter:title"/>
+<meta content="A detailed technical blog post on predictive multi-tier weight residency and precision orchestration: HBM pressure, runtime placement, precision states, guardrails, MoE router-history signals, and bandwidth-aware scheduling." name="twitter:description"/>
+<meta content="https://manishklach.github.io/og/predictive-weight-orchestration-runtime-control-for-multi-tier-weight-residency.png" name="twitter:image"/>
+<meta content="Preview image for the Predictive Weight Orchestration technical essay." name="twitter:image:alt">
+<meta content="@manishkl_" name="twitter:site">
+<script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "BlogPosting",
@@ -44,7 +45,7 @@
   }
 }
 </script>
-  <style>
+<style>
     :root {
       --bg: #071019;
       --bg2: #0d1724;
@@ -190,150 +191,142 @@
     .essay-copyright a:hover {
       text-decoration: underline;
     }</style>
-<meta name="color-scheme" content="light dark">
-</head>
-<body>
-  <div class="nav">
-    <div class="wrap nav-inner">
-      <div class="brand"><a href="../index.html">Home</a></div>
-      <div class="nav-links">
-        <a href="../writings.html">Back to Writings</a>
-        <a href="#problem">Problem</a>
-        <a href="#invention">Invention</a>
-        <a href="#states">State Model</a>
-        <a href="#guardrails">Guardrails</a>
-        <a href="#deployment">Deployment</a>
-      </div>
-    </div>
-  </div>
-
-  <header class="hero wrap">
-    <div class="eyebrow">Detailed Technical Write-up</div>
-    <h1>Not static quantization. Not simple weight offload. A runtime controller for multi-tier weight residency.</h1>
-    <p class="lead">Predictive Multi-Tier Weight Residency and Precision Orchestration reframes inference under HBM pressure as a runtime control problem. Instead of treating weights as static assets, it treats them as managed operating state whose precision, placement, and transfer priority must be decided continuously.</p>
-    <div class="cta-row">
-      <a class="btn primary" href="https://github.com/manishklach/predictive-weight-orchestration-patent-site">Open repository</a>
-      <a class="btn" href="#invention">Read invention breakdown</a>
-    </div>
-
-    <div class="hero-grid">
-      <div class="flow">
-        <div class="kicker">Runtime orchestration map</div>
-        <div class="diagram-grid">
-          <div class="tier"><small>Signals</small><strong>Layer cadence</strong><br/>Execution timing reveals what will be needed soon.</div>
-          <div class="tier"><small>Signals</small><strong>MoE router history</strong><br/>Expert hotness becomes a live placement and prefetch input.</div>
-          <div class="tier"><small>Control</small><strong>Scoring + policy engine</strong><br/>Computes a target state per block using demand, cost, and quality sensitivity.</div>
-          <div class="tier"><small>Execution</small><strong>Transfer scheduler</strong><br/>Allocates bandwidth and aligns movement with the prefetch window.</div>
-          <div class="tier"><small>Guardrail</small><strong>Accuracy veto</strong><br/>Rejects unsafe demotions before they land.</div>
-        </div>
-      </div>
-      <div class="grid-2">
-        <div class="metric"><small>Fast tier</small><strong>HBM</strong></div>
-        <div class="metric"><small>Expansion tier</small><strong>CXL / DRAM</strong></div>
-        <div class="metric"><small>Key differentiator</small><strong>Joint control</strong></div>
-        <div class="metric"><small>Sparse-model hook</small><strong>MoE aware</strong></div>
-      </div>
-    </div>
-  </header>
-
-  <main class="wrap" data-pagefind-body>
-    <section id="problem">
-      <div class="kicker">The underlying problem</div>
-      <h2>HBM scarcity has made inference a placement problem as much as a compute problem</h2>
-      <p>At modern model sizes, throughput is not decided only by arithmetic intensity. It is increasingly decided by whether the right weight blocks are in the right place, in the right precision, at the right time. Once HBM becomes the limiting resource, serving starts to resemble an operating-system problem for parameter state.</p>
-      <p>That is why the core thesis here is useful. Existing approaches often optimize one dimension in isolation. Static quantization focuses on footprint. Offload focuses on movement. Model parallelism focuses on topology. This invention tries to unify placement, precision, and movement under a single runtime controller.</p>
-      <div class="quote">The most interesting claim is not that memory tiers exist. It is that the controller should reason over them as one managed state space while enforcing quality boundaries.</div>
-    </section>
-
-    <section>
-      <div class="grid-3">
-        <div class="card">
-          <h3>Static quantization</h3>
-          <p class="muted">Useful for reducing footprint, but fundamentally offline. It does not dynamically reassign precision based on active context, reuse horizon, routing likelihood, or live transfer pressure.</p>
-        </div>
-        <div class="card">
-          <h3>Weight offload</h3>
-          <p class="muted">Moves bytes across tiers, but often without a joint policy for precision, decompression cost, safety margins, and output-quality guardrails.</p>
-        </div>
-        <div class="card">
-          <h3>Model parallelism</h3>
-          <p class="muted">Spreads capacity and compute across devices, but does not itself answer the dynamic runtime question of which block deserves the fastest tier right now.</p>
-        </div>
-      </div>
-    </section>
-
-    <section id="invention">
-      <div class="kicker">Core invention</div>
-      <h2>Each managed weight block gets both a precision state and a residency state</h2>
-      <p>The architecture operates on first-class managed units such as weight shards, layer blocks, or MoE experts. For each unit, the controller computes a target state using predicted reuse, next-use timing, routing likelihood, decompression cost, transfer cost, bandwidth pressure, and quality sensitivity. The result is a system that does not merely quantize and does not merely offload; it coordinates both under one policy loop.</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th>Control input</th><th>What it represents</th><th>Why it changes placement</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Predicted reuse horizon</td><td>How soon a block is likely needed again</td><td>Hot blocks deserve premium residency or in-flight promotion.</td></tr>
-            <tr><td>Next-use timing</td><td>Distance to the next compute touch</td><td>Defines whether there is enough slack for staging or prefetch.</td></tr>
-            <tr><td>MoE router history</td><td>Observed expert popularity and routing trends</td><td>Lets sparse models drive speculative promotion intelligently.</td></tr>
-            <tr><td>Transfer and decompression cost</td><td>Recovery overhead from lower tiers or compressed states</td><td>Changes whether a block should remain warm versus cold.</td></tr>
-            <tr><td>Bandwidth pressure</td><td>Competing demand on the movement path</td><td>Prevents low-value traffic from blocking imminent promotions.</td></tr>
-            <tr><td>Quality sensitivity</td><td>Risk of accuracy degradation under demotion or reduced precision</td><td>Acts as a veto boundary against unsafe efficiency optimizations.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section>
-      <div class="grid-3">
-        <div class="card">
-          <div class="kicker">Hook 1</div>
-          <h3>Closed-loop cross-layer optimization</h3>
-          <p class="muted">The controller listens to model execution itself. Layer timing, concurrency, and routing behavior are not postmortem stats; they are live control inputs.</p>
-        </div>
-        <div class="card">
-          <div class="kicker">Hook 2</div>
-          <h3>Accuracy-veto supervisory guardrail</h3>
-          <p class="muted">Efficiency wins are allowed only when predicted quality impact remains inside configured bounds. Unsafe demotions are blocked before they happen.</p>
-        </div>
-        <div class="card">
-          <div class="kicker">Hook 3</div>
-          <h3>Tier-transparent residency model</h3>
-          <p class="muted">HBM, DRAM, CXL pools, peer memory, and storage are treated as one continuum rather than as ad hoc special cases.</p>
-        </div>
-      </div>
-    </section>
-
-    <section id="states">
-      <div class="kicker">Seven-state model</div>
-      <h2>A concrete operating vocabulary across precision and residency</h2>
-      <p>A strength of the concept is that it does not stay abstract. It defines an explicit state machine, which is exactly what a runtime controller needs if it is going to issue transitions in a disciplined, inspectable way.</p>
-      <div class="grid-4">
-        <div class="state"><small>S1</small><strong>Full-precision HBM</strong><br/>Premium placement for highly sensitive or imminently needed blocks.</div>
-        <div class="state"><small>S2</small><strong>Reduced-precision HBM</strong><br/>Fast-tier placement with lower footprint when quality sensitivity allows compression.</div>
-        <div class="state"><small>S3</small><strong>Compressed HBM</strong><br/>Near-compute holding state that shrinks footprint without full eviction.</div>
-        <div class="state"><small>S4</small><strong>Host DRAM staged</strong><br/>Warm spill state for reasonably fast recovery when direct HBM is too expensive.</div>
-        <div class="state"><small>S5</small><strong>Storage / cold staged</strong><br/>Low-priority state for blocks with weak near-term demand and acceptable retrieval overhead.</div>
-        <div class="state"><small>S6</small><strong>In-flight prefetch</strong><br/>Transient promotion state aligned to an upcoming execution window.</div>
-        <div class="state"><small>S7</small><strong>Recomputable fallback</strong><br/>Optional embodiment where hot storage is replaced by regeneration.</div>
-        <div class="state"><small>Why this matters</small><strong>Inspectable control</strong><br/>A state machine allows explicit thresholds, hysteresis, and auditability.</div>
-      </div>
-    </section>
-
-    <section>
-      <div class="grid-2">
-        <div>
-          <div class="kicker">Closed-loop control</div>
-          <h2>The loop is predictive, asynchronous, and cross-layer</h2>
-          <p>The control loop is conceptually clean: observe, score, veto, schedule, execute. That sequencing matters because it avoids collapsing telemetry, policy, and movement into one opaque heuristic blob.</p>
-          <ul class="clean muted">
-            <li><strong>Observe:</strong> collect layer timing, router statistics, concurrency, and live memory pressure.</li>
-            <li><strong>Score:</strong> compute a target state from demand, cost, and sensitivity signals.</li>
-            <li><strong>Veto:</strong> apply precision floors and risk checks.</li>
-            <li><strong>Schedule:</strong> reserve bandwidth and align promotions with the prefetch window.</li>
-            <li><strong>Execute:</strong> overlap transfers and decompression with compute.</li>
-          </ul>
-        </div>
-        <div class="code">Observe  →  Score  →  Veto  →  Schedule  →  Execute
+<meta content="light dark" name="color-scheme">
+</meta></meta></meta></meta><script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><link href="/assets/site.css" rel="stylesheet"/><script defer="" src="/assets/site.js"></script><link href="/feed.xml" rel="alternate" title="Manish K. Lach RSS" type="application/rss+xml"/></head>
+<body><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
+<div class="nav">
+<div class="wrap nav-inner">
+<div class="brand"><a href="../index.html">Home</a></div>
+<div class="nav-links">
+<a href="../writings.html">Back to Writings</a>
+<a href="#problem">Problem</a>
+<a href="#invention">Invention</a>
+<a href="#states">State Model</a>
+<a href="#guardrails">Guardrails</a>
+<a href="#deployment">Deployment</a>
+</div>
+</div>
+</div>
+<header class="hero wrap">
+<div class="eyebrow">Detailed Technical Write-up</div>
+<h1>Not static quantization. Not simple weight offload. A runtime controller for multi-tier weight residency.</h1><div class="meta reading-meta">Published <time datetime="2026-04-07">Apr 7, 2026</time> · 8 min read</div>
+<p class="lead">Predictive Multi-Tier Weight Residency and Precision Orchestration reframes inference under HBM pressure as a runtime control problem. Instead of treating weights as static assets, it treats them as managed operating state whose precision, placement, and transfer priority must be decided continuously.</p>
+<div class="cta-row">
+<a class="btn primary" href="https://github.com/manishklach/predictive-weight-orchestration-patent-site">Open repository</a>
+<a class="btn" href="#invention">Read invention breakdown</a>
+</div>
+<div class="hero-grid">
+<div class="flow">
+<div class="kicker">Runtime orchestration map</div>
+<div class="diagram-grid">
+<div class="tier"><small>Signals</small><strong>Layer cadence</strong><br/>Execution timing reveals what will be needed soon.</div>
+<div class="tier"><small>Signals</small><strong>MoE router history</strong><br/>Expert hotness becomes a live placement and prefetch input.</div>
+<div class="tier"><small>Control</small><strong>Scoring + policy engine</strong><br/>Computes a target state per block using demand, cost, and quality sensitivity.</div>
+<div class="tier"><small>Execution</small><strong>Transfer scheduler</strong><br/>Allocates bandwidth and aligns movement with the prefetch window.</div>
+<div class="tier"><small>Guardrail</small><strong>Accuracy veto</strong><br/>Rejects unsafe demotions before they land.</div>
+</div>
+</div>
+<div class="grid-2">
+<div class="metric"><small>Fast tier</small><strong>HBM</strong></div>
+<div class="metric"><small>Expansion tier</small><strong>CXL / DRAM</strong></div>
+<div class="metric"><small>Key differentiator</small><strong>Joint control</strong></div>
+<div class="metric"><small>Sparse-model hook</small><strong>MoE aware</strong></div>
+</div>
+</div>
+</header>
+<main class="wrap" data-pagefind-body="">
+<section id="problem">
+<div class="kicker">The underlying problem</div>
+<nav class="toc"><strong>Contents</strong><ul><li><a href="#hbm-scarcity-has-made-inference-a-placement-problem-as-much-as-a-compute-problem">HBM scarcity has made inference a placement problem as much as a compute problem</a></li><li><a href="#each-managed-weight-block-gets-both-a-precision-state-and-a-residency-state">Each managed weight block gets both a precision state and a residency state</a></li><li><a href="#a-concrete-operating-vocabulary-across-precision-and-residency">A concrete operating vocabulary across precision and residency</a></li><li><a href="#the-loop-is-predictive-asynchronous-and-cross-layer">The loop is predictive, asynchronous, and cross-layer</a></li><li><a href="#an-explicit-accuracy-veto-is-what-makes-the-design-more-than-an-aggressive-memory-optimizer">An explicit accuracy veto is what makes the design more than an aggressive memory optimizer</a></li><li><a href="#the-memory-stack-is-expanding-and-the-controller-is-designed-for-that-future">The memory stack is expanding, and the controller is designed for that future</a></li><li><a href="#the-same-control-model-scales-from-a-single-accelerator-to-pooled-systems">The same control model scales from a single accelerator to pooled systems</a></li><li><a href="#the-bigger-idea-is-that-model-weights-are-becoming-schedulable-runtime-state">The bigger idea is that model weights are becoming schedulable runtime state</a></li></ul></nav><h2 id="hbm-scarcity-has-made-inference-a-placement-problem-as-much-as-a-compute-problem">HBM scarcity has made inference a placement problem as much as a compute problem</h2>
+<p>At modern model sizes, throughput is not decided only by arithmetic intensity. It is increasingly decided by whether the right weight blocks are in the right place, in the right precision, at the right time. Once HBM becomes the limiting resource, serving starts to resemble an operating-system problem for parameter state.</p>
+<p>That is why the core thesis here is useful. Existing approaches often optimize one dimension in isolation. Static quantization focuses on footprint. Offload focuses on movement. Model parallelism focuses on topology. This invention tries to unify placement, precision, and movement under a single runtime controller.</p>
+<div class="quote">The most interesting claim is not that memory tiers exist. It is that the controller should reason over them as one managed state space while enforcing quality boundaries.</div>
+</section>
+<section>
+<div class="grid-3">
+<div class="card">
+<h3>Static quantization</h3>
+<p class="muted">Useful for reducing footprint, but fundamentally offline. It does not dynamically reassign precision based on active context, reuse horizon, routing likelihood, or live transfer pressure.</p>
+</div>
+<div class="card">
+<h3>Weight offload</h3>
+<p class="muted">Moves bytes across tiers, but often without a joint policy for precision, decompression cost, safety margins, and output-quality guardrails.</p>
+</div>
+<div class="card">
+<h3>Model parallelism</h3>
+<p class="muted">Spreads capacity and compute across devices, but does not itself answer the dynamic runtime question of which block deserves the fastest tier right now.</p>
+</div>
+</div>
+</section>
+<section id="invention">
+<div class="kicker">Core invention</div>
+<h2 id="each-managed-weight-block-gets-both-a-precision-state-and-a-residency-state">Each managed weight block gets both a precision state and a residency state</h2>
+<p>The architecture operates on first-class managed units such as weight shards, layer blocks, or MoE experts. For each unit, the controller computes a target state using predicted reuse, next-use timing, routing likelihood, decompression cost, transfer cost, bandwidth pressure, and quality sensitivity. The result is a system that does not merely quantize and does not merely offload; it coordinates both under one policy loop.</p>
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Control input</th><th>What it represents</th><th>Why it changes placement</th></tr>
+</thead>
+<tbody>
+<tr><td>Predicted reuse horizon</td><td>How soon a block is likely needed again</td><td>Hot blocks deserve premium residency or in-flight promotion.</td></tr>
+<tr><td>Next-use timing</td><td>Distance to the next compute touch</td><td>Defines whether there is enough slack for staging or prefetch.</td></tr>
+<tr><td>MoE router history</td><td>Observed expert popularity and routing trends</td><td>Lets sparse models drive speculative promotion intelligently.</td></tr>
+<tr><td>Transfer and decompression cost</td><td>Recovery overhead from lower tiers or compressed states</td><td>Changes whether a block should remain warm versus cold.</td></tr>
+<tr><td>Bandwidth pressure</td><td>Competing demand on the movement path</td><td>Prevents low-value traffic from blocking imminent promotions.</td></tr>
+<tr><td>Quality sensitivity</td><td>Risk of accuracy degradation under demotion or reduced precision</td><td>Acts as a veto boundary against unsafe efficiency optimizations.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<div class="grid-3">
+<div class="card">
+<div class="kicker">Hook 1</div>
+<h3>Closed-loop cross-layer optimization</h3>
+<p class="muted">The controller listens to model execution itself. Layer timing, concurrency, and routing behavior are not postmortem stats; they are live control inputs.</p>
+</div>
+<div class="card">
+<div class="kicker">Hook 2</div>
+<h3>Accuracy-veto supervisory guardrail</h3>
+<p class="muted">Efficiency wins are allowed only when predicted quality impact remains inside configured bounds. Unsafe demotions are blocked before they happen.</p>
+</div>
+<div class="card">
+<div class="kicker">Hook 3</div>
+<h3>Tier-transparent residency model</h3>
+<p class="muted">HBM, DRAM, CXL pools, peer memory, and storage are treated as one continuum rather than as ad hoc special cases.</p>
+</div>
+</div>
+</section>
+<section id="states">
+<div class="kicker">Seven-state model</div>
+<h2 id="a-concrete-operating-vocabulary-across-precision-and-residency">A concrete operating vocabulary across precision and residency</h2>
+<p>A strength of the concept is that it does not stay abstract. It defines an explicit state machine, which is exactly what a runtime controller needs if it is going to issue transitions in a disciplined, inspectable way.</p>
+<div class="grid-4">
+<div class="state"><small>S1</small><strong>Full-precision HBM</strong><br/>Premium placement for highly sensitive or imminently needed blocks.</div>
+<div class="state"><small>S2</small><strong>Reduced-precision HBM</strong><br/>Fast-tier placement with lower footprint when quality sensitivity allows compression.</div>
+<div class="state"><small>S3</small><strong>Compressed HBM</strong><br/>Near-compute holding state that shrinks footprint without full eviction.</div>
+<div class="state"><small>S4</small><strong>Host DRAM staged</strong><br/>Warm spill state for reasonably fast recovery when direct HBM is too expensive.</div>
+<div class="state"><small>S5</small><strong>Storage / cold staged</strong><br/>Low-priority state for blocks with weak near-term demand and acceptable retrieval overhead.</div>
+<div class="state"><small>S6</small><strong>In-flight prefetch</strong><br/>Transient promotion state aligned to an upcoming execution window.</div>
+<div class="state"><small>S7</small><strong>Recomputable fallback</strong><br/>Optional embodiment where hot storage is replaced by regeneration.</div>
+<div class="state"><small>Why this matters</small><strong>Inspectable control</strong><br/>A state machine allows explicit thresholds, hysteresis, and auditability.</div>
+</div>
+</section>
+<section>
+<div class="grid-2">
+<div>
+<div class="kicker">Closed-loop control</div>
+<h2 id="the-loop-is-predictive-asynchronous-and-cross-layer">The loop is predictive, asynchronous, and cross-layer</h2>
+<p>The control loop is conceptually clean: observe, score, veto, schedule, execute. That sequencing matters because it avoids collapsing telemetry, policy, and movement into one opaque heuristic blob.</p>
+<ul class="clean muted">
+<li><strong>Observe:</strong> collect layer timing, router statistics, concurrency, and live memory pressure.</li>
+<li><strong>Score:</strong> compute a target state from demand, cost, and sensitivity signals.</li>
+<li><strong>Veto:</strong> apply precision floors and risk checks.</li>
+<li><strong>Schedule:</strong> reserve bandwidth and align promotions with the prefetch window.</li>
+<li><strong>Execute:</strong> overlap transfers and decompression with compute.</li>
+</ul>
+</div>
+<div class="code">Observe  →  Score  →  Veto  →  Schedule  →  Execute
 
 Telemetry examples:
 - layer execution timing
@@ -349,85 +342,78 @@ Policy ingredients:
 - decompression cost
 - quality sensitivity
 - hysteresis thresholds</div>
-      </div>
-    </section>
-
-    <section id="guardrails">
-      <div class="kicker">Guardrails</div>
-      <h2>An explicit accuracy veto is what makes the design more than an aggressive memory optimizer</h2>
-      <p>Some blocks are disproportionately sensitive to precision loss or aggressive eviction. The architecture therefore keeps a supervisory guardrail path that maintains per-block quality sensitivity and minimum precision floors. When the policy engine proposes a transition that would violate those boundaries, the guardrail rejects it.</p>
-      <p>This is important because the locally optimal footprint decision is not always the globally optimal inference decision. Especially during peak HBM pressure, naive controllers tend to chase memory relief too aggressively. The veto mechanism is the antidote.</p>
-      <div class="grid-2">
-        <div class="card">
-          <h3>Predicted gain</h3>
-          <p class="muted">Higher HBM relief, lower hot-tier pressure, more room for imminent promotions.</p>
-        </div>
-        <div class="card">
-          <h3>Predicted cost</h3>
-          <p class="muted">Unsafe output drift, destabilized expert behavior, or degraded model quality on sensitive layers.</p>
-        </div>
-      </div>
-    </section>
-
-    <section>
-      <div class="kicker">Tier-transparent hierarchy</div>
-      <h2>The memory stack is expanding, and the controller is designed for that future</h2>
-      <p>The residency model spans HBM, compressed near-compute states, host DRAM or peer memory, CXL-attached pooled memory, and storage-backed cold extension. That matters because the future of serving is unlikely to be “everything fits in HBM.” The design is shaped for a world where pooled and staged capacity become first-class runtime tools.</p>
-      <div class="grid-5 diagram-grid">
-        <div class="tier"><small>Tier 0</small><strong>HBM</strong><br/>Highest bandwidth, smallest capacity, reserved for imminently needed blocks.</div>
-        <div class="tier"><small>Tier 1</small><strong>Compressed near-compute</strong><br/>Shrinks footprint while preserving rapid reactivation.</div>
-        <div class="tier"><small>Tier 2</small><strong>DRAM / peer memory</strong><br/>Warm staging for shorter-latency recovery and distributed node strategies.</div>
-        <div class="tier"><small>Tier 3</small><strong>CXL pool</strong><br/>A natural future embodiment for pooled disaggregated memory.</div>
-        <div class="tier"><small>Tier 4</small><strong>Storage extension</strong><br/>Cold capacity extension for oversized deployments.</div>
-      </div>
-    </section>
-
-    <section>
-      <div class="grid-2">
-        <div class="card">
-          <div class="kicker">Bandwidth-aware scheduling</div>
-          <h3>Not all transfers are equal</h3>
-          <p>The scheduler distinguishes between promotions that unblock imminent compute and lower-value demotion traffic. It estimates transfer latency, decompression latency, and safety margin to define a per-block prefetch window. High-value promotions get reserved budget first; background spill traffic can be throttled or deferred.</p>
-        </div>
-        <div class="card">
-          <div class="kicker">MoE-specific advantage</div>
-          <h3>Router history becomes a control signal</h3>
-          <p>This is one of the most interesting hooks in the concept. In sparse models, expert popularity is not treated as a passive monitoring metric. It directly influences promotion priority and speculative prefetch. That closes the loop between routing behavior and memory placement.</p>
-        </div>
-      </div>
-    </section>
-
-    <section id="deployment">
-      <div class="kicker">Representative deployment variants</div>
-      <h2>The same control model scales from a single accelerator to pooled systems</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th>Deployment</th><th>How the controller fits</th><th>Why it is relevant</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Single accelerator</td><td>Manages HBM, compressed HBM, host DRAM, and storage spill for one device.</td><td>Useful as the simplest embodiment and likely easiest validation path.</td></tr>
-            <tr><td>Multi-accelerator node</td><td>Uses peer memory or staged replicas to cut fetch latency across the node fabric.</td><td>Relevant when local device memory is fragmented across several accelerators.</td></tr>
-            <tr><td>CXL-enabled memory pool</td><td>Treats pooled memory as an active intermediate tier rather than a passive extension.</td><td>Aligns directly with where AI infrastructure is headed.</td></tr>
-            <tr><td>Storage-extended serving</td><td>Uses colder staging for oversized models while preserving hot-path quality via guarded promotion.</td><td>Important for cost-sensitive or over-capacity deployments.</td></tr>
-            <tr><td>Diffusion / multimodal pipelines</td><td>Applies the same managed-unit abstraction beyond decoder-only LLMs.</td><td>Shows the concept is not necessarily tied to one graph family.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section>
-      <div class="kicker">Closing take</div>
-      <h2>The bigger idea is that model weights are becoming schedulable runtime state</h2>
-      <p>The conceptual leap here is subtle but important. Traditional thinking treats parameters as mostly static assets that are loaded, partitioned, or compressed. This design treats them as managed operating state whose placement and precision can change continuously under workload feedback and quality supervision. That makes the controller feel less like a one-off optimization and more like an inference-time memory operating system.</p>
-      <p class="muted">For readers thinking about future AI systems, that framing may be the most durable part of the project. As HBM pressure rises and tiered memory becomes normal, runtime orchestration of weight state is likely to matter more, not less.</p>
-    </section>
-  </main>
-
-  <footer class="wrap footer">
-    <p>Prepared as a styled standalone HTML blog post. Best viewed in a modern browser.</p>
-    <p class="essay-copyright">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a></p>
+</div>
+</section>
+<section id="guardrails">
+<div class="kicker">Guardrails</div>
+<h2 id="an-explicit-accuracy-veto-is-what-makes-the-design-more-than-an-aggressive-memory-optimizer">An explicit accuracy veto is what makes the design more than an aggressive memory optimizer</h2>
+<p>Some blocks are disproportionately sensitive to precision loss or aggressive eviction. The architecture therefore keeps a supervisory guardrail path that maintains per-block quality sensitivity and minimum precision floors. When the policy engine proposes a transition that would violate those boundaries, the guardrail rejects it.</p>
+<p>This is important because the locally optimal footprint decision is not always the globally optimal inference decision. Especially during peak HBM pressure, naive controllers tend to chase memory relief too aggressively. The veto mechanism is the antidote.</p>
+<div class="grid-2">
+<div class="card">
+<h3>Predicted gain</h3>
+<p class="muted">Higher HBM relief, lower hot-tier pressure, more room for imminent promotions.</p>
+</div>
+<div class="card">
+<h3>Predicted cost</h3>
+<p class="muted">Unsafe output drift, destabilized expert behavior, or degraded model quality on sensitive layers.</p>
+</div>
+</div>
+</section>
+<section>
+<div class="kicker">Tier-transparent hierarchy</div>
+<h2 id="the-memory-stack-is-expanding-and-the-controller-is-designed-for-that-future">The memory stack is expanding, and the controller is designed for that future</h2>
+<p>The residency model spans HBM, compressed near-compute states, host DRAM or peer memory, CXL-attached pooled memory, and storage-backed cold extension. That matters because the future of serving is unlikely to be “everything fits in HBM.” The design is shaped for a world where pooled and staged capacity become first-class runtime tools.</p>
+<div class="grid-5 diagram-grid">
+<div class="tier"><small>Tier 0</small><strong>HBM</strong><br/>Highest bandwidth, smallest capacity, reserved for imminently needed blocks.</div>
+<div class="tier"><small>Tier 1</small><strong>Compressed near-compute</strong><br/>Shrinks footprint while preserving rapid reactivation.</div>
+<div class="tier"><small>Tier 2</small><strong>DRAM / peer memory</strong><br/>Warm staging for shorter-latency recovery and distributed node strategies.</div>
+<div class="tier"><small>Tier 3</small><strong>CXL pool</strong><br/>A natural future embodiment for pooled disaggregated memory.</div>
+<div class="tier"><small>Tier 4</small><strong>Storage extension</strong><br/>Cold capacity extension for oversized deployments.</div>
+</div>
+</section>
+<section>
+<div class="grid-2">
+<div class="card">
+<div class="kicker">Bandwidth-aware scheduling</div>
+<h3>Not all transfers are equal</h3>
+<p>The scheduler distinguishes between promotions that unblock imminent compute and lower-value demotion traffic. It estimates transfer latency, decompression latency, and safety margin to define a per-block prefetch window. High-value promotions get reserved budget first; background spill traffic can be throttled or deferred.</p>
+</div>
+<div class="card">
+<div class="kicker">MoE-specific advantage</div>
+<h3>Router history becomes a control signal</h3>
+<p>This is one of the most interesting hooks in the concept. In sparse models, expert popularity is not treated as a passive monitoring metric. It directly influences promotion priority and speculative prefetch. That closes the loop between routing behavior and memory placement.</p>
+</div>
+</div>
+</section>
+<section id="deployment">
+<div class="kicker">Representative deployment variants</div>
+<h2 id="the-same-control-model-scales-from-a-single-accelerator-to-pooled-systems">The same control model scales from a single accelerator to pooled systems</h2>
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Deployment</th><th>How the controller fits</th><th>Why it is relevant</th></tr>
+</thead>
+<tbody>
+<tr><td>Single accelerator</td><td>Manages HBM, compressed HBM, host DRAM, and storage spill for one device.</td><td>Useful as the simplest embodiment and likely easiest validation path.</td></tr>
+<tr><td>Multi-accelerator node</td><td>Uses peer memory or staged replicas to cut fetch latency across the node fabric.</td><td>Relevant when local device memory is fragmented across several accelerators.</td></tr>
+<tr><td>CXL-enabled memory pool</td><td>Treats pooled memory as an active intermediate tier rather than a passive extension.</td><td>Aligns directly with where AI infrastructure is headed.</td></tr>
+<tr><td>Storage-extended serving</td><td>Uses colder staging for oversized models while preserving hot-path quality via guarded promotion.</td><td>Important for cost-sensitive or over-capacity deployments.</td></tr>
+<tr><td>Diffusion / multimodal pipelines</td><td>Applies the same managed-unit abstraction beyond decoder-only LLMs.</td><td>Shows the concept is not necessarily tied to one graph family.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<div class="kicker">Closing take</div>
+<h2 id="the-bigger-idea-is-that-model-weights-are-becoming-schedulable-runtime-state">The bigger idea is that model weights are becoming schedulable runtime state</h2>
+<p>The conceptual leap here is subtle but important. Traditional thinking treats parameters as mostly static assets that are loaded, partitioned, or compressed. This design treats them as managed operating state whose placement and precision can change continuously under workload feedback and quality supervision. That makes the controller feel less like a one-off optimization and more like an inference-time memory operating system.</p>
+<p class="muted">For readers thinking about future AI systems, that framing may be the most durable part of the project. As HBM pressure rises and tiered memory becomes normal, runtime orchestration of weight state is likely to matter more, not less.</p>
+</section>
+<hr/><footer class="post-footer">© 2026 Manish K. Lach · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer></main>
+<footer class="wrap footer">
+<p>Prepared as a styled standalone HTML blog post. Best viewed in a modern browser.</p>
+<p class="essay-copyright">© 2026 <a href="https://github.com/manishklach" rel="noopener noreferrer" target="_blank">Manish KL</a></p>
 </footer>
 </body>
 </html>
-

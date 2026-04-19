@@ -1,27 +1,28 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>When VRAM Stops Being a Weight Warehouse | Manish K. Lach</title>
-<meta name="description" content="A systems primer on HBM, KV cache, PagedAttention, weight offload, and why scheduled weight streaming is the next step in AI inference architecture.">
-<meta name="author" content="Manish KL">
-<meta name="keywords" content="VRAM weight warehouse, HBM working set, KV cache residency, PagedAttention, weight offload, weight streaming, AI inference memory systems, GPU memory architecture"/>
-<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
-<link rel="canonical" href="https://manishklach.github.io/writings/when-vram-stops-being-a-weight-warehouse.html">
-<meta property="og:type" content="article">
-<meta property="og:title" content="When VRAM Stops Being a Weight Warehouse | Manish K. Lach">
-<meta property="og:description" content="A systems primer on HBM, KV cache, PagedAttention, weight offload, and why scheduled weight streaming is the next step in AI inference architecture.">
-<meta property="og:url" content="https://manishklach.github.io/writings/when-vram-stops-being-a-weight-warehouse.html">
-<meta property="og:site_name" content="Manish KL"/>
-<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png"/>
-<meta property="og:image:alt" content="When VRAM stops being a weight warehouse essay by Manish KL"/>
-<meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:title" content="When VRAM Stops Being a Weight Warehouse | Manish K. Lach"/>
-<meta name="twitter:description" content="A systems primer on HBM, KV cache, PagedAttention, weight offload, and why scheduled weight streaming is the next step in AI inference architecture."/>
-<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png"/>
-<meta name="twitter:image:alt" content="When VRAM stops being a weight warehouse essay by Manish KL"/>
-<meta name="twitter:site" content="@manishklach"/>
+<meta content="A systems primer on HBM, KV cache, PagedAttention, weight offload, and why scheduled weight streaming is the next step in AI inference architecture." name="description"/>
+<meta content="Manish KL" name="author"/>
+<meta content="VRAM weight warehouse, HBM working set, KV cache residency, PagedAttention, weight offload, weight streaming, AI inference memory systems, GPU memory architecture" name="keywords"/>
+<meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots">
+<link href="https://manishklach.github.io/writings/when-vram-stops-being-a-weight-warehouse.html" rel="canonical"/>
+<meta content="article" property="og:type"/>
+<meta content="When VRAM Stops Being a Weight Warehouse | Manish K. Lach" property="og:title"/>
+<meta content="A systems primer on HBM, KV cache, PagedAttention, weight offload, and why scheduled weight streaming is the next step in AI inference architecture." property="og:description"/>
+<meta content="https://manishklach.github.io/writings/when-vram-stops-being-a-weight-warehouse.html" property="og:url"/>
+<meta content="Manish KL" property="og:site_name"/>
+<meta content="https://manishklach.github.io/og/when-vram-stops-being-a-weight-warehouse.png" property="og:image"/>
+<meta content="When VRAM stops being a weight warehouse essay by Manish KL" property="og:image:alt"/>
+<meta content="summary_large_image" name="twitter:card"/>
+<meta content="When VRAM Stops Being a Weight Warehouse" name="twitter:title"/>
+<meta content="A systems primer on HBM, KV cache, PagedAttention, weight offload, and why scheduled weight streaming is the next step in AI inference architecture." name="twitter:description"/>
+<meta content="https://manishklach.github.io/og/when-vram-stops-being-a-weight-warehouse.png" name="twitter:image"/>
+<meta content="When VRAM stops being a weight warehouse essay by Manish KL" name="twitter:image:alt">
+<meta content="@manishklach" name="twitter:site">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -44,8 +45,8 @@
   }
 }
 </script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=Literata:ital,opsz,wght@0,7..72,300;0,7..72,400;1,7..72,300&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&amp;family=DM+Serif+Display:ital@0;1&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Literata:ital,opsz,wght@0,7..72,300;0,7..72,400;1,7..72,300&amp;display=swap" rel="stylesheet"/>
 <style>
 /* ── TOKENS ─────────────────────────────────── */
 :root {
@@ -362,823 +363,709 @@ li { margin-bottom:7px; font-weight:300; }
   .hero      { padding:44px 20px 32px; }
 }
 </style>
-<meta name="color-scheme" content="light dark">
-</head>
-<body>
-
+<meta content="light dark" name="color-scheme">
+</meta></meta></meta></meta><script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><link href="/assets/site.css" rel="stylesheet"/><script defer="" src="/assets/site.js"></script><link href="/feed.xml" rel="alternate" title="Manish K. Lach RSS" type="application/rss+xml"/></head>
+<body><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
 <div id="prog"></div>
-
 <nav class="nav">
-  <a class="nav-logo" href="../index.html">Manish KL</a>
-  <span class="nav-sep">/</span>
-  <span class="nav-title">When VRAM Stops Being a Weight Warehouse</span>
-  <span class="nav-right">Inference Systems · Memory Architecture</span>
+<a class="nav-logo" href="../index.html">Manish KL</a>
+<span class="nav-sep">/</span>
+<span class="nav-title">When VRAM Stops Being a Weight Warehouse</span>
+<span class="nav-right">Inference Systems · Memory Architecture</span>
 </nav>
-
 <div class="page">
-
 <!-- ══ HERO ══════════════════════════════════════ -->
 <header class="hero">
-  <div class="chip"><span class="chip-dot"></span>AI Inference · GPU Memory · Systems Architecture</div>
-  <h1>When VRAM Stops Being a <em>Weight Warehouse</em></h1>
-  <p class="hero-sub">A systems primer on HBM, KV cache, PagedAttention, weight offload — and why the real end state isn't smarter offloading, it's treating GPU memory as a bounded execution working set that weights pass <em>through</em>, not live in.</p>
-  <div class="meta-row">
-    <span>Manish KL</span><span class="meta-dot">·</span>
-    <span><time datetime="2026-04-09">April 2026</time></span><span class="meta-dot">·</span>
-    <span>~18 min read</span><span class="meta-dot">·</span>
-    <span>Systems Primer</span>
-  </div>
-
-  <div class="jump-links">
-    <a href="#basics">HBM &amp; VRAM</a>
-    <a href="#tenants">VRAM tenants</a>
-    <a href="#kvcache">KV cache</a>
-    <a href="#vllm">PagedAttention</a>
-    <a href="#offload">Weight offload</a>
-    <a href="#bandwidth">The bandwidth wall</a>
-    <a href="#streaming">Scheduled streaming</a>
-    <a href="#working-set">Working set model</a>
-    <a href="#closing">Why this matters</a>
-  </div>
-
-  <!-- Live VRAM meter -->
-  <div class="hero-meter">
-    <div class="meter-head">
-      <span class="meter-label">H100 SXM · 80 GB HBM3 — Live Pressure Simulation</span>
-      <span class="meter-val" id="meterVal">80 GB total</span>
-    </div>
-    <div class="meter-body">
-      <div class="vram-bar" id="vramBar">
-        <div class="vbar vbar-weights" id="bWeights" style="width:0%"></div>
-        <div class="vbar vbar-kv"      id="bKV"      style="width:0%"></div>
-        <div class="vbar vbar-buf"     id="bBuf"     style="width:0%"></div>
-        <div class="vbar-free"></div>
-      </div>
-      <div class="meter-legend">
-        <div class="leg-item"><div class="leg-dot" style="background:rgba(124,158,255,.8)"></div>Model weights</div>
-        <div class="leg-item"><div class="leg-dot" style="background:rgba(61,214,200,.85)"></div>KV cache</div>
-        <div class="leg-item"><div class="leg-dot" style="background:rgba(240,180,60,.7)"></div>Activations + buffers</div>
-        <div class="leg-item" style="margin-left:auto"><div class="leg-dot" style="background:rgba(255,255,255,.1)"></div>Free</div>
-      </div>
-      <div class="meter-scenario" id="mScenario">Select a scenario to see the pressure</div>
-      <div class="meter-btns">
-        <button class="mbtn" onclick="setScenario(0)">70B, short ctx</button>
-        <button class="mbtn" onclick="setScenario(1)">70B, 32K ctx, batch=8</button>
-        <button class="mbtn" onclick="setScenario(2)">70B, 128K ctx, batch=16</button>
-        <button class="mbtn" onclick="setScenario(3)">Streaming mode</button>
-      </div>
-    </div>
-  </div>
+<div class="chip"><span class="chip-dot"></span>AI Inference · GPU Memory · Systems Architecture</div>
+<h1>When VRAM Stops Being a <em>Weight Warehouse</em></h1><div class="meta reading-meta">Published <time datetime="2026-04-09">Apr 9, 2026</time> · 16 min read</div>
+<p class="hero-sub">A systems primer on HBM, KV cache, PagedAttention, weight offload — and why the real end state isn't smarter offloading, it's treating GPU memory as a bounded execution working set that weights pass <em>through</em>, not live in.</p>
+<div class="meta-row">
+<span>Manish KL</span><span class="meta-dot">·</span>
+<span><time datetime="2026-04-09">April 2026</time></span><span class="meta-dot">·</span>
+<span>~18 min read</span><span class="meta-dot">·</span>
+<span>Systems Primer</span>
+</div>
+<div class="jump-links">
+<a href="#basics">HBM &amp; VRAM</a>
+<a href="#tenants">VRAM tenants</a>
+<a href="#kvcache">KV cache</a>
+<a href="#vllm">PagedAttention</a>
+<a href="#offload">Weight offload</a>
+<a href="#bandwidth">The bandwidth wall</a>
+<a href="#streaming">Scheduled streaming</a>
+<a href="#working-set">Working set model</a>
+<a href="#closing">Why this matters</a>
+</div>
+<!-- Live VRAM meter -->
+<div class="hero-meter">
+<div class="meter-head">
+<span class="meter-label">H100 SXM · 80 GB HBM3 — Live Pressure Simulation</span>
+<span class="meter-val" id="meterVal">80 GB total</span>
+</div>
+<div class="meter-body">
+<div class="vram-bar" id="vramBar">
+<div class="vbar vbar-weights" id="bWeights" style="width:0%"></div>
+<div class="vbar vbar-kv" id="bKV" style="width:0%"></div>
+<div class="vbar vbar-buf" id="bBuf" style="width:0%"></div>
+<div class="vbar-free"></div>
+</div>
+<div class="meter-legend">
+<div class="leg-item"><div class="leg-dot" style="background:rgba(124,158,255,.8)"></div>Model weights</div>
+<div class="leg-item"><div class="leg-dot" style="background:rgba(61,214,200,.85)"></div>KV cache</div>
+<div class="leg-item"><div class="leg-dot" style="background:rgba(240,180,60,.7)"></div>Activations + buffers</div>
+<div class="leg-item" style="margin-left:auto"><div class="leg-dot" style="background:rgba(255,255,255,.1)"></div>Free</div>
+</div>
+<div class="meter-scenario" id="mScenario">Select a scenario to see the pressure</div>
+<div class="meter-btns">
+<button class="mbtn" onclick="setScenario(0)">70B, short ctx</button>
+<button class="mbtn" onclick="setScenario(1)">70B, 32K ctx, batch=8</button>
+<button class="mbtn" onclick="setScenario(2)">70B, 128K ctx, batch=16</button>
+<button class="mbtn" onclick="setScenario(3)">Streaming mode</button>
+</div>
+</div>
+</div>
 </header>
-
 <!-- ══ BODY ═══════════════════════════════════════ -->
 <div class="body-wrap">
-
-  <!-- TOC -->
-  <aside class="toc-rail">
-    <div class="toc-lbl">Contents</div>
-    <ul class="toc-list">
-      <li><a href="#basics">HBM &amp; VRAM</a></li>
-      <li><a href="#tenants">VRAM tenants</a></li>
-      <li><a href="#kvcache">KV cache deep dive</a></li>
-      <li><a href="#vllm">PagedAttention</a></li>
-      <li><a href="#offload">Weight offload</a></li>
-      <li><a href="#bandwidth">The bandwidth wall</a></li>
-      <li><a href="#streaming">Scheduled streaming</a></li>
-      <li><a href="#working-set">Working set model</a></li>
-      <li><a href="#closing">Why this matters</a></li>
-    </ul>
-    <div class="toc-div"></div>
-    <div class="toc-note">Primer for ML engineers, inference platform builders, and anyone wondering why an 80 GB H100 can still run out of memory.</div>
-  </aside>
-
-  <!-- ARTICLE -->
-  <main class="article" data-pagefind-body>
-
-    <p class="lede reveal">For a long time the dominant mental model for AI inference was simple: load the model weights into GPU memory, keep them there, and run inference as fast as the hardware allows. That model worked when models were smaller and GPU memory was mostly treated as a place to <em>store the model</em>. Modern inference systems expose a different reality.</p>
-
-    <!-- ══ PART 1: HBM ══════════════════════════ -->
-    <section id="basics" class="reveal">
-      <h2>Part 1 — What people mean by VRAM and HBM</h2>
-      <p>In casual conversation, people say "VRAM" to mean "GPU memory." That's fine informally, but for systems work the distinction matters.</p>
-      <p><strong>VRAM</strong> is the general term for any memory attached to a GPU. <strong>HBM</strong> — High Bandwidth Memory — is the specific technology used in modern AI accelerators. It's not just fast memory; it's memory stacked in 3D dies directly adjacent to the GPU die, connected via a wide silicon interposer rather than a conventional PCB trace. That physical proximity is what makes it extraordinary.</p>
-
-      <div class="stats">
-        <div class="stat">
-          <div class="stat-n">3.35</div>
-          <div class="stat-l">TB/s memory bandwidth on H100 SXM (HBM3)</div>
-        </div>
-        <div class="stat">
-          <div class="stat-n amber">80</div>
-          <div class="stat-l">GB HBM capacity on H100 SXM — the "constraint"</div>
-        </div>
-        <div class="stat">
-          <div class="stat-n">~48</div>
-          <div class="stat-l">GB/s PCIe Gen5 x16 — the offload ceiling</div>
-        </div>
-      </div>
-
-      <p>HBM matters not just because it's memory, but because it can sustain the data rate that modern GPU tensor cores need. A100 and H100 tensor cores can theoretically perform thousands of TFLOP/s — but only if they're continuously fed with data. If weights and activations arrive too slowly, cores stall and that compute goes to waste. The memory system is the bottleneck at scale.</p>
-
-      <!-- FIG 1: Memory hierarchy -->
-      <div class="fig">
-        <div class="fig-head"><span class="fig-num">Fig. 01</span><span class="fig-ttl">GPU Memory Hierarchy — Bandwidth and Latency by Tier</span></div>
-        <svg viewBox="0 0 840 280" xmlns="http://www.w3.org/2000/svg" style="background:#0a1220;">
-          <defs>
-            <marker id="ar" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5z" fill="rgba(61,214,200,.6)"/></marker>
-          </defs>
-          <!-- Tiers -->
-          <!-- L1/Shared -->
-          <rect x="60" y="28" width="120" height="48" rx="4" fill="rgba(240,180,60,.18)" stroke="rgba(240,180,60,.5)" stroke-width="1.5"/>
-          <text x="120" y="50" fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle">L1 / Shared</text>
-          <text x="120" y="65" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">~19 TB/s · ~128 KB/SM</text>
-
-          <!-- HBM -->
-          <rect x="60" y="92" width="120" height="48" rx="4" fill="rgba(61,214,200,.15)" stroke="rgba(61,214,200,.45)" stroke-width="1.5"/>
-          <text x="120" y="114" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle">HBM3 (VRAM)</text>
-          <text x="120" y="129" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">3.35 TB/s · 80 GB</text>
-
-          <!-- NVLink -->
-          <rect x="60" y="156" width="120" height="48" rx="4" fill="rgba(124,158,255,.12)" stroke="rgba(124,158,255,.35)" stroke-width="1"/>
-          <text x="120" y="178" fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle">NVLink / NVSwitch</text>
-          <text x="120" y="193" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">900 GB/s · multi-GPU</text>
-
-          <!-- PCIe -->
-          <rect x="60" y="220" width="120" height="48" rx="4" fill="rgba(255,255,255,.05)" stroke="rgba(255,255,255,.12)" stroke-width="1"/>
-          <text x="120" y="242" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle">PCIe Gen5 / Host</text>
-          <text x="120" y="257" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">~48–128 GB/s · TBs</text>
-
-          <!-- Arrows left -->
-          <path d="M60 52 L36 52" fill="none" stroke="rgba(240,180,60,.4)" stroke-width="1" stroke-dasharray="3 2"/>
-          <path d="M60 116 L36 116" fill="none" stroke="rgba(61,214,200,.4)" stroke-width="1" stroke-dasharray="3 2"/>
-          <path d="M60 180 L36 180" fill="none" stroke="rgba(124,158,255,.3)" stroke-width="1" stroke-dasharray="3 2"/>
-          <path d="M60 244 L36 244" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="1" stroke-dasharray="3 2"/>
-
-          <!-- Latency axis -->
-          <line x1="28" y1="28" x2="28" y2="268" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
-          <text x="22" y="148" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" transform="rotate(-90,22,148)">LATENCY / DISTANCE FROM COMPUTE →</text>
-
-          <!-- Bandwidth bar chart -->
-          <text x="240" y="22" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" letter-spacing=".06em">BANDWIDTH COMPARISON (log scale)</text>
-
-          <rect x="240" y="34" width="394" height="20" rx="2" fill="rgba(240,180,60,.5)" stroke="rgba(240,180,60,.4)"/>
-          <text x="640" y="48" fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="9">~19 TB/s (L1/Shared, on-chip)</text>
-
-          <rect x="240" y="62" width="222" height="20" rx="2" fill="rgba(61,214,200,.45)" stroke="rgba(61,214,200,.35)"/>
-          <text x="468" y="76" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9">3.35 TB/s (HBM3)</text>
-
-          <rect x="240" y="90" width="70" height="20" rx="2" fill="rgba(124,158,255,.35)" stroke="rgba(124,158,255,.25)"/>
-          <text x="316" y="104" fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="9">900 GB/s (NVLink)</text>
-
-          <rect x="240" y="118" width="8" height="20" rx="2" fill="rgba(255,255,255,.15)" stroke="rgba(255,255,255,.1)"/>
-          <text x="254" y="132" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9">~48 GB/s (PCIe Gen5) — the offload bottleneck</text>
-
-          <!-- Insight box -->
-          <rect x="240" y="160" width="560" height="88" rx="4" fill="rgba(61,214,200,.05)" stroke="rgba(61,214,200,.15)" stroke-width="1"/>
-          <text x="258" y="183" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" letter-spacing=".06em">THE BANDWIDTH CLIFF</text>
-          <text x="258" y="201" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9">HBM delivers 3,350 GB/s. PCIe Gen5 delivers 48 GB/s.</text>
-          <text x="258" y="217" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9">That's a 70× gap. Anything that forces data across PCIe</text>
-          <text x="258" y="233" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9">during the hot path pays a severe tax in stall cycles.</text>
-        </svg>
-        <div class="fig-cap">The bandwidth cliff between HBM and PCIe is 70× on a modern system. Any system design that forces data across PCIe during the compute hot path pays that tax in GPU stall cycles.</div>
-      </div>
-
-      <div class="callout"><strong>When people say "the model has to fit in VRAM"</strong> — what they really mean is: the model has to fit in the GPU's highest-bandwidth memory tier, because that's the only tier that can feed the compute units without stalling them.</div>
-    </section>
-
-    <!-- ══ PART 2: TENANTS ══════════════════════ -->
-    <section id="tenants" class="reveal">
-      <h2>Part 2 — What actually lives in GPU memory</h2>
-      <p>During inference, GPU memory is not consumed by one thing. It's shared across several major tenants — and they compete with each other for the same scarce bytes.</p>
-
-      <!-- FIG 2: VRAM tenants -->
-      <div class="fig">
-        <div class="fig-head"><span class="fig-num">Fig. 02</span><span class="fig-ttl">VRAM Tenancy on an H100 SXM (80 GB) — 70B Model at Scale</span></div>
-        <svg viewBox="0 0 840 320" xmlns="http://www.w3.org/2000/svg" style="background:#0a1220;">
-          <!-- Scenario labels -->
-          <text x="30" y="22" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8.5" letter-spacing=".08em">MEMORY PRESSURE BY SCENARIO (GB)</text>
-
-          <!-- Grid lines -->
-          <line x1="160" y1="30" x2="160" y2="270" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
-          <line x1="280" y1="30" x2="280" y2="270" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
-          <line x1="400" y1="30" x2="400" y2="270" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
-          <line x1="520" y1="30" x2="520" y2="270" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
-          <line x1="640" y1="30" x2="640" y2="270" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
-          <line x1="760" y1="30" x2="760" y2="270" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
-          <text x="160" y="282" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">20</text>
-          <text x="280" y="282" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">35</text>
-          <text x="400" y="282" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">50</text>
-          <text x="520" y="282" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">65</text>
-          <text x="640" y="282" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">80</text>
-          <text x="760" y="282" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">80+</text>
-
-          <!-- Row 1: 70B, short ctx -->
-          <text x="8" y="56" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" dominant-baseline="middle">70B, 4K ctx</text>
-          <text x="8" y="68" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="7.5">batch=1</text>
-          <!-- weights: 35 GB → 35/80 * 600 = 262.5 -->
-          <rect x="140" y="42" width="262" height="28" rx="3" fill="rgba(124,158,255,.55)" stroke="rgba(124,158,255,.3)"/>
-          <text x="271" y="58" fill="#c8d8ff" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">35 GB weights</text>
-          <!-- KV: ~1 GB -->
-          <rect x="402" y="42" width="8" height="28" rx="2" fill="rgba(61,214,200,.7)"/>
-          <!-- bufs: ~4 GB -->
-          <rect x="410" y="42" width="30" height="28" rx="2" fill="rgba(240,180,60,.55)"/>
-          <!-- free: ~40 GB -->
-          <rect x="440" y="42" width="302" height="28" rx="3" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.08)"/>
-          <text x="591" y="58" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">~40 GB free</text>
-
-          <!-- Row 2: 70B, 32K, batch=8 -->
-          <text x="8" y="104" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" dominant-baseline="middle">70B, 32K ctx</text>
-          <text x="8" y="116" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="7.5">batch=8</text>
-          <rect x="140" y="90" width="262" height="28" rx="3" fill="rgba(124,158,255,.55)" stroke="rgba(124,158,255,.3)"/>
-          <text x="271" y="106" fill="#c8d8ff" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">35 GB weights</text>
-          <!-- KV: 8 * 32K * 2 * 80 * 128 * 2B ≈ 26GB rough -->
-          <rect x="402" y="90" width="195" height="28" rx="3" fill="rgba(61,214,200,.65)" stroke="rgba(61,214,200,.25)"/>
-          <text x="499" y="106" fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">~26 GB KV cache</text>
-          <rect x="597" y="90" width="30" height="28" rx="2" fill="rgba(240,180,60,.5)"/>
-          <rect x="627" y="90" width="115" height="28" rx="2" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.08)"/>
-          <text x="685" y="106" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">~15 GB free</text>
-
-          <!-- Row 3: 70B, 128K, batch=16 — FULL -->
-          <text x="8" y="152" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" dominant-baseline="middle">70B, 128K ctx</text>
-          <text x="8" y="164" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="7.5">batch=16</text>
-          <rect x="140" y="138" width="262" height="28" rx="3" fill="rgba(124,158,255,.55)" stroke="rgba(124,158,255,.3)"/>
-          <text x="271" y="154" fill="#c8d8ff" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">35 GB weights</text>
-          <rect x="402" y="138" width="360" height="28" rx="3" fill="rgba(61,214,200,.7)" stroke="rgba(61,214,200,.3)"/>
-          <text x="582" y="154" fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">~45 GB KV cache</text>
-          <!-- OOM indicator -->
-          <text x="766" y="148" fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500">OOM →</text>
-
-          <!-- Row 4: Streaming mode -->
-          <text x="8" y="200" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="8.5" dominant-baseline="middle">Streaming mode</text>
-          <text x="8" y="212" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="7.5">same 70B model</text>
-          <!-- only active layers: ~4 GB -->
-          <rect x="140" y="186" width="32" height="28" rx="3" fill="rgba(124,158,255,.7)" stroke="rgba(124,158,255,.5)" stroke-width="1.5"/>
-          <text x="156" y="202" fill="#c8d8ff" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle">4</text>
-          <!-- prefetch: ~4 GB -->
-          <rect x="172" y="186" width="32" height="28" rx="3" fill="rgba(124,158,255,.35)" stroke="rgba(124,158,255,.3)" stroke-dasharray="3 2"/>
-          <text x="188" y="202" fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle">4↑</text>
-          <!-- KV: up to 60+ GB -->
-          <rect x="204" y="186" width="452" height="28" rx="3" fill="rgba(61,214,200,.65)" stroke="rgba(61,214,200,.3)"/>
-          <text x="430" y="202" fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~56 GB KV cache (room for 10× more context or concurrency)</text>
-          <rect x="656" y="186" width="86" height="28" rx="2" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.08)"/>
-          <text x="699" y="202" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">~10 GB free</text>
-
-          <!-- Legend -->
-          <rect x="140" y="246" width="14" height="10" rx="2" fill="rgba(124,158,255,.55)"/>
-          <text x="160" y="255" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8">Weights</text>
-          <rect x="230" y="246" width="14" height="10" rx="2" fill="rgba(61,214,200,.65)"/>
-          <text x="250" y="255" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8">KV cache</text>
-          <rect x="320" y="246" width="14" height="10" rx="2" fill="rgba(240,180,60,.5)"/>
-          <text x="340" y="255" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8">Buffers</text>
-          <rect x="400" y="246" width="14" height="10" rx="2" fill="rgba(255,255,255,.08)" stroke="rgba(255,255,255,.15)"/>
-          <text x="420" y="255" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8">Free</text>
-          <text x="560" y="255" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">↑ prefetch in-flight (streaming)</text>
-        </svg>
-        <div class="fig-cap">The weight footprint is static. The KV cache is dynamic and grows with context length, batch size, and concurrency. In streaming mode, weights occupy only 4–8 GB at any moment (active layer + prefetch), freeing the rest for KV cache. Numbers are illustrative approximations for a 70B BF16 model.</div>
-      </div>
-
-      <h3>The three tenants and their characters</h3>
-      <ul>
-        <li><strong>Weights</strong> — static, large (35 GB for 70B in BF16), reused every forward pass. They're the most evictable: read-only, fully predictable access pattern, layer-by-layer.</li>
-        <li><strong>KV cache</strong> — dynamic, grows with context and concurrency, directly drives serving throughput. Losing KV cache means recomputation. It's the highest-value resident per byte.</li>
-        <li><strong>Activations and buffers</strong> — ephemeral per token/step, generally small but non-negotiable. Workspace for the active forward pass.</li>
-      </ul>
-      <div class="callout"><strong>The key insight:</strong> Weights are static and predictable. KV cache is dynamic and drives revenue (throughput, concurrency, context length). Any system that prioritizes weight residency over KV cache residency has its incentives backwards.</div>
-    </section>
-
-    <!-- ══ PART 3: KV CACHE ══════════════════════ -->
-    <section id="kvcache" class="reveal">
-      <h2>Part 3 — Why KV cache is the crux</h2>
-      <p>The KV cache is the most misunderstood concept in LLM inference. People reach for it to explain memory pressure, but rarely work through the math to understand why it dominates at scale.</p>
-
-      <h3>The mathematics of KV cache size</h3>
-      <p>For a transformer model with the following parameters:</p>
-
-      <div class="code-block">
+<!-- TOC -->
+<aside class="toc-rail">
+<div class="toc-lbl">Contents</div>
+<ul class="toc-list">
+<li><a href="#basics">HBM &amp; VRAM</a></li>
+<li><a href="#tenants">VRAM tenants</a></li>
+<li><a href="#kvcache">KV cache deep dive</a></li>
+<li><a href="#vllm">PagedAttention</a></li>
+<li><a href="#offload">Weight offload</a></li>
+<li><a href="#bandwidth">The bandwidth wall</a></li>
+<li><a href="#streaming">Scheduled streaming</a></li>
+<li><a href="#working-set">Working set model</a></li>
+<li><a href="#closing">Why this matters</a></li>
+</ul>
+<div class="toc-div"></div>
+<div class="toc-note">Primer for ML engineers, inference platform builders, and anyone wondering why an 80 GB H100 can still run out of memory.</div>
+</aside>
+<!-- ARTICLE -->
+<main class="article" data-pagefind-body="">
+<p class="lede reveal">For a long time the dominant mental model for AI inference was simple: load the model weights into GPU memory, keep them there, and run inference as fast as the hardware allows. That model worked when models were smaller and GPU memory was mostly treated as a place to <em>store the model</em>. Modern inference systems expose a different reality.</p>
+<!-- ══ PART 1: HBM ══════════════════════════ -->
+<section class="reveal" id="basics">
+<nav class="toc"><strong>Contents</strong><ul><li><a href="#part-1-what-people-mean-by-vram-and-hbm">Part 1 — What people mean by VRAM and HBM</a></li><li><a href="#part-2-what-actually-lives-in-gpu-memory">Part 2 — What actually lives in GPU memory</a></li><li><a href="#part-3-why-kv-cache-is-the-crux">Part 3 — Why KV cache is the crux</a></li><li><a href="#part-4-what-vllm-and-pagedattention-actually-solved">Part 4 — What vLLM and PagedAttention actually solved</a></li><li><a href="#part-5-weight-offload-the-right-problem-imperfect-solution">Part 5 — Weight offload: the right problem, imperfect solution</a></li><li><a href="#part-6-the-bandwidth-wall">Part 6 — The bandwidth wall</a></li><li><a href="#part-7-scheduled-weight-streaming-the-stronger-model">Part 7 — Scheduled weight streaming: the stronger model</a></li><li><a href="#part-8-vram-as-a-working-set-not-a-warehouse">Part 8 — VRAM as a working set, not a warehouse</a></li><li><a href="#part-9-why-this-architectural-shift-matters">Part 9 — Why this architectural shift matters</a></li></ul></nav><h2 id="part-1-what-people-mean-by-vram-and-hbm">Part 1 — What people mean by VRAM and HBM</h2>
+<p>In casual conversation, people say "VRAM" to mean "GPU memory." That's fine informally, but for systems work the distinction matters.</p>
+<p><strong>VRAM</strong> is the general term for any memory attached to a GPU. <strong>HBM</strong> — High Bandwidth Memory — is the specific technology used in modern AI accelerators. It's not just fast memory; it's memory stacked in 3D dies directly adjacent to the GPU die, connected via a wide silicon interposer rather than a conventional PCB trace. That physical proximity is what makes it extraordinary.</p>
+<div class="stats">
+<div class="stat">
+<div class="stat-n">3.35</div>
+<div class="stat-l">TB/s memory bandwidth on H100 SXM (HBM3)</div>
+</div>
+<div class="stat">
+<div class="stat-n amber">80</div>
+<div class="stat-l">GB HBM capacity on H100 SXM — the "constraint"</div>
+</div>
+<div class="stat">
+<div class="stat-n">~48</div>
+<div class="stat-l">GB/s PCIe Gen5 x16 — the offload ceiling</div>
+</div>
+</div>
+<p>HBM matters not just because it's memory, but because it can sustain the data rate that modern GPU tensor cores need. A100 and H100 tensor cores can theoretically perform thousands of TFLOP/s — but only if they're continuously fed with data. If weights and activations arrive too slowly, cores stall and that compute goes to waste. The memory system is the bottleneck at scale.</p>
+<!-- FIG 1: Memory hierarchy -->
+<div class="fig">
+<div class="fig-head"><span class="fig-num">Fig. 01</span><span class="fig-ttl">GPU Memory Hierarchy — Bandwidth and Latency by Tier</span></div>
+<svg style="background:#0a1220;" viewbox="0 0 840 280" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="ar" markerheight="7" markerwidth="7" orient="auto" refx="5" refy="3.5"><path d="M0,0 L0,7 L7,3.5z" fill="rgba(61,214,200,.6)"></path></marker>
+</defs>
+<!-- Tiers -->
+<!-- L1/Shared -->
+<rect fill="rgba(240,180,60,.18)" height="48" rx="4" stroke="rgba(240,180,60,.5)" stroke-width="1.5" width="120" x="60" y="28"></rect>
+<text fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle" x="120" y="50">L1 / Shared</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="120" y="65">~19 TB/s · ~128 KB/SM</text>
+<!-- HBM -->
+<rect fill="rgba(61,214,200,.15)" height="48" rx="4" stroke="rgba(61,214,200,.45)" stroke-width="1.5" width="120" x="60" y="92"></rect>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle" x="120" y="114">HBM3 (VRAM)</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="120" y="129">3.35 TB/s · 80 GB</text>
+<!-- NVLink -->
+<rect fill="rgba(124,158,255,.12)" height="48" rx="4" stroke="rgba(124,158,255,.35)" stroke-width="1" width="120" x="60" y="156"></rect>
+<text fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle" x="120" y="178">NVLink / NVSwitch</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="120" y="193">900 GB/s · multi-GPU</text>
+<!-- PCIe -->
+<rect fill="rgba(255,255,255,.05)" height="48" rx="4" stroke="rgba(255,255,255,.12)" stroke-width="1" width="120" x="60" y="220"></rect>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle" x="120" y="242">PCIe Gen5 / Host</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="120" y="257">~48–128 GB/s · TBs</text>
+<!-- Arrows left -->
+<path d="M60 52 L36 52" fill="none" stroke="rgba(240,180,60,.4)" stroke-dasharray="3 2" stroke-width="1"></path>
+<path d="M60 116 L36 116" fill="none" stroke="rgba(61,214,200,.4)" stroke-dasharray="3 2" stroke-width="1"></path>
+<path d="M60 180 L36 180" fill="none" stroke="rgba(124,158,255,.3)" stroke-dasharray="3 2" stroke-width="1"></path>
+<path d="M60 244 L36 244" fill="none" stroke="rgba(255,255,255,.15)" stroke-dasharray="3 2" stroke-width="1"></path>
+<!-- Latency axis -->
+<line stroke="rgba(255,255,255,.1)" stroke-width="1" x1="28" x2="28" y1="28" y2="268"></line>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" transform="rotate(-90,22,148)" x="22" y="148">LATENCY / DISTANCE FROM COMPUTE →</text>
+<!-- Bandwidth bar chart -->
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" letter-spacing=".06em" x="240" y="22">BANDWIDTH COMPARISON (log scale)</text>
+<rect fill="rgba(240,180,60,.5)" height="20" rx="2" stroke="rgba(240,180,60,.4)" width="394" x="240" y="34"></rect>
+<text fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="9" x="640" y="48">~19 TB/s (L1/Shared, on-chip)</text>
+<rect fill="rgba(61,214,200,.45)" height="20" rx="2" stroke="rgba(61,214,200,.35)" width="222" x="240" y="62"></rect>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" x="468" y="76">3.35 TB/s (HBM3)</text>
+<rect fill="rgba(124,158,255,.35)" height="20" rx="2" stroke="rgba(124,158,255,.25)" width="70" x="240" y="90"></rect>
+<text fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="9" x="316" y="104">900 GB/s (NVLink)</text>
+<rect fill="rgba(255,255,255,.15)" height="20" rx="2" stroke="rgba(255,255,255,.1)" width="8" x="240" y="118"></rect>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" x="254" y="132">~48 GB/s (PCIe Gen5) — the offload bottleneck</text>
+<!-- Insight box -->
+<rect fill="rgba(61,214,200,.05)" height="88" rx="4" stroke="rgba(61,214,200,.15)" stroke-width="1" width="560" x="240" y="160"></rect>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" letter-spacing=".06em" x="258" y="183">THE BANDWIDTH CLIFF</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" x="258" y="201">HBM delivers 3,350 GB/s. PCIe Gen5 delivers 48 GB/s.</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" x="258" y="217">That's a 70× gap. Anything that forces data across PCIe</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" x="258" y="233">during the hot path pays a severe tax in stall cycles.</text>
+</svg>
+<div class="fig-cap">The bandwidth cliff between HBM and PCIe is 70× on a modern system. Any system design that forces data across PCIe during the compute hot path pays that tax in GPU stall cycles.</div>
+</div>
+<div class="callout"><strong>When people say "the model has to fit in VRAM"</strong> — what they really mean is: the model has to fit in the GPU's highest-bandwidth memory tier, because that's the only tier that can feed the compute units without stalling them.</div>
+</section>
+<!-- ══ PART 2: TENANTS ══════════════════════ -->
+<section class="reveal" id="tenants">
+<h2 id="part-2-what-actually-lives-in-gpu-memory">Part 2 — What actually lives in GPU memory</h2>
+<p>During inference, GPU memory is not consumed by one thing. It's shared across several major tenants — and they compete with each other for the same scarce bytes.</p>
+<!-- FIG 2: VRAM tenants -->
+<div class="fig">
+<div class="fig-head"><span class="fig-num">Fig. 02</span><span class="fig-ttl">VRAM Tenancy on an H100 SXM (80 GB) — 70B Model at Scale</span></div>
+<svg style="background:#0a1220;" viewbox="0 0 840 320" xmlns="http://www.w3.org/2000/svg">
+<!-- Scenario labels -->
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8.5" letter-spacing=".08em" x="30" y="22">MEMORY PRESSURE BY SCENARIO (GB)</text>
+<!-- Grid lines -->
+<line stroke="rgba(255,255,255,.06)" stroke-width="1" x1="160" x2="160" y1="30" y2="270"></line>
+<line stroke="rgba(255,255,255,.06)" stroke-width="1" x1="280" x2="280" y1="30" y2="270"></line>
+<line stroke="rgba(255,255,255,.06)" stroke-width="1" x1="400" x2="400" y1="30" y2="270"></line>
+<line stroke="rgba(255,255,255,.06)" stroke-width="1" x1="520" x2="520" y1="30" y2="270"></line>
+<line stroke="rgba(255,255,255,.06)" stroke-width="1" x1="640" x2="640" y1="30" y2="270"></line>
+<line stroke="rgba(255,255,255,.06)" stroke-width="1" x1="760" x2="760" y1="30" y2="270"></line>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="160" y="282">20</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="280" y="282">35</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="400" y="282">50</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="520" y="282">65</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="640" y="282">80</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="760" y="282">80+</text>
+<!-- Row 1: 70B, short ctx -->
+<text dominant-baseline="middle" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" x="8" y="56">70B, 4K ctx</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="7.5" x="8" y="68">batch=1</text>
+<!-- weights: 35 GB → 35/80 * 600 = 262.5 -->
+<rect fill="rgba(124,158,255,.55)" height="28" rx="3" stroke="rgba(124,158,255,.3)" width="262" x="140" y="42"></rect>
+<text fill="#c8d8ff" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="271" y="58">35 GB weights</text>
+<!-- KV: ~1 GB -->
+<rect fill="rgba(61,214,200,.7)" height="28" rx="2" width="8" x="402" y="42"></rect>
+<!-- bufs: ~4 GB -->
+<rect fill="rgba(240,180,60,.55)" height="28" rx="2" width="30" x="410" y="42"></rect>
+<!-- free: ~40 GB -->
+<rect fill="rgba(255,255,255,.04)" height="28" rx="3" stroke="rgba(255,255,255,.08)" width="302" x="440" y="42"></rect>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="591" y="58">~40 GB free</text>
+<!-- Row 2: 70B, 32K, batch=8 -->
+<text dominant-baseline="middle" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" x="8" y="104">70B, 32K ctx</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="7.5" x="8" y="116">batch=8</text>
+<rect fill="rgba(124,158,255,.55)" height="28" rx="3" stroke="rgba(124,158,255,.3)" width="262" x="140" y="90"></rect>
+<text fill="#c8d8ff" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="271" y="106">35 GB weights</text>
+<!-- KV: 8 * 32K * 2 * 80 * 128 * 2B ≈ 26GB rough -->
+<rect fill="rgba(61,214,200,.65)" height="28" rx="3" stroke="rgba(61,214,200,.25)" width="195" x="402" y="90"></rect>
+<text fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="499" y="106">~26 GB KV cache</text>
+<rect fill="rgba(240,180,60,.5)" height="28" rx="2" width="30" x="597" y="90"></rect>
+<rect fill="rgba(255,255,255,.04)" height="28" rx="2" stroke="rgba(255,255,255,.08)" width="115" x="627" y="90"></rect>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="685" y="106">~15 GB free</text>
+<!-- Row 3: 70B, 128K, batch=16 — FULL -->
+<text dominant-baseline="middle" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" x="8" y="152">70B, 128K ctx</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="7.5" x="8" y="164">batch=16</text>
+<rect fill="rgba(124,158,255,.55)" height="28" rx="3" stroke="rgba(124,158,255,.3)" width="262" x="140" y="138"></rect>
+<text fill="#c8d8ff" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="271" y="154">35 GB weights</text>
+<rect fill="rgba(61,214,200,.7)" height="28" rx="3" stroke="rgba(61,214,200,.3)" width="360" x="402" y="138"></rect>
+<text fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="582" y="154">~45 GB KV cache</text>
+<!-- OOM indicator -->
+<text fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" x="766" y="148">OOM →</text>
+<!-- Row 4: Streaming mode -->
+<text dominant-baseline="middle" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="8.5" x="8" y="200">Streaming mode</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="7.5" x="8" y="212">same 70B model</text>
+<!-- only active layers: ~4 GB -->
+<rect fill="rgba(124,158,255,.7)" height="28" rx="3" stroke="rgba(124,158,255,.5)" stroke-width="1.5" width="32" x="140" y="186"></rect>
+<text fill="#c8d8ff" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="156" y="202">4</text>
+<!-- prefetch: ~4 GB -->
+<rect fill="rgba(124,158,255,.35)" height="28" rx="3" stroke="rgba(124,158,255,.3)" stroke-dasharray="3 2" width="32" x="172" y="186"></rect>
+<text fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="188" y="202">4↑</text>
+<!-- KV: up to 60+ GB -->
+<rect fill="rgba(61,214,200,.65)" height="28" rx="3" stroke="rgba(61,214,200,.3)" width="452" x="204" y="186"></rect>
+<text fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="430" y="202">~56 GB KV cache (room for 10× more context or concurrency)</text>
+<rect fill="rgba(255,255,255,.04)" height="28" rx="2" stroke="rgba(255,255,255,.08)" width="86" x="656" y="186"></rect>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="699" y="202">~10 GB free</text>
+<!-- Legend -->
+<rect fill="rgba(124,158,255,.55)" height="10" rx="2" width="14" x="140" y="246"></rect>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8" x="160" y="255">Weights</text>
+<rect fill="rgba(61,214,200,.65)" height="10" rx="2" width="14" x="230" y="246"></rect>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8" x="250" y="255">KV cache</text>
+<rect fill="rgba(240,180,60,.5)" height="10" rx="2" width="14" x="320" y="246"></rect>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8" x="340" y="255">Buffers</text>
+<rect fill="rgba(255,255,255,.08)" height="10" rx="2" stroke="rgba(255,255,255,.15)" width="14" x="400" y="246"></rect>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8" x="420" y="255">Free</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="560" y="255">↑ prefetch in-flight (streaming)</text>
+</svg>
+<div class="fig-cap">The weight footprint is static. The KV cache is dynamic and grows with context length, batch size, and concurrency. In streaming mode, weights occupy only 4–8 GB at any moment (active layer + prefetch), freeing the rest for KV cache. Numbers are illustrative approximations for a 70B BF16 model.</div>
+</div>
+<h3>The three tenants and their characters</h3>
+<ul>
+<li><strong>Weights</strong> — static, large (35 GB for 70B in BF16), reused every forward pass. They're the most evictable: read-only, fully predictable access pattern, layer-by-layer.</li>
+<li><strong>KV cache</strong> — dynamic, grows with context and concurrency, directly drives serving throughput. Losing KV cache means recomputation. It's the highest-value resident per byte.</li>
+<li><strong>Activations and buffers</strong> — ephemeral per token/step, generally small but non-negotiable. Workspace for the active forward pass.</li>
+</ul>
+<div class="callout"><strong>The key insight:</strong> Weights are static and predictable. KV cache is dynamic and drives revenue (throughput, concurrency, context length). Any system that prioritizes weight residency over KV cache residency has its incentives backwards.</div>
+</section>
+<!-- ══ PART 3: KV CACHE ══════════════════════ -->
+<section class="reveal" id="kvcache">
+<h2 id="part-3-why-kv-cache-is-the-crux">Part 3 — Why KV cache is the crux</h2>
+<p>The KV cache is the most misunderstood concept in LLM inference. People reach for it to explain memory pressure, but rarely work through the math to understand why it dominates at scale.</p>
+<h3>The mathematics of KV cache size</h3>
+<p>For a transformer model with the following parameters:</p>
+<div class="code-block">
 <span class="cm"># KV cache size formula</span>
 KV_bytes = <span class="ky">seq_len</span> × <span class="ky">num_layers</span> × 2 × <span class="ky">num_heads</span> × <span class="ky">head_dim</span> × <span class="ky">bytes_per_element</span>
-
 <span class="cm"># For LLaMA-3 70B: 80 layers, 8 KV heads, head_dim=128, BF16</span>
 <span class="cm"># At seq_len=32K, batch=1:</span>
-KV = <span class="vl">32768</span> × <span class="vl">80</span> × <span class="vl">2</span> × <span class="vl">8</span> × <span class="vl">128</span> × <span class="vl">2</span>  <span class="cm"># = ~3.3 GB per request</span>
-
+KV = <span class="vl">32768</span> × <span class="vl">80</span> × <span class="vl">2</span> × <span class="vl">8</span> × <span class="vl">128</span> × <span class="vl">2</span> <span class="cm"># = ~3.3 GB per request</span>
 <span class="cm"># batch=8, seq=32K → ~26 GB</span>
 <span class="cm"># batch=16, seq=128K → ~105 GB  ← doesn't fit on a single H100</span></div>
-
-      <!-- FIG 3: KV cache growth -->
-      <div class="fig">
-        <div class="fig-head"><span class="fig-num">Fig. 03</span><span class="fig-ttl">KV Cache Growth — Llama-3 70B, BF16, Varying Context and Batch</span></div>
-        <svg viewBox="0 0 840 280" xmlns="http://www.w3.org/2000/svg" style="background:#0a1220;">
-          <defs>
-            <marker id="kvar" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3z" fill="rgba(61,214,200,.5)"/></marker>
-          </defs>
-          <!-- Grid -->
-          <line x1="70" y1="20" x2="70" y2="220" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
-          <line x1="70" y1="220" x2="780" y2="220" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
-          <!-- Y axis labels -->
-          <text x="62" y="222" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="end">0</text>
-          <text x="62" y="182" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="end">20</text>
-          <text x="62" y="142" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="end">40</text>
-          <text x="62" y="102" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="end">60</text>
-          <text x="62" y="62" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="end">80</text>
-          <text x="62" y="30" fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="end">100+</text>
-          <!-- Grid lines -->
-          <line x1="70" y1="182" x2="780" y2="182" stroke="rgba(255,255,255,.04)" stroke-width="1"/>
-          <line x1="70" y1="142" x2="780" y2="142" stroke="rgba(255,255,255,.04)" stroke-width="1"/>
-          <line x1="70" y1="102" x2="780" y2="102" stroke="rgba(255,255,255,.04)" stroke-width="1"/>
-          <line x1="70" y1="62" x2="780" y2="62" stroke="rgba(255,255,255,.04)" stroke-width="1"/>
-          <!-- 80 GB line (H100 limit) -->
-          <line x1="70" y1="62" x2="780" y2="62" stroke="rgba(232,96,96,.5)" stroke-width="1.5" stroke-dasharray="6 3"/>
-          <text x="782" y="64" fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="8">80 GB H100 limit</text>
-
-          <!-- X axis: context lengths -->
-          <text x="130" y="232" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">4K</text>
-          <text x="250" y="232" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">8K</text>
-          <text x="370" y="232" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">16K</text>
-          <text x="490" y="232" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">32K</text>
-          <text x="610" y="232" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">64K</text>
-          <text x="730" y="232" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">128K</text>
-          <text x="400" y="248" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">Context Length (tokens)</text>
-
-          <!-- Lines: batch=1 -->
-          <polyline points="130,219 250,218 370,215 490,212 610,205 730,191" fill="none" stroke="rgba(61,214,200,.5)" stroke-width="1.5"/>
-          <text x="736" y="189" fill="rgba(61,214,200,.7)" font-family="IBM Plex Mono,monospace" font-size="8">batch=1</text>
-
-          <!-- Lines: batch=4 -->
-          <polyline points="130,218 250,215 370,210 490,200 610,181 730,141" fill="none" stroke="rgba(61,214,200,.75)" stroke-width="1.5"/>
-          <text x="736" y="139" fill="rgba(61,214,200,.9)" font-family="IBM Plex Mono,monospace" font-size="8">batch=4</text>
-
-          <!-- Lines: batch=8 -->
-          <polyline points="130,216 250,211 370,201 490,181 610,141 730,62" fill="none" stroke="rgba(61,214,200,1)" stroke-width="2"/>
-          <text x="736" y="62" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="8">batch=8 ← hits limit</text>
-
-          <!-- Lines: batch=16 -->
-          <polyline points="130,212 250,204 370,188 490,155" fill="none" stroke="rgba(232,96,96,.8)" stroke-width="2" stroke-dasharray="4 2"/>
-          <circle cx="490" cy="155" r="4" fill="#e86060"/>
-          <text x="496" y="151" fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="8">OOM at 32K, batch=16</text>
-          <text x="400" y="14" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">Y-axis: KV cache GB  |  Weights (35 GB) excluded — add to get total VRAM</text>
-        </svg>
-        <div class="fig-cap">KV cache grows linearly with both sequence length and batch size. At 128K context and batch=8, KV cache alone exceeds the H100's 80 GB capacity — before weights are even counted. Numbers are approximate for LLaMA-3 70B BF16 with GQA (8 KV heads).</div>
-      </div>
-
-      <p>This is the core tension: KV cache is unbounded and valuable. Weights are large and static. The naive approach — "fit everything in VRAM simultaneously" — simply doesn't scale to modern serving requirements.</p>
-
-      <div class="pull">
+<!-- FIG 3: KV cache growth -->
+<div class="fig">
+<div class="fig-head"><span class="fig-num">Fig. 03</span><span class="fig-ttl">KV Cache Growth — Llama-3 70B, BF16, Varying Context and Batch</span></div>
+<svg style="background:#0a1220;" viewbox="0 0 840 280" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="kvar" markerheight="6" markerwidth="6" orient="auto" refx="4" refy="3"><path d="M0,0 L0,6 L6,3z" fill="rgba(61,214,200,.5)"></path></marker>
+</defs>
+<!-- Grid -->
+<line stroke="rgba(255,255,255,.1)" stroke-width="1" x1="70" x2="70" y1="20" y2="220"></line>
+<line stroke="rgba(255,255,255,.1)" stroke-width="1" x1="70" x2="780" y1="220" y2="220"></line>
+<!-- Y axis labels -->
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="end" x="62" y="222">0</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="end" x="62" y="182">20</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="end" x="62" y="142">40</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="end" x="62" y="102">60</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="end" x="62" y="62">80</text>
+<text fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="end" x="62" y="30">100+</text>
+<!-- Grid lines -->
+<line stroke="rgba(255,255,255,.04)" stroke-width="1" x1="70" x2="780" y1="182" y2="182"></line>
+<line stroke="rgba(255,255,255,.04)" stroke-width="1" x1="70" x2="780" y1="142" y2="142"></line>
+<line stroke="rgba(255,255,255,.04)" stroke-width="1" x1="70" x2="780" y1="102" y2="102"></line>
+<line stroke="rgba(255,255,255,.04)" stroke-width="1" x1="70" x2="780" y1="62" y2="62"></line>
+<!-- 80 GB line (H100 limit) -->
+<line stroke="rgba(232,96,96,.5)" stroke-dasharray="6 3" stroke-width="1.5" x1="70" x2="780" y1="62" y2="62"></line>
+<text fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="8" x="782" y="64">80 GB H100 limit</text>
+<!-- X axis: context lengths -->
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="130" y="232">4K</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="250" y="232">8K</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="370" y="232">16K</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="490" y="232">32K</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="610" y="232">64K</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="730" y="232">128K</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="400" y="248">Context Length (tokens)</text>
+<!-- Lines: batch=1 -->
+<polyline fill="none" points="130,219 250,218 370,215 490,212 610,205 730,191" stroke="rgba(61,214,200,.5)" stroke-width="1.5"></polyline>
+<text fill="rgba(61,214,200,.7)" font-family="IBM Plex Mono,monospace" font-size="8" x="736" y="189">batch=1</text>
+<!-- Lines: batch=4 -->
+<polyline fill="none" points="130,218 250,215 370,210 490,200 610,181 730,141" stroke="rgba(61,214,200,.75)" stroke-width="1.5"></polyline>
+<text fill="rgba(61,214,200,.9)" font-family="IBM Plex Mono,monospace" font-size="8" x="736" y="139">batch=4</text>
+<!-- Lines: batch=8 -->
+<polyline fill="none" points="130,216 250,211 370,201 490,181 610,141 730,62" stroke="rgba(61,214,200,1)" stroke-width="2"></polyline>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="8" x="736" y="62">batch=8 ← hits limit</text>
+<!-- Lines: batch=16 -->
+<polyline fill="none" points="130,212 250,204 370,188 490,155" stroke="rgba(232,96,96,.8)" stroke-dasharray="4 2" stroke-width="2"></polyline>
+<circle cx="490" cy="155" fill="#e86060" r="4"></circle>
+<text fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="8" x="496" y="151">OOM at 32K, batch=16</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="400" y="14">Y-axis: KV cache GB  |  Weights (35 GB) excluded — add to get total VRAM</text>
+</svg>
+<div class="fig-cap">KV cache grows linearly with both sequence length and batch size. At 128K context and batch=8, KV cache alone exceeds the H100's 80 GB capacity — before weights are even counted. Numbers are approximate for LLaMA-3 70B BF16 with GQA (8 KV heads).</div>
+</div>
+<p>This is the core tension: KV cache is unbounded and valuable. Weights are large and static. The naive approach — "fit everything in VRAM simultaneously" — simply doesn't scale to modern serving requirements.</p>
+<div class="pull">
         "More free GPU memory often means more KV cache. More KV cache often means more throughput, more concurrency, longer context. In inference economics, KV cache space is revenue."
         <cite>— the hidden economic truth of LLM serving</cite>
-      </div>
-    </section>
-
-    <div class="sep">§</div>
-
-    <!-- ══ PART 4: PAGEDATTENTION ═══════════════ -->
-    <section id="vllm" class="reveal">
-      <h2>Part 4 — What vLLM and PagedAttention actually solved</h2>
-      <p>vLLM emerged from the observation that naive LLM serving wastes enormous GPU memory — not because there isn't enough, but because it's managed badly.</p>
-      <p>Before PagedAttention, serving frameworks pre-allocated a contiguous KV cache buffer for each request at its maximum possible length. If a request might reach 4K tokens, 4K tokens of HBM were reserved — even if the request only used 300. The rest was stranded. Under high concurrency, this fragmentation meant GPUs could be memory-bound even when utilization metrics looked fine.</p>
-
-      <!-- FIG 4: PagedAttention -->
-      <div class="fig">
-        <div class="fig-head"><span class="fig-num">Fig. 04</span><span class="fig-ttl">PagedAttention — Virtual KV Cache Blocks vs. Contiguous Pre-allocation</span></div>
-        <svg viewBox="0 0 840 300" xmlns="http://www.w3.org/2000/svg" style="background:#0a1220;">
-          <!-- Left: naive -->
-          <text x="60" y="22" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle">NAIVE: Contiguous Pre-allocation</text>
-          <!-- 3 request bars -->
-          <!-- Req A: 2K/4K used -->
-          <text x="18" y="54" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">Req A</text>
-          <rect x="38" y="42" width="84" height="20" rx="2" fill="rgba(61,214,200,.6)"/>
-          <rect x="122" y="42" width="84" height="20" rx="2" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.08)" stroke-dasharray="3 2"/>
-          <text x="164" y="54" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle">wasted</text>
-
-          <!-- Req B: 1K/4K used -->
-          <text x="18" y="82" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">Req B</text>
-          <rect x="38" y="70" width="42" height="20" rx="2" fill="rgba(61,214,200,.6)"/>
-          <rect x="80" y="70" width="126" height="20" rx="2" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.08)" stroke-dasharray="3 2"/>
-          <text x="143" y="82" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle">wasted</text>
-
-          <!-- Req C: 3K/4K used -->
-          <text x="18" y="110" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">Req C</text>
-          <rect x="38" y="98" width="126" height="20" rx="2" fill="rgba(61,214,200,.6)"/>
-          <rect x="164" y="98" width="42" height="20" rx="2" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.08)" stroke-dasharray="3 2"/>
-
-          <!-- Fragmentation indicator -->
-          <rect x="38" y="128" width="168" height="10" rx="2" fill="rgba(232,96,96,.2)" stroke="rgba(232,96,96,.3)"/>
-          <text x="122" y="137" fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle">~40% of reserved space wasted</text>
-
-          <!-- Divider -->
-          <line x1="240" y1="20" x2="240" y2="280" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
-
-          <!-- Right: PagedAttention -->
-          <text x="540" y="22" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle">PAGEDATTENTION: Virtual Block Mapping</text>
-
-          <!-- Block pool -->
-          <text x="270" y="38" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">Physical block pool (fixed-size pages)</text>
-
-          <!-- 5x4 grid of blocks -->
-          <g fill="rgba(61,214,200,.5)" stroke="rgba(61,214,200,.3)" stroke-width="1">
-            <rect x="270" y="46" width="28" height="18" rx="2"/><text x="284" y="59" fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle">A1</text>
-            <rect x="304" y="46" width="28" height="18" rx="2"/><text x="318" y="59" fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle">B1</text>
-            <rect x="338" y="46" width="28" height="18" rx="2"/><text x="352" y="59" fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle">C1</text>
-            <rect x="372" y="46" width="28" height="18" rx="2"/><text x="386" y="59" fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle">A2</text>
-            <rect x="406" y="46" width="28" height="18" rx="2"/><text x="420" y="59" fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle">C2</text>
-          </g>
-          <g fill="rgba(61,214,200,.5)" stroke="rgba(61,214,200,.3)" stroke-width="1">
-            <rect x="270" y="70" width="28" height="18" rx="2"/><text x="284" y="83" fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle">B2</text>
-            <rect x="304" y="70" width="28" height="18" rx="2"/><text x="318" y="83" fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle">A3</text>
-            <rect x="338" y="70" width="28" height="18" rx="2"/><text x="352" y="83" fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle">C3</text>
-          </g>
-          <!-- Free blocks -->
-          <g fill="rgba(255,255,255,.05)" stroke="rgba(255,255,255,.1)" stroke-width="1">
-            <rect x="372" y="70" width="28" height="18" rx="2"/>
-            <rect x="406" y="70" width="28" height="18" rx="2"/>
-            <rect x="270" y="94" width="28" height="18" rx="2"/>
-            <rect x="304" y="94" width="28" height="18" rx="2"/>
-            <rect x="338" y="94" width="28" height="18" rx="2"/>
-            <rect x="372" y="94" width="28" height="18" rx="2"/>
-            <rect x="406" y="94" width="28" height="18" rx="2"/>
-          </g>
-          <text x="372" y="83" fill="#3a5070" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle">free</text>
-          <text x="406" y="83" fill="#3a5070" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle">free</text>
-
-          <!-- Virtual → physical table -->
-          <text x="270" y="132" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">Virtual block tables (per request)</text>
-          <rect x="270" y="140" width="170" height="20" rx="2" fill="rgba(61,214,200,.08)" stroke="rgba(61,214,200,.2)"/>
-          <text x="355" y="154" fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">Req A: vblk[0→A1, 1→A2, 2→A3]</text>
-          <rect x="270" y="166" width="170" height="20" rx="2" fill="rgba(61,214,200,.08)" stroke="rgba(61,214,200,.2)"/>
-          <text x="355" y="180" fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">Req B: vblk[0→B1, 1→B2]</text>
-          <rect x="270" y="192" width="170" height="20" rx="2" fill="rgba(61,214,200,.08)" stroke="rgba(61,214,200,.2)"/>
-          <text x="355" y="206" fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">Req C: vblk[0→C1, 1→C2, 2→C3]</text>
-
-          <!-- Benefit -->
-          <rect x="270" y="224" width="170" height="30" rx="3" fill="rgba(61,214,200,.06)" stroke="rgba(61,214,200,.2)"/>
-          <text x="355" y="238" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">~0% waste. Blocks allocated</text>
-          <text x="355" y="250" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">only when actually needed.</text>
-
-          <!-- Also: prefix sharing -->
-          <text x="480" y="140" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">Prefix sharing bonus:</text>
-          <rect x="480" y="148" width="240" height="62" rx="3" fill="rgba(240,180,60,.06)" stroke="rgba(240,180,60,.2)"/>
-          <text x="600" y="168" fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">Multiple requests sharing a</text>
-          <text x="600" y="182" fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">common prompt prefix can</text>
-          <text x="600" y="196" fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">point to the same physical blocks.</text>
-        </svg>
-        <div class="fig-cap">PagedAttention uses virtual block tables to map logical KV positions to physical non-contiguous memory pages — eliminating pre-allocation waste. An important bonus: requests sharing a common prompt prefix (system prompt, few-shot examples) can share physical KV blocks, multiplying effective capacity.</div>
-      </div>
-
-      <p>PagedAttention matters here not just as a KV cache trick, but as a signal that the field was beginning to treat GPU memory as something to be <em>orchestrated</em> rather than simply allocated. It is the first major production-grade step away from "GPU memory as warehouse."</p>
-
-      <div class="callout"><strong>The conceptual shift vLLM made:</strong> GPU memory is not a fixed allocation. It's a pool of blocks to be dynamically managed according to request-level demand. The OS virtual memory analogy is intentional — and it points toward where the next steps go.</div>
-    </section>
-
-    <!-- ══ PART 5: WEIGHT OFFLOAD ════════════════ -->
-    <section id="offload" class="reveal">
-      <h2>Part 5 — Weight offload: the right problem, imperfect solution</h2>
-      <p>If weights consume the largest static slice of VRAM, the most obvious solution is: move them somewhere cheaper. Keep them in host RAM (CPU DRAM) and stream them to the GPU on demand. This is the intuition behind weight offload approaches used in frameworks like Hugging Face Accelerate, DeepSpeed Inference, and others.</p>
-
-      <h3>Why it helps</h3>
-      <div class="compare">
-        <div class="cpane">
-          <div class="cpane-label">Without offload</div>
-          <h4>Weights stay in HBM</h4>
-          <p>Full 35 GB of a 70B model in BF16 occupies HBM permanently. That leaves ~45 GB for KV cache — enough for moderate concurrency at moderate context length, but you hit the wall fast.</p>
-        </div>
-        <div class="cpane">
-          <div class="cpane-label">With naive offload</div>
-          <h4>Weights move to host RAM</h4>
-          <p>Weights live in CPU DRAM (~TBs available). GPU fetches each layer when needed. Full ~80 GB is theoretically available for KV cache. But now execution stalls waiting for layer weights to arrive over PCIe.</p>
-        </div>
-      </div>
-
-      <div class="callout amber"><strong>The real win of offload:</strong> if VRAM isn't consumed by weights, it can fund KV cache, longer context, and more concurrent requests. This is the genuine performance lever — but only if the offload is fast enough not to stall the GPU.</div>
-
-      <h3>Why naive offload fails at scale</h3>
-      <p>The fatal problem with simple offload is that it's <strong>reactive</strong>. The runtime discovers it needs layer N's weights, then issues a PCIe DMA to fetch them from host memory. While that transfer is in flight, the GPU's tensor cores sit idle. This is the worst possible outcome for an expensive accelerator.</p>
-
-      <div class="stats">
-        <div class="stat">
-          <div class="stat-n">35</div>
-          <div class="stat-l">GB of weights in a 70B BF16 model</div>
-        </div>
-        <div class="stat">
-          <div class="stat-n amber">~0.7s</div>
-          <div class="stat-l">Time to stream 35 GB over PCIe Gen5 at 48 GB/s</div>
-        </div>
-        <div class="stat">
-          <div class="stat-n">0</div>
-          <div class="stat-l">Useful tokens generated while the GPU waits</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ══ PART 6: BANDWIDTH WALL ════════════════ -->
-    <section id="bandwidth" class="reveal">
-      <h2>Part 6 — The bandwidth wall</h2>
-      <p>Once you commit to moving weights off-chip, the bottleneck shifts from <em>capacity</em> to <em>bandwidth and scheduling</em>. Understanding this precisely is the key to building a system that actually works.</p>
-
-      <!-- FIG 5: Bandwidth math -->
-      <div class="fig">
-        <div class="fig-head"><span class="fig-num">Fig. 05</span><span class="fig-ttl">Transfer Time vs. Compute Time — Where the Stall Lives</span></div>
-        <svg viewBox="0 0 840 260" xmlns="http://www.w3.org/2000/svg" style="background:#0a1220;">
-          <defs>
-            <marker id="tar" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3z" fill="rgba(232,96,96,.7)"/></marker>
-            <marker id="gar" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3z" fill="rgba(61,214,200,.7)"/></marker>
-          </defs>
-          <!-- Header -->
-          <text x="420" y="18" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" letter-spacing=".06em">LAYER WEIGHT SIZE VS. TRANSFER TIME (70B model, 80 layers)</text>
-
-          <!-- Table style layout -->
-          <rect x="30" y="28" width="780" height="26" rx="3" fill="var(--lift)"/>
-          <text x="120" y="45" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" text-anchor="middle">Scenario</text>
-          <text x="280" y="45" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" text-anchor="middle">Layer weight size</text>
-          <text x="420" y="45" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" text-anchor="middle">PCIe Gen5 transfer (48 GB/s)</text>
-          <text x="600" y="45" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" text-anchor="middle">Compute time @ 2000 tok/s</text>
-          <text x="750" y="45" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" text-anchor="middle">Overlap possible?</text>
-
-          <rect x="30" y="54" width="780" height="28" rx="0"/>
-          <text x="120" y="72" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">70B BF16, 1 layer</text>
-          <text x="280" y="72" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~437 MB</text>
-          <text x="420" y="72" fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~9 ms</text>
-          <text x="600" y="72" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~0.5 ms / layer</text>
-          <text x="750" y="72" fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">No — 18× too slow</text>
-
-          <rect x="30" y="82" width="780" height="28" rx="0" fill="rgba(255,255,255,.02)"/>
-          <text x="120" y="100" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">70B INT4, 1 layer</text>
-          <text x="280" y="100" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~109 MB</text>
-          <text x="420" y="100" fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~2.3 ms</text>
-          <text x="600" y="100" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~0.5 ms / layer</text>
-          <text x="750" y="100" fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Marginal — 4.5× too slow</text>
-
-          <rect x="30" y="110" width="780" height="28" rx="0"/>
-          <text x="120" y="128" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">NVLink (900 GB/s), 1 layer</text>
-          <text x="280" y="128" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~437 MB</text>
-          <text x="420" y="128" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~0.48 ms</text>
-          <text x="600" y="128" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~0.5 ms / layer</text>
-          <text x="750" y="128" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Yes — roughly matched</text>
-
-          <rect x="30" y="138" width="780" height="28" rx="0" fill="rgba(255,255,255,.02)"/>
-          <text x="120" y="156" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">PCIe Gen5 + INT4 + batching</text>
-          <text x="280" y="156" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~109 MB / layer</text>
-          <text x="420" y="156" fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~2.3 ms</text>
-          <text x="600" y="156" fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~2 ms (large batch)</text>
-          <text x="750" y="156" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Roughly — with careful scheduling</text>
-
-          <!-- Key insight -->
-          <rect x="30" y="178" width="780" height="60" rx="4" fill="rgba(61,214,200,.05)" stroke="rgba(61,214,200,.15)" stroke-width="1"/>
-          <text x="420" y="198" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" text-anchor="middle" letter-spacing=".06em">THE INSIGHT</text>
-          <text x="420" y="214" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Streaming weights over PCIe only works if transfer time ≤ compute time for the preceding layer.</text>
-          <text x="420" y="228" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Three levers: reduce weight size (quantization), increase batch size (compute time), start transfer early (prefetch scheduling).</text>
-        </svg>
-        <div class="fig-cap">The arithmetic of weight streaming is unforgiving. At BF16 over PCIe Gen5, transfer time is 18× longer than compute time per layer — there's no way to hide the stall without either quantizing, batching aggressively, or using NVLink. INT4 quantization and large batches together can bring the ratio close enough for prefetching to work.</div>
-      </div>
-
-      <p>This is the key constraint: <strong>the transfer budget must fit inside the compute window of the preceding layer</strong>. If it doesn't, the GPU stalls. The three independent levers that bring transfer time down are: quantization (reduces bytes), batching (increases compute time per layer pass), and prefetch scheduling (starts transfers before they're urgently needed).</p>
-
-      <div class="callout rose"><strong>The real constraint shift:</strong> once you decide to stream weights, the limiting resource is no longer memory capacity. It becomes the system's ability to orchestrate data movement fast enough — and far enough in advance — to keep compute busy. The constraint moves from GB to GB/s to scheduling quality.</div>
-    </section>
-
-    <div class="sep">§</div>
-
-    <!-- ══ PART 7: SCHEDULED STREAMING ══════════ -->
-    <section id="streaming" class="reveal">
-      <h2>Part 7 — Scheduled weight streaming: the stronger model</h2>
-      <p>This is the architectural leap. Instead of "weights don't fit, so offload them," think: <em>weights shouldn't be assumed to live permanently in HBM at all</em>. Under this model, HBM is a bounded execution working set. Weights pass through it on schedule. They don't warehouse in it.</p>
-
-      <!-- FIG 6: Timeline comparison -->
-      <div class="fig">
-        <div class="fig-head"><span class="fig-num">Fig. 06</span><span class="fig-ttl">Reactive Offload vs. Scheduled Streaming — Execution Timeline</span></div>
-        <svg viewBox="0 0 840 340" xmlns="http://www.w3.org/2000/svg" style="background:#0a1220;">
-          <!-- ── REACTIVE ── -->
-          <text x="30" y="22" fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" letter-spacing=".06em">REACTIVE OFFLOAD — stall-dominated</text>
-
-          <!-- Timeline -->
-          <line x1="30" y1="100" x2="810" y2="100" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
-          <text x="20" y="58" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">GPU compute</text>
-          <text x="20" y="90" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">PCIe transfer</text>
-
-          <!-- Layer 1: compute then stall then fetch L2 then compute -->
-          <!-- Compute L1 -->
-          <rect x="30" y="42" width="100" height="22" rx="2" fill="rgba(61,214,200,.7)"/>
-          <text x="80" y="57" fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle">Compute L1</text>
-          <!-- STALL -->
-          <rect x="130" y="42" width="120" height="22" rx="2" fill="rgba(232,96,96,.25)" stroke="rgba(232,96,96,.4)" stroke-dasharray="4 2"/>
-          <text x="190" y="57" fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">STALL — waiting for L2</text>
-          <!-- Fetch L2 (overlaps with stall) -->
-          <rect x="130" y="76" width="120" height="16" rx="2" fill="rgba(240,180,60,.4)"/>
-          <text x="190" y="88" fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle">Fetch L2 over PCIe</text>
-          <!-- Compute L2 -->
-          <rect x="250" y="42" width="100" height="22" rx="2" fill="rgba(61,214,200,.7)"/>
-          <text x="300" y="57" fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle">Compute L2</text>
-          <!-- STALL again -->
-          <rect x="350" y="42" width="120" height="22" rx="2" fill="rgba(232,96,96,.25)" stroke="rgba(232,96,96,.4)" stroke-dasharray="4 2"/>
-          <text x="410" y="57" fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">STALL — waiting for L3</text>
-          <rect x="350" y="76" width="120" height="16" rx="2" fill="rgba(240,180,60,.4)"/>
-          <text x="410" y="88" fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle">Fetch L3 over PCIe</text>
-          <!-- Compute L3 -->
-          <rect x="470" y="42" width="100" height="22" rx="2" fill="rgba(61,214,200,.7)"/>
-          <text x="520" y="57" fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle">Compute L3</text>
-          <!-- dots -->
-          <text x="595" y="57" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="14">···</text>
-
-          <!-- Total time annotation -->
-          <line x1="30" y1="108" x2="570" y2="108" stroke="rgba(232,96,96,.4)" stroke-width="1"/>
-          <text x="300" y="120" fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">Total time: dominated by stalls — GPU utilization low</text>
-
-          <!-- ── SCHEDULED ── -->
-          <text x="30" y="155" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" letter-spacing=".06em">SCHEDULED STREAMING — compute-bound</text>
-
-          <line x1="30" y1="230" x2="810" y2="230" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
-          <text x="20" y="190" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">GPU compute</text>
-          <text x="20" y="220" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8">PCIe transfer</text>
-
-          <!-- Compute L1 -->
-          <rect x="30" y="174" width="130" height="22" rx="2" fill="rgba(61,214,200,.7)"/>
-          <text x="95" y="189" fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle">Compute L1</text>
-          <!-- Prefetch L2 DURING compute L1 -->
-          <rect x="30" y="208" width="130" height="16" rx="2" fill="rgba(124,158,255,.45)"/>
-          <text x="95" y="220" fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle">Prefetch L2 (ahead)</text>
-
-          <!-- Compute L2 — no stall -->
-          <rect x="160" y="174" width="130" height="22" rx="2" fill="rgba(61,214,200,.7)"/>
-          <text x="225" y="189" fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle">Compute L2</text>
-          <rect x="160" y="208" width="130" height="16" rx="2" fill="rgba(124,158,255,.45)"/>
-          <text x="225" y="220" fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle">Prefetch L3 (ahead)</text>
-
-          <!-- Compute L3 -->
-          <rect x="290" y="174" width="130" height="22" rx="2" fill="rgba(61,214,200,.7)"/>
-          <text x="355" y="189" fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle">Compute L3</text>
-          <rect x="290" y="208" width="130" height="16" rx="2" fill="rgba(124,158,255,.45)"/>
-          <text x="355" y="220" fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle">Prefetch L4 (ahead)</text>
-
-          <!-- Compute L4 -->
-          <rect x="420" y="174" width="130" height="22" rx="2" fill="rgba(61,214,200,.7)"/>
-          <text x="485" y="189" fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle">Compute L4</text>
-          <rect x="420" y="208" width="130" height="16" rx="2" fill="rgba(124,158,255,.45)"/>
-          <text x="485" y="220" fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle">Prefetch L5 (ahead)</text>
-          <text x="580" y="189" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="14">···</text>
-
-          <!-- Total time annotation -->
-          <line x1="30" y1="238" x2="550" y2="238" stroke="rgba(61,214,200,.4)" stroke-width="1"/>
-          <text x="290" y="250" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">Total time: transfer hidden — GPU stays compute-bound</text>
-
-          <!-- Key: same L1 compute time spans -->
-          <rect x="30" y="270" width="420" height="48" rx="3" fill="rgba(240,180,60,.06)" stroke="rgba(240,180,60,.2)"/>
-          <text x="240" y="287" fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" font-weight="500">Condition for success:</text>
-          <text x="240" y="301" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">Transfer(Layer N) ≤ Compute(Layer N−1)</text>
-          <text x="240" y="313" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">i.e. next layer arrives before it's needed</text>
-        </svg>
-        <div class="fig-cap">In reactive offload, the GPU stalls at every layer boundary waiting for weights to arrive. In scheduled streaming, each layer's transfer is initiated during the preceding layer's computation — so the GPU never stalls. The condition for this to work: transfer time must not exceed compute time.</div>
-      </div>
-
-      <h3>What changes under the streaming model</h3>
-      <ul>
-        <li><strong>KV cache becomes the primary VRAM resident</strong> — not weights. The hot-tier assignment flips.</li>
-        <li><strong>Only the active layer window lives in HBM</strong> — typically 1–2 layers (~2–4 GB for 70B INT4), not 35+ GB.</li>
-        <li><strong>Prefetch scheduling is now a first-class system concern</strong> — the runtime must know which layer comes next and start the transfer at the right time.</li>
-        <li><strong>Quantization is no longer optional</strong> — INT4 or INT8 is needed to keep the transfer budget inside the compute window.</li>
-        <li><strong>Batch size is a performance lever, not just a throughput knob</strong> — larger batches mean longer compute time per layer, which gives the prefetch more time to complete.</li>
-      </ul>
-
-      <div class="callout"><strong>The architectural implication:</strong> under scheduled streaming, the VRAM budget for weights shrinks from 35+ GB to ~4 GB. That ~30 GB delta goes directly to KV cache. At 128K context, a single 70B model can now run multiple concurrent long-context requests on a single H100.</div>
-    </section>
-
-    <!-- ══ PART 8: WORKING SET ════════════════════ -->
-    <section id="working-set" class="reveal">
-      <h2>Part 8 — VRAM as a working set, not a warehouse</h2>
-      <p>The conceptual shift deserves to be stated clearly, because it changes how you think about every memory decision in the system.</p>
-
-      <div class="compare">
-        <div class="cpane">
-          <div class="cpane-label">Old model: warehouse</div>
-          <h4>Store everything, use what you need</h4>
-          <p>Weights are loaded at startup and kept permanently. VRAM is sized to fit the whole model. Memory pressure comes from fitting everything at once. Optimization target: model fits → done.</p>
-        </div>
-        <div class="cpane">
-          <div class="cpane-label">New model: working set</div>
-          <h4>Keep only what's needed now</h4>
-          <p>VRAM holds only the active execution window: current + next layer's weights, KV cache, buffers. Everything else is staged elsewhere. Optimization target: maximize useful residency, minimize stall cycles.</p>
-        </div>
-      </div>
-
-      <!-- FIG 7: Working set -->
-      <div class="fig">
-        <div class="fig-head"><span class="fig-num">Fig. 07</span><span class="fig-ttl">Working Set Model — What Should Live in HBM and Why</span></div>
-        <svg viewBox="0 0 840 260" xmlns="http://www.w3.org/2000/svg" style="background:#0a1220;">
-          <!-- HBM box -->
-          <rect x="30" y="20" width="340" height="220" rx="6" fill="rgba(61,214,200,.04)" stroke="rgba(61,214,200,.25)" stroke-width="1.5"/>
-          <text x="200" y="42" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" text-anchor="middle" letter-spacing=".08em">HBM (80 GB) — WORKING SET</text>
-
-          <!-- KV cache: 60 GB -->
-          <rect x="46" y="54" width="308" height="104" rx="4" fill="rgba(61,214,200,.18)" stroke="rgba(61,214,200,.35)"/>
-          <text x="200" y="93" fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle">KV Cache</text>
-          <text x="200" y="109" fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~60 GB — drives throughput, concurrency,</text>
-          <text x="200" y="123" fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">and context length. Primary resident.</text>
-          <text x="200" y="139" fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">← NEVER evict without completing request</text>
-
-          <!-- Active weights: 4 GB -->
-          <rect x="46" y="166" width="148" height="44" rx="4" fill="rgba(124,158,255,.25)" stroke="rgba(124,158,255,.4)"/>
-          <text x="120" y="186" fill="#c8d8ff" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Active layer weights</text>
-          <text x="120" y="200" fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">~2 GB (L_n)</text>
-
-          <!-- Prefetch: 2 GB -->
-          <rect x="202" y="166" width="152" height="44" rx="4" fill="rgba(124,158,255,.14)" stroke="rgba(124,158,255,.28)" stroke-dasharray="4 2"/>
-          <text x="278" y="186" fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Prefetch buffer</text>
-          <text x="278" y="200" fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">~2 GB (L_n+1 in flight)</text>
-
-          <!-- Arrow from host -->
-          <path d="M480 186 L386 186" fill="none" stroke="rgba(124,158,255,.5)" stroke-width="1.5" stroke-dasharray="5 2" marker-end="url(#ar)"/>
-          <text x="530" y="182" fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">PCIe stream</text>
-          <text x="530" y="194" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle">(during Lₙ compute)</text>
-
-          <!-- Host RAM box -->
-          <rect x="530" y="20" width="280" height="220" rx="6" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.1)"/>
-          <text x="670" y="42" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" text-anchor="middle" letter-spacing=".08em">HOST DRAM — STAGING TIER</text>
-
-          <!-- All weights -->
-          <rect x="546" y="54" width="248" height="64" rx="4" fill="rgba(124,158,255,.12)" stroke="rgba(124,158,255,.2)"/>
-          <text x="670" y="80" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle">All model weights</text>
-          <text x="670" y="95" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">~35 GB (70B INT4)</text>
-          <text x="670" y="110" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Streamed layer-by-layer to HBM</text>
-
-          <!-- Inactive KV -->
-          <rect x="546" y="126" width="248" height="48" rx="4" fill="rgba(61,214,200,.06)" stroke="rgba(61,214,200,.15)" stroke-dasharray="4 2"/>
-          <text x="670" y="148" fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">Spilled KV blocks (if needed)</text>
-          <text x="670" y="162" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">Evicted under extreme pressure</text>
-
-          <!-- NVMe -->
-          <rect x="546" y="182" width="248" height="42" rx="4" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.08)"/>
-          <text x="670" y="200" fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle">NVMe / fabric storage</text>
-          <text x="670" y="214" fill="#3a5070" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle">Cold weights, checkpoints</text>
-        </svg>
-        <div class="fig-cap">Under the working set model, HBM is dominated by KV cache (~60 GB) rather than weights. The weight footprint shrinks to ~4 GB (active layer + prefetch buffer). Host DRAM becomes the staging tier. The critical PCIe stream must be scheduled to complete before each layer's compute window opens.</div>
-      </div>
-
-      <table class="data-table">
-        <thead>
-          <tr><th>Question</th><th>Warehouse model</th><th>Working set model</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>What is HBM for?</td><td>Store the whole model</td><td class="good">Hold the active execution window</td></tr>
-          <tr><td>Primary HBM resident?</td><td class="bad">Weights (static, idle most of the time)</td><td class="good">KV cache (drives throughput now)</td></tr>
-          <tr><td>Optimization target?</td><td>Fit the model</td><td class="good">Maximize useful residency + overlap movement with compute</td></tr>
-          <tr><td>What happens when context grows?</td><td class="bad">OOM — can't serve</td><td class="good">KV cache expands into freed weight space</td></tr>
-          <tr><td>Bottleneck?</td><td>Memory capacity</td><td class="mid">Bandwidth + scheduling quality</td></tr>
-          <tr><td>Quantization role?</td><td>Optional (accuracy tradeoff)</td><td class="good">Required (enables transfer/compute parity)</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <!-- ══ CLOSING ═══════════════════════════════ -->
-    <section id="closing" class="reveal">
-      <h2>Part 9 — Why this architectural shift matters</h2>
-      <p>There's a deeper pattern here worth naming. We're watching GPU memory undergo the same conceptual evolution that CPU memory went through decades ago — from a fixed allocation ("load your program, run it") to a dynamically managed working set (virtual memory, paging, OS-level orchestration).</p>
-      <p>PagedAttention was the first production instance of this thinking applied to AI inference. Scheduled weight streaming is the next. The long arc is toward a memory runtime that treats every byte of HBM as deliberately placed — not accidentally resident.</p>
-
-      <div class="pull">
+</div>
+</section>
+<div class="sep">§</div>
+<!-- ══ PART 4: PAGEDATTENTION ═══════════════ -->
+<section class="reveal" id="vllm">
+<h2 id="part-4-what-vllm-and-pagedattention-actually-solved">Part 4 — What vLLM and PagedAttention actually solved</h2>
+<p>vLLM emerged from the observation that naive LLM serving wastes enormous GPU memory — not because there isn't enough, but because it's managed badly.</p>
+<p>Before PagedAttention, serving frameworks pre-allocated a contiguous KV cache buffer for each request at its maximum possible length. If a request might reach 4K tokens, 4K tokens of HBM were reserved — even if the request only used 300. The rest was stranded. Under high concurrency, this fragmentation meant GPUs could be memory-bound even when utilization metrics looked fine.</p>
+<!-- FIG 4: PagedAttention -->
+<div class="fig">
+<div class="fig-head"><span class="fig-num">Fig. 04</span><span class="fig-ttl">PagedAttention — Virtual KV Cache Blocks vs. Contiguous Pre-allocation</span></div>
+<svg style="background:#0a1220;" viewbox="0 0 840 300" xmlns="http://www.w3.org/2000/svg">
+<!-- Left: naive -->
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle" x="60" y="22">NAIVE: Contiguous Pre-allocation</text>
+<!-- 3 request bars -->
+<!-- Req A: 2K/4K used -->
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="18" y="54">Req A</text>
+<rect fill="rgba(61,214,200,.6)" height="20" rx="2" width="84" x="38" y="42"></rect>
+<rect fill="rgba(255,255,255,.06)" height="20" rx="2" stroke="rgba(255,255,255,.08)" stroke-dasharray="3 2" width="84" x="122" y="42"></rect>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="164" y="54">wasted</text>
+<!-- Req B: 1K/4K used -->
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="18" y="82">Req B</text>
+<rect fill="rgba(61,214,200,.6)" height="20" rx="2" width="42" x="38" y="70"></rect>
+<rect fill="rgba(255,255,255,.06)" height="20" rx="2" stroke="rgba(255,255,255,.08)" stroke-dasharray="3 2" width="126" x="80" y="70"></rect>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="143" y="82">wasted</text>
+<!-- Req C: 3K/4K used -->
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="18" y="110">Req C</text>
+<rect fill="rgba(61,214,200,.6)" height="20" rx="2" width="126" x="38" y="98"></rect>
+<rect fill="rgba(255,255,255,.06)" height="20" rx="2" stroke="rgba(255,255,255,.08)" stroke-dasharray="3 2" width="42" x="164" y="98"></rect>
+<!-- Fragmentation indicator -->
+<rect fill="rgba(232,96,96,.2)" height="10" rx="2" stroke="rgba(232,96,96,.3)" width="168" x="38" y="128"></rect>
+<text fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="122" y="137">~40% of reserved space wasted</text>
+<!-- Divider -->
+<line stroke="rgba(255,255,255,.06)" stroke-width="1" x1="240" x2="240" y1="20" y2="280"></line>
+<!-- Right: PagedAttention -->
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle" x="540" y="22">PAGEDATTENTION: Virtual Block Mapping</text>
+<!-- Block pool -->
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="270" y="38">Physical block pool (fixed-size pages)</text>
+<!-- 5x4 grid of blocks -->
+<g fill="rgba(61,214,200,.5)" stroke="rgba(61,214,200,.3)" stroke-width="1">
+<rect height="18" rx="2" width="28" x="270" y="46"></rect><text fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle" x="284" y="59">A1</text>
+<rect height="18" rx="2" width="28" x="304" y="46"></rect><text fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle" x="318" y="59">B1</text>
+<rect height="18" rx="2" width="28" x="338" y="46"></rect><text fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle" x="352" y="59">C1</text>
+<rect height="18" rx="2" width="28" x="372" y="46"></rect><text fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle" x="386" y="59">A2</text>
+<rect height="18" rx="2" width="28" x="406" y="46"></rect><text fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle" x="420" y="59">C2</text>
+</g>
+<g fill="rgba(61,214,200,.5)" stroke="rgba(61,214,200,.3)" stroke-width="1">
+<rect height="18" rx="2" width="28" x="270" y="70"></rect><text fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle" x="284" y="83">B2</text>
+<rect height="18" rx="2" width="28" x="304" y="70"></rect><text fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle" x="318" y="83">A3</text>
+<rect height="18" rx="2" width="28" x="338" y="70"></rect><text fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle" x="352" y="83">C3</text>
+</g>
+<!-- Free blocks -->
+<g fill="rgba(255,255,255,.05)" stroke="rgba(255,255,255,.1)" stroke-width="1">
+<rect height="18" rx="2" width="28" x="372" y="70"></rect>
+<rect height="18" rx="2" width="28" x="406" y="70"></rect>
+<rect height="18" rx="2" width="28" x="270" y="94"></rect>
+<rect height="18" rx="2" width="28" x="304" y="94"></rect>
+<rect height="18" rx="2" width="28" x="338" y="94"></rect>
+<rect height="18" rx="2" width="28" x="372" y="94"></rect>
+<rect height="18" rx="2" width="28" x="406" y="94"></rect>
+</g>
+<text fill="#3a5070" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle" x="372" y="83">free</text>
+<text fill="#3a5070" font-family="IBM Plex Mono,monospace" font-size="7" text-anchor="middle" x="406" y="83">free</text>
+<!-- Virtual → physical table -->
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="270" y="132">Virtual block tables (per request)</text>
+<rect fill="rgba(61,214,200,.08)" height="20" rx="2" stroke="rgba(61,214,200,.2)" width="170" x="270" y="140"></rect>
+<text fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="355" y="154">Req A: vblk[0→A1, 1→A2, 2→A3]</text>
+<rect fill="rgba(61,214,200,.08)" height="20" rx="2" stroke="rgba(61,214,200,.2)" width="170" x="270" y="166"></rect>
+<text fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="355" y="180">Req B: vblk[0→B1, 1→B2]</text>
+<rect fill="rgba(61,214,200,.08)" height="20" rx="2" stroke="rgba(61,214,200,.2)" width="170" x="270" y="192"></rect>
+<text fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="355" y="206">Req C: vblk[0→C1, 1→C2, 2→C3]</text>
+<!-- Benefit -->
+<rect fill="rgba(61,214,200,.06)" height="30" rx="3" stroke="rgba(61,214,200,.2)" width="170" x="270" y="224"></rect>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="355" y="238">~0% waste. Blocks allocated</text>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="355" y="250">only when actually needed.</text>
+<!-- Also: prefix sharing -->
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="480" y="140">Prefix sharing bonus:</text>
+<rect fill="rgba(240,180,60,.06)" height="62" rx="3" stroke="rgba(240,180,60,.2)" width="240" x="480" y="148"></rect>
+<text fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="600" y="168">Multiple requests sharing a</text>
+<text fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="600" y="182">common prompt prefix can</text>
+<text fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="600" y="196">point to the same physical blocks.</text>
+</svg>
+<div class="fig-cap">PagedAttention uses virtual block tables to map logical KV positions to physical non-contiguous memory pages — eliminating pre-allocation waste. An important bonus: requests sharing a common prompt prefix (system prompt, few-shot examples) can share physical KV blocks, multiplying effective capacity.</div>
+</div>
+<p>PagedAttention matters here not just as a KV cache trick, but as a signal that the field was beginning to treat GPU memory as something to be <em>orchestrated</em> rather than simply allocated. It is the first major production-grade step away from "GPU memory as warehouse."</p>
+<div class="callout"><strong>The conceptual shift vLLM made:</strong> GPU memory is not a fixed allocation. It's a pool of blocks to be dynamically managed according to request-level demand. The OS virtual memory analogy is intentional — and it points toward where the next steps go.</div>
+</section>
+<!-- ══ PART 5: WEIGHT OFFLOAD ════════════════ -->
+<section class="reveal" id="offload">
+<h2 id="part-5-weight-offload-the-right-problem-imperfect-solution">Part 5 — Weight offload: the right problem, imperfect solution</h2>
+<p>If weights consume the largest static slice of VRAM, the most obvious solution is: move them somewhere cheaper. Keep them in host RAM (CPU DRAM) and stream them to the GPU on demand. This is the intuition behind weight offload approaches used in frameworks like Hugging Face Accelerate, DeepSpeed Inference, and others.</p>
+<h3>Why it helps</h3>
+<div class="compare">
+<div class="cpane">
+<div class="cpane-label">Without offload</div>
+<h4>Weights stay in HBM</h4>
+<p>Full 35 GB of a 70B model in BF16 occupies HBM permanently. That leaves ~45 GB for KV cache — enough for moderate concurrency at moderate context length, but you hit the wall fast.</p>
+</div>
+<div class="cpane">
+<div class="cpane-label">With naive offload</div>
+<h4>Weights move to host RAM</h4>
+<p>Weights live in CPU DRAM (~TBs available). GPU fetches each layer when needed. Full ~80 GB is theoretically available for KV cache. But now execution stalls waiting for layer weights to arrive over PCIe.</p>
+</div>
+</div>
+<div class="callout amber"><strong>The real win of offload:</strong> if VRAM isn't consumed by weights, it can fund KV cache, longer context, and more concurrent requests. This is the genuine performance lever — but only if the offload is fast enough not to stall the GPU.</div>
+<h3>Why naive offload fails at scale</h3>
+<p>The fatal problem with simple offload is that it's <strong>reactive</strong>. The runtime discovers it needs layer N's weights, then issues a PCIe DMA to fetch them from host memory. While that transfer is in flight, the GPU's tensor cores sit idle. This is the worst possible outcome for an expensive accelerator.</p>
+<div class="stats">
+<div class="stat">
+<div class="stat-n">35</div>
+<div class="stat-l">GB of weights in a 70B BF16 model</div>
+</div>
+<div class="stat">
+<div class="stat-n amber">~0.7s</div>
+<div class="stat-l">Time to stream 35 GB over PCIe Gen5 at 48 GB/s</div>
+</div>
+<div class="stat">
+<div class="stat-n">0</div>
+<div class="stat-l">Useful tokens generated while the GPU waits</div>
+</div>
+</div>
+</section>
+<!-- ══ PART 6: BANDWIDTH WALL ════════════════ -->
+<section class="reveal" id="bandwidth">
+<h2 id="part-6-the-bandwidth-wall">Part 6 — The bandwidth wall</h2>
+<p>Once you commit to moving weights off-chip, the bottleneck shifts from <em>capacity</em> to <em>bandwidth and scheduling</em>. Understanding this precisely is the key to building a system that actually works.</p>
+<!-- FIG 5: Bandwidth math -->
+<div class="fig">
+<div class="fig-head"><span class="fig-num">Fig. 05</span><span class="fig-ttl">Transfer Time vs. Compute Time — Where the Stall Lives</span></div>
+<svg style="background:#0a1220;" viewbox="0 0 840 260" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="tar" markerheight="6" markerwidth="6" orient="auto" refx="4" refy="3"><path d="M0,0 L0,6 L6,3z" fill="rgba(232,96,96,.7)"></path></marker>
+<marker id="gar" markerheight="6" markerwidth="6" orient="auto" refx="4" refy="3"><path d="M0,0 L0,6 L6,3z" fill="rgba(61,214,200,.7)"></path></marker>
+</defs>
+<!-- Header -->
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8.5" letter-spacing=".06em" text-anchor="middle" x="420" y="18">LAYER WEIGHT SIZE VS. TRANSFER TIME (70B model, 80 layers)</text>
+<!-- Table style layout -->
+<rect fill="var(--lift)" height="26" rx="3" width="780" x="30" y="28"></rect>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" text-anchor="middle" x="120" y="45">Scenario</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" text-anchor="middle" x="280" y="45">Layer weight size</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" text-anchor="middle" x="420" y="45">PCIe Gen5 transfer (48 GB/s)</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" text-anchor="middle" x="600" y="45">Compute time @ 2000 tok/s</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" text-anchor="middle" x="750" y="45">Overlap possible?</text>
+<rect height="28" rx="0" width="780" x="30" y="54"></rect>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="120" y="72">70B BF16, 1 layer</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="280" y="72">~437 MB</text>
+<text fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="420" y="72">~9 ms</text>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="600" y="72">~0.5 ms / layer</text>
+<text fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="750" y="72">No — 18× too slow</text>
+<rect fill="rgba(255,255,255,.02)" height="28" rx="0" width="780" x="30" y="82"></rect>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="120" y="100">70B INT4, 1 layer</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="280" y="100">~109 MB</text>
+<text fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="420" y="100">~2.3 ms</text>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="600" y="100">~0.5 ms / layer</text>
+<text fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="750" y="100">Marginal — 4.5× too slow</text>
+<rect height="28" rx="0" width="780" x="30" y="110"></rect>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="120" y="128">NVLink (900 GB/s), 1 layer</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="280" y="128">~437 MB</text>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="420" y="128">~0.48 ms</text>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="600" y="128">~0.5 ms / layer</text>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="750" y="128">Yes — roughly matched</text>
+<rect fill="rgba(255,255,255,.02)" height="28" rx="0" width="780" x="30" y="138"></rect>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="120" y="156">PCIe Gen5 + INT4 + batching</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="280" y="156">~109 MB / layer</text>
+<text fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="420" y="156">~2.3 ms</text>
+<text fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="600" y="156">~2 ms (large batch)</text>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="750" y="156">Roughly — with careful scheduling</text>
+<!-- Key insight -->
+<rect fill="rgba(61,214,200,.05)" height="60" rx="4" stroke="rgba(61,214,200,.15)" stroke-width="1" width="780" x="30" y="178"></rect>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="500" letter-spacing=".06em" text-anchor="middle" x="420" y="198">THE INSIGHT</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="420" y="214">Streaming weights over PCIe only works if transfer time ≤ compute time for the preceding layer.</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="420" y="228">Three levers: reduce weight size (quantization), increase batch size (compute time), start transfer early (prefetch scheduling).</text>
+</svg>
+<div class="fig-cap">The arithmetic of weight streaming is unforgiving. At BF16 over PCIe Gen5, transfer time is 18× longer than compute time per layer — there's no way to hide the stall without either quantizing, batching aggressively, or using NVLink. INT4 quantization and large batches together can bring the ratio close enough for prefetching to work.</div>
+</div>
+<p>This is the key constraint: <strong>the transfer budget must fit inside the compute window of the preceding layer</strong>. If it doesn't, the GPU stalls. The three independent levers that bring transfer time down are: quantization (reduces bytes), batching (increases compute time per layer pass), and prefetch scheduling (starts transfers before they're urgently needed).</p>
+<div class="callout rose"><strong>The real constraint shift:</strong> once you decide to stream weights, the limiting resource is no longer memory capacity. It becomes the system's ability to orchestrate data movement fast enough — and far enough in advance — to keep compute busy. The constraint moves from GB to GB/s to scheduling quality.</div>
+</section>
+<div class="sep">§</div>
+<!-- ══ PART 7: SCHEDULED STREAMING ══════════ -->
+<section class="reveal" id="streaming">
+<h2 id="part-7-scheduled-weight-streaming-the-stronger-model">Part 7 — Scheduled weight streaming: the stronger model</h2>
+<p>This is the architectural leap. Instead of "weights don't fit, so offload them," think: <em>weights shouldn't be assumed to live permanently in HBM at all</em>. Under this model, HBM is a bounded execution working set. Weights pass through it on schedule. They don't warehouse in it.</p>
+<!-- FIG 6: Timeline comparison -->
+<div class="fig">
+<div class="fig-head"><span class="fig-num">Fig. 06</span><span class="fig-ttl">Reactive Offload vs. Scheduled Streaming — Execution Timeline</span></div>
+<svg style="background:#0a1220;" viewbox="0 0 840 340" xmlns="http://www.w3.org/2000/svg">
+<!-- ── REACTIVE ── -->
+<text fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" letter-spacing=".06em" x="30" y="22">REACTIVE OFFLOAD — stall-dominated</text>
+<!-- Timeline -->
+<line stroke="rgba(255,255,255,.08)" stroke-width="1" x1="30" x2="810" y1="100" y2="100"></line>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="20" y="58">GPU compute</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="20" y="90">PCIe transfer</text>
+<!-- Layer 1: compute then stall then fetch L2 then compute -->
+<!-- Compute L1 -->
+<rect fill="rgba(61,214,200,.7)" height="22" rx="2" width="100" x="30" y="42"></rect>
+<text fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle" x="80" y="57">Compute L1</text>
+<!-- STALL -->
+<rect fill="rgba(232,96,96,.25)" height="22" rx="2" stroke="rgba(232,96,96,.4)" stroke-dasharray="4 2" width="120" x="130" y="42"></rect>
+<text fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="190" y="57">STALL — waiting for L2</text>
+<!-- Fetch L2 (overlaps with stall) -->
+<rect fill="rgba(240,180,60,.4)" height="16" rx="2" width="120" x="130" y="76"></rect>
+<text fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="190" y="88">Fetch L2 over PCIe</text>
+<!-- Compute L2 -->
+<rect fill="rgba(61,214,200,.7)" height="22" rx="2" width="100" x="250" y="42"></rect>
+<text fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle" x="300" y="57">Compute L2</text>
+<!-- STALL again -->
+<rect fill="rgba(232,96,96,.25)" height="22" rx="2" stroke="rgba(232,96,96,.4)" stroke-dasharray="4 2" width="120" x="350" y="42"></rect>
+<text fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="410" y="57">STALL — waiting for L3</text>
+<rect fill="rgba(240,180,60,.4)" height="16" rx="2" width="120" x="350" y="76"></rect>
+<text fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="410" y="88">Fetch L3 over PCIe</text>
+<!-- Compute L3 -->
+<rect fill="rgba(61,214,200,.7)" height="22" rx="2" width="100" x="470" y="42"></rect>
+<text fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle" x="520" y="57">Compute L3</text>
+<!-- dots -->
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="14" x="595" y="57">···</text>
+<!-- Total time annotation -->
+<line stroke="rgba(232,96,96,.4)" stroke-width="1" x1="30" x2="570" y1="108" y2="108"></line>
+<text fill="#e86060" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="300" y="120">Total time: dominated by stalls — GPU utilization low</text>
+<!-- ── SCHEDULED ── -->
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" letter-spacing=".06em" x="30" y="155">SCHEDULED STREAMING — compute-bound</text>
+<line stroke="rgba(255,255,255,.08)" stroke-width="1" x1="30" x2="810" y1="230" y2="230"></line>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="20" y="190">GPU compute</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" x="20" y="220">PCIe transfer</text>
+<!-- Compute L1 -->
+<rect fill="rgba(61,214,200,.7)" height="22" rx="2" width="130" x="30" y="174"></rect>
+<text fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle" x="95" y="189">Compute L1</text>
+<!-- Prefetch L2 DURING compute L1 -->
+<rect fill="rgba(124,158,255,.45)" height="16" rx="2" width="130" x="30" y="208"></rect>
+<text fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="95" y="220">Prefetch L2 (ahead)</text>
+<!-- Compute L2 — no stall -->
+<rect fill="rgba(61,214,200,.7)" height="22" rx="2" width="130" x="160" y="174"></rect>
+<text fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle" x="225" y="189">Compute L2</text>
+<rect fill="rgba(124,158,255,.45)" height="16" rx="2" width="130" x="160" y="208"></rect>
+<text fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="225" y="220">Prefetch L3 (ahead)</text>
+<!-- Compute L3 -->
+<rect fill="rgba(61,214,200,.7)" height="22" rx="2" width="130" x="290" y="174"></rect>
+<text fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle" x="355" y="189">Compute L3</text>
+<rect fill="rgba(124,158,255,.45)" height="16" rx="2" width="130" x="290" y="208"></rect>
+<text fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="355" y="220">Prefetch L4 (ahead)</text>
+<!-- Compute L4 -->
+<rect fill="rgba(61,214,200,.7)" height="22" rx="2" width="130" x="420" y="174"></rect>
+<text fill="#0a1220" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle" x="485" y="189">Compute L4</text>
+<rect fill="rgba(124,158,255,.45)" height="16" rx="2" width="130" x="420" y="208"></rect>
+<text fill="#fff" font-family="IBM Plex Mono,monospace" font-size="7.5" text-anchor="middle" x="485" y="220">Prefetch L5 (ahead)</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="14" x="580" y="189">···</text>
+<!-- Total time annotation -->
+<line stroke="rgba(61,214,200,.4)" stroke-width="1" x1="30" x2="550" y1="238" y2="238"></line>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="290" y="250">Total time: transfer hidden — GPU stays compute-bound</text>
+<!-- Key: same L1 compute time spans -->
+<rect fill="rgba(240,180,60,.06)" height="48" rx="3" stroke="rgba(240,180,60,.2)" width="420" x="30" y="270"></rect>
+<text fill="#fad27a" font-family="IBM Plex Mono,monospace" font-size="8.5" font-weight="500" text-anchor="middle" x="240" y="287">Condition for success:</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="240" y="301">Transfer(Layer N) ≤ Compute(Layer N−1)</text>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="240" y="313">i.e. next layer arrives before it's needed</text>
+</svg>
+<div class="fig-cap">In reactive offload, the GPU stalls at every layer boundary waiting for weights to arrive. In scheduled streaming, each layer's transfer is initiated during the preceding layer's computation — so the GPU never stalls. The condition for this to work: transfer time must not exceed compute time.</div>
+</div>
+<h3>What changes under the streaming model</h3>
+<ul>
+<li><strong>KV cache becomes the primary VRAM resident</strong> — not weights. The hot-tier assignment flips.</li>
+<li><strong>Only the active layer window lives in HBM</strong> — typically 1–2 layers (~2–4 GB for 70B INT4), not 35+ GB.</li>
+<li><strong>Prefetch scheduling is now a first-class system concern</strong> — the runtime must know which layer comes next and start the transfer at the right time.</li>
+<li><strong>Quantization is no longer optional</strong> — INT4 or INT8 is needed to keep the transfer budget inside the compute window.</li>
+<li><strong>Batch size is a performance lever, not just a throughput knob</strong> — larger batches mean longer compute time per layer, which gives the prefetch more time to complete.</li>
+</ul>
+<div class="callout"><strong>The architectural implication:</strong> under scheduled streaming, the VRAM budget for weights shrinks from 35+ GB to ~4 GB. That ~30 GB delta goes directly to KV cache. At 128K context, a single 70B model can now run multiple concurrent long-context requests on a single H100.</div>
+</section>
+<!-- ══ PART 8: WORKING SET ════════════════════ -->
+<section class="reveal" id="working-set">
+<h2 id="part-8-vram-as-a-working-set-not-a-warehouse">Part 8 — VRAM as a working set, not a warehouse</h2>
+<p>The conceptual shift deserves to be stated clearly, because it changes how you think about every memory decision in the system.</p>
+<div class="compare">
+<div class="cpane">
+<div class="cpane-label">Old model: warehouse</div>
+<h4>Store everything, use what you need</h4>
+<p>Weights are loaded at startup and kept permanently. VRAM is sized to fit the whole model. Memory pressure comes from fitting everything at once. Optimization target: model fits → done.</p>
+</div>
+<div class="cpane">
+<div class="cpane-label">New model: working set</div>
+<h4>Keep only what's needed now</h4>
+<p>VRAM holds only the active execution window: current + next layer's weights, KV cache, buffers. Everything else is staged elsewhere. Optimization target: maximize useful residency, minimize stall cycles.</p>
+</div>
+</div>
+<!-- FIG 7: Working set -->
+<div class="fig">
+<div class="fig-head"><span class="fig-num">Fig. 07</span><span class="fig-ttl">Working Set Model — What Should Live in HBM and Why</span></div>
+<svg style="background:#0a1220;" viewbox="0 0 840 260" xmlns="http://www.w3.org/2000/svg">
+<!-- HBM box -->
+<rect fill="rgba(61,214,200,.04)" height="220" rx="6" stroke="rgba(61,214,200,.25)" stroke-width="1.5" width="340" x="30" y="20"></rect>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" letter-spacing=".08em" text-anchor="middle" x="200" y="42">HBM (80 GB) — WORKING SET</text>
+<!-- KV cache: 60 GB -->
+<rect fill="rgba(61,214,200,.18)" height="104" rx="4" stroke="rgba(61,214,200,.35)" width="308" x="46" y="54"></rect>
+<text fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="10" font-weight="500" text-anchor="middle" x="200" y="93">KV Cache</text>
+<text fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="200" y="109">~60 GB — drives throughput, concurrency,</text>
+<text fill="#76ead8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="200" y="123">and context length. Primary resident.</text>
+<text fill="#3dd6c8" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="200" y="139">← NEVER evict without completing request</text>
+<!-- Active weights: 4 GB -->
+<rect fill="rgba(124,158,255,.25)" height="44" rx="4" stroke="rgba(124,158,255,.4)" width="148" x="46" y="166"></rect>
+<text fill="#c8d8ff" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="120" y="186">Active layer weights</text>
+<text fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="120" y="200">~2 GB (L_n)</text>
+<!-- Prefetch: 2 GB -->
+<rect fill="rgba(124,158,255,.14)" height="44" rx="4" stroke="rgba(124,158,255,.28)" stroke-dasharray="4 2" width="152" x="202" y="166"></rect>
+<text fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="278" y="186">Prefetch buffer</text>
+<text fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="278" y="200">~2 GB (L_n+1 in flight)</text>
+<!-- Arrow from host -->
+<path d="M480 186 L386 186" fill="none" marker-end="url(#ar)" stroke="rgba(124,158,255,.5)" stroke-dasharray="5 2" stroke-width="1.5"></path>
+<text fill="#7c9eff" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="530" y="182">PCIe stream</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8" text-anchor="middle" x="530" y="194">(during Lₙ compute)</text>
+<!-- Host RAM box -->
+<rect fill="rgba(255,255,255,.03)" height="220" rx="6" stroke="rgba(255,255,255,.1)" width="280" x="530" y="20"></rect>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9.5" font-weight="500" letter-spacing=".08em" text-anchor="middle" x="670" y="42">HOST DRAM — STAGING TIER</text>
+<!-- All weights -->
+<rect fill="rgba(124,158,255,.12)" height="64" rx="4" stroke="rgba(124,158,255,.2)" width="248" x="546" y="54"></rect>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9.5" text-anchor="middle" x="670" y="80">All model weights</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="670" y="95">~35 GB (70B INT4)</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="670" y="110">Streamed layer-by-layer to HBM</text>
+<!-- Inactive KV -->
+<rect fill="rgba(61,214,200,.06)" height="48" rx="4" stroke="rgba(61,214,200,.15)" stroke-dasharray="4 2" width="248" x="546" y="126"></rect>
+<text fill="#8ba8c8" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="670" y="148">Spilled KV blocks (if needed)</text>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="670" y="162">Evicted under extreme pressure</text>
+<!-- NVMe -->
+<rect fill="rgba(255,255,255,.03)" height="42" rx="4" stroke="rgba(255,255,255,.08)" width="248" x="546" y="182"></rect>
+<text fill="#4a6282" font-family="IBM Plex Mono,monospace" font-size="9" text-anchor="middle" x="670" y="200">NVMe / fabric storage</text>
+<text fill="#3a5070" font-family="IBM Plex Mono,monospace" font-size="8.5" text-anchor="middle" x="670" y="214">Cold weights, checkpoints</text>
+</svg>
+<div class="fig-cap">Under the working set model, HBM is dominated by KV cache (~60 GB) rather than weights. The weight footprint shrinks to ~4 GB (active layer + prefetch buffer). Host DRAM becomes the staging tier. The critical PCIe stream must be scheduled to complete before each layer's compute window opens.</div>
+</div>
+<table class="data-table">
+<thead>
+<tr><th>Question</th><th>Warehouse model</th><th>Working set model</th></tr>
+</thead>
+<tbody>
+<tr><td>What is HBM for?</td><td>Store the whole model</td><td class="good">Hold the active execution window</td></tr>
+<tr><td>Primary HBM resident?</td><td class="bad">Weights (static, idle most of the time)</td><td class="good">KV cache (drives throughput now)</td></tr>
+<tr><td>Optimization target?</td><td>Fit the model</td><td class="good">Maximize useful residency + overlap movement with compute</td></tr>
+<tr><td>What happens when context grows?</td><td class="bad">OOM — can't serve</td><td class="good">KV cache expands into freed weight space</td></tr>
+<tr><td>Bottleneck?</td><td>Memory capacity</td><td class="mid">Bandwidth + scheduling quality</td></tr>
+<tr><td>Quantization role?</td><td>Optional (accuracy tradeoff)</td><td class="good">Required (enables transfer/compute parity)</td></tr>
+</tbody>
+</table>
+</section>
+<!-- ══ CLOSING ═══════════════════════════════ -->
+<section class="reveal" id="closing">
+<h2 id="part-9-why-this-architectural-shift-matters">Part 9 — Why this architectural shift matters</h2>
+<p>There's a deeper pattern here worth naming. We're watching GPU memory undergo the same conceptual evolution that CPU memory went through decades ago — from a fixed allocation ("load your program, run it") to a dynamically managed working set (virtual memory, paging, OS-level orchestration).</p>
+<p>PagedAttention was the first production instance of this thinking applied to AI inference. Scheduled weight streaming is the next. The long arc is toward a memory runtime that treats every byte of HBM as deliberately placed — not accidentally resident.</p>
+<div class="pull">
         "The question changes. Instead of asking 'How do I fit the model?' the better question is 'How do I move the model <em>through</em> the machine efficiently enough to maximize useful residency?'"
         <cite>— the shift from warehouse to working set</cite>
-      </div>
-
-      <h3>The second-order implication</h3>
-      <p>Once memory stops being a passive container and becomes an actively orchestrated execution resource, the system has opinions about what matters. That's the same architectural moment that justified operating systems, file systems, and virtual memory managers. For AI infrastructure, it suggests the next layer of the stack is not another offload library. It's a <strong>memory runtime with explicit residency semantics</strong> — one that speaks the language of weights, KV blocks, and attention state, not pages and virtual addresses.</p>
-      <p>That runtime needs to know what an object is, how long it lives, how urgently it's needed, and what it costs to evict or recompute. Readers of this series will recognize this as precisely the problem the Memory Intent IR was designed to solve.</p>
-
-      <div class="callout"><strong>The through-line:</strong> VRAM-as-working-set is the systems architecture argument. Memory Intent IR is the compiler mechanism that makes it work at line rate. PagedAttention-style block management is the KV cache layer. Together they sketch an AI memory runtime that manages residency the way an OS manages virtual memory — but with object semantics instead of page semantics.</div>
-
-      <h3>Summary in six lines</h3>
-      <ul>
-        <li>HBM / VRAM is limited, high-bandwidth, and feeds compute directly.</li>
-        <li>Weights, KV cache, and buffers compete for it. KV cache drives revenue; weights are just a pre-condition.</li>
-        <li>PagedAttention showed what active KV cache management buys you. The answer was: a lot.</li>
-        <li>Naive weight offload helps with capacity but creates a bandwidth and stall problem.</li>
-        <li>Scheduled streaming solves the stall problem by prefetching ahead and overlapping transfer with compute.</li>
-        <li>The right abstraction: VRAM is a bounded execution working set. Weights pass through it. KV cache lives in it.</li>
-      </ul>
-    </section>
-
-    <!-- FOOTER -->
-    <div class="art-footer reveal">
-      <a class="back-link" href="../writings.html">← All writings</a>
-      <div class="tags">
-        <span class="tag">HBM</span>
-        <span class="tag">VRAM</span>
-        <span class="tag">vLLM</span>
-        <span class="tag">PagedAttention</span>
-        <span class="tag">KV cache</span>
-        <span class="tag">weight offload</span>
-        <span class="tag">weight streaming</span>
-        <span class="tag">AI inference</span>
-        <span class="tag">GPU memory</span>
-      </div>
-      <div class="footer-note">
+</div>
+<h3>The second-order implication</h3>
+<p>Once memory stops being a passive container and becomes an actively orchestrated execution resource, the system has opinions about what matters. That's the same architectural moment that justified operating systems, file systems, and virtual memory managers. For AI infrastructure, it suggests the next layer of the stack is not another offload library. It's a <strong>memory runtime with explicit residency semantics</strong> — one that speaks the language of weights, KV blocks, and attention state, not pages and virtual addresses.</p>
+<p>That runtime needs to know what an object is, how long it lives, how urgently it's needed, and what it costs to evict or recompute. Readers of this series will recognize this as precisely the problem the Memory Intent IR was designed to solve.</p>
+<div class="callout"><strong>The through-line:</strong> VRAM-as-working-set is the systems architecture argument. Memory Intent IR is the compiler mechanism that makes it work at line rate. PagedAttention-style block management is the KV cache layer. Together they sketch an AI memory runtime that manages residency the way an OS manages virtual memory — but with object semantics instead of page semantics.</div>
+<h3>Summary in six lines</h3>
+<ul>
+<li>HBM / VRAM is limited, high-bandwidth, and feeds compute directly.</li>
+<li>Weights, KV cache, and buffers compete for it. KV cache drives revenue; weights are just a pre-condition.</li>
+<li>PagedAttention showed what active KV cache management buys you. The answer was: a lot.</li>
+<li>Naive weight offload helps with capacity but creates a bandwidth and stall problem.</li>
+<li>Scheduled streaming solves the stall problem by prefetching ahead and overlapping transfer with compute.</li>
+<li>The right abstraction: VRAM is a bounded execution working set. Weights pass through it. KV cache lives in it.</li>
+</ul>
+</section>
+<!-- FOOTER -->
+<div class="art-footer reveal">
+<a class="back-link" href="../writings.html">← All writings</a>
+<div class="tags">
+<span class="tag">HBM</span>
+<span class="tag">VRAM</span>
+<span class="tag">vLLM</span>
+<span class="tag">PagedAttention</span>
+<span class="tag">KV cache</span>
+<span class="tag">weight offload</span>
+<span class="tag">weight streaming</span>
+<span class="tag">AI inference</span>
+<span class="tag">GPU memory</span>
+</div>
+<div class="footer-note">
         Part of the MCOS-HFC architecture series.<br/>
         Next: Memory Intent IR — the compiler mechanism that gives hardware controllers object-level semantics.
       </div>
-    </div>
-    <div style="margin-top:14px; color:#8ba8c8; font-size:0.95em; text-align:center;">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer" style="color:inherit; font-weight:600; text-decoration:none;">Manish KL</a></div>
-
-  </main>
+</div>
+<div style="margin-top:14px; color:#8ba8c8; font-size:0.95em; text-align:center;">© 2026 <a href="https://github.com/manishklach" rel="noopener noreferrer" style="color:inherit; font-weight:600; text-decoration:none;" target="_blank">Manish KL</a></div>
+<hr/><footer class="post-footer">© 2026 Manish K. Lach · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer></main>
 </div><!-- /body-wrap -->
 </div><!-- /page -->
-
 <script>
 // ── Progress bar ─────────────────────────────────
 const prog = document.getElementById('prog');
