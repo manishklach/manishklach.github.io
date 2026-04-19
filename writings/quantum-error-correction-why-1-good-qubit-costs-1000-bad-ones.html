@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+
+<html class="scroll-smooth" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Quantum Series #3: Quantum Error Correction — Why 1 Good Qubit Costs 1,000 Bad Ones | Manish KL</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        quantum: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace']
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                        'fade-in': 'fadeIn 0.6s ease-out',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0px)' },
+                            '50%': { transform: 'translateY(-10px)' }
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+<script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+<script async="" id="MathJax-script" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<style>
+        :root {
+            color-scheme: light dark;
+        }
+        body {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+        }
+        .dark body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .dark .glass {
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #0284c7 0%, #7c3aed 50%, #db2777 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .code-block {
+            position: relative;
+        }
+        .code-block::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(2, 132, 199, 0.1), rgba(124, 58, 237, 0.1));
+            border-radius: 0.5rem;
+            z-index: -1;
+        }
+        pre::-webkit-scrollbar {
+            height: 8px;
+        }
+        pre::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+        }
+        pre::-webkit-scrollbar-thumb {
+            background: rgba(2, 132, 199, 0.5);
+            border-radius: 4px;
+        }
+        .dark pre::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .dark pre::-webkit-scrollbar-thumb {
+            background: rgba(56, 189, 248, 0.5);
+        }
+        .copy-btn {
+            transition: all 0.2s;
+        }
+        .copy-btn.copied {
+            background: #10b981 !important;
+        }
+        .toc-link.active {
+            color: #0284c7;
+            font-weight: 600;
+        }
+        .dark .toc-link.active {
+            color: #38bdf8;
+        }
+        .quantum-grid {
+            background-image: 
+                linear-gradient(rgba(2, 132, 199, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(2, 132, 199, 0.03) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        .dark .quantum-grid {
+            background-image: 
+                linear-gradient(rgba(56, 189, 248, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(56, 189, 248, 0.05) 1px, transparent 1px);
+        }
+    </style>
+<meta content="A technical essay on quantum error correction explaining surface codes, logical qubits, fault-tolerance thresholds, and why useful quantum computers require massive redundancy." name="description"/><meta content="quantum error correction, logical qubits, surface code explained, fault tolerant quantum computing, quantum redundancy, why quantum computers need error correction, good qubit bad qubits" name="keywords"/><meta content="Manish KL" name="author"/><meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/><meta content="light dark" name="color-scheme"/><link href="https://manishklach.github.io/writings/quantum-error-correction-why-1-good-qubit-costs-1000-bad-ones.html" rel="canonical"/><meta content="article" property="og:type"/><meta content="Quantum Series #3: Quantum Error Correction — Why 1 Good Qubit Costs 1,000 Bad Ones | Manish KL" property="og:title"/><meta content="A technical essay on quantum error correction explaining surface codes, logical qubits, fault-tolerance thresholds, and why useful quantum computers require massive redundancy." property="og:description"/><meta content="https://manishklach.github.io/writings/quantum-error-correction-why-1-good-qubit-costs-1000-bad-ones.html" property="og:url"/><meta content="Manish KL" property="og:site_name"/><meta content="https://manishklach.github.io/og/quantum-error-correction-why-1-good-qubit-costs-1000-bad-ones.png" property="og:image"/><meta content="Preview image for Quantum Series #3: Quantum Error Correction — Why 1 Good Qubit Costs 1,000 Bad Ones by Manish KL" property="og:image:alt"/><meta content="2026-04-19T00:00:00Z" property="article:published_time"/><meta content="2026-04-19T00:00:00Z" property="article:modified_time"/><meta content="Manish KL" property="article:author"/><meta content="Quantum Computing" property="article:section"/><meta content="summary_large_image" name="twitter:card"/><meta content="Quantum Series #3: Quantum Error Correction — Why 1 Good Qubit Costs 1,000 Bad Ones" name="twitter:title"/><meta content="A technical essay on quantum error correction explaining surface codes, logical qubits, fault-tolerance thresholds, and why useful quantum computers require massive redundancy." name="twitter:description"/><meta content="https://manishklach.github.io/og/quantum-error-correction-why-1-good-qubit-costs-1000-bad-ones.png" name="twitter:image"/><link href="/feed.xml" rel="alternate" title="Manish KL RSS" type="application/rss+xml"/><link href="/feed.json" rel="alternate" title="Manish KL JSON" type="application/feed+json"/><link href="https://webmention.io/manishklach.github.io/webmention" rel="webmention"/><link href="https://webmention.io/manishklach.github.io/xmlrpc" rel="pingback"/><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Quantum Series #3: Quantum Error Correction \u2014 Why 1 Good Qubit Costs 1,000 Bad Ones",
+  "description": "A technical essay on quantum error correction explaining surface codes, logical qubits, fault-tolerance thresholds, and why useful quantum computers require massive redundancy.",
+  "url": "https://manishklach.github.io/writings/quantum-error-correction-why-1-good-qubit-costs-1000-bad-ones.html",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/quantum-error-correction-why-1-good-qubit-costs-1000-bad-ones.html",
+  "datePublished": "2026-04-19",
+  "dateModified": "2026-04-19",
+  "author": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/index.html"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/index.html"
+  }
+}</script><script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><style>
+.publish-bar { max-width: 80rem; margin: 0 auto; padding: 1rem 1rem 0; }
+.publish-bar a { color: inherit; text-decoration: none; font-size: 0.95rem; opacity: 0.85; }
+.publish-bar a:hover { opacity: 1; }
+.reading-meta { font-size: 0.95rem; line-height: 1.6; margin: 0.75rem 0 1rem; opacity: 0.8; }
+.subscribe { margin: 2rem 0; display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.subscribe label { font-weight: 600; }
+.subscribe input[type=email] { padding: 0.6rem 0.8rem; width: 16rem; max-width: 100%; font: inherit; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 0.5rem; }
+.subscribe input[type=submit] { padding: 0.6rem 1rem; font: inherit; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 0.5rem; cursor: pointer; }
+#webmentions { margin-top: 2rem; opacity: 0.85; }
+#webmentions img { width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; margin-right: 0.4rem; }
+.post-footer { font-size: 0.95rem; margin: 1.5rem 0 0; padding-bottom: 2rem; opacity: 0.8; }
+.post-footer a { color: inherit; text-decoration: underline; text-underline-offset: 0.15em; }
+</style></head>
+<body class="font-sans text-slate-800 dark:text-slate-200 antialiased quantum-grid"><div class="publish-bar"><a href="/writings.html">← All posts</a></div>
+<!-- Theme Toggle -->
+<button aria-label="Toggle theme" class="fixed top-4 right-4 z-50 p-3 rounded-full glass shadow-lg hover:scale-110 transition-all duration-300" id="themeToggle">
+<svg class="w-5 h-5 text-amber-500 hidden" fill="currentColor" id="sunIcon" viewbox="0 0 20 20">
+<path clip-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd"></path>
+</svg>
+<svg class="w-5 h-5 text-quantum-600" fill="currentColor" id="moonIcon" viewbox="0 0 20 20">
+<path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
+</svg>
+</button>
+<!-- Progress Bar -->
+<div class="fixed top-0 left-0 h-1 bg-gradient-to-r from-quantum-500 via-purple-500 to-pink-500 z-50 transition-all duration-300" id="progressBar" style="width: 0%"></div>
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="lg:grid lg:grid-cols-12 lg:gap-8">
+<!-- Sidebar TOC -->
+<aside class="hidden lg:block lg:col-span-3 pt-24">
+<div class="sticky top-24 glass rounded-2xl p-6 shadow-xl">
+<h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-4">Contents</h3>
+<nav class="space-y-2 text-sm" id="toc">
+<a class="toc-link block py-1.5 text-slate-600 dark:text-slate-400 hover:text-quantum-600 dark:hover:text-quantum-400 transition-colors" href="#nisq-trap">The NISQ Trap</a>
+<a class="toc-link block py-1.5 pl-3 text-slate-600 dark:text-slate-400 hover:text-quantum-600 dark:hover:text-quantum-400 transition-colors" href="#why-errors">Why Errors Are Different</a>
+<a class="toc-link block py-1.5 text-slate-600 dark:text-slate-400 hover:text-quantum-600 dark:hover:text-quantum-400 transition-colors" href="#surface-code">Surface Code d=3</a>
+<a class="toc-link block py-1.5 text-slate-600 dark:text-slate-400 hover:text-quantum-600 dark:hover:text-quantum-400 transition-colors" href="#threshold">Threshold Theorem</a>
+<a class="toc-link block py-1.5 text-slate-600 dark:text-slate-400 hover:text-quantum-600 dark:hover:text-quantum-400 transition-colors" href="#swap-networks">SWAP Networks</a>
+<a class="toc-link block py-1.5 text-slate-600 dark:text-slate-400 hover:text-quantum-600 dark:hover:text-quantum-400 transition-colors" href="#resources">Resource Estimates</a>
+<a class="toc-link block py-1.5 text-slate-600 dark:text-slate-400 hover:text-quantum-600 dark:hover:text-quantum-400 transition-colors" href="#beyond-surface">Beyond Surface Codes</a>
+<a class="toc-link block py-1.5 text-slate-600 dark:text-slate-400 hover:text-quantum-600 dark:hover:text-quantum-400 transition-colors" href="#implications">Implications for Systems</a>
+<a class="toc-link block py-1.5 pl-3 text-slate-600 dark:text-slate-400 hover:text-quantum-600 dark:hover:text-quantum-400 transition-colors" href="#classical-computer">The 99% Classical Computer</a>
+</nav>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="lg:col-span-9 py-12 lg:py-24" data-pagefind-body="">
+<!-- Hero -->
+<header class="mb-16 animate-fade-in">
+<div class="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-quantum-100 dark:bg-quantum-900/30 text-quantum-700 dark:text-quantum-300 mb-4">
+                        QUANTUM SERIES #3 v3.2
+                    </div>
+<h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight mb-6">
+<span class="gradient-text">Quantum Error Correction:</span><br/>
+<span class="text-slate-900 dark:text-white">Why 1 Good Qubit Costs 1,000 Bad Ones</span>
+</h1><div class="reading-meta">Published <time datetime="2026-04-19">Apr 19, 2026</time> · 9 min read</div>
+<p class="text-xl text-slate-600 dark:text-slate-400 leading-relaxed max-w-3xl">
+                        The brutal math behind fault tolerance. We explore why quantum computers need extreme redundancy, how surface codes work, and why the “quantum computer” you build is 99% classical supercomputer.
+                    </p>
+<div class="mt-8 flex flex-wrap gap-4">
+<div class="flex items-center gap-2 px-4 py-2 rounded-lg glass">
+<svg class="w-5 h-5 text-quantum-600 dark:text-quantum-400" fill="currentColor" viewbox="0 0 20 20">
+<path clip-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" fill-rule="evenodd"></path>
+</svg>
+<span class="text-sm font-medium">15 min read</span>
+</div>
+<div class="flex items-center gap-2 px-4 py-2 rounded-lg glass">
+<svg class="w-5 h-5 text-purple-600 dark:text-purple-400" fill="currentColor" viewbox="0 0 20">
+<path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"></path>
+</svg>
+<span class="text-sm font-medium">Advanced</span>
+</div>
+<div class="flex items-center gap-2 px-4 py-2 rounded-lg glass">
+<svg class="w-5 h-5 text-pink-600 dark:text-pink-400" fill="currentColor" viewbox="0 0 20 20">
+<path clip-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" fill-rule="evenodd"></path>
+</svg>
+<span class="text-sm font-medium">Qiskit + Math</span>
+</div>
+</div>
+</header>
+<!-- Section: NISQ Trap -->
+<section class="mb-20 scroll-mt-24" id="nisq-trap">
+<h2 class="text-3xl font-bold mb-6 flex items-center gap-3">
+<span class="w-10 h-10 rounded-lg bg-gradient-to-br from-quantum-500 to-quantum-700 flex items-center justify-center text-white font-bold">1</span>
+                        The NISQ Trap
+                    </h2>
+<div class="prose prose-slate dark:prose-invert max-w-none">
+<p class="text-lg leading-relaxed mb-6">
+                            Noisy Intermediate-Scale Quantum (NISQ) devices promise quantum advantage without error correction. They have 50–1000 physical qubits, gate errors around $10^{-3}$, and coherence times of 50–100μs. The trap: <strong>noise accumulates exponentially</strong>.
+                        </p>
+<div class="glass rounded-xl p-6 shadow-lg mb-8 overflow-x-auto">
+<h3 class="text-lg font-semibold mb-4">NISQ vs Fault-Tolerant Regimes</h3>
+<table class="w-full text-sm">
+<thead>
+<tr class="border-b border-slate-300 dark:border-slate-700">
+<th class="text-left py-3 px-2">Metric</th>
+<th class="text-left py-3 px-2">NISQ</th>
+<th class="text-left py-3 px-2">Early FTQC</th>
+<th class="text-left py-3 px-2">Utility-Scale</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+<tr>
+<td class="py-3 px-2 font-medium">Physical qubits</td>
+<td class="py-3 px-2">$10^2$–$10^3$</td>
+<td class="py-3 px-2">$10^5$–$10^6$</td>
+<td class="py-3 px-2">$10^7$–$10^8$</td>
+</tr>
+<tr>
+<td class="py-3 px-2 font-medium">Logical qubits</td>
+<td class="py-3 px-2">0</td>
+<td class="py-3 px-2">$10^2$–$10^3$</td>
+<td class="py-3 px-2">$10^4$–$10^5$</td>
+</tr>
+<tr>
+<td class="py-3 px-2 font-medium">Physical error rate</td>
+<td class="py-3 px-2">$10^{-3}$</td>
+<td class="py-3 px-2">$10^{-3}$–$10^{-4}$</td>
+<td class="py-3 px-2">$&lt;10^{-4}$</td>
+</tr>
+<tr>
+<td class="py-3 px-2 font-medium">Logical error rate</td>
+<td class="py-3 px-2">N/A</td>
+<td class="py-3 px-2">$10^{-8}$–$10^{-12}$</td>
+<td class="py-3 px-2">$&lt;10^{-15}$</td>
+</tr>
+<tr>
+<td class="py-3 px-2 font-medium">Circuit depth</td>
+<td class="py-3 px-2">$10^1$–$10^3$ gates</td>
+<td class="py-3 px-2">$10^6$–$10^9$ gates</td>
+<td class="py-3 px-2">$10^{12}$–$10^{15}$ gates</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="bg-amber-50 dark:bg-amber-900/20 border-l-4 border-amber-500 rounded-r-lg p-6 mb-8" id="why-errors">
+<h3 class="text-xl font-bold mb-3 text-amber-900 dark:text-amber-200">Why Errors Are Different: Classical Intuition That Breaks</h3>
+<p class="mb-4">Classical error correction works because bits are discrete: 0 or 1. You can measure, copy, and vote. Quantum fails on all three:</p>
+<ol class="list-decimal list-inside space-y-2 ml-4">
+<li><strong>No-Cloning Theorem:</strong> You cannot copy unknown quantum states $|\psi\rangle \not\to |\psi\rangle|\psi\rangle$. Redundancy requires entanglement, not copies.</li>
+<li><strong>Measurement Destroys:</strong> Measuring $|\psi\rangle = \alpha|0\rangle + \beta|1\rangle$ collapses it. You must detect errors without measuring the data.</li>
+<li><strong>Continuous Errors:</strong> Bits flip: $0 \leftrightarrow 1$. Qubits suffer arbitrary unitaries: $X$, $Z$, or $e^{i\theta X}$. Yet remarkably, correcting bit-flips $X$ and phase-flips $Z$ corrects all errors.</li>
+<li><strong>Entanglement Spreads Errors:</strong> A 1-qubit error before a CNOT becomes a 2-qubit error after. Errors cascade exponentially without fault-tolerant design.</li>
+</ol>
+</div>
+</div>
+</section>
+<!-- Section: Surface Code -->
+<section class="mb-20 scroll-mt-24" id="surface-code">
+<h2 class="text-3xl font-bold mb-6 flex items-center gap-3">
+<span class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white font-bold">2</span>
+                        Surface Code d=3 Walkthrough
+                    </h2>
+<div class="prose prose-slate dark:prose-invert max-w-none">
+<p class="text-lg leading-relaxed mb-6">
+                            The surface code encodes 1 logical qubit in a $d \times d$ grid of physical qubits. For distance $d=3$, you need 17 qubits: 9 data + 8 ancilla. It can correct $\lfloor(d-1)/2\rfloor = 1$ arbitrary error per round.
+                        </p>
+<div class="grid md:grid-cols-2 gap-6 mb-8">
+<div class="glass rounded-xl p-6 shadow-lg">
+<h3 class="font-semibold mb-3">Surface Code Lattice d=3</h3>
+<svg class="w-full h-auto" viewbox="0 0 200 200">
+<!-- Data qubits -->
+<defs>
+<style>
+                                            .data { fill: currentColor; opacity: 0.9; }
+                                            .ancilla { fill: none; stroke: currentColor; stroke-width: 2; }
+                                            .label { font: 10px monospace; fill: currentColor; text-anchor: middle; }
+                                            .stabilizer { stroke: currentColor; stroke-width: 1; opacity: 0.3; stroke-dasharray: 2 2; }
+                                        </style>
+</defs>
+<!-- Grid -->
+<g class="stabilizer">
+<rect height="40" width="40" x="20" y="20"></rect>
+<rect height="40" width="40" x="60" y="20"></rect>
+<rect height="40" width="40" x="100" y="20"></rect>
+<rect height="40" width="40" x="20" y="60"></rect>
+<rect height="40" width="40" x="60" y="60"></rect>
+<rect height="40" width="40" x="100" y="60"></rect>
+<rect height="40" width="40" x="20" y="100"></rect>
+<rect height="40" width="40" x="60" y="100"></rect>
+<rect height="40" width="40" x="100" y="100"></rect>
+</g>
+<!-- Data qubits - corners and edges -->
+<circle class="data" cx="40" cy="40" r="8"></circle>
+<circle class="data" cx="80" cy="40" r="8"></circle>
+<circle class="data" cx="120" cy="40" r="8"></circle>
+<circle class="data" cx="40" cy="80" r="8"></circle>
+<circle class="data" cx="80" cy="80" r="8"></circle>
+<circle class="data" cx="120" cy="80" r="8"></circle>
+<circle class="data" cx="40" cy="120" r="8"></circle>
+<circle class="data" cx="80" cy="120" r="8"></circle>
+<circle class="data" cx="120" cy="120" r="8"></circle>
+<!-- Ancilla X-stabilizers -->
+<rect class="ancilla" height="8" width="8" x="56" y="56"></rect>
+<rect class="ancilla" height="8" width="8" x="96" y="56"></rect>
+<rect class="ancilla" height="8" width="8" x="56" y="96"></rect>
+<rect class="ancilla" height="8" width="8" x="96" y="96"></rect>
+<!-- Ancilla Z-stabilizers -->
+<circle class="ancilla" cx="60" cy="40" r="4"></circle>
+<circle class="ancilla" cx="100" cy="40" r="4"></circle>
+<circle class="ancilla" cx="40" cy="100" r="4"></circle>
+<circle class="ancilla" cx="80" cy="100" r="4"></circle>
+<!-- Labels -->
+<text class="label" x="100" y="165">● Data  ◻ X-check  ○ Z-check</text>
+</svg>
+<p class="text-xs text-slate-600 dark:text-slate-400 mt-2">9 data qubits store the logical state. 8 ancillas measure stabilizers without collapsing data.</p>
+</div>
+<div class="glass rounded-xl p-6 shadow-lg">
+<h3 class="font-semibold mb-3">Key Properties</h3>
+<ul class="space-y-3 text-sm">
+<li class="flex gap-3">
+<span class="text-quantum-600 dark:text-quantum-400 font-bold">•</span>
+<span><strong>Code distance d:</strong> Shortest chain connecting boundaries. Errors &lt; d/2 are correctable.</span>
+</li>
+<li class="flex gap-3">
+<span class="text-quantum-600 dark:text-quantum-400 font-bold">•</span>
+<span><strong>Stabilizers:</strong> 4-body X and Z checks. Measure parity, not state. $-1$ result = error detected nearby.</span>
+</li>
+<li class="flex gap-3">
+<span class="text-quantum-600 dark:text-quantum-400 font-bold">•</span>
+<span><strong>Threshold:</strong> If physical error $p &lt; p_{th} \approx 10^{-2}$, logical error drops exponentially with d.</span>
+</li>
+<li class="flex gap-3">
+<span class="text-quantum-600 dark:text-quantum-400 font-bold">•</span>
+<span><strong>Overhead:</strong> $d^2$ data + $d^2-1$ ancilla ≈ $2d^2$ physical per logical qubit.</span>
+</li>
+</ul>
+</div>
+</div>
+<div class="code-block mb-8">
+<div class="flex items-center justify-between bg-slate-800 dark:bg-slate-900 px-4 py-2 rounded-t-lg">
+<span class="text-xs font-mono text-slate-400">python</span>
+<button class="copy-btn text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-300" onclick="copyCode(this)">Copy</button>
+</div>
+<pre class="bg-slate-900 text-slate-100 p-4 rounded-b-lg overflow-x-auto text-sm"><code class="language-python">from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
+
+# Surface code d=3: 9 data + 8 ancilla qubits
+data = QuantumRegister(9, 'data')
+ancilla = QuantumRegister(8, 'anc')
+cbit = ClassicalRegister(8, 'syndrome')
+qc = QuantumCircuit(data, ancilla, cbit)
+
+# Initialize logical |0&gt;_L: all data in |0&gt;
+# X-stabilizers: ancilla[0:4] measure X⊗X⊗X⊗X on plaquettes
+def measure_x_stabilizer(qc, anc, d0, d1, d2, d3):
+    qc.h(anc)
+    qc.cx(anc, d0)
+    qc.cx(anc, d1)
+    qc.cx(anc, d2)
+    qc.cx(anc, d3)
+    qc.h(anc)
+
+# Z-stabilizers: ancilla[4:8] measure Z⊗Z⊗Z⊗Z on vertices  
+def measure_z_stabilizer(qc, anc, d0, d1, d2, d3):
+    qc.cx(d0, anc)
+    qc.cx(d1, anc)
+    qc.cx(d2, anc)
+    qc.cx(d3, anc)
+
+# One QEC round
+measure_x_stabilizer(qc, ancilla[0], data[0], data[1], data[3], data[4])
+measure_z_stabilizer(qc, ancilla[4], data[0], data[1], data[3], data[4])
+# ... repeat for all 8 stabilizers
+qc.measure(ancilla, cbit)
+
+print(qc.draw())</code></pre>
+</div>
+<p class="mb-6">
+                            Each round, you measure all stabilizers and get an 8-bit syndrome. A classical decoder maps syndromes → most likely error location. You then apply Pauli corrections in software or by updating the Pauli frame.
+                        </p>
+</div>
+</section>
+<!-- Section: Threshold -->
+<section class="mb-20 scroll-mt-24" id="threshold">
+<h2 class="text-3xl font-bold mb-6 flex items-center gap-3">
+<span class="w-10 h-10 rounded-lg bg-gradient-to-br from-pink-500 to-pink-700 flex items-center justify-center text-white font-bold">3</span>
+                        Threshold Theorem &amp; d=25 Math
+                    </h2>
+<div class="prose prose-slate dark:prose-invert max-w-none">
+<p class="text-lg leading-relaxed mb-6">
+                            The threshold theorem: if physical error rate $p$ is below threshold $p_{th}$, logical error rate $P_L$ decreases exponentially with code distance $d$:
+                        </p>
+<div class="glass rounded-xl p-6 shadow-lg mb-6 text-center">
+                            $$P_L \approx A\left(\frac{p}{p_{th}}\right)^{\lfloor\frac{d+1}{2}\rfloor}$$
+                        </div>
+<p class="mb-6">
+                            For surface code, $p_{th} \approx 0.01$ and $A \approx 0.1$. If your hardware achieves $p = 10^{-3}$, ten times below threshold:
+                        </p>
+<div class="bg-gradient-to-r from-quantum-50 to-purple-50 dark:from-quantum-900/20 dark:to-purple-900/20 rounded-xl p-6 mb-6 border border-quantum-200 dark:border-quantum-800">
+<h3 class="font-bold mb-4 text-quantum-900 dark:text-quantum-100">Case Study: d=25 for $P_L \approx 10^{-12}$</h3>
+<div class="space-y-3 font-mono text-sm">
+<div>Physical error rate: $p = 10^{-3}$</div>
+<div>Threshold: $p_{th} = 10^{-2}$</div>
+<div>Distance: $d = 25$ → corrects $\lfloor 24/2 \rfloor = 12$ errors</div>
+<div class="pt-2 border-t border-quantum-300 dark:border-quantum-700">
+                                    $$P_L \approx 0.1 \times \left(\frac{10^{-3}}{10^{-2}}\right)^{13} = 0.1 \times 10^{-13} = 10^{-14}$$
+                                </div>
+<div class="pt-2">Physical qubits per logical: $2d^2 \approx 2 \times 25^2 = 1250$</div>
+<div class="pt-2 font-bold text-quantum-700 dark:text-quantum-300">Result: 1250:1 overhead for 12-nines reliability</div>
+</div>
+</div>
+<p class="mb-6">
+                            To run Shor's algorithm on 2048-bit RSA, you need ~$10^8$ Toffoli gates with error budget $10^{-12}$. With $P_L = 10^{-14}$, you get ~100 gates per logical error. You need ~4000 logical qubits × 1250 = <strong>5 million physical qubits</strong>.
+                        </p>
+</div>
+</section>
+<!-- Section: SWAP Networks -->
+<section class="mb-20 scroll-mt-24" id="swap-networks">
+<h2 class="text-3xl font-bold mb-6 flex items-center gap-3">
+<span class="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white font-bold">4</span>
+                        SWAP Networks: 2Q Gate Error Amplification
+                    </h2>
+<div class="prose prose-slate dark:prose-invert max-w-none">
+<p class="text-lg leading-relaxed mb-6">
+                            Most hardware has limited connectivity: qubits only couple to nearest neighbors. To entangle distant qubits, you must SWAP them together. Each SWAP = 3 CNOTs. This amplifies errors catastrophically.
+                        </p>
+<div class="glass rounded-xl p-6 shadow-lg mb-6 overflow-x-auto">
+<h3 class="font-semibold mb-4">GHZ State Creation: Linear vs All-to-All</h3>
+<table class="w-full text-sm">
+<thead>
+<tr class="border-b border-slate-300 dark:border-slate-700">
+<th class="text-left py-3 px-2">Topology</th>
+<th class="text-left py-3 px-2">CNOT Depth</th>
+<th class="text-left py-3 px-2">Total CNOTs</th>
+<th class="text-left py-3 px-2">Fidelity @ $p=10^{-3}$</th>
+</tr>
+</thead>
+<tbody>
+<tr class="border-b border-slate-200 dark:border-slate-800">
+<td class="py-3 px-2 font-medium">All-to-all (ideal)</td>
+<td class="py-3 px-2">$n-1$</td>
+<td class="py-3 px-2">$n-1$</td>
+<td class="py-3 px-2 font-mono">$(1-p)^{n-1}$</td>
+</tr>
+<tr>
+<td class="py-3 px-2 font-medium">Linear chain</td>
+<td class="py-3 px-2">$2n-3$</td>
+<td class="py-3 px-2">$3(n-2)$</td>
+<td class="py-3 px-2 font-mono">$(1-p)^{3(n-2)}$</td>
+</tr>
+</tbody>
+</table>
+<p class="text-xs text-slate-600 dark:text-slate-400 mt-3">For $n=100$ qubits: ideal uses 99 CNOTs, linear uses 294. At $p=10^{-3}$, fidelity drops from 90.5% to 74.5%.</p>
+</div>
+<div class="code-block mb-6">
+<div class="flex items-center justify-between bg-slate-800 dark:bg-slate-900 px-4 py-2 rounded-t-lg">
+<span class="text-xs font-mono text-slate-400">python</span>
+<button class="copy-btn text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-300" onclick="copyCode(this)">Copy</button>
+</div>
+<pre class="bg-slate-900 text-slate-100 p-4 rounded-b-lg overflow-x-auto text-sm"><code class="language-python">from qiskit import QuantumCircuit
+import numpy as np
+
+def ghz_fidelity(n, p_2q, topology='linear'):
+    """Estimate GHZ fidelity with 2Q gate errors."""
+    if topology == 'alltoall':
+        n_cnot = n - 1
+    elif topology == 'linear':
+        n_cnot = 3 * (n - 2)  # SWAP chains
+    else:
+        raise ValueError
+    
+    # Fidelity ≈ (1-p)^(n_cnot)
+    return (1 - p_2q) ** n_cnot
+
+n = 100
+p = 1e-3
+print(f"All-to-all: {ghz_fidelity(n, p, 'alltoall'):.3f}")
+print(f"Linear:    {ghz_fidelity(n, p, 'linear'):.3f}")
+# Output: All-to-all: 0.905, Linear: 0.745</code></pre>
+</div>
+<p class="mb-6">
+                            This is why grid topology (surface code) and 2D connectivity are critical. Routing distance grows only as $\sqrt{n}$, not $n$. A square lattice needs $O(\sqrt{n})$ SWAPs vs $O(n)$ for linear. For 10,000 qubits: 300 SWAPs vs 30,000.
+                        </p>
+</div>
+</section>
+<!-- Section: Resources -->
+<section class="mb-20 scroll-mt-24" id="resources">
+<h2 class="text-3xl font-bold mb-6 flex items-center gap-3">
+<span class="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white font-bold">5</span>
+                        Resource Estimates for Benchmark Algorithms
+                    </h2>
+<div class="prose prose-slate dark:prose-invert max-w-none">
+<p class="text-lg leading-relaxed mb-6">
+                            Assuming surface code $d=25$, $p=10^{-3}$, and 1μs per QEC round. T-gate latency dominates: each requires ~$d$ rounds of magic state distillation.
+                        </p>
+<div class="glass rounded-xl p-6 shadow-lg mb-8 overflow-x-auto">
+<h3 class="text-lg font-semibold mb-4">Physical Qubit Counts for Utility-Scale Problems</h3>
+<table class="w-full text-sm">
+<thead>
+<tr class="border-b border-slate-300 dark:border-slate-700">
+<th class="text-left py-3 px-2">Algorithm</th>
+<th class="text-left py-3 px-2">Logical Qubits</th>
+<th class="text-left py-3 px-2">T-Gates</th>
+<th class="text-left py-3 px-2">Physical Qubits</th>
+<th class="text-left py-3 px-2">Runtime</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+<tr>
+<td class="py-3 px-2 font-medium">Shor 2048-bit</td>
+<td class="py-3 px-2">$\approx 4,100$</td>
+<td class="py-3 px-2">$\approx 10^9$</td>
+<td class="py-3 px-2 font-bold text-quantum-700 dark:text-quantum-300">$\approx 5 \times 10^6$</td>
+<td class="py-3 px-2">$\approx 8$ hours</td>
+</tr>
+<tr>
+<td class="py-3 px-2 font-medium">FeMoco 120e</td>
+<td class="py-3 px-2">$\approx 2,500$</td>
+<td class="py-3 px-2">$\approx 10^{10}$</td>
+<td class="py-3 px-2 font-bold text-quantum-700 dark:text-quantum-300">$\approx 3 \times 10^6$</td>
+<td class="py-3 px-2">$\approx 4$ days</td>
+</tr>
+<tr>
+<td class="py-3 px-2 font-medium">Grover 2^80</td>
+<td class="py-3 px-2">$\approx 85$</td>
+<td class="py-3 px-2">$\approx 10^{13}$</td>
+<td class="py-3 px-2 font-bold text-quantum-700 dark:text-quantum-300">$\approx 10^5$</td>
+<td class="py-3 px-2">$\approx 10$ years</td>
+</tr>
+<tr>
+<td class="py-3 px-2 font-medium">AES-128 break</td>
+<td class="py-3 px-2">$\approx 3,000$</td>
+<td class="py-3 px-2">$\approx 10^{18}$</td>
+<td class="py-3 px-2 font-bold text-rose-700 dark:text-rose-300">$\approx 4 \times 10^6$</td>
+<td class="py-3 px-2">$\approx 10^6$ years</td>
+</tr>
+</tbody>
+</table>
+<p class="text-xs text-slate-600 dark:text-slate-400 mt-3">Estimates assume 1250:1 overhead, 1μs QEC rounds, 25μs per T-gate via distillation. Grover/AES have exponential T-counts: quantum offers only quadratic speedup.</p>
+</div>
+<div class="bg-rose-50 dark:bg-rose-900/20 border-l-4 border-rose-500 rounded-r-lg p-6 mb-6">
+<h3 class="text-lg font-bold mb-2 text-rose-900 dark:text-rose-200">Reality Check</h3>
+<p>Current largest devices: ~1,200 physical qubits. We need $5 \times 10^6$. A $4000\times$ scale-up. And that’s just for one 2048-bit key. Real-world RSA crackers need speed, so multiply by 100 for parallelism. <strong>You’re building a small country’s power grid worth of cryogenics.</strong></p>
+</div>
+</div>
+</section>
+<!-- Section: Beyond Surface -->
+<section class="mb-20 scroll-mt-24" id="beyond-surface">
+<h2 class="text-3xl font-bold mb-6 flex items-center gap-3">
+<span class="w-10 h-10 rounded-lg bg-gradient-to-br from-teal-500 to-teal-700 flex items-center justify-center text-white font-bold">6</span>
+                        Beyond Surface Codes: qLDPC
+                    </h2>
+<div class="prose prose-slate dark:prose-invert max-w-none">
+<p class="text-lg leading-relaxed mb-6">
+                            Surface code overhead $O(d^2)$ is painful. Quantum LDPC codes promise $O(d)$ or better by using long-range connections. Think of surface code as a 2D mesh network. qLDPC is a Clos network: sparse global connectivity buys you better routing.
+                        </p>
+<div class="grid md:grid-cols-2 gap-6 mb-8">
+<div class="glass rounded-xl p-6 shadow-lg">
+<h3 class="font-semibold mb-3">Surface Code = Quantum Mesh</h3>
+<svg class="w-full h-auto" viewbox="0 0 200 150">
+<defs><style>.node { fill: currentColor; } .link { stroke: currentColor; stroke-width: 1.5; opacity: 0.6; }</style></defs>
+<!-- 4x4 grid -->
+<g class="link">
+<line x1="30" x2="70" y1="30" y2="30"></line> <line x1="70" x2="110" y1="30" y2="30"></line> <line x1="110" x2="150" y1="30" y2="30"></line>
+<line x1="30" x2="70" y1="70" y2="70"></line> <line x1="70" x2="110" y1="70" y2="70"></line> <line x1="110" x2="150" y1="70" y2="70"></line>
+<line x1="30" x2="70" y1="110" y2="110"></line> <line x1="70" x2="110" y1="110" y2="110"></line> <line x1="110" x2="150" y1="110" y2="110"></line>
+<line x1="30" x2="30" y1="30" y2="70"></line> <line x1="30" x2="30" y1="70" y2="110"></line>
+<line x1="70" x2="70" y1="30" y2="70"></line> <line x1="70" x2="70" y1="70" y2="110"></line>
+<line x1="110" x2="110" y1="30" y2="70"></line> <line x1="110" x2="110" y1="70" y2="110"></line>
+<line x1="150" x2="150" y1="30" y2="70"></line> <line x1="150" x2="150" y1="70" y2="110"></line>
+</g>
+<g class="node">
+<circle cx="30" cy="30" r="4"></circle> <circle cx="70" cy="30" r="4"></circle> <circle cx="110" cy="30" r="4"></circle> <circle cx="150" cy="30" r="4"></circle>
+<circle cx="30" cy="70" r="4"></circle> <circle cx="70" cy="70" r="4"></circle> <circle cx="110" cy="70" r="4"></circle> <circle cx="150" cy="70" r="4"></circle>
+<circle cx="30" cy="110" r="4"></circle> <circle cx="70" cy="110" r="4"></circle> <circle cx="110" cy="110" r="4"></circle> <circle cx="150" cy="110" r="4"></circle>
+</g>
+<text class="text-xs" fill="currentColor" text-anchor="middle" x="90" y="140">Local only. Path length ~√N</text>
+</svg>
+<p class="text-xs text-slate-600 dark:text-slate-400 mt-2">Each qubit talks to 4 neighbors. Simple to build. High overhead: $k=1$ logical per $d^2$ physical.</p>
+</div>
+<div class="glass rounded-xl p-6 shadow-lg">
+<h3 class="font-semibold mb-3">qLDPC = Quantum Clos Network</h3>
+<svg class="w-full h-auto" viewbox="0 0 200 150">
+<defs><style>.node { fill: currentColor; } .link { stroke: currentColor; stroke-width: 1; opacity: 0.4; }</style></defs>
+<!-- Sparse long-range -->
+<g class="link">
+<line x1="30" x2="150" y1="30" y2="110"></line> <line x1="70" x2="30" y1="30" y2="110"></line>
+<line x1="110" x2="170" y1="30" y2="70"></line> <line x1="150" x2="50" y1="30" y2="110"></line>
+<line x1="30" x2="110" y1="70" y2="110"></line> <line x1="70" x2="150" y1="70" y2="30"></line>
+<line x1="110" x2="30" y1="70" y2="30"></line> <line x1="150" x2="70" y1="70" y2="110"></line>
+<line x1="30" x2="110" y1="110" y2="30"></line> <line x1="70" x2="170" y1="110" y2="30"></line>
+<line x1="110" x2="50" y1="110" y2="70"></line> <line x1="150" x2="90" y1="110" y2="30"></line>
+</g>
+<g class="node">
+<circle cx="30" cy="30" r="4"></circle> <circle cx="70" cy="30" r="4"></circle> <circle cx="110" cy="30" r="4"></circle> <circle cx="150" cy="30" r="4"></circle>
+<circle cx="30" cy="70" r="4"></circle> <circle cx="70" cy="70" r="4"></circle> <circle cx="110" cy="70" r="4"></circle> <circle cx="150" cy="70" r="4"></circle>
+<circle cx="30" cy="110" r="4"></circle> <circle cx="70" cy="110" r="4"></circle> <circle cx="110" cy="110" r="4"></circle> <circle cx="150" cy="110" r="4"></circle>
+</g>
+<text class="text-xs" fill="currentColor" text-anchor="middle" x="90" y="140">Sparse long-range. Path length ~log(N)</text>
+</svg>
+<p class="text-xs text-slate-600 dark:text-slate-400 mt-2">Qubits have few but non-local connections. Hard to build: needs couplers/shuttling. Rates: $k \propto n$, overhead $O(1)$ possible.</p>
+</div>
+</div>
+<div class="bg-teal-50 dark:bg-teal-900/20 border-l-4 border-teal-500 rounded-r-lg p-6 mb-6">
+<h3 class="text-lg font-bold mb-2 text-teal-900 dark:text-teal-200">qLDPC = Quantum Clos Network Analogy</h3>
+<p class="mb-3">In classical networking, Clos networks replace $N^2$ crossbars with multi-stage sparse switches → $O(N\log N)$ complexity. qLDPC does the same for error correction:</p>
+<ul class="list-disc list-inside space-y-1 ml-4 text-sm">
+<li><strong>Surface code:</strong> Like a 2D mesh. Robust, local, but $d^2$ physical qubits for distance $d$.</li>
+<li><strong>qLDPC/expander codes:</strong> Like a high-radix Clos. Each qubit participates in $w$ non-local checks. Syndrome graph has good expansion.</li>
+<li><strong>Payoff:</strong> Constant encoding rate $k/n \to$ finite as $n \to \infty$. 10–100× lower overhead than surface codes.</li>
+<li><strong>Cost:</strong> Requires long-range couplers, shuttling ions, or photonic links. Much harder fabrication. Decoding is NP-hard sparsely.</li>
+</ul>
+</div>
+<p class="mb-6">
+                            Best current qLDPC proposals: 4D hyperbolic codes, lifted product codes. They achieve $[[n, k, d]] = [[30000, 4000, 30]]$. That’s 7.5:1 overhead vs 1250:1 for surface. But no one has built the connectivity yet. It’s the difference between a VLSI grid and a full datacenter fabric.
+                        </p>
+</div>
+</section>
+<!-- Section: Implications -->
+<section class="mb-20 scroll-mt-24" id="implications">
+<h2 class="text-3xl font-bold mb-6 flex items-center gap-3">
+<span class="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center text-white font-bold">7</span>
+                        Implications for Systems
+                    </h2>
+<div class="prose prose-slate dark:prose-invert max-w-none">
+<p class="text-lg leading-relaxed mb-6">
+                            Quantum error correction isn't just an algorithm. It dictates the entire machine architecture: cryogenics, control, classical compute, and power. The logical qubit is an abstraction. The physical system is 99.9% classical.
+                        </p>
+<div class="grid md:grid-cols-3 gap-6 mb-8">
+<div class="glass rounded-xl p-6 shadow-lg">
+<div class="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center mb-4">
+<svg class="w-6 h-6 text-white" fill="currentColor" viewbox="0 0 20 20">
+<path clip-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" fill-rule="evenodd"></path>
+</svg>
+</div>
+<h3 class="font-semibold mb-2">Cryogenic Hell</h3>
+<p class="text-sm text-slate-600 dark:text-slate-400">5M qubits at 15mK. Dilution fridges cool ~1μW. Control lines dissipate ~10μW each. You need megawatts of cooling for milliwatts of quantum. Heat is the hard wall.</p>
+</div>
+<div class="glass rounded-xl p-6 shadow-lg">
+<div class="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center mb-4">
+<svg class="w-6 h-6 text-white" fill="currentColor" viewbox="0 0 20 20">
+<path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"></path>
+</svg>
+</div>
+<h3 class="font-semibold mb-2">Control Nightmare</h3>
+<p class="text-sm text-slate-600 dark:text-slate-400">Each qubit needs microwave pulses at 5 GHz. 5M qubits = 5M DACs, each at 1 GS/s. Bandwidth: 40 PB/s to the fridge. Cabling alone outweighs the chip 100,000:1.</p>
+</div>
+<div class="glass rounded-xl p-6 shadow-lg">
+<div class="w-12 h-12 rounded-lg bg-gradient-to-br from-pink-500 to-pink-700 flex items-center justify-center mb-4">
+<svg class="w-6 h-6 text-white" fill="currentColor" viewbox="0 0 20 20">
+<path clip-rule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm11 1H6v8l4-2 4 2V6z" fill-rule="evenodd"></path>
+</svg>
+</div>
+<h3 class="font-semibold mb-2">Software Stack</h3>
+<p class="text-sm text-slate-600 dark:text-slate-400">Decoding syndromes at 1μs requires ~1 TFLOP per logical qubit. 4000 logicals = 4 PFLOP supercomputer running inside the control loop. Latency budget: &lt; 800ns.</p>
+</div>
+</div>
+<!-- NEW SUBSECTION v3.2 -->
+<div class="scroll-mt-24" id="classical-computer">
+<h3 class="text-2xl font-bold mb-6 mt-12">The 99% Classical Computer</h3>
+<div class="bg-gradient-to-r from-rose-600 to-orange-600 rounded-xl p-1 shadow-2xl mb-8">
+<div class="bg-slate-900 rounded-lg p-6">
+<div class="flex items-start gap-4">
+<svg class="w-8 h-8 text-rose-400 flex-shrink-0 mt-1 animate-pulse-slow" fill="currentColor" viewbox="0 0 20 20">
+<path clip-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" fill-rule="evenodd"></path>
+</svg>
+<div>
+<h4 class="text-lg font-bold text-white mb-2">Callout: The Real Machine</h4>
+<p class="text-slate-300 text-lg leading-relaxed">
+                                                The "quantum computer" is 10 tons of dilution fridge, 100W of qubits, and 10 MW of classical decoding. <span class="font-bold text-rose-300">Fail the decoder, fail the computation.</span>
+</p>
+</div>
+</div>
+</div>
+</div>
+<div class="glass rounded-2xl p-6 lg:p-8 shadow-xl mb-8">
+<h4 class="font-semibold mb-6 text-center">QEC Dataflow: Classical Bottleneck</h4>
+<svg class="w-full h-auto" viewbox="0 0 800 600">
+<defs>
+<lineargradient id="grad1" x1="0%" x2="100%" y1="0%" y2="100%">
+<stop offset="0%" style="stop-color:#0ea5e9;stop-opacity:1"></stop>
+<stop offset="100%" style="stop-color:#7c3aed;stop-opacity:1"></stop>
+</lineargradient>
+<lineargradient id="grad2" x1="0%" x2="100%" y1="0%" y2="100%">
+<stop offset="0%" style="stop-color:#db2777;stop-opacity:1"></stop>
+<stop offset="100%" style="stop-color:#ea580c;stop-opacity:1"></stop>
+</lineargradient>
+<marker id="arrowhead" markerheight="10" markerwidth="10" orient="auto" refx="9" refy="3">
+<polygon fill="currentColor" opacity="0.7" points="0 0, 10 3, 0 6"></polygon>
+</marker>
+<style>
+                                            .box { fill: url(#grad1); stroke: white; stroke-width: 2; opacity: 0.9; }
+                                            .box2 { fill: url(#grad2); stroke: white; stroke-width: 2; opacity: 0.9; }
+                                            .text { font: 14px sans-serif; fill: white; text-anchor: middle; font-weight: 600; }
+                                            .text-sm { font: 11px sans-serif; fill: white; text-anchor: middle; opacity: 0.9; }
+                                            .arrow { stroke: currentColor; stroke-width: 3; fill: none; marker-end: url(#arrowhead); opacity: 0.7; }
+                                            .arrow-label { font: 12px monospace; fill: currentColor; text-anchor: middle; font-weight: 500; }
+                                            .side-note { font: 13px sans-serif; fill: currentColor; font-weight: 600; }
+                                        </style>
+</defs>
+<!-- Box 1: Cryostat -->
+<rect class="box" height="80" rx="12" width="300" x="250" y="20"></rect>
+<text class="text" x="400" y="55">15M Physical Qubits in Cryostat</text>
+<text class="text-sm" x="400" y="75">15 mK | Surface Code d=25</text>
+<!-- Arrow 1 -->
+<path class="arrow" d="M 400 100 L 400 160"></path>
+<text class="arrow-label" x="400" y="130">3.2 TB/s syndrome @ 1μs cycles</text>
+<!-- Box 2: Decoder -->
+<rect class="box2" height="100" rx="12" width="400" x="200" y="170"></rect>
+<text class="text" x="400" y="210">FPGA/ASIC Decoder Array</text>
+<text class="text-sm" x="400" y="235">Sparse Blossom / Union-Find / MWPM</text>
+<text class="text-sm" x="400" y="255">Real-time graph matching on 3.2M nodes</text>
+<!-- Arrow 2 -->
+<path class="arrow" d="M 400 270 L 400 330"></path>
+<text class="arrow-label" x="400" y="300">&lt;800ns corrections latency budget</text>
+<!-- Box 3: Control -->
+<rect class="box" height="80" rx="12" width="350" x="225" y="340"></rect>
+<text class="text" x="400" y="375">Control Electronics &amp; Pulse Generation</text>
+<text class="text-sm" x="400" y="395">5 GHz DACs | 40 PB/s bandwidth | Pauli frame update</text>
+<!-- Arrow 3 -->
+<path class="arrow" d="M 400 420 L 400 480"></path>
+<text class="arrow-label" x="400" y="450">Updated pulses</text>
+<!-- Loop back -->
+<path class="arrow" d="M 400 480 L 400 520 Q 400 550 370 550 L 150 550 Q 120 550 120 520 L 120 80 Q 120 50 150 50 L 370 50 Q 400 50 400 80" fill="none" stroke-dasharray="5,5"></path>
+<text class="arrow-label" transform="rotate(-90 80 310)" x="80" y="310">Next QEC round</text>
+<!-- Side annotation -->
+<rect fill="none" height="120" opacity="0.5" rx="8" stroke="currentColor" stroke-dasharray="4,4" stroke-width="2" width="160" x="620" y="200"></rect>
+<text class="side-note" text-anchor="middle" x="700" y="230">Classical compute:</text>
+<text class="side-note" text-anchor="middle" x="700" y="255">99% of system</text>
+<text class="side-note" text-anchor="middle" x="700" y="275">power, latency,</text>
+<text class="side-note" text-anchor="middle" x="700" y="295">and CAPEX</text>
+</svg>
+</div>
+<p class="mb-6 leading-relaxed">
+                                At $d=25$, you measure ${\sim}3.2M$ stabilizers per round. 1μs cycles = 3.2 Tera-measurements/sec. Each must be routed, decoded, and corrections applied before T-gate operations. This requires a classical supercomputer: FPGA arrays for sub-μs matching, TB/s interconnect, and real-time scheduling. <strong>The decoder cannot be "software on a server" — it's custom silicon in the control loop.</strong>
+</p>
+<div class="bg-slate-800 dark:bg-slate-900 rounded-xl p-6 border-slate-700 dark:border-slate-600 mb-8">
+<h4 class="text-lg font-bold mb-3 text-amber-400 flex items-center gap-2">
+<svg class="w-6 h-6" fill="currentColor" viewbox="0 0 20 20">
+<path clip-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" fill-rule="evenodd"></path>
+</svg>
+                                    Connection to Tamper-Evident Systems
+                                </h4>
+<p class="text-slate-300 leading-relaxed">
+                                    For hardware-anchored reasoning: your attestation surface includes the decoder. If an adversary compromises the FPGA bitstream, they can inject false corrections and corrupt logical qubits without touching the cryostat. Post-quantum signatures on the output are necessary but not sufficient. <span class="font-semibold text-amber-300">The verification chain must cover the classical QEC stack.</span> A 10 MW classical supercomputer in the loop means 10 MW of attack surface. Secure boot, firmware attestation, and side-channel resistance for the decoder are as critical as for the quantum hardware itself.
+                                </p>
+</div>
+</div>
+<div class="border-l-4 border-slate-400 dark:border-slate-600 pl-6 py-2 mb-6">
+<p class="italic text-slate-600 dark:text-slate-400">
+                                "A quantum computer is a very expensive way to make a classical computer look bad at its job. 99% of your machine is classical, sprinting at light-speed to keep 1% of quantum from decohering. If you can't build that classical supercomputer, you can't build the quantum one."
+                            </p>
+</div>
+</div>
+</section>
+<!-- Conclusion -->
+<section class="mb-12">
+<div class="glass rounded-2xl p-8 shadow-2xl bg-gradient-to-br from-quantum-50 to-purple-50 dark:from-quantum-900/20 dark:to-purple-900/20 border border-quantum-200 dark:border-quantum-800">
+<h2 class="text-2xl font-bold mb-4 gradient-text">The Brutal Summary</h2>
+<p class="text-lg leading-relaxed mb-4">
+                            One logical qubit needs ~1,000 physical qubits today. Useful algorithms need thousands of logicals. You’re at millions of physical qubits, 99% of which are infrastructure. The “quantum advantage” must beat a classical supercomputer that’s already 99% of your bill of materials.
+                        </p>
+<p class="text-lg leading-relaxed font-semibold">
+                            This is v3.2: the complete systems view. QEC is not a software patch. It’s a civilizational-scale hardware project where the classical computer dwarfs the quantum one. Plan accordingly.
+                        </p>
+</div>
+</section>
+<!-- Footer -->
+
+<p class="reading-meta">Quantum Series #3 v3.2 — Quantum Error Correction Series Index Next: #4 Magic States</p><div id="webmentions"></div><form action="https://buttondown.email/api/emails/embed-subscribe/manishklach" class="subscribe" method="post" target="_blank"><label for="bd-email">Get new posts by email</label><input id="bd-email" name="email" placeholder="you@example.com" required="" type="email"/><input name="tag" type="hidden" value="blog"/><input type="submit" value="Subscribe"/></form><footer class="post-footer">© 2026 <a href="/index.html">Manish KL</a> · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer></main>
+</div>
+</div>
+<script>
+        // Theme Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const sunIcon = document.getElementById('sunIcon');
+        const moonIcon = document.getElementById('moonIcon');
+        
+        const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+            sunIcon.classList.remove('hidden');
+            moonIcon.classList.add('hidden');
+        }
+
+        themeToggle.addEventListener('click', () => {
+            document.documentElement.classList.toggle('dark');
+            const isDark = document.documentElement.classList.contains('dark');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            sunIcon.classList.toggle('hidden');
+            moonIcon.classList.toggle('hidden');
+        });
+
+        // Progress Bar
+        const progressBar = document.getElementById('progressBar');
+        window.addEventListener('scroll', () => {
+            const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+            const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+            const scrolled = (winScroll / height) * 100;
+            progressBar.style.width = scrolled + '%';
+        });
+
+        // TOC Active State
+        const tocLinks = document.querySelectorAll('.toc-link');
+        const sections = document.querySelectorAll('section[id]');
+        
+        const observerOptions = {
+            rootMargin: '-100px 0px -66%',
+            threshold: 0
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const id = entry.target.id;
+                    tocLinks.forEach(link => {
+                        link.classList.remove('active');
+                        if (link.getAttribute('href') === `#${id}`) {
+                            link.classList.add('active');
+                        }
+                    });
+                }
+            });
+        }, observerOptions);
+
+        sections.forEach(section => observer.observe(section));
+
+        // Copy Code
+        function copyCode(btn) {
+            const codeBlock = btn.closest('.code-block').querySelector('code');
+            const text = codeBlock.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = 'Copy';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+
+        // Smooth scroll for TOC
+        tocLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const target = document.querySelector(link.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
