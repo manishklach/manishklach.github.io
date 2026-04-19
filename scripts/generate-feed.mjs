@@ -83,3 +83,23 @@ ${items.map((item) => `    <item>
 `;
 
 fs.writeFileSync(path.join(root, "feed.xml"), feed, "utf8");
+
+const jsonFeed = {
+  version: "https://jsonfeed.org/version/1.1",
+  title: "Manish K. Lach RSS",
+  home_page_url: `${siteUrl}/writings.html`,
+  feed_url: `${siteUrl}/feed.json`,
+  description: "Technical essays on AI infrastructure, memory systems, runtimes, and accelerator architecture.",
+  language: "en-us",
+  authors: [{ name: "Manish K. Lach", url: siteUrl }],
+  items: items.map((item) => ({
+    id: item.link,
+    url: item.link,
+    title: item.title,
+    content_text: item.description,
+    summary: item.description,
+    date_published: `${item.published}T00:00:00Z`
+  }))
+};
+
+fs.writeFileSync(path.join(root, "feed.json"), `${JSON.stringify(jsonFeed, null, 2)}\n`, "utf8");

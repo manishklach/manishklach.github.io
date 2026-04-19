@@ -79,3 +79,23 @@ Then open:
 ```text
 http://localhost:8000/
 ```
+
+## Manual Setup Steps
+
+### Buttondown
+
+1. Create a free account at `https://buttondown.email`.
+2. Set the publication username to `manishklach`.
+3. Confirm the embedded subscribe form is accepting new signups.
+
+### Webmention.io
+
+1. Sign in at `https://webmention.io` with your GitHub account.
+2. Claim `manishklach.github.io` as the site domain.
+3. Once claimed, replies and reactions will appear automatically in the essay footer blocks.
+
+### dev.to API key
+
+1. Open `https://dev.to/settings/extensions`.
+2. Generate an API key.
+3. Add it to the GitHub repository secrets as `DEVTO_API_KEY`.
