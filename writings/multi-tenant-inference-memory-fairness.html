@@ -3,26 +3,47 @@
 <head>
 <meta charset='UTF-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-<title>The Scheduling Tax of Multi-Tenant Inference: Why Fairness and Throughput Are a Memory Problem | Manish KL</title>
+<title>The Scheduling Tax of Multi-Tenant Inference: Why Fairness and Throughput Are a Memory Problem | Manish K. Lach</title>
 <meta name="description" content="A systems essay on memory-fairness asymmetry in multi-tenant LLM inference. When request lengths span 64×, scheduling fairness and memory fairness diverge — and the memory system pays.">
 <meta name="keywords" content="multi-tenant inference, KV cache, memory fairness, continuous batching, LLM serving, vLLM, PagedAttention, HBM, memory policy, inference scheduling">
 <meta name="author" content="Manish KL">
-<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
 <meta name="theme-color" content="#08110f">
 <link rel="canonical" href="https://manishklach.github.io/writings/multi-tenant-inference-memory-fairness.html">
 <meta property="og:type" content="article">
-<meta property="og:title" content="The Scheduling Tax of Multi-Tenant Inference: Why Fairness and Throughput Are a Memory Problem">
-<meta property="og:description" content="When a 128K-context request shares a GPU with forty 2K requests, the scheduler sees equal slots. The memory system sees a 64× asymmetry.">
+<meta property="og:title" content="The Scheduling Tax of Multi-Tenant Inference: Why Fairness and Throughput Are a Memory Problem | Manish K. Lach">
+<meta property="og:description" content="A systems essay on memory-fairness asymmetry in multi-tenant LLM inference. When request lengths span 64×, scheduling fairness and memory fairness diverge — and the memory system pays.">
 <meta property="og:url" content="https://manishklach.github.io/writings/multi-tenant-inference-memory-fairness.html">
 <meta property="og:site_name" content="Manish KL">
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Multi-Tenant Inference: Why Fairness Is a Memory Problem">
+<meta name="twitter:title" content="The Scheduling Tax of Multi-Tenant Inference: Why Fairness and Throughput Are a Memory Problem | Manish K. Lach">
 <meta name="twitter:description" content="Scheduling fairness ≠ memory fairness. A systems essay on KV-cache residency asymmetry in shared inference pools.">
 <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
 <meta name="twitter:site" content="@manishkl_">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"The Scheduling Tax of Multi-Tenant Inference: Why Fairness and Throughput Are a Memory Problem","description":"A systems essay on memory-fairness asymmetry in multi-tenant LLM inference.","datePublished":"2026-04-14","dateModified":"2026-04-14","author":{"@type":"Person","name":"Manish KL","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"Manish KL","url":"https://manishklach.github.io/"},"mainEntityOfPage":"https://manishklach.github.io/writings/multi-tenant-inference-memory-fairness.html","url":"https://manishklach.github.io/writings/multi-tenant-inference-memory-fairness.html","image":"https://manishklach.github.io/assets/og-image.png","keywords":["multi-tenant inference","KV cache","memory fairness","continuous batching","LLM serving","HBM"]}</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "The Scheduling Tax of Multi-Tenant Inference: Why Fairness and Throughput Are a Memory Problem",
+  "description": "A systems essay on memory-fairness asymmetry in multi-tenant LLM inference. When request lengths span 64\u00d7, scheduling fairness and memory fairness diverge \u2014 and the memory system pays.",
+  "url": "https://manishklach.github.io/writings/multi-tenant-inference-memory-fairness.html",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/multi-tenant-inference-memory-fairness.html",
+  "datePublished": "2026-04-14",
+  "dateModified": "2026-04-14",
+  "author": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  }
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -46,6 +67,8 @@ code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid r
 .footer-note{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:11px}.essay-copyright{margin-top:16px;color:var(--muted);font-size:.95em}.essay-copyright a{color:inherit;font-weight:600;text-decoration:none}.essay-copyright a:hover{text-decoration:underline}
 @media(max-width:768px){body{font-size:16px}.kpi-grid{grid-template-columns:1fr 1fr}h1{max-width:none}.hero{padding-top:56px}}@media(max-width:480px){.wrap{width:min(var(--maxw),calc(100vw - 24px))}.kpi-grid{grid-template-columns:1fr}.abstract,.callout,blockquote{padding-left:18px;padding-right:18px}}
 </style>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 </head>
 <body>
 
@@ -65,7 +88,7 @@ code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid r
   <p class='dek'>Why fairness and throughput in shared inference pools are fundamentally a memory problem — and why the scheduler's view of "fair" diverges from the memory system's reality by up to 64×.</p>
   <div class='meta'>
     <span>By Manish KL</span>
-    <span class='meta-tag'>April 2026</span>
+    <span class='meta-tag'><time datetime="2026-04-14">April 2026</time></span>
     <span>~16 min read</span>
     <span>Technical Essay</span>
   </div>
@@ -83,7 +106,7 @@ code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid r
   <div class='kpi'><div class='kpi-num'>p99</div><div class='kpi-label'>tail latency where memory unfairness surfaces first</div></div>
 </div>
 
-<article>
+<article data-pagefind-body>
 
 <h2>Two definitions of fair</h2>
 <p>Every multi-tenant serving system implicitly carries a fairness contract. The scheduler's version is request-level: each request gets a slot, progresses through prefill and decode, and is subject to SLO enforcement on time-to-first-token and inter-token latency. This is the fairness that orchestration layers like vLLM, TensorRT-LLM, and SGLang enforce.</p>
@@ -248,7 +271,7 @@ code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid r
 <blockquote>The scheduler's job is to decide when and where to run a request. The memory system's job is to decide which bytes stay hot. When these two systems disagree about fairness, the memory system always wins — because latency is measured in bytes moved, not slots allocated.</blockquote>
 
 <div class='footer-note'>
-  <code>multi-tenant-inference-memory-fairness.html</code> · April 2026 · <a href='https://manishklach.github.io/writings.html'>← All writings</a>
+  <code>multi-tenant-inference-memory-fairness.html</code> · <time datetime="2026-04-14">April 2026</time> · <a href='https://manishklach.github.io/writings.html'>← All writings</a>
 </div>
 <div class="essay-copyright">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a>. All rights reserved.</div>
 </article>

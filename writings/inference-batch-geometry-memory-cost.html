@@ -3,26 +3,47 @@
 <head>
 <meta charset='UTF-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-<title>Inference Batch Geometry: Why the Shape of a Batch Determines Its Memory Cost More Than Its Size | Manish KL</title>
+<title>Inference Batch Geometry: Why the Shape of a Batch Determines Its Memory Cost More Than Its Size | Manish K. Lach</title>
 <meta name="description" content="A systems essay on why batch size is a misleading scalar. The memory cost of an inference batch depends on its geometry — the distribution of sequence lengths, generation phases, and quantization formats within it.">
 <meta name="keywords" content="batch geometry, inference batching, KV cache, memory cost, continuous batching, LLM serving, HBM, prefill decode, batch heterogeneity, memory systems">
 <meta name="author" content="Manish KL">
-<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
 <meta name="theme-color" content="#08110f">
 <link rel="canonical" href="https://manishklach.github.io/writings/inference-batch-geometry-memory-cost.html">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Inference Batch Geometry: Why Shape Determines Memory Cost More Than Size">
-<meta property="og:description" content="Batch size is a number. Batch geometry is a distribution. The memory system doesn't see the number — it sees the distribution.">
+<meta property="og:title" content="Inference Batch Geometry: Why the Shape of a Batch Determines Its Memory Cost More Than Its Size | Manish K. Lach">
+<meta property="og:description" content="A systems essay on why batch size is a misleading scalar. The memory cost of an inference batch depends on its geometry — the distribution of sequence lengths, generation phases, and quantization formats within it.">
 <meta property="og:url" content="https://manishklach.github.io/writings/inference-batch-geometry-memory-cost.html">
 <meta property="og:site_name" content="Manish KL">
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Inference Batch Geometry: Shape > Size for Memory Cost">
+<meta name="twitter:title" content="Inference Batch Geometry: Why the Shape of a Batch Determines Its Memory Cost More Than Its Size | Manish K. Lach">
 <meta name="twitter:description" content="Same batch size, 10× different memory cost. A systems essay on why batch geometry matters more than batch count.">
 <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
 <meta name="twitter:site" content="@manishkl_">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Inference Batch Geometry: Why the Shape of a Batch Determines Its Memory Cost More Than Its Size","description":"A systems essay on batch geometry and memory cost in LLM inference.","datePublished":"2026-04-14","dateModified":"2026-04-14","author":{"@type":"Person","name":"Manish KL","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"Manish KL","url":"https://manishklach.github.io/"},"mainEntityOfPage":"https://manishklach.github.io/writings/inference-batch-geometry-memory-cost.html","url":"https://manishklach.github.io/writings/inference-batch-geometry-memory-cost.html","image":"https://manishklach.github.io/assets/og-image.png","keywords":["batch geometry","inference batching","KV cache","memory cost","LLM serving","HBM","prefill decode"]}</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Inference Batch Geometry: Why the Shape of a Batch Determines Its Memory Cost More Than Its Size",
+  "description": "A systems essay on why batch size is a misleading scalar. The memory cost of an inference batch depends on its geometry \u2014 the distribution of sequence lengths, generation phases, and quantization formats within it.",
+  "url": "https://manishklach.github.io/writings/inference-batch-geometry-memory-cost.html",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/inference-batch-geometry-memory-cost.html",
+  "datePublished": "2026-04-14",
+  "dateModified": "2026-04-14",
+  "author": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  }
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -45,6 +66,8 @@ code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid r
 .footer-note{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:11px}.essay-copyright{margin-top:16px;color:var(--muted);font-size:.95em}.essay-copyright a{color:inherit;font-weight:600;text-decoration:none}.essay-copyright a:hover{text-decoration:underline}
 @media(max-width:768px){body{font-size:16px}.kpi-grid{grid-template-columns:1fr 1fr}h1{max-width:none}.hero{padding-top:56px}}@media(max-width:480px){.wrap{width:min(var(--maxw),calc(100vw - 24px))}.kpi-grid{grid-template-columns:1fr}.abstract,.callout,blockquote{padding-left:18px;padding-right:18px}}
 </style>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 </head>
 <body>
 
@@ -64,7 +87,7 @@ code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid r
   <p class='dek'>Why the shape of a batch — the distribution of sequence lengths, generation phases, and quantization formats within it — determines its memory cost more than its size.</p>
   <div class='meta'>
     <span>By Manish KL</span>
-    <span class='meta-tag'>April 2026</span>
+    <span class='meta-tag'><time datetime="2026-04-14">April 2026</time></span>
     <span>~15 min read</span>
     <span>Technical Essay</span>
   </div>
@@ -82,7 +105,7 @@ code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid r
   <div class='kpi'><div class='kpi-num'>3×</div><div class='kpi-label'>bandwidth demand ratio between prefill-heavy and decode-heavy batches</div></div>
 </div>
 
-<article>
+<article data-pagefind-body>
 
 <h2>Batch size is a number. Batch geometry is a distribution.</h2>
 <p>When a serving system reports "batch size = 32," it communicates one scalar. But the memory system experiences something far richer: 32 requests, each with a sequence length, a generation phase, a KV-cache quantization format, and an attention-head configuration. The combination of these properties — the <em>geometry</em> of the batch — determines almost everything about the batch's actual resource cost.</p>
@@ -200,7 +223,7 @@ code{font-family:var(--mono);background:rgba(130,240,161,.08);border:1px solid r
 <blockquote>The question is not "how big is the batch?" The question is "what shape is the batch?" — because the memory system answers the second question whether you ask it or not.</blockquote>
 
 <div class='footer-note'>
-  <code>inference-batch-geometry-memory-cost.html</code> · April 2026 · <a href='https://manishklach.github.io/writings.html'>← All writings</a>
+  <code>inference-batch-geometry-memory-cost.html</code> · <time datetime="2026-04-14">April 2026</time> · <a href='https://manishklach.github.io/writings.html'>← All writings</a>
 </div>
 <div class="essay-copyright">&copy; 2026 <a href="https://github.com/manishklach" target="_blank" rel="noopener noreferrer">Manish KL</a>. All rights reserved.</div>
 </article>

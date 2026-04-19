@@ -192,16 +192,16 @@
 })();</script>
 <script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting | Manish KL</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting | Manish K. Lach</title>
     <meta name="description" content="A systems essay on where thermal control actually belongs inside vLLM, covering scheduler paths, KV pressure, swap behavior, tensor-parallel failure modes, and batch-cut policy when GPUs overheat.">
     <meta name="keywords" content="vLLM internals, batch size control, GPU thermals, thermal throttling, KV cache pressure, scheduler internals, tensor parallelism, inference systems, HBM thermals">
     <meta name="author" content="Manish KL">
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
     <link rel="canonical" href="https://manishklach.github.io/writings/vllm-internals-cut-batch-size-gpu-melting.html">
     <meta property="og:type" content="article">
-    <meta property="og:title" content="vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting">
-    <meta property="og:description" content="A systems essay on where thermal control actually belongs inside vLLM, and how to cut batch size without making decode behavior worse.">
+    <meta property="og:title" content="vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting | Manish K. Lach">
+    <meta property="og:description" content="A systems essay on where thermal control actually belongs inside vLLM, covering scheduler paths, KV pressure, swap behavior, tensor-parallel failure modes, and batch-cut policy when GPUs overheat.">
     <meta property="og:url" content="https://manishklach.github.io/writings/vllm-internals-cut-batch-size-gpu-melting.html">
     <meta property="og:site_name" content="Manish KL">
     <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
@@ -211,47 +211,34 @@
     <meta property="article:author" content="Manish KL">
     <meta property="article:section" content="AI Infrastructure">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting">
+    <meta name="twitter:title" content="vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting | Manish K. Lach">
     <meta name="twitter:description" content="A systems essay on where thermal control actually belongs inside vLLM, and how to cut batch size without making decode behavior worse.">
     <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
     <meta name="twitter:image:alt" content="Preview image for vLLM Internals thermal control essay">
     <meta name="twitter:creator" content="@manishkl">
     <meta name="twitter:site" content="@manishkl">
     <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "TechArticle",
-      "headline": "vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting",
-      "description": "A systems essay on where thermal control actually belongs inside vLLM, covering scheduler paths, KV pressure, swap behavior, tensor-parallel failure modes, and batch-cut policy when GPUs overheat.",
-      "keywords": [
-        "vLLM internals",
-        "batch size control",
-        "GPU thermals",
-        "thermal throttling",
-        "KV cache pressure",
-        "scheduler internals",
-        "tensor parallelism",
-        "inference systems"
-      ],
-      "author": {
-        "@type": "Person",
-        "name": "Manish KL",
-        "url": "https://github.com/manishklach"
-      },
-      "publisher": {
-        "@type": "Organization",
-        "name": "Manish KL",
-        "url": "https://manishklach.github.io/"
-      },
-      "datePublished": "2026-04-13",
-      "dateModified": "2026-04-13",
-      "mainEntityOfPage": "https://manishklach.github.io/writings/vllm-internals-cut-batch-size-gpu-melting.html",
-      "url": "https://manishklach.github.io/writings/vllm-internals-cut-batch-size-gpu-melting.html",
-      "image": "https://manishklach.github.io/assets/og-image.png",
-      "articleSection": "AI Infrastructure",
-      "inLanguage": "en-US"
-    }
-    </script>
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "vLLM Internals: Where to Actually Cut Batch Size When the GPU is Melting",
+  "description": "A systems essay on where thermal control actually belongs inside vLLM, covering scheduler paths, KV pressure, swap behavior, tensor-parallel failure modes, and batch-cut policy when GPUs overheat.",
+  "url": "https://manishklach.github.io/writings/vllm-internals-cut-batch-size-gpu-melting.html",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/vllm-internals-cut-batch-size-gpu-melting.html",
+  "datePublished": "2026-04-13",
+  "dateModified": "2026-04-13",
+  "author": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  }
+}
+</script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -331,6 +318,7 @@
             background: rgba(239, 68, 0.1);
         }
     </style>
+<meta name="color-scheme" content="light dark">
 </head>
 <body class="bg-zinc-950 text-zinc-100 font-sans antialiased">
     <header class="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-lg">
@@ -382,7 +370,7 @@
 
             <!-- Main Content -->
             <main class="lg:col-span-9 prose prose-invert prose-zinc max-w-none prose-pre:bg-[#1e1e2e] prose-pre:border prose-pre:border-zinc-800 prose-headings:font-bold prose-a:text-brand-500 hover:prose-a:text-brand-400">
-                <article>
+                <article data-pagefind-body>
                     <div class="not-prose mb-12">
                         <div class="flex items-center gap-2 text-xs text-zinc-500 mb-4">
                             <span>September 4, 2025</span>

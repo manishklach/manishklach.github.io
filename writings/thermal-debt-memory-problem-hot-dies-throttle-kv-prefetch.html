@@ -192,16 +192,16 @@
 })();</script>
 <script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Thermal Debt Is a Memory Problem — How Hot Dies Throttle Your KV Prefetch | Manish KL</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thermal Debt Is a Memory Problem — How Hot Dies Throttle Your KV Prefetch | Manish K. Lach</title>
 <meta name="description" content="Deep dive: HBM thermal telemetry on H100/H200 shows how die temperature creates KV fetch stalls. We quantify the thermal bandwidth tax and ship MCOS patches for 1.18x tokens/s.">
 <meta name="keywords" content="HBM thermals, thermal debt, KV prefetch, H100, H200, LLM inference, memory throttling, MCOS, GPU memory systems">
 <meta name="author" content="Manish KL">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
 <link rel="canonical" href="https://manishklach.github.io/writings/thermal-debt-memory-problem-hot-dies-throttle-kv-prefetch.html">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Thermal Debt Is a Memory Problem — How Hot Dies Throttle Your KV Prefetch">
-<meta property="og:description" content="A systems essay on HBM thermal telemetry, KV fetch stalls, and why hot memory dies create a hidden bandwidth tax during LLM inference.">
+<meta property="og:title" content="Thermal Debt Is a Memory Problem — How Hot Dies Throttle Your KV Prefetch | Manish K. Lach">
+<meta property="og:description" content="Deep dive: HBM thermal telemetry on H100/H200 shows how die temperature creates KV fetch stalls. We quantify the thermal bandwidth tax and ship MCOS patches for 1.18x tokens/s.">
 <meta property="og:url" content="https://manishklach.github.io/writings/thermal-debt-memory-problem-hot-dies-throttle-kv-prefetch.html">
 <meta property="og:site_name" content="Manish KL">
 <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
@@ -211,7 +211,7 @@
 <meta property="article:author" content="Manish KL">
 <meta property="article:section" content="AI Infrastructure">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Thermal Debt Is a Memory Problem — How Hot Dies Throttle Your KV Prefetch">
+<meta name="twitter:title" content="Thermal Debt Is a Memory Problem — How Hot Dies Throttle Your KV Prefetch | Manish K. Lach">
 <meta name="twitter:description" content="A systems essay on HBM thermal telemetry, KV fetch stalls, and why hot memory dies create a hidden bandwidth tax during LLM inference.">
 <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
 <meta name="twitter:image:alt" content="Preview image for Thermal Debt Is a Memory Problem">
@@ -419,95 +419,26 @@
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "TechArticle",
-      "headline": "Thermal Debt Is a Memory Problem — How Hot Dies Throttle Your KV Prefetch",
-      "datePublished": "2026-04-13",
-      "dateModified": "2026-04-13",
-      "author": {
-        "@type": "Person",
-        "name": "Manish KL",
-        "url": "https://github.com/manishklach"
-      },
-      "mainEntityOfPage": "https://manishklach.github.io/writings/thermal-debt-memory-problem-hot-dies-throttle-kv-prefetch.html",
-      "keywords": ["AI Clusters", "Thermals", "Reliability", "Memory Systems", "KV Cache", "HBM", "H100", "H200"],
-      "articleSection": "Systems Engineering",
-      "wordCount": 3180,
-      "isAccessibleForFree": true,
-      "publisher": {
-        "@type": "Person",
-        "name": "Manish KL"
-      }
-    },
-    {
-      "@type": "FAQPage",
-      "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "Does throttling only start at 95°C Tjunction?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "No. While hard throttling occurs near Tjunction, HBM bandwidth degradation begins earlier due to DRAM refresh rate scaling. On H100/H200 parts we observe temperature-dependent refresh intervals that increase tRFC overhead starting around 75-80°C die temperature, well before core clocks drop."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Can’t I just add more fans and ignore this in software?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Datacenter fan curves are often capped by noise, power, or facility limits. During 32k prefill, power transients can raise HBM stack temperature 8-12°C in under 400ms. Mechanical cooling cannot respond that quickly. Software must schedule around thermal headroom to avoid BW collapse during the burst."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Is this HBM-specific or does it affect GDDR6X too?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "The physics applies to all DRAM: higher temperature requires higher refresh rates. However, HBM stacks are more thermally constrained due to 3D stacking and proximity to the logic die. GDDR6X on desktop GPUs sees it too, but datacenter LLM workloads sustain memory pressure longer, making the effect measurable at the job level."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Why not use nvidia-smi dmon already?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "nvidia-smi reports GPU core temp, not per-stack HBM temperature. NVML exposes HBM temps via NVML_MEMORY_TEMP_C field on Hopper, but it’s not in dmon. You need direct NVML calls at 50-100ms granularity to catch transients that correlate with KV stall spikes."
-          }
-        }
-      ]
-    },
-    {
-      "@type": "Dataset",
-      "name": "HBM2e/HBM3 Sustained Bandwidth vs Die Temperature",
-      "description": "Measured sustained read bandwidth during 32k context KV prefetch on H100 80GB HBM3 and A100 80GB HBM2e as HBM stack temperature varies. Shows thermal bandwidth tax. Simulated on internal cluster.",
-      "keywords": ["HBM3", "HBM2e", "Thermal Throttling", "KV Cache"],
-      "variableMeasured": [
-        {
-          "@type": "PropertyValue",
-          "name": "Die Temp C",
-          "unitText": "Celsius"
-        },
-        {
-          "@type": "PropertyValue",
-          "name": "Sustained BW GBps",
-          "unitText": "GB/s"
-        },
-        {
-          "@type": "PropertyValue",
-          "name": "KV Fetch Latency us",
-          "unitText": "microseconds"
-        },
-        {
-          "@type": "PropertyValue",
-          "name": "TokensPerSec at 32k",
-          "unitText": "tokens/s"
-        }
-      ]
-    }
-  ]
+  "@type": "BlogPosting",
+  "headline": "Thermal Debt Is a Memory Problem \u2014 How Hot Dies Throttle Your KV Prefetch",
+  "description": "Deep dive: HBM thermal telemetry on H100/H200 shows how die temperature creates KV fetch stalls. We quantify the thermal bandwidth tax and ship MCOS patches for 1.18x tokens/s.",
+  "url": "https://manishklach.github.io/writings/thermal-debt-memory-problem-hot-dies-throttle-kv-prefetch.html",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/thermal-debt-memory-problem-hot-dies-throttle-kv-prefetch.html",
+  "datePublished": "2026-04-13",
+  "dateModified": "2026-04-13",
+  "author": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  }
 }
 </script>
+<meta name="color-scheme" content="light dark">
 </head>
 <body>
 <div class="container">
@@ -517,7 +448,7 @@
   <div class="author"><a href="https://github.com/manishklach?tab=repositories" target="_blank" rel="noopener">Manish KL - author</a></div>
 </header>
 
-<main>
+<main data-pagefind-body>
 <section>
 <h2>1. Introduction: The Silent Loop</h2>
 <p>
