@@ -66,7 +66,7 @@ const items = files.map((name) => {
 const feed = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>Manish KL RSS</title>
+    <title>MANISH AI RSS</title>
     <link>${siteUrl}/writings.html</link>
     <description>Technical essays on AI infrastructure, memory systems, runtimes, and accelerator architecture.</description>
     <language>en-us</language>
@@ -86,12 +86,12 @@ fs.writeFileSync(path.join(root, "feed.xml"), feed, "utf8");
 
 const jsonFeed = {
   version: "https://jsonfeed.org/version/1.1",
-  title: "Manish KL RSS",
+  title: "MANISH AI RSS",
   home_page_url: `${siteUrl}/writings.html`,
   feed_url: `${siteUrl}/feed.json`,
   description: "Technical essays on AI infrastructure, memory systems, runtimes, and accelerator architecture.",
   language: "en-us",
-  authors: [{ name: "Manish KL", url: siteUrl }],
+  authors: [{ name: "MANISH AI", url: siteUrl }],
   items: items.map((item) => ({
     id: item.link,
     url: item.link,

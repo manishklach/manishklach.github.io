@@ -4,22 +4,22 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
-<title>Inside the GPU: SMs, Warps, Tensor Cores, and Why the Architecture Looks the Way It Does | Manish KL</title>
+<title>Inside the GPU: SMs, Warps, Tensor Cores, and Why the Architecture Looks the Way It Does | MANISH AI</title>
 <meta content="A technical essay explaining GPU architecture from SMs and warps to tensor cores, register files, shared memory, and why these design choices matter for AI workloads." name="description"/>
 <meta content="GPU SM warp tensor cores explained, inside the GPU architecture, H100 SM architecture, tensor core warp scheduling, GPU architecture for AI, streaming multiprocessor explained" name="keywords"/>
-<meta content="Manish KL" name="author"/>
+<meta content="MANISH AI" name="author"/>
 <meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/>
 <link href="https://manishklach.github.io/writings/inside-the-gpu-sm-warps-tensor-cores.html" rel="canonical"/>
 <meta content="article" property="og:type"/>
-<meta content="Inside the GPU: SMs, Warps, Tensor Cores, and Why the Architecture Looks the Way It Does | Manish KL" property="og:title"/>
+<meta content="Inside the GPU: SMs, Warps, Tensor Cores, and Why the Architecture Looks the Way It Does | MANISH AI" property="og:title"/>
 <meta content="A technical essay explaining GPU architecture from SMs and warps to tensor cores, register files, shared memory, and why these design choices matter for AI workloads." property="og:description"/>
 <meta content="https://manishklach.github.io/writings/inside-the-gpu-sm-warps-tensor-cores.html" property="og:url"/>
-<meta content="Manish KL" property="og:site_name"/>
+<meta content="MANISH AI" property="og:site_name"/>
 <meta content="https://manishklach.github.io/og/inside-the-gpu-sm-warps-tensor-cores.png" property="og:image"/>
-<meta content="Preview image for the Inside the GPU essay by Manish KL" property="og:image:alt"/>
+<meta content="Preview image for the Inside the GPU essay by MANISH AI" property="og:image:alt"/>
 <meta content="2026-04-17T00:00:00Z" property="article:published_time"/>
 <meta content="2026-04-17T00:00:00Z" property="article:modified_time"/>
-<meta content="Manish KL" property="article:author"/>
+<meta content="MANISH AI" property="article:author"/>
 <meta content="GPU Architecture" property="article:section"/>
 <meta content="summary_large_image" name="twitter:card"/>
 <meta content="Inside the GPU: SMs, Warps, Tensor Cores, and Why the Architecture Looks the Way It Does" name="twitter:title"/>
@@ -37,12 +37,12 @@
   "dateModified": "2026-04-17",
   "author": {
     "@type": "Person",
-    "name": "Manish KL",
+    "name": "MANISH AI",
     "url": "https://manishklach.github.io/"
   },
   "publisher": {
     "@type": "Person",
-    "name": "Manish KL",
+    "name": "MANISH AI",
     "url": "https://manishklach.github.io/"
   }
 }
@@ -103,14 +103,14 @@ hr{border:none;border-top:1px solid var(--border);margin:3rem 0;}
 @media(max-width:600px){h1{font-size:1.7rem;}.stats-row{grid-template-columns:repeat(2,1fr);}}
 </style>
 <meta content="light dark" name="color-scheme"/>
-<script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><link href="/assets/site.css" rel="stylesheet"/><script defer="" src="/assets/site.js"></script><link href="/feed.xml" rel="alternate" title="Manish KL RSS" type="application/rss+xml"/><link href="https://webmention.io/manishklach.github.io/webmention" rel="webmention"/><link href="/feed.json" rel="alternate" title="Manish KL JSON" type="application/feed+json"/><link href="https://webmention.io/manishklach.github.io/xmlrpc" rel="pingback"/></head>
+<script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><link href="/assets/site.css" rel="stylesheet"/><script defer="" src="/assets/site.js"></script><link href="/feed.xml" rel="alternate" title="MANISH AI RSS" type="application/rss+xml"/><link href="https://webmention.io/manishklach.github.io/webmention" rel="webmention"/><link href="/feed.json" rel="alternate" title="MANISH AI JSON" type="application/feed+json"/><link href="https://webmention.io/manishklach.github.io/xmlrpc" rel="pingback"/></head>
 <body><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
 <div class="wrapper" data-pagefind-body="">
 <div class="nav"><a href="https://manishklach.github.io/index.html">Home</a> · <a href="https://manishklach.github.io/writings.html">← Back to writings</a></div>
 <div class="tags"><span>GPU Architecture</span><span>AI Hardware</span><span>Tensor Cores</span><span>Warp Scheduling</span></div>
 <h1>Inside the GPU: SMs, Warps, Tensor Cores, and Why the Architecture Looks the Way It Does</h1><div class="meta reading-meta">Published <time datetime="2026-04-17">Apr 17, 2026</time> · 17 min read</div>
 <p class="subtitle">The GPU is the central hardware artefact of the AI era, yet it is almost always treated as a black box — a thing that runs matrix multiplies and produces tokens. This essay opens the box: what lives inside an SM, why warps exist, how tensor cores achieve their throughput, and what the architecture's design choices mean for AI workloads specifically.</p>
-<div class="byline">By <a href="https://manishklach.github.io/index.html">Manish KL</a> · <time datetime="2026-04-17">April 2026</time> · ~19 min read · Hardware Essay</div>
+<div class="byline">By <a href="https://manishklach.github.io/index.html">MANISH AI</a> · <time datetime="2026-04-17">April 2026</time> · ~19 min read · Hardware Essay</div>
 <div class="abstract">
 <strong>Abstract.</strong> A modern NVIDIA GPU like the H100 contains 132 Streaming Multiprocessors (SMs), each of which is itself a significant compute system. This essay builds up the GPU architecture from first principles: starting with the problem that led to massively parallel design, explaining how warps solve the memory latency problem through latency hiding, how tensor cores achieve 10–20× the throughput of CUDA cores for matrix operations, and what the register file, shared memory, and L1 cache inside each SM are actually used for. The goal is to make the GPU's architecture comprehensible — not as a list of specifications, but as a set of design decisions that follow logically from the workload.
 </div>
@@ -335,9 +335,9 @@ Compare: H100 FP16 tensor cores: ~989 TFLOP/s<br/>
 This essay covers the H100 Hopper SM architecture. It does not cover: the Blackwell architecture (B100/B200) which introduces 5th-generation tensor cores and a new FP4 precision mode; the specific microcode and instruction encoding of GPU ISAs (PTX and SASS); multi-instance GPU (MIG) partitioning; NVLink topology and the NVSwitch fabric; or the software model (CUDA programming model, thread blocks, grid dimensions) in detail. Each of those deserves its own treatment.
 </div>
 <div class="footer">
-<p><a href="https://manishklach.github.io/index.html">Manish KL</a> · Essays · <time datetime="2026-04-17">April 2026</time> · <a href="https://manishklach.github.io/writings.html">← All writings</a></p>
-<p style="margin-top:.5rem">© 2026 <a href="/index.html">Manish KL</a>. All rights reserved.</p>
+<p><a href="https://manishklach.github.io/index.html">MANISH AI</a> · Essays · <time datetime="2026-04-17">April 2026</time> · <a href="https://manishklach.github.io/writings.html">← All writings</a></p>
+<p style="margin-top:.5rem">© 2026 <a href="/index.html">MANISH AI</a>. All rights reserved.</p>
 </div>
-<hr/><div id="webmentions"></div><form action="https://buttondown.email/api/emails/embed-subscribe/manishklach" class="subscribe" method="post" target="_blank"><label for="bd-email">Get new posts by email</label><input id="bd-email" name="email" placeholder="you@example.com" required="" type="email"/><input name="tag" type="hidden" value="blog"/><input type="submit" value="Subscribe"/></form><footer class="post-footer">© 2026 <a href="/index.html">Manish KL</a> · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer></div>
+<hr/><div id="webmentions"></div><form action="https://buttondown.email/api/emails/embed-subscribe/manishklach" class="subscribe" method="post" target="_blank"><label for="bd-email">Get new posts by email</label><input id="bd-email" name="email" placeholder="you@example.com" required="" type="email"/><input name="tag" type="hidden" value="blog"/><input type="submit" value="Subscribe"/></form><footer class="post-footer">© 2026 <a href="/index.html">MANISH AI</a> · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer></div>
 </body>
 </html>
