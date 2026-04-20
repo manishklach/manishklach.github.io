@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>The Router Tax: What Nobody Accounts For in MoE Inference Cost | Manish KL</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,400&amp;family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&amp;family=Outfit:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #09090e;
+  --surface: #111118;
+  --surface-2: #17171f;
+  --border: #1f1f2d;
+  --border-2: #292938;
+  --text: #ecebf5;
+  --text-dim: #8a8aa8;
+  --text-faint: #484860;
+  --accent: #c084fc;
+  --accent-warm: #fb923c;
+  --accent-cool: #38bdf8;
+  --accent-green: #4ade80;
+  --accent-red: #f87171;
+  --serif: 'Fraunces', Georgia, serif;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'Outfit', system-ui, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { font-family: var(--sans); background: var(--bg); color: var(--text); line-height: 1.7; -webkit-font-smoothing: antialiased; }
+
+.site-header { border-bottom: 1px solid var(--border); padding: 16px 0; position: sticky; top: 0; z-index: 100; background: rgba(9,9,14,0.88); backdrop-filter: blur(18px); }
+.wrap { max-width: 760px; margin: 0 auto; padding: 0 24px; }
+.wrap-wide { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
+.nav { display: flex; justify-content: space-between; align-items: center; }
+.nav-back { font-family: var(--mono); font-size: 12px; color: var(--text-faint); text-decoration: none; transition: color .2s; }
+.nav-back:hover { color: var(--accent); }
+.series-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .1em; text-transform: uppercase; }
+
+/* Hero */
+.hero { padding: 80px 0 60px; position: relative; overflow: hidden; }
+.hero::before { content: ''; position: absolute; top: -60px; right: -80px; width: 400px; height: 400px; background: radial-gradient(circle, rgba(192,132,252,.06) 0%, transparent 70%); pointer-events: none; }
+.hero-labels { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.chip { font-family: var(--mono); font-size: 11px; padding: 3px 10px; border-radius: 3px; letter-spacing: .07em; text-transform: uppercase; }
+.chip-purple { color: var(--accent); border: 1px solid rgba(192,132,252,.25); background: rgba(192,132,252,.06); }
+.chip-warm { color: var(--accent-warm); border: 1px solid rgba(251,146,60,.25); background: rgba(251,146,60,.06); }
+.chip-cool { color: var(--accent-cool); border: 1px solid rgba(56,189,248,.25); background: rgba(56,189,248,.06); }
+h1.display { font-family: var(--serif); font-size: clamp(2.2rem, 5.5vw, 3.4rem); font-weight: 300; line-height: 1.12; margin-bottom: 24px; }
+h1.display em { font-style: italic; font-weight: 400; color: var(--accent); }
+.deck { font-size: 1.1rem; color: var(--text-dim); line-height: 1.78; max-width: 620px; margin-bottom: 36px; }
+.byline { font-family: var(--mono); font-size: 12px; color: var(--text-faint); display: flex; gap: 12px; flex-wrap: wrap; }
+.byline-sep { opacity: .3; }
+
+/* Metrics strip */
+.metric-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0; border: 1px solid var(--border-2); border-radius: 8px; overflow: hidden; margin: 52px 0; }
+.metric-strip + .metric-strip { margin-top: -24px; }
+.metric { background: var(--surface); padding: 22px 20px; border-right: 1px solid var(--border); }
+.metric:last-child { border-right: none; }
+.metric-v { font-family: var(--serif); font-size: 2rem; font-weight: 600; color: var(--accent); display: block; line-height: 1.1; margin-bottom: 6px; }
+.metric-l { font-size: 11.5px; color: var(--text-faint); line-height: 1.45; }
+
+/* Body prose */
+.body-text { padding: 60px 0; }
+h2.section { font-family: var(--serif); font-size: 1.8rem; font-weight: 300; margin: 60px 0 20px; color: var(--text); border-top: 1px solid var(--border); padding-top: 36px; }
+h2.section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+h3.sub { font-family: var(--sans); font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .12em; color: var(--accent); margin: 32px 0 12px; }
+p { font-size: .975rem; color: var(--text-dim); margin-bottom: 20px; }
+p strong { color: var(--text); font-weight: 600; }
+code { font-family: var(--mono); font-size: .83em; color: var(--accent-cool); background: var(--surface-2); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border-2); }
+pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 22px 24px; overflow-x: auto; margin: 28px 0; font-family: var(--mono); font-size: .855rem; line-height: 1.7; color: var(--text-dim); }
+.kw { color: var(--accent); }
+.str { color: var(--accent-green); }
+.num { color: var(--accent-warm); }
+.cmt { color: var(--text-faint); font-style: italic; }
+blockquote { margin: 32px 0; padding: 6px 0 6px 22px; border-left: 2px solid var(--accent); }
+blockquote p { font-family: var(--serif); font-size: 1.15rem; font-style: italic; color: var(--text); margin: 0; }
+a { color: var(--accent-cool); text-decoration: none; border-bottom: 1px solid rgba(56,189,248,.25); }
+a:hover { border-color: var(--accent-cool); }
+ul.prose { margin: 0 0 20px 20px; }
+ul.prose li { color: var(--text-dim); font-size: .975rem; line-height: 1.75; margin-bottom: 6px; }
+ul.prose li strong { color: var(--text); }
+
+/* Callouts */
+.box { border-radius: 8px; padding: 20px 22px; margin: 28px 0; }
+.box-title { font-family: var(--mono); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .09em; margin-bottom: 10px; }
+.box-insight { background: rgba(192,132,252,.05); border: 1px solid rgba(192,132,252,.18); }
+.box-insight .box-title { color: var(--accent); }
+.box-warn { background: rgba(248,113,113,.05); border: 1px solid rgba(248,113,113,.18); }
+.box-warn .box-title { color: var(--accent-red); }
+.box-data { background: rgba(56,189,248,.05); border: 1px solid rgba(56,189,248,.18); }
+.box-data .box-title { color: var(--accent-cool); }
+.box p { margin-bottom: 0; }
+.box p + p { margin-top: 10px; }
+
+/* Tables */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--border-2); border-radius: 8px; margin: 28px 0; }
+table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+th { background: var(--surface-2); padding: 11px 15px; text-align: left; color: var(--text); font-weight: 600; font-size: .8rem; font-family: var(--mono); letter-spacing: .05em; text-transform: uppercase; border-bottom: 1px solid var(--border-2); }
+td { padding: 11px 15px; border-bottom: 1px solid var(--border); color: var(--text-dim); }
+tr:last-child td { border-bottom: none; }
+td.mono { font-family: var(--mono); font-size: .8rem; }
+.g { color: var(--accent-green); } .r { color: var(--accent-red); } .w { color: var(--accent-warm); }
+
+/* Diagram */
+.diagram { background: var(--surface); border: 1px solid var(--border-2); border-radius: 10px; padding: 28px; margin: 32px 0; overflow-x: auto; }
+.d-title { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint); margin-bottom: 20px; }
+.d-cap { font-size: 12.5px; color: var(--text-faint); margin-top: 16px; font-style: italic; line-height: 1.55; }
+
+/* Section numbering */
+.sn { font-family: var(--mono); font-size: 11px; color: var(--text-faint); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 8px; }
+
+footer { border-top: 1px solid var(--border); padding: 48px 0; margin-top: 80px; }
+.footer-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+.footer-credits { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+.footer-nav a { font-family: var(--mono); font-size: 12px; color: var(--text-faint); text-decoration: none; border: none; margin-left: 20px; }
+.footer-nav a:hover { color: var(--accent); }
+
+@media (max-width: 580px) { .metric-strip { grid-template-columns: 1fr 1fr; } }
+</style>
+<meta content="Mixture-of-Experts models are sold as a 10× efficiency win: 10× more parameters, same per-token compute. That math is correct. But it omits the router — the..." name="description"/><meta content="the router tax: what nobody accounts for in moe inference cost, Manish KL, AI systems, memory systems, inference architecture" name="keywords"/><meta content="Manish KL" name="author"/><meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/><meta content="light dark" name="color-scheme"/><link href="https://manishklach.github.io/writings/moe-router-tax-inference-cost.html" rel="canonical"/><link href="/feed.xml" rel="alternate" title="Manish KL RSS" type="application/rss+xml"/><link href="/feed.json" rel="alternate" title="Manish KL JSON" type="application/feed+json"/><link href="https://webmention.io/manishklach.github.io/webmention" rel="webmention"/><link href="https://webmention.io/manishklach.github.io/xmlrpc" rel="pingback"/><meta content="article" property="og:type"/><meta content="The Router Tax: What Nobody Accounts For in MoE Inference Cost | Manish KL" property="og:title"/><meta content="Mixture-of-Experts models are sold as a 10× efficiency win: 10× more parameters, same per-token compute. That math is correct. But it omits the router — the..." property="og:description"/><meta content="https://manishklach.github.io/writings/moe-router-tax-inference-cost.html" property="og:url"/><meta content="Manish KL" property="og:site_name"/><meta content="https://manishklach.github.io/og/moe-router-tax-inference-cost.png" property="og:image"/><meta content="Preview image for The Router Tax: What Nobody Accounts For in MoE Inference Cost by Manish KL" property="og:image:alt"/><meta content="2026-04-19T00:00:00Z" property="article:published_time"/><meta content="2026-04-19T00:00:00Z" property="article:modified_time"/><meta content="Manish KL" property="article:author"/><meta content="summary_large_image" name="twitter:card"/><meta content="The Router Tax: What Nobody Accounts For in MoE Inference Cost" name="twitter:title"/><meta content="Mixture-of-Experts models are sold as a 10× efficiency win: 10× more parameters, same per-token compute. That math is correct. But it omits the router — the..." name="twitter:description"/><meta content="https://manishklach.github.io/og/moe-router-tax-inference-cost.png" name="twitter:image"/><script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "The Router Tax: What Nobody Accounts For in MoE Inference Cost",
+  "description": "Mixture-of-Experts models are sold as a 10\u00d7 efficiency win: 10\u00d7 more parameters, same per-token compute. That math is correct. But it omits the router \u2014 the...",
+  "url": "https://manishklach.github.io/writings/moe-router-tax-inference-cost.html",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/moe-router-tax-inference-cost.html",
+  "datePublished": "2026-04-19",
+  "dateModified": "2026-04-19",
+  "author": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  },
+  "inLanguage": "en"
+}</script><style>
+.reading-meta { margin: 0.9rem 0 0; font-size: 0.95rem; line-height: 1.6; color: inherit; opacity: 0.78; }
+.reading-meta a { color: inherit; border-bottom-color: currentColor; }
+.subscribe { margin: 2rem 0; display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.subscribe label { font-weight: 600; }
+.subscribe input[type=email] { padding: 0.6rem 0.8rem; width: 16rem; max-width: 100%; font: inherit; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 0.5rem; }
+.subscribe input[type=submit] { padding: 0.6rem 1rem; font: inherit; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 0.5rem; cursor: pointer; }
+#webmentions { margin-top: 2rem; }
+#webmentions img { width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; margin-right: 0.4rem; }
+.post-footer { margin-top: 1.5rem; padding-bottom: 2rem; font-size: 0.95rem; line-height: 1.7; }
+.post-footer a { color: inherit; border-bottom-color: currentColor; }
+</style></head>
+<body>
+<header class="site-header">
+<div class="wrap-wide">
+<nav class="nav">
+<a class="nav-back" href="/writings.html">← All posts</a>
+<span class="series-tag">MoE Systems · Inference Architecture</span>
+</nav>
+</div>
+</header>
+<article data-pagefind-body="">
+<div class="wrap">
+<div class="hero">
+<div class="hero-labels">
+<span class="chip chip-purple">MoE Inference</span>
+<span class="chip chip-warm">Routing Overhead</span>
+<span class="chip chip-cool">Inference Economics</span>
+</div>
+<h1 class="display">The <em>Router Tax</em>: What Nobody Accounts For in MoE Inference Cost</h1><p class="reading-meta">Published <time datetime="2026-04-19">Apr 19, 2026</time> · 13 min read</p>
+<p class="deck">Mixture-of-Experts models are sold as a 10× efficiency win: 10× more parameters, same per-token compute. That math is correct. But it omits the router — the gating network that decides which experts fire — and everything the router forces downstream. This essay accounts for the tax.</p>
+<div class="byline">
+<span>Manish KL</span><span class="byline-sep">·</span>
+<span>April 2026</span><span class="byline-sep">·</span>
+<span>~18 min read</span><span class="byline-sep">·</span>
+<span>MoE · Routing · Inference Systems</span>
+</div>
+</div>
+<div class="metric-strip">
+<div class="metric"><span class="metric-v">15–25%</span><span class="metric-l">Overhead from router-induced all-to-all communication in expert-parallel serving</span></div>
+<div class="metric"><span class="metric-v">~5 ms</span><span class="metric-l">Minimum routing latency floor from dispatch → gather at 50+ experts on H100</span></div>
+<div class="metric"><span class="metric-v">3–4×</span><span class="metric-l">Load imbalance amplification factor at high concurrency with non-uniform routing</span></div>
+<div class="metric"><span class="metric-v">O(E)</span><span class="metric-l">Expert cache miss cost: cold experts require HBM re-load per activation, not amortized</span></div>
+</div>
+<div class="body-text">
+<div class="sn">01 — The Premise</div>
+<h2 class="section">The MoE Promise and What It Leaves Out</h2>
+<p>The MoE efficiency argument is this: replace each dense FFN layer with E expert FFNs. Route each token to k of them (k ≪ E). Pay per-token compute proportional to k active experts, not E total experts. Use total parameters (and therefore model capacity) proportional to E, but compute proportional to k. Win.</p>
+<p>DeepSeek-V3 makes this concrete: 671B total parameters, 37B active per token with E=256, k=8. The served model has the representational capacity of a 671B dense model at the per-token compute cost of a 37B dense model. If you believe that benchmark, the math is genuinely remarkable.</p>
+<p>But the benchmark is almost always measured on a single GPU, running one token at a time, in a controlled evaluation harness. Production serving is different. In production, you have expert parallelism across multiple GPUs, dynamic routing that creates load imbalance, capacity buffers that occasionally drop tokens, and a router that must make decisions — and communicate them — millions of times per second. The router is not free. And the costs it introduces are systemic.</p>
+<blockquote><p>The router's computational cost is trivial. The router's communication, load imbalance, cache miss, and tail latency costs are not. They are what the headline throughput numbers are measured in spite of, not because of.</p></blockquote>
+<div class="sn">02 — First Principles</div>
+<h2 class="section">What the Router Actually Does, Step by Step</h2>
+<p>Let us be precise about the router's operation in a production MoE serving system. For each token in the current batch, per MoE layer:</p>
+<ul class="prose">
+<li><strong>Gate computation:</strong> Compute <code>logits = W_gate × hidden</code> where W_gate has shape [d_model × E]. For d_model=7168, E=256: this is a 7168×256 matrix-vector product. At BF16: ~3.7 MB weight read, ~3.7 MFLOP. Trivially fast.</li>
+<li><strong>Top-k selection:</strong> Find the k=8 highest logits. Apply softmax over those k to get routing weights. For E=256, k=8: a sort/top-k over 256 floats. Also trivial.</li>
+<li><strong>Dispatch:</strong> Group tokens by their assigned experts. For expert-parallel serving (experts sharded across GPUs), this requires an all-to-all communication: each GPU sends the tokens assigned to remote experts, and receives tokens assigned to its local experts from remote GPUs. This is not trivial.</li>
+<li><strong>Expert GEMM:</strong> Each GPU runs GEMM for its local experts on the received token subset. This is the intended work: FFN forward pass on the active subset.</li>
+<li><strong>Gather:</strong> Collect expert outputs back to the originating GPUs via another all-to-all. Scale by routing weights and sum.</li>
+</ul>
+<p>Steps 3 and 5 — dispatch and gather — are the router tax. They are all-to-all collective operations whose cost scales with the number of GPUs, the number of tokens, and the token-to-expert assignment pattern. They are also deeply unpredictable in latency because they depend on the actual routing decisions, which are input-dependent.</p>
+<div class="sn">03 — The Communication Cost</div>
+<h2 class="section">All-to-All at Scale: The Dispatch/Gather Tax Quantified</h2>
+<p>For a production MoE serving system with expert parallelism degree EP, each MoE layer requires two all-to-all collective operations. The data volume per all-to-all is:</p>
+<pre><code><span class="cmt"># Volume per all-to-all for one MoE layer</span>
+<span class="cmt"># B: batch size (tokens), d: model dimension, EP: expert parallel degree</span>
+bytes_per_dispatch = B * d_model * bytes_per_element
+<span class="cmt"># Example: B=512, d=7168, BF16 (2 bytes)</span>
+bytes_per_dispatch_example = <span class="num">512</span> * <span class="num">7168</span> * <span class="num">2</span>  <span class="cmt"># = 7.3 MB</span>
+
+<span class="cmt"># Two all-to-alls per MoE layer (dispatch + gather)</span>
+bytes_per_moe_layer = <span class="num">2</span> * bytes_per_dispatch  <span class="cmt"># = 14.6 MB</span>
+
+<span class="cmt"># Across L_moe MoE layers in the model</span>
+<span class="cmt"># DeepSeek-V3: ~58 MoE layers out of 61 total</span>
+total_alltoall_bytes = <span class="num">58</span> * bytes_per_moe_layer  <span class="cmt"># = 847 MB per forward pass</span>
+
+<span class="cmt"># At 400 Gbps NVLink per direction:</span>
+<span class="cmt"># 847 MB / (400 Gbps / 8) = 847 MB / 50 GB/s = ~17 ms</span>
+<span class="cmt"># But this assumes perfect overlap with compute — rarely achieved</span>
+</code></pre>
+<p>17 ms of all-to-all communication per forward pass, at batch size 512. At batch size 64 (more typical for long-context serving), this scales down: ~2 ms of communication time. But communication time does not overlap cleanly with compute because the expert GEMM cannot start until the dispatch all-to-all completes. The dispatch serializes with the compute. Only the gather can overlap with subsequent attention computation.</p>
+<div class="diagram">
+<div class="d-title">Fig 1 — MoE Layer Timeline: Where Time Goes</div>
+<svg style="width:100%;max-height:300px" viewbox="0 0 680 300" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="ra" markerheight="7" markerwidth="7" orient="auto" refx="6" refy="3"><polygon fill="#484860" points="0 0,7 3,0 6"></polygon></marker>
+</defs>
+<!-- Timeline label -->
+<text fill="#8a8aa8" font-family="IBM Plex Mono,monospace" font-size="11" x="24" y="32">SINGLE MOE LAYER — DENSE DECODE (B=64)</text>
+<!-- GPU 0 row -->
+<text fill="#ecebf5" font-family="Outfit,sans-serif" font-size="12" font-weight="600" x="24" y="68">GPU 0</text>
+<!-- Gate -->
+<rect fill="rgba(192,132,252,.2)" height="28" rx="4" stroke="rgba(192,132,252,.5)" stroke-width="1" width="55" x="90" y="55"></rect>
+<text fill="#c084fc" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="117" y="73">Gate</text>
+<!-- Dispatch all2all -->
+<rect fill="rgba(248,113,113,.18)" height="28" rx="4" stroke="rgba(248,113,113,.4)" stroke-width="1" width="90" x="150" y="55"></rect>
+<text fill="#f87171" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="195" y="73">Dispatch A2A</text>
+<!-- Expert GEMM -->
+<rect fill="rgba(74,222,128,.18)" height="28" rx="4" stroke="rgba(74,222,128,.4)" stroke-width="1" width="130" x="245" y="55"></rect>
+<text fill="#4ade80" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="310" y="73">Expert GEMM (local)</text>
+<!-- Gather -->
+<rect fill="rgba(248,113,113,.18)" height="28" rx="4" stroke="rgba(248,113,113,.4)" stroke-width="1" width="80" x="380" y="55"></rect>
+<text fill="#f87171" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="420" y="73">Gather A2A</text>
+<!-- Combine -->
+<rect fill="rgba(192,132,252,.15)" height="28" rx="4" stroke="rgba(192,132,252,.35)" stroke-width="1" width="55" x="465" y="55"></rect>
+<text fill="#c084fc" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="492" y="73">Combine</text>
+<!-- GPU 1 row -->
+<text fill="#ecebf5" font-family="Outfit,sans-serif" font-size="12" font-weight="600" x="24" y="120">GPU 1</text>
+<rect fill="rgba(192,132,252,.2)" height="28" rx="4" stroke="rgba(192,132,252,.5)" stroke-width="1" width="55" x="90" y="107"></rect>
+<text fill="#c084fc" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="117" y="125">Gate</text>
+<rect fill="rgba(248,113,113,.18)" height="28" rx="4" stroke="rgba(248,113,113,.4)" stroke-width="1" width="90" x="150" y="107"></rect>
+<text fill="#f87171" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="195" y="125">Dispatch A2A</text>
+<rect fill="rgba(56,189,248,.15)" height="28" rx="4" stroke="rgba(56,189,248,.4)" stroke-width="1" width="130" x="245" y="107"></rect>
+<text fill="#38bdf8" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="310" y="121">STALL — waiting for</text>
+<text fill="#38bdf8" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="310" y="132">remote tokens</text>
+<rect fill="rgba(74,222,128,.18)" height="28" rx="4" stroke="rgba(74,222,128,.4)" stroke-width="1" width="80" x="380" y="107"></rect>
+<text fill="#4ade80" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="420" y="125">Expert GEMM</text>
+<rect fill="rgba(248,113,113,.18)" height="28" rx="4" stroke="rgba(248,113,113,.4)" stroke-width="1" width="80" x="465" y="107"></rect>
+<text fill="#f87171" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="505" y="125">Gather A2A</text>
+<!-- Annotation bars -->
+<line stroke="#484860" stroke-width="1" x1="90" x2="525" y1="165" y2="165"></line>
+<line stroke="#484860" stroke-width="1.5" x1="90" x2="90" y1="160" y2="170"></line>
+<line stroke="#484860" stroke-width="1.5" x1="525" x2="525" y1="160" y2="170"></line>
+<text fill="#8a8aa8" font-family="IBM Plex Mono,monospace" font-size="11" text-anchor="middle" x="307" y="180">Total MoE layer wall-clock</text>
+<!-- Tax highlight -->
+<rect fill="rgba(248,113,113,.1)" height="24" rx="3" stroke="rgba(248,113,113,.3)" stroke-width="1" width="170" x="150" y="195"></rect>
+<text fill="#f87171" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" x="235" y="211">Router tax: ~20-30% of layer time</text>
+<line stroke="rgba(248,113,113,.4)" stroke-dasharray="3,2" stroke-width="1" x1="235" x2="235" y1="195" y2="175"></line>
+<!-- Legend -->
+<rect fill="rgba(248,113,113,.4)" height="12" rx="2" width="12" x="90" y="240"></rect>
+<text fill="#8a8aa8" font-family="IBM Plex Mono,monospace" font-size="10" x="108" y="251">Communication (router tax)</text>
+<rect fill="rgba(74,222,128,.4)" height="12" rx="2" width="12" x="295" y="240"></rect>
+<text fill="#8a8aa8" font-family="IBM Plex Mono,monospace" font-size="10" x="313" y="251">Expert compute (useful work)</text>
+<rect fill="rgba(56,189,248,.4)" height="12" rx="2" width="12" x="490" y="240"></rect>
+<text fill="#8a8aa8" font-family="IBM Plex Mono,monospace" font-size="10" x="508" y="251">Stall (load imbalance)</text>
+</svg>
+<div class="d-cap">MoE layer timeline across two GPUs in expert-parallel serving. The router tax (dispatch + gather all-to-all) is serialized before and after expert compute. GPU 1 shows a stall waiting for imbalanced token assignments from GPU 0. This pattern repeats for every MoE layer in the model.</div>
+</div>
+<div class="sn">04 — Load Imbalance</div>
+<h2 class="section">The Worst Property of Real Routing: It Is Never Uniform</h2>
+<p>The MoE efficiency math assumes that routing is perfectly balanced — each expert receives exactly B×k/E tokens per batch. In practice, routing distributions are highly skewed. Tokens with similar semantic properties activate similar experts. A batch of coding tokens will heavily load coding-specialized experts and leave math-specialized experts idle. A batch of multilingual tokens may have complex bimodal distributions across language-specialized expert subsets.</p>
+<p>The consequence is structural. In expert-parallel serving, the total layer latency is determined by the slowest GPU — the one that received the most tokens from the all-to-all dispatch. An imbalanced batch where one GPU receives 3× the average token load forces all other GPUs to wait after completing their expert GEMMs.</p>
+<div class="box box-warn">
+<div class="box-title">The Tail Latency Amplification</div>
+<p>At serving concurrency of 100 requests, the probability that at least one expert receives 2× the mean token load approaches 1 as batch size grows above ~64 tokens. Every such event adds a bubble to the entire MoE forward pass. Unlike GPU kernel latency — which is roughly deterministic — routing imbalance is input-dependent and cannot be predicted or pre-scheduled. It is the primary source of p99 tail latency spikes in production MoE serving.</p>
+</div>
+<h3>The Capacity Buffer Tax</h3>
+<p>The standard mitigation for routing imbalance is the <strong>expert capacity buffer</strong>: each expert is allocated a capacity of C = (B/E) × capacity_factor tokens per step, where capacity_factor is typically 1.25. Tokens assigned to an expert that has already hit its capacity are <em>dropped</em> — they are not processed by any expert and their contribution to the output is zeroed out.</p>
+<p>This introduces a quality–efficiency tradeoff that does not appear in evaluation benchmarks:</p>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>Capacity Factor</th><th>Token Drop Rate</th><th>Output Quality</th><th>Max GPU Stall</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td class="mono">1.0</td><td class="r">~8–15%</td><td class="r">Noticeable degradation</td><td class="g">Minimal</td><td>Aggressive, drops frequently</td></tr>
+<tr><td class="mono">1.25</td><td class="w">~2–4%</td><td class="w">Slight degradation</td><td class="w">Moderate</td><td>Common production default</td></tr>
+<tr><td class="mono">1.5</td><td class="g">&lt;0.5%</td><td class="g">Near-lossless</td><td class="r">High (worst-case 50% overhead)</td><td>Conservative, memory-heavy</td></tr>
+<tr><td class="mono">2.0</td><td class="g">~0%</td><td class="g">Lossless</td><td class="r">Very high</td><td>Rarely used in serving</td></tr>
+</tbody>
+</table>
+</div>
+<p>The capacity buffer is a memory tax too: it pre-allocates expert input buffers of size capacity × d_model for every expert, on every GPU. For E=256 experts across 8 GPUs (32 experts per GPU), capacity_factor=1.25, d_model=7168, BF16: that is 32 × 1.25 × B/32 × 7168 × 2 bytes per GPU. At B=512, this is ~575 MB of buffer allocation per GPU, per MoE layer, that exists solely to absorb routing imbalance.</p>
+<div class="sn">05 — Expert Cache Misses</div>
+<h2 class="section">Cold Experts Are a KV Cache Problem for Weights</h2>
+<p>Here is the aspect of the router tax that connects most directly to the memory systems work elsewhere in this series: <strong>expert weights are not always hot in HBM.</strong></p>
+<p>For a large MoE model with E=256 experts, each expert's FFN weights occupy approximately 2–4 GB (depending on the model's hidden dimension per expert). Storing all expert weights for a 671B-parameter model requires the full ~1.3 TB of weight storage we calculated in the weight streaming essay. No single GPU holds all of it. In expert-parallel serving, each GPU holds E/EP experts. For EP=8, each GPU holds 32 experts × ~4 GB = ~128 GB — which already exceeds the H100's 80 GB HBM.</p>
+<p>The consequence: expert weights are tiered. Frequently-routed ("hot") experts stay in HBM. Infrequently-routed ("cold") experts are evicted to DRAM or NVMe. When the router assigns a token to a cold expert, the system must:</p>
+<ul class="prose">
+<li>Detect the cold expert assignment (requires tracking expert residency alongside token dispatch)</li>
+<li>Stall the expert computation for that token (or the entire affected GPU slice) until the expert weights are loaded</li>
+<li>Issue a DMA prefetch from DRAM to HBM for the cold expert's weight tensors</li>
+<li>Complete the DMA before the expert GEMM can run</li>
+</ul>
+<p>For a DRAM→HBM transfer at ~50 GB/s (PCIe P2P), loading a 4 GB expert takes ~80 ms. That is 80 ms of stall for the affected token. At B=64 with 8/256 experts activated per token, the probability that at least one token in the batch activates a cold expert is (1 - (n_hot/256)^8)^64. For n_hot=48 (75th percentile hot set for typical distributions), this is roughly 1 - (0.19)^8 ≈ almost certain for any batch above ~16 tokens.</p>
+<div class="box box-insight">
+<div class="box-title">Expert Residency as a Scheduling Problem</div>
+<p>Expert weight residency in HBM is exactly the same problem as KV cache residency — it is a working-set management problem with unpredictable access patterns driven by routing decisions. The right architecture applies the same tools: access frequency tracking, predictive prefetch using router history, LFU-with-aging eviction policy, and bandwidth budget coordination with the KV prefetch path. Most current serving frameworks treat expert weights as static after loading. That assumption breaks at large E and variable request distributions.</p>
+</div>
+<div class="sn">06 — Auxiliary Losses and Their Hidden Cost</div>
+<h2 class="section">The Load-Balancing Loss Changes Routing — and That Has Inference Consequences</h2>
+<p>MoE models are trained with an auxiliary load-balancing loss that penalizes skewed routing distributions. The intent is to prevent expert collapse — where a few experts absorb all tokens and the rest atrophy. The loss encourages more uniform routing across training batches.</p>
+<p>At inference time, the load-balancing loss does not run. The model routes based solely on the gate logits it learned during training. But those gate logits were shaped by a training objective that included the load-balancing penalty. The resulting routing distribution is more uniform than it would be without the loss — but it is <em>not</em> uniform, because the loss weight α is deliberately small (typically 10<sup>-2</sup>) to avoid sacrificing model quality for routing balance.</p>
+<p>This creates a subtle but important inference-time phenomenon: <strong>the routing distribution depends on the training α, which was chosen for training stability, not inference efficiency.</strong> A lower α produces better model quality but more skewed routing and more load imbalance at inference time. A higher α produces more balanced routing but worse model quality. This tradeoff is made once at training time and cannot be adjusted at serving time without retraining.</p>
+<p>Some recent work explores inference-time routing modifications — rescaling gate logits, temperature adjustments, or alternative top-k selection rules — to improve inference load balance without retraining. These are promising but they change the model's output distribution, which may or may not be acceptable depending on the application.</p>
+<div class="sn">07 — The MoE Inference Cost Model</div>
+<h2 class="section">A Corrected Cost Model That Includes the Router Tax</h2>
+<p>The standard MoE cost model compares FLOPs: a 671B MoE with k=8 active experts costs ~37B-equivalent FLOPs per token, matching a 37B dense model. This is arithmetically correct. Here is a more complete cost model:</p>
+<div class="tbl-wrap">
+<table>
+<thead><tr><th>Cost Component</th><th>Dense 70B</th><th>MoE 671B (k=8, E=256)</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Expert GEMM FLOPs</td><td class="mono g">70B FLOPs/token</td><td class="mono g">~37B FLOPs/token</td><td>MoE wins 1.9×</td></tr>
+<tr><td>Weight bandwidth (BF16)</td><td class="mono w">140 GB/step</td><td class="mono w">~74 GB active + cold miss</td><td>MoE wins IF no cold misses</td></tr>
+<tr><td>Router compute</td><td class="mono g">—</td><td class="mono g">~0.5% of layer time</td><td>Negligible</td></tr>
+<tr><td>Dispatch all-to-all</td><td class="mono g">—</td><td class="mono r">10–25% of layer time</td><td>MoE loses; scales with EP</td></tr>
+<tr><td>Load imbalance stall</td><td class="mono g">—</td><td class="mono r">5–30% of p99 latency</td><td>MoE loses; input-dependent</td></tr>
+<tr><td>Capacity buffer memory</td><td class="mono g">—</td><td class="mono r">~500 MB extra per GPU/layer</td><td>MoE loses; reduces KV headroom</td></tr>
+<tr><td>Expert cache miss stall</td><td class="mono g">—</td><td class="mono r">Up to 80 ms per cold miss</td><td>MoE loses; distribution-dependent</td></tr>
+<tr><td>Total effective latency (B=1)</td><td class="mono">~41 ms</td><td class="mono w">~35–55 ms</td><td>MoE: 1.15–1.35× faster at best</td></tr>
+</tbody>
+</table>
+</div>
+<p>The net efficiency advantage of MoE in production is significantly smaller than the raw FLOP ratio suggests. The gap between 1.9× FLOP reduction and ~1.2–1.4× actual throughput improvement is the router tax.</p>
+<div class="sn">08 — Architectures That Minimize the Tax</div>
+<h2 class="section">What Helps and What Doesn't</h2>
+<h3>What Actually Helps</h3>
+<ul class="prose">
+<li><strong>Expert parallelism within a node (NVLink) rather than across nodes (Ethernet/IB):</strong> NVLink all-to-all latency is ~10–50 µs. InfiniBand is ~5–50 ms. Keeping expert parallelism within the NVLink domain is 100–1000× better for dispatch latency. This constrains maximum EP to 8 (one DGX node) for latency-sensitive serving.</li>
+<li><strong>Expert grouping by access pattern:</strong> Arrange expert weights so that the k most frequently co-activated experts are co-located on the same GPU. This reduces cross-GPU dispatch frequency, lowering all-to-all volume for the common case.</li>
+<li><strong>Router history prefetch:</strong> Use the previous step's routing decisions (which are known at decode step N) to prefetch expert weights for decode step N+1. Because routing is temporally correlated for typical text sequences, prefetch accuracy is surprisingly high (~65–75% for top-4 predictions).</li>
+<li><strong>Smaller E, larger k:</strong> Fewer experts with more activation per token reduces routing variance (load imbalance shrinks), reduces the expert cache footprint, and reduces communication volume while preserving most of the parameter efficiency benefit.</li>
+</ul>
+<h3>What Doesn't Help As Much As Expected</h3>
+<ul class="prose">
+<li><strong>Increasing EP beyond node boundary:</strong> Reduces per-GPU expert memory pressure but adds cross-node all-to-all latency that dominates the gain. The tradeoff is almost never favorable for decode latency at EP&gt;8.</li>
+<li><strong>Higher capacity_factor alone:</strong> Reduces token drops but increases memory pressure and worst-case stall time. It does not reduce dispatch latency or load imbalance — it just hides the quality impact of drops.</li>
+<li><strong>Auxiliary loss tuning post-training:</strong> Cannot be done without retraining. The routing distribution is baked into the gate weights.</li>
+</ul>
+<div class="sn">09 — The Bottom Line</div>
+<h2 class="section">What the Router Tax Means for MoE Economics</h2>
+<p>MoE models are not a free lunch, and the router is not free. The real serving cost of a MoE model is the sum of: expert compute (the part the marketing counts), all-to-all communication overhead (15–25% of layer time), load imbalance tail latency (input-dependent, 5–30%), expert cache miss stalls (distribution-dependent, potentially severe), and capacity buffer memory tax (reduces KV headroom).</p>
+<p>For well-tuned MoE serving with expert parallelism within NVLink, good router history prefetch, and carefully tuned capacity buffers, the total overhead over a well-optimized dense model of equivalent active parameter count is approximately 20–35%. That is small enough that MoE remains the dominant architecture for large-scale frontier models. But it is large enough to matter for $/token cost calculations and for the decision about whether to prefer a 671B MoE or a smaller dense model for a given latency SLO.</p>
+<blockquote><p>The router decides in microseconds. Its consequences last for the full layer forward pass across every GPU in the expert-parallel group. Accounting for those consequences accurately is the difference between a theoretical efficiency argument and a deployable serving system.</p></blockquote>
+</div>
+</div>
+<form action="https://buttondown.email/api/emails/embed-subscribe/manishklach" class="subscribe" method="post" target="_blank"><label for="bd-email">Get new posts by email</label><input id="bd-email" name="email" placeholder="you@example.com" required="" type="email"/><input name="tag" type="hidden" value="blog"/><input type="submit" value="Subscribe"/></form><div id="webmentions"></div><footer class="post-footer"><hr/><p>© 2026 <a href="/index.html">Manish KL</a> · <a href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></p></footer></article>
+
+</body>
+</html>

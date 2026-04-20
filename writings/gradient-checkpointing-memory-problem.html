@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Gradient Checkpointing Is a Memory Problem: Training Efficiency From First Principles | Manish KL</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&amp;family=JetBrains+Mono:wght@400;500&amp;family=Plus+Jakarta+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #07080c;
+  --surface: #0e0f16;
+  --surface-2: #14151e;
+  --border: #1c1d28;
+  --border-2: #252636;
+  --text: #dfe0ec;
+  --dim: #7c7d98;
+  --faint: #3e3f56;
+  --a: #7dd3fc; /* sky */
+  --b: #a78bfa; /* violet */
+  --c: #6ee7b7; /* emerald */
+  --d: #fca5a5; /* red */
+  --e: #fcd34d; /* amber */
+  --serif: 'Playfair Display', Georgia, serif;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { font-family: var(--sans); background: var(--bg); color: var(--text); line-height: 1.72; -webkit-font-smoothing: antialiased; }
+
+.hd { border-bottom: 1px solid var(--border); padding: 16px 0; position: sticky; top: 0; z-index: 99; background: rgba(7,8,12,.9); backdrop-filter: blur(20px); }
+.c { max-width: 740px; margin: 0 auto; padding: 0 24px; }
+.c-w { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+.nav { display: flex; justify-content: space-between; align-items: center; }
+.nb { font-family: var(--mono); font-size: 12px; color: var(--faint); text-decoration: none; transition: color .2s; }
+.nb:hover { color: var(--a); }
+.nt { font-family: var(--mono); font-size: 10px; color: var(--b); letter-spacing: .12em; text-transform: uppercase; }
+
+/* Hero */
+.hero { padding: 88px 0 64px; border-bottom: 1px solid var(--border); position: relative; }
+.hero::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 50% at 90% 20%, rgba(122,211,252,.04) 0%, transparent 60%); pointer-events: none; }
+.tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 28px; }
+.tag { font-family: var(--mono); font-size: 10px; padding: 3px 9px; border-radius: 4px; letter-spacing: .08em; text-transform: uppercase; border: 1px solid; }
+.tag-sky { color: var(--a); border-color: rgba(125,211,252,.22); background: rgba(125,211,252,.05); }
+.tag-violet { color: var(--b); border-color: rgba(167,139,250,.22); background: rgba(167,139,250,.05); }
+.tag-em { color: var(--c); border-color: rgba(110,231,183,.22); background: rgba(110,231,183,.05); }
+h1 { font-family: var(--serif); font-size: clamp(2rem, 5.5vw, 3.2rem); font-weight: 400; line-height: 1.14; margin-bottom: 24px; }
+h1 em { font-style: italic; color: var(--a); }
+.lede { font-size: 1.1rem; color: var(--dim); max-width: 620px; line-height: 1.8; margin-bottom: 32px; }
+.by { font-family: var(--mono); font-size: 12px; color: var(--faint); display: flex; gap: 14px; flex-wrap: wrap; }
+.dot { opacity: .3; }
+
+/* Numbers row */
+.nums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--border-2); border-radius: 8px; overflow: hidden; margin: 52px 0; }
+.num-cell { background: var(--surface); padding: 22px 18px; border-right: 1px solid var(--border); }
+.num-cell:last-child { border-right: none; }
+.nv { font-family: var(--serif); font-size: 2rem; color: var(--a); display: block; line-height: 1; margin-bottom: 6px; }
+.nl { font-size: 11px; color: var(--faint); line-height: 1.45; }
+
+/* Body */
+.bd { padding: 60px 0; }
+h2 { font-family: var(--serif); font-size: 1.75rem; font-weight: 400; margin: 60px 0 18px; padding-top: 36px; border-top: 1px solid var(--border); }
+h2:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+h3 { font-family: var(--sans); font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; color: var(--b); margin: 34px 0 12px; }
+p { font-size: .97rem; color: var(--dim); margin-bottom: 20px; }
+p strong { color: var(--text); font-weight: 600; }
+code { font-family: var(--mono); font-size: .83em; color: var(--a); background: var(--surface-2); padding: 2px 5px; border-radius: 3px; border: 1px solid var(--border-2); }
+pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px 22px; overflow-x: auto; margin: 24px 0; font-family: var(--mono); font-size: .855rem; line-height: 1.68; color: var(--dim); }
+.kw { color: var(--b); } .str { color: var(--c); } .num { color: var(--e); } .cm { color: var(--faint); font-style: italic; }
+blockquote { border-left: 2px solid var(--a); padding: 4px 0 4px 22px; margin: 28px 0; }
+blockquote p { font-family: var(--serif); font-size: 1.12rem; font-style: italic; color: var(--text); margin: 0; }
+a { color: var(--a); text-decoration: none; border-bottom: 1px solid rgba(125,211,252,.2); }
+a:hover { border-color: var(--a); }
+ul.p { margin: 0 0 20px 20px; }
+ul.p li { color: var(--dim); font-size: .97rem; line-height: 1.75; margin-bottom: 5px; }
+ul.p li strong { color: var(--text); }
+
+/* Callouts */
+.cx { border-radius: 7px; padding: 18px 22px; margin: 26px 0; }
+.cx-t { font-family: var(--mono); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 9px; }
+.cx p { margin-bottom: 0; }
+.cx p + p { margin-top: 10px; }
+.cx-sky { background: rgba(125,211,252,.05); border: 1px solid rgba(125,211,252,.18); }
+.cx-sky .cx-t { color: var(--a); }
+.cx-red { background: rgba(252,165,165,.05); border: 1px solid rgba(252,165,165,.18); }
+.cx-red .cx-t { color: var(--d); }
+.cx-em { background: rgba(110,231,183,.05); border: 1px solid rgba(110,231,183,.18); }
+.cx-em .cx-t { color: var(--c); }
+
+/* Tables */
+.tw { overflow-x: auto; border: 1px solid var(--border-2); border-radius: 7px; margin: 24px 0; }
+table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+th { background: var(--surface-2); padding: 11px 14px; text-align: left; color: var(--text); font-weight: 600; font-family: var(--mono); font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--border-2); }
+td { padding: 11px 14px; border-bottom: 1px solid var(--border); color: var(--dim); }
+tr:last-child td { border-bottom: none; }
+td.mo { font-family: var(--mono); font-size: .8rem; }
+.g { color: var(--c); } .r { color: var(--d); } .w { color: var(--e); }
+
+/* Diagram */
+.dg { background: var(--surface); border: 1px solid var(--border-2); border-radius: 9px; padding: 26px; margin: 30px 0; overflow-x: auto; }
+.dg-t { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--faint); margin-bottom: 18px; }
+.dg-c { font-size: 12px; color: var(--faint); margin-top: 14px; font-style: italic; line-height: 1.5; }
+
+.sn { font-family: var(--mono); font-size: 10px; color: var(--faint); letter-spacing: .14em; text-transform: uppercase; margin-bottom: 8px; }
+
+footer { border-top: 1px solid var(--border); padding: 48px 0; margin-top: 80px; }
+.fr { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+.fc { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.fn a { font-family: var(--mono); font-size: 12px; color: var(--faint); text-decoration: none; border: none; margin-left: 18px; }
+.fn a:hover { color: var(--a); }
+
+@media (max-width: 580px) { .nums { grid-template-columns: 1fr 1fr; } }
+</style>
+<meta content="The inference memory essays in this series talk about KV cache, weight residency, and HBM pressure. Training has its own version of all three — and the..." name="description"/><meta content="gradient checkpointing is a memory problem: training efficiency from first principles, Manish KL, AI systems, memory systems, inference architecture" name="keywords"/><meta content="Manish KL" name="author"/><meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/><meta content="light dark" name="color-scheme"/><link href="https://manishklach.github.io/writings/gradient-checkpointing-memory-problem.html" rel="canonical"/><link href="/feed.xml" rel="alternate" title="Manish KL RSS" type="application/rss+xml"/><link href="/feed.json" rel="alternate" title="Manish KL JSON" type="application/feed+json"/><link href="https://webmention.io/manishklach.github.io/webmention" rel="webmention"/><link href="https://webmention.io/manishklach.github.io/xmlrpc" rel="pingback"/><meta content="article" property="og:type"/><meta content="Gradient Checkpointing Is a Memory Problem: Training Efficiency From First Principles | Manish KL" property="og:title"/><meta content="The inference memory essays in this series talk about KV cache, weight residency, and HBM pressure. Training has its own version of all three — and the..." property="og:description"/><meta content="https://manishklach.github.io/writings/gradient-checkpointing-memory-problem.html" property="og:url"/><meta content="Manish KL" property="og:site_name"/><meta content="https://manishklach.github.io/og/gradient-checkpointing-memory-problem.png" property="og:image"/><meta content="Preview image for Gradient Checkpointing Is a Memory Problem: Training Efficiency From First Principles by Manish KL" property="og:image:alt"/><meta content="2026-04-19T00:00:00Z" property="article:published_time"/><meta content="2026-04-19T00:00:00Z" property="article:modified_time"/><meta content="Manish KL" property="article:author"/><meta content="summary_large_image" name="twitter:card"/><meta content="Gradient Checkpointing Is a Memory Problem: Training Efficiency From First Principles" name="twitter:title"/><meta content="The inference memory essays in this series talk about KV cache, weight residency, and HBM pressure. Training has its own version of all three — and the..." name="twitter:description"/><meta content="https://manishklach.github.io/og/gradient-checkpointing-memory-problem.png" name="twitter:image"/><script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Gradient Checkpointing Is a Memory Problem: Training Efficiency From First Principles",
+  "description": "The inference memory essays in this series talk about KV cache, weight residency, and HBM pressure. Training has its own version of all three \u2014 and the...",
+  "url": "https://manishklach.github.io/writings/gradient-checkpointing-memory-problem.html",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/gradient-checkpointing-memory-problem.html",
+  "datePublished": "2026-04-19",
+  "dateModified": "2026-04-19",
+  "author": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  },
+  "inLanguage": "en"
+}</script><style>
+.reading-meta { margin: 0.9rem 0 0; font-size: 0.95rem; line-height: 1.6; color: inherit; opacity: 0.78; }
+.reading-meta a { color: inherit; border-bottom-color: currentColor; }
+.subscribe { margin: 2rem 0; display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.subscribe label { font-weight: 600; }
+.subscribe input[type=email] { padding: 0.6rem 0.8rem; width: 16rem; max-width: 100%; font: inherit; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 0.5rem; }
+.subscribe input[type=submit] { padding: 0.6rem 1rem; font: inherit; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 0.5rem; cursor: pointer; }
+#webmentions { margin-top: 2rem; }
+#webmentions img { width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; margin-right: 0.4rem; }
+.post-footer { margin-top: 1.5rem; padding-bottom: 2rem; font-size: 0.95rem; line-height: 1.7; }
+.post-footer a { color: inherit; border-bottom-color: currentColor; }
+</style></head>
+<body>
+<header class="hd">
+<div class="c-w">
+<nav class="nav">
+<a class="nb" href="/writings.html">← All posts</a>
+<span class="nt">Training Systems · Memory Policy</span>
+</nav>
+</div>
+</header>
+<article data-pagefind-body="">
+<div class="c">
+<div class="hero">
+<div class="tags">
+<span class="tag tag-sky">Training Systems</span>
+<span class="tag tag-violet">Gradient Checkpointing</span>
+<span class="tag tag-em">Memory Architecture</span>
+</div>
+<h1>Gradient Checkpointing Is a <em>Memory Problem</em>, Not a Training Trick</h1><p class="reading-meta">Published <time datetime="2026-04-19">Apr 19, 2026</time> · 12 min read</p>
+<p class="lede">The inference memory essays in this series talk about KV cache, weight residency, and HBM pressure. Training has its own version of all three — and the dominant technique for managing training memory, gradient checkpointing, is widely taught as an "algorithm" when it is really a data movement policy. This essay derives it from first principles and shows what an optimal implementation looks like.</p>
+<div class="by">
+<span>Manish KL</span><span class="dot">·</span>
+<span>April 2026</span><span class="dot">·</span>
+<span>~17 min read</span><span class="dot">·</span>
+<span>Training · Memory · Backward Pass · Activations</span>
+</div>
+</div>
+<div class="nums">
+<div class="num-cell"><span class="nv">3–5×</span><span class="nl">Activation memory multiplier for a 70B dense model at seq=8192 vs. weights alone</span></div>
+<div class="num-cell"><span class="nv">33%</span><span class="nl">Activation memory reduction from full checkpointing — at the cost of 33% more FLOPs</span></div>
+<div class="num-cell"><span class="nv">O(√L)</span><span class="nl">Optimal checkpoint interval for L layers — reduces memory from O(L) to O(√L)</span></div>
+<div class="num-cell"><span class="nv">~80%</span><span class="nl">Fraction of training memory that is activations, not weights, at large sequence length</span></div>
+</div>
+<div class="bd">
+<div class="sn">01 — Why Training Memory Is Different</div>
+<h2>The Inference/Training Memory Gap Nobody Explains</h2>
+<p>This series has spent considerable space on inference memory: KV cache management, weight streaming, HBM residency, and the hierarchy from HBM to DRAM to CXL. All of that is about the memory required to run a model forward on new inputs.</p>
+<p>Training has a different and in some ways harder memory problem. During inference, once a layer computes its output, the layer's input activations can be discarded. The model never looks backward. During training, the backward pass must compute gradients for every parameter in every layer — and computing those gradients requires knowing the activations that were present during the forward pass. The backward pass is, in a precise sense, a read-heavy workload on the intermediate results of the forward pass.</p>
+<p>This creates the activation memory problem: to train a model with backpropagation, you must store all intermediate activations for the full forward pass until the corresponding backward pass completes. For large models at large sequence lengths, this activation footprint is larger — often much larger — than the weight footprint that training discussions usually focus on.</p>
+<div class="cx cx-sky">
+<div class="cx-t">The Key Asymmetry</div>
+<p>During inference: memory = weights + KV cache. Activations are transient and small. During training: memory = weights + gradients + optimizer states + <em>all activations for the full forward pass</em>. For a 70B model at sequence length 8192 with batch size 4, activation memory alone exceeds 200 GB — larger than the weights in many precision regimes.</p>
+</div>
+<div class="sn">02 — First Principles</div>
+<h2>Why the Backward Pass Needs the Forward Pass's Memory</h2>
+<p>To understand gradient checkpointing, you need to understand why the backward pass needs forward-pass activations. Let us be specific. For a single transformer layer computing <code>y = F(x; W)</code>:</p>
+<p>The forward pass produces <code>y</code> from input <code>x</code> and weights <code>W</code>. During backpropagation, the backward pass receives the upstream gradient <code>∂L/∂y</code> and must compute:</p>
+<ul class="p">
+<li><strong>∂L/∂W (weight gradient):</strong> Used to update the weights. Requires <code>x</code> (the layer's input activation) and <code>∂L/∂y</code>. Formula for a linear layer: <code>∂L/∂W = ∂L/∂y · xᵀ</code>.</li>
+<li><strong>∂L/∂x (input gradient):</strong> Passed to the previous layer for its backward pass. Requires <code>W</code> and <code>∂L/∂y</code>. Formula: <code>∂L/∂x = Wᵀ · ∂L/∂y</code>.</li>
+</ul>
+<p>For the linear layer, the weight gradient only needs <code>x</code>, which the layer can retain cheaply. But for the attention mechanism, the situation is worse. Computing <code>∂L/∂Q, ∂L/∂K, ∂L/∂V</code> requires the softmax output matrix P (shape [B, H, S, S] for standard attention), which is generated during the forward pass. That matrix occupies <code>B × H × S² × dtype_bytes</code> bytes of memory. At B=4, H=64, S=8192, FP16: 4 × 64 × 8192² × 2 = 34 GB. Per layer.</p>
+<p>Across 80 layers: 2.7 TB of attention matrices that would need to be held in memory simultaneously. This is why naive full activation retention is impossible for large models at non-trivial sequence lengths.</p>
+<div class="dg">
+<div class="dg-t">Fig 1 — Memory During Forward and Backward Pass (No Checkpointing)</div>
+<svg style="width:100%;max-height:340px" viewbox="0 0 680 340" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="aa" markerheight="7" markerwidth="7" orient="auto" refx="6" refy="3"><polygon fill="#3e3f56" points="0 0,7 3,0 6"></polygon></marker>
+</defs>
+<!-- Time axis -->
+<line marker-end="url(#aa)" stroke="#3e3f56" stroke-width="1.5" x1="40" x2="640" y1="290" y2="290"></line>
+<text fill="#3e3f56" font-family="JetBrains Mono,monospace" font-size="10" x="645" y="294">time</text>
+<text fill="#3e3f56" font-family="JetBrains Mono,monospace" font-size="10" x="40" y="310">start</text>
+<text fill="#3e3f56" font-family="JetBrains Mono,monospace" font-size="10" x="330" y="310">forward done</text>
+<text fill="#3e3f56" font-family="JetBrains Mono,monospace" font-size="10" x="570" y="310">backward done</text>
+<!-- Forward pass bars (accumulating) -->
+<text fill="#dfe0ec" font-family="Plus Jakarta Sans,sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="185" y="24">Forward Pass — Activations Accumulate</text>
+<rect fill="rgba(125,211,252,.22)" height="240" rx="3" stroke="rgba(125,211,252,.4)" stroke-width="1" width="40" x="40" y="36"></rect>
+<text fill="#7dd3fc" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle" x="60" y="56">L1</text>
+<rect fill="rgba(125,211,252,.22)" height="240" rx="3" stroke="rgba(125,211,252,.4)" stroke-width="1" width="40" x="85" y="36"></rect>
+<text fill="#7dd3fc" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle" x="105" y="56">L2</text>
+<rect fill="rgba(125,211,252,.22)" height="240" rx="3" stroke="rgba(125,211,252,.4)" stroke-width="1" width="40" x="130" y="36"></rect>
+<text fill="#7dd3fc" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle" x="150" y="56">L3</text>
+<!-- ... -->
+<text fill="#3e3f56" font-family="Plus Jakarta Sans,sans-serif" font-size="18" x="200" y="160">· · ·</text>
+<rect fill="rgba(125,211,252,.22)" height="240" rx="3" stroke="rgba(125,211,252,.4)" stroke-width="1" width="40" x="240" y="36"></rect>
+<text fill="#7dd3fc" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle" x="260" y="56">L80</text>
+<!-- Peak annotation -->
+<line stroke="rgba(252,165,165,.6)" stroke-dasharray="4,2" stroke-width="1.5" x1="280" x2="330" y1="36" y2="36"></line>
+<text fill="#fca5a5" font-family="JetBrains Mono,monospace" font-size="10" x="335" y="40">PEAK: all 80 layers in memory</text>
+<text fill="#fca5a5" font-family="JetBrains Mono,monospace" font-size="10" x="335" y="52">~200 GB activations for 70B @ S=8K</text>
+<!-- Backward pass bars (freeing) -->
+<text fill="#dfe0ec" font-family="Plus Jakarta Sans,sans-serif" font-size="11" font-weight="600" text-anchor="middle" x="530" y="24">Backward Pass — Activations Free</text>
+<rect fill="rgba(110,231,183,.15)" height="240" rx="3" stroke="rgba(110,231,183,.35)" stroke-width="1" width="40" x="340" y="36"></rect>
+<text fill="#6ee7b7" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle" x="360" y="56">L80↑</text>
+<rect fill="rgba(110,231,183,.15)" height="216" rx="3" stroke="rgba(110,231,183,.35)" stroke-width="1" width="40" x="385" y="60"></rect>
+<rect fill="rgba(110,231,183,.15)" height="192" rx="3" stroke="rgba(110,231,183,.35)" stroke-width="1" width="40" x="430" y="84"></rect>
+<text fill="#3e3f56" font-family="Plus Jakarta Sans,sans-serif" font-size="18" x="480" y="160">· · ·</text>
+<rect fill="rgba(110,231,183,.15)" height="36" rx="3" stroke="rgba(110,231,183,.35)" stroke-width="1" width="40" x="520" y="240"></rect>
+<text fill="#6ee7b7" font-family="JetBrains Mono,monospace" font-size="9" text-anchor="middle" x="540" y="258">L1↑</text>
+<!-- Legend -->
+<rect fill="rgba(125,211,252,.4)" height="10" rx="2" width="12" x="40" y="316"></rect>
+<text fill="#7c7d98" font-family="JetBrains Mono,monospace" font-size="10" x="58" y="325">Forward activation (held in memory)</text>
+<rect fill="rgba(110,231,183,.3)" height="10" rx="2" width="12" x="310" y="316"></rect>
+<text fill="#7c7d98" font-family="JetBrains Mono,monospace" font-size="10" x="328" y="325">Backward pass (free as it goes)</text>
+</svg>
+<div class="dg-c">Without checkpointing, all 80 layers' activations accumulate during the forward pass and are freed one-by-one during the backward pass. Peak memory occurs at the end of the forward pass, when all activations are in memory simultaneously. For a 70B model at S=8192, this peak can reach 200+ GB of activation memory alone.</div>
+</div>
+<div class="sn">03 — The Checkpointing Solution</div>
+<h2>What Gradient Checkpointing Actually Does</h2>
+<p>Gradient checkpointing (also called activation recomputation) solves the activation memory problem by trading compute for memory. The core idea: rather than storing all activations through the forward pass, <strong>discard most of them and recompute from a checkpoint when the backward pass needs them</strong>.</p>
+<p>In its simplest form, only the layer inputs (checkpoints) are stored during the forward pass. The per-layer intermediate activations (attention matrices, hidden states at each sublayer) are discarded. When the backward pass reaches layer L, it re-runs the forward pass of layer L starting from the checkpoint to regenerate the discarded activations, then uses them for gradient computation, then discards them again.</p>
+<p>The memory tradeoff is precise: full checkpointing (checkpoint every layer boundary) reduces peak activation memory from O(L × per_layer_act) to O(per_layer_act), because at any moment only one layer's intermediate activations exist. The cost is exactly one additional forward pass per layer during backpropagation — approximately 33% more FLOPs in total (one forward + two backward = 3 forward equivalents instead of 1+2=3... wait, baseline is 1 forward + 2 backward = 3 forward equivalents, checkpointing is 2 forward + 2 backward = 4 forward equivalents). Actually the overhead is exactly 33%.</p>
+<h3>The Optimal Checkpoint Interval</h3>
+<p>Full checkpointing (checkpoint every layer) minimizes memory but maximizes recomputation. There is a better answer: checkpoint every √L layers, which gives O(√L × layer_act) memory at O(√L) recomputation overhead per backward step — less memory than full checkpointing at lower recomputation cost than naive checkpointing.</p>
+<pre><code><span class="cm"># Optimal checkpoint strategy for L layers</span>
+<span class="cm"># Memory: O(√L) checkpoints × O(1) per-layer activation = O(√L)</span>
+<span class="cm"># Recompute: at most √L layers per backward step</span>
+
+<span class="kw">def</span> optimal_checkpoint_interval(L, activation_size_per_layer, hbm_budget):
+    <span class="cm"># k = checkpoint every k layers</span>
+    <span class="cm"># Memory = L/k checkpoints × checkpoint_size + k × activation_size_per_layer</span>
+    <span class="cm"># Minimize over k: d/dk (L/k × chkpt_size + k × act_size) = 0</span>
+    <span class="cm"># → k_opt = √(L × chkpt_size / act_size)</span>
+    <span class="cm"># For chkpt_size ≈ act_size (typical): k_opt = √L</span>
+    k_opt = (L * <span class="num">1.0</span>) ** <span class="num">0.5</span>
+    memory_at_opt = (L / k_opt + k_opt) * activation_size_per_layer
+    <span class="kw">return</span> k_opt, memory_at_opt
+
+<span class="cm"># Example: L=80, act_size=2.5 GB/layer (70B, S=8192)</span>
+k, mem = optimal_checkpoint_interval(<span class="num">80</span>, <span class="num">2.5</span>)  <span class="cm"># k≈9, mem≈45 GB</span>
+<span class="cm"># vs no checkpointing: 200 GB</span>
+<span class="cm"># vs full checkpointing: ~2.5 GB (but +33% FLOPs)</span>
+</code></pre>
+<div class="sn">04 — Quantifying Activation Memory</div>
+<h2>How Big Is the Activation Footprint, Really?</h2>
+<p>Let us be concrete for a 70B-class model. Per transformer layer at sequence length S, batch size B:</p>
+<div class="tw">
+<table>
+<thead><tr><th>Activation Tensor</th><th>Shape</th><th>BF16 Size (B=4, S=8192)</th><th>Checkpointable?</th></tr></thead>
+<tbody>
+<tr><td>Layer input</td><td class="mo">B × S × d</td><td class="mo w">~430 MB</td><td class="g">Checkpoint (keep)</td></tr>
+<tr><td>Attention scores Q·Kᵀ</td><td class="mo">B × H × S × S</td><td class="mo r">~34 GB (S=8192!)</td><td class="g">Discard (recompute)</td></tr>
+<tr><td>Attention weights (post-softmax)</td><td class="mo">B × H × S × S</td><td class="mo r">~34 GB</td><td class="g">Discard (recompute)</td></tr>
+<tr><td>Attention output</td><td class="mo">B × S × d</td><td class="mo w">~430 MB</td><td class="g">Discard (recompute)</td></tr>
+<tr><td>FFN intermediate (SwiGLU gate)</td><td class="mo">B × S × d_ff</td><td class="mo w">~1.5 GB</td><td class="g">Discard (recompute)</td></tr>
+<tr><td>FFN intermediate (SwiGLU up)</td><td class="mo">B × S × d_ff</td><td class="mo w">~1.5 GB</td><td class="g">Discard (recompute)</td></tr>
+<tr><td><strong>Total per layer (naïve)</strong></td><td>—</td><td class="mo r"><strong>~72 GB</strong></td><td>—</td></tr>
+<tr><td><strong>Checkpointed per layer</strong></td><td>—</td><td class="mo g"><strong>~430 MB</strong></td><td>Keep only input</td></tr>
+</tbody>
+</table>
+</div>
+<p>The attention score matrices dominate. At sequence length 8192, they occupy 34 GB per layer × 2 (scores + weights) = 68 GB — out of ~72 GB total activation memory per layer. This is the deep reason why FlashAttention's contribution to training is at least as large as its contribution to inference: FlashAttention recomputes the attention matrices during the backward pass from the smaller Q, K, V tensors, effectively applying "free" gradient checkpointing to the largest activation tensors in the model.</p>
+<div class="cx cx-sky">
+<div class="cx-t">FlashAttention Is Gradient Checkpointing for Attention</div>
+<p>FlashAttention does not store the S×S attention matrix during the forward pass. It computes attention in tiles, discards the per-tile matrices, and stores only the O, L (logsumexp), and m (running max) statistics needed for the backward pass recomputation. This is mathematically equivalent to checkpointing the attention sublayer, with zero recomputation cost because the backward-pass recomputation is fused into the kernel. For S=8192 at B=4, H=64: this saves ~68 GB per layer of activation memory, for free.</p>
+</div>
+<div class="sn">05 — The Memory/Compute Tradeoff Landscape</div>
+<h2>Choosing the Right Checkpointing Strategy</h2>
+<div class="tw">
+<table>
+<thead><tr><th>Strategy</th><th>Peak Activation Memory</th><th>FLOPs Overhead</th><th>Practical Use Case</th></tr></thead>
+<tbody>
+<tr><td>No checkpointing</td><td class="r">O(L) — 200+ GB (70B, S=8K)</td><td class="g">0%</td><td>Small models, short sequences</td></tr>
+<tr><td>Selective (attention only)</td><td class="w">~O(L × non-attn)</td><td class="w">~10–15%</td><td>FA2/FA3 + partial checkpointing</td></tr>
+<tr><td>√L interval</td><td class="g">O(√L) — ~45 GB (70B)</td><td class="w">~20–25%</td><td>Memory-constrained dense training</td></tr>
+<tr><td>Full (every layer)</td><td class="g">O(1) — ~430 MB/layer</td><td class="r">~33%</td><td>Maximum memory compression needed</td></tr>
+<tr><td>Full + FA3</td><td class="g">O(1) — ~430 MB/layer</td><td class="w">~15–18%</td><td>Best practical choice for large S</td></tr>
+</tbody>
+</table>
+</div>
+<p>The modern standard for training large models at long sequence lengths is full gradient checkpointing combined with FlashAttention. FlashAttention eliminates the dominant activation tensors (S×S attention matrices) with zero recomputation overhead. Full checkpointing on the remaining activations (FFN intermediates, layer inputs) costs 15–18% additional FLOPs rather than 33%, because the attention forward pass recomputation is free. The resulting peak activation memory is on the order of 2–3 GB per concurrent batch item — manageable within HBM budgets that must also accommodate weights, gradients, and optimizer states.</p>
+<div class="sn">06 — Optimizer State: The Forgotten Memory Consumer</div>
+<h2>Training Memory Is Activations + Weights + Gradients + Optimizer States</h2>
+<p>The activation analysis above is only part of the training memory picture. A complete accounting for a 70B BF16 training run includes:</p>
+<div class="tw">
+<table>
+<thead><tr><th>Component</th><th>Size (70B params)</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Weights (BF16)</td><td class="mo">140 GB</td><td>Model parameters</td></tr>
+<tr><td>Gradients (BF16)</td><td class="mo">140 GB</td><td>One gradient per weight, same precision</td></tr>
+<tr><td>Optimizer: momentum (FP32)</td><td class="mo r">280 GB</td><td>Adam m₁, FP32 copy for numerical stability</td></tr>
+<tr><td>Optimizer: variance (FP32)</td><td class="mo r">280 GB</td><td>Adam m₂</td></tr>
+<tr><td>Activations (full chkpt + FA3)</td><td class="mo w">~12 GB</td><td>B=4, S=8192, per layer only input</td></tr>
+<tr><td><strong>Total</strong></td><td class="mo r"><strong>~852 GB</strong></td><td>For B=4, S=8192, single GPU (theoretical)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Activations, after checkpointing, are a modest fraction of total training memory. Optimizer states — particularly the FP32 Adam momentum and variance tensors — are the dominant consumer at 560 GB for a 70B model. This is why distributed training at 70B scale uses FSDP (Fully Sharded Data Parallelism) or ZeRO-3: these techniques shard the optimizer states across data-parallel replicas, reducing per-GPU optimizer state memory by the sharding degree.</p>
+<div class="cx cx-em">
+<div class="cx-t">The ZeRO Connection</div>
+<p>ZeRO-3 with 64-way data parallelism shards weights + gradients + optimizer states across 64 GPUs, reducing per-GPU memory for all three from 840 GB to ~13 GB. The activations — which are <em>not</em> sharded by ZeRO (they are per-batch, not per-parameter) — become the dominant per-GPU memory consumer at high ZeRO sharding degrees. This is why very large-scale training runs combine ZeRO-3 with aggressive activation checkpointing and FlashAttention: each technique attacks a different part of the memory budget.</p>
+</div>
+<div class="sn">07 — Systems Implications</div>
+<h2>What This Means for Training Infrastructure Design</h2>
+<p>Gradient checkpointing is usually described as a model training technique. But its memory reduction behavior has direct implications for infrastructure design — specifically for how HBM capacity should be allocated and how DMA bandwidth should be budgeted during training.</p>
+<h3>The Recompute-vs-Offload Decision</h3>
+<p>For activation tensors that cannot be eliminated by FlashAttention (FFN intermediates, normalization outputs), there are two options: recompute from the checkpoint (costs FLOPs, no memory), or offload to DRAM between the forward and backward passes (costs DMA bandwidth, saves FLOPs). The right choice depends on the ratio of available compute to available DMA bandwidth:</p>
+<ul class="p">
+<li>If HBM→DRAM bandwidth is underutilized during the forward pass window: offload activations to DRAM, free them from HBM immediately, reload before backward. This is a bandwidth cost, not a compute cost.</li>
+<li>If the training run is compute-bound (MFU near 100%): recomputation wastes compute cycles that could be used for useful work. Offload is preferable if bandwidth permits.</li>
+<li>If the training run is already bandwidth-bound (large batch, long sequence): adding DMA offload contends for the same HBM bus. Recomputation is preferable.</li>
+</ul>
+<p>Production training frameworks are beginning to implement this decision as a runtime policy rather than a static flag. The decision should be made per-layer, per-phase, based on real-time measurements of compute utilization and DMA bandwidth consumption — the same principles as the KV cache memory scheduler in inference systems.</p>
+<h3>The Connection to Inference Memory Systems</h3>
+<p>The gradient checkpointing problem and the KV cache eviction problem are structurally identical in one important way: both require deciding, in real time, which tensors to keep in fast memory and which to spill or recompute, under a memory budget that is tighter than the full working set. The solutions share the same toolkit: cost-benefit analysis (memory savings vs recomputation FLOPs), access pattern prediction (which activations will be needed soon), and tiered storage with DMA-based movement.</p>
+<p>The key difference is predictability. In inference, KV access patterns are partially unpredictable (request length, tool calls). In training, the backward pass always accesses layer activations in reverse layer order — a perfectly predictable pattern. This means training checkpointing can use an optimal static policy rather than the adaptive policies needed for inference. It also means the DMA prefetch problem is simpler: always prefetch the next-to-be-needed checkpoint L layers before the backward pass arrives at it.</p>
+<blockquote><p>Training and inference are the same memory problem in different clothes. The forward pass stores activations; the backward pass consumes them. The question — what to keep, what to recompute, what to offload — has the same structure as every KV cache eviction decision in inference. The toolkit is identical. The access patterns are just more predictable.</p></blockquote>
+</div><!-- /bd -->
+</div><!-- /wrap -->
+<form action="https://buttondown.email/api/emails/embed-subscribe/manishklach" class="subscribe" method="post" target="_blank"><label for="bd-email">Get new posts by email</label><input id="bd-email" name="email" placeholder="you@example.com" required="" type="email"/><input name="tag" type="hidden" value="blog"/><input type="submit" value="Subscribe"/></form><div id="webmentions"></div><footer class="post-footer"><hr/><p>© 2026 <a href="/index.html">Manish KL</a> · <a href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></p></footer></article>
+
+</body>
+</html>

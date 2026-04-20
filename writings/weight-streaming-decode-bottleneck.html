@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Weight Streaming: Why Your Model's Weights Are the Real Decode Bottleneck | Manish KL</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=DM+Mono:ital,wght@0,400;0,500;1,400&amp;family=Sora:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #0c0c10;
+  --surface: #13131a;
+  --surface-2: #1a1a24;
+  --border: #23232f;
+  --border-2: #2e2e3d;
+  --text: #e8e8f0;
+  --text-dim: #9090a8;
+  --text-faint: #54546a;
+  --accent: #e8956d;
+  --accent-cool: #6d9de8;
+  --accent-green: #6de89a;
+  --accent-red: #e86d6d;
+  --mono: 'DM Mono', monospace;
+  --serif: 'Instrument Serif', Georgia, serif;
+  --sans: 'Sora', system-ui, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { font-family: var(--sans); background: var(--bg); color: var(--text); line-height: 1.7; -webkit-font-smoothing: antialiased; }
+
+/* Layout */
+.site-header { border-bottom: 1px solid var(--border); padding: 18px 0; position: sticky; top: 0; z-index: 100; background: rgba(12,12,16,0.85); backdrop-filter: blur(16px); }
+.container { max-width: 780px; margin: 0 auto; padding: 0 24px; }
+.container-wide { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+.nav { display: flex; align-items: center; justify-content: space-between; }
+.nav-back { font-size: 13px; color: var(--text-faint); text-decoration: none; display: flex; align-items: center; gap: 6px; transition: color .2s; font-family: var(--mono); }
+.nav-back:hover { color: var(--accent); }
+.nav-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .08em; text-transform: uppercase; }
+
+/* Hero */
+.hero { padding: 72px 0 56px; border-bottom: 1px solid var(--border); }
+.hero-labels { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
+.label { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 4px 10px; border-radius: 4px; border: 1px solid; }
+.label-orange { color: var(--accent); border-color: rgba(232,149,109,.25); background: rgba(232,149,109,.07); }
+.label-blue { color: var(--accent-cool); border-color: rgba(109,157,232,.25); background: rgba(109,157,232,.07); }
+.label-green { color: var(--accent-green); border-color: rgba(109,232,154,.25); background: rgba(109,232,154,.07); }
+h1 { font-family: var(--serif); font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.15; font-weight: 400; margin-bottom: 24px; }
+h1 em { font-style: italic; color: var(--accent); }
+.hero-lede { font-size: 1.15rem; color: var(--text-dim); max-width: 640px; line-height: 1.75; margin-bottom: 32px; }
+.meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--text-faint); flex-wrap: wrap; }
+.meta-sep { opacity: .3; }
+
+/* Stats bar */
+.stats-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin: 48px 0; }
+.stat { background: var(--surface); padding: 20px 24px; }
+.stat-value { font-family: var(--mono); font-size: 1.8rem; font-weight: 500; color: var(--accent); display: block; line-height: 1; margin-bottom: 6px; }
+.stat-label { font-size: 12px; color: var(--text-faint); line-height: 1.4; }
+
+/* Body typography */
+.body { padding: 56px 0; }
+h2 { font-family: var(--serif); font-size: 1.75rem; font-weight: 400; margin: 56px 0 18px; padding-top: 32px; border-top: 1px solid var(--border); color: var(--text); }
+h2:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+h3 { font-family: var(--sans); font-size: 1rem; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; margin: 36px 0 14px; }
+p { color: var(--text-dim); margin-bottom: 20px; font-size: .975rem; }
+p strong { color: var(--text); font-weight: 600; }
+a { color: var(--accent-cool); text-decoration: none; border-bottom: 1px solid rgba(109,157,232,.3); transition: border-color .2s; }
+a:hover { border-color: var(--accent-cool); }
+
+/* Code */
+code { font-family: var(--mono); font-size: .85em; background: var(--surface-2); color: var(--accent-cool); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); }
+pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px 24px; overflow-x: auto; margin: 24px 0; }
+pre code { background: none; border: none; padding: 0; color: var(--text-dim); font-size: .875rem; line-height: 1.65; }
+.token-comment { color: var(--text-faint); font-style: italic; }
+.token-keyword { color: var(--accent); }
+.token-string { color: var(--accent-green); }
+.token-num { color: var(--accent-cool); }
+
+/* Callouts */
+.callout { border-radius: 8px; padding: 20px 24px; margin: 28px 0; display: flex; gap: 16px; align-items: flex-start; }
+.callout-icon { font-size: 16px; flex-shrink: 0; margin-top: 2px; }
+.callout-body p { margin-bottom: 0; }
+.callout-body p + p { margin-top: 10px; }
+.callout-insight { background: rgba(232,149,109,.06); border: 1px solid rgba(232,149,109,.2); }
+.callout-insight .callout-title { color: var(--accent); font-weight: 600; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; font-family: var(--mono); }
+.callout-data { background: rgba(109,157,232,.06); border: 1px solid rgba(109,157,232,.2); }
+.callout-data .callout-title { color: var(--accent-cool); font-weight: 600; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; font-family: var(--mono); }
+.callout-warn { background: rgba(232,109,109,.06); border: 1px solid rgba(232,109,109,.2); }
+.callout-warn .callout-title { color: var(--accent-red); font-weight: 600; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; font-family: var(--mono); }
+
+/* Diagrams */
+.diagram { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 28px; margin: 32px 0; overflow-x: auto; }
+.diagram-title { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint); margin-bottom: 20px; }
+.diagram-caption { font-size: 13px; color: var(--text-faint); margin-top: 16px; font-style: italic; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; margin: 28px 0; border-radius: 8px; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+th { background: var(--surface-2); padding: 12px 16px; text-align: left; font-weight: 600; color: var(--text); border-bottom: 1px solid var(--border); font-size: .8rem; letter-spacing: .04em; text-transform: uppercase; font-family: var(--mono); }
+td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text-dim); font-size: .875rem; }
+tr:last-child td { border-bottom: none; }
+td.mono { font-family: var(--mono); font-size: .8rem; }
+td.good { color: var(--accent-green); }
+td.bad { color: var(--accent-red); }
+td.warn { color: var(--accent); }
+
+/* Pull quote */
+blockquote { border-left: 3px solid var(--accent); padding: 4px 0 4px 24px; margin: 32px 0; }
+blockquote p { color: var(--text); font-family: var(--serif); font-size: 1.15rem; font-style: italic; margin: 0; }
+
+/* Section numbers */
+.section-num { font-family: var(--mono); font-size: 11px; color: var(--text-faint); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 8px; }
+
+/* Footer */
+footer { border-top: 1px solid var(--border); padding: 48px 0; margin-top: 80px; }
+.footer-inner { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; flex-wrap: wrap; }
+.footer-tag { font-family: var(--mono); font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .08em; }
+.footer-links { display: flex; gap: 20px; }
+.footer-links a { font-family: var(--mono); font-size: 12px; color: var(--text-faint); border: none; }
+.footer-links a:hover { color: var(--accent); }
+
+/* Responsive */
+@media (max-width: 600px) {
+  .stats-bar { grid-template-columns: 1fr 1fr; }
+  .footer-inner { flex-direction: column; }
+}
+</style>
+<meta content="The KV cache gets all the attention. But for large models at low batch sizes, loading transformer layer weights from HBM dominates decode latency just as..." name="description"/><meta content="weight streaming: why your model's weights are the real decode bottleneck, Manish KL, AI systems, memory systems, inference architecture" name="keywords"/><meta content="Manish KL" name="author"/><meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/><meta content="light dark" name="color-scheme"/><link href="https://manishklach.github.io/writings/weight-streaming-decode-bottleneck.html" rel="canonical"/><link href="/feed.xml" rel="alternate" title="Manish KL RSS" type="application/rss+xml"/><link href="/feed.json" rel="alternate" title="Manish KL JSON" type="application/feed+json"/><link href="https://webmention.io/manishklach.github.io/webmention" rel="webmention"/><link href="https://webmention.io/manishklach.github.io/xmlrpc" rel="pingback"/><meta content="article" property="og:type"/><meta content="Weight Streaming: Why Your Model's Weights Are the Real Decode Bottleneck | Manish KL" property="og:title"/><meta content="The KV cache gets all the attention. But for large models at low batch sizes, loading transformer layer weights from HBM dominates decode latency just as..." property="og:description"/><meta content="https://manishklach.github.io/writings/weight-streaming-decode-bottleneck.html" property="og:url"/><meta content="Manish KL" property="og:site_name"/><meta content="https://manishklach.github.io/og/weight-streaming-decode-bottleneck.png" property="og:image"/><meta content="Preview image for Weight Streaming: Why Your Model's Weights Are the Real Decode Bottleneck by Manish KL" property="og:image:alt"/><meta content="2026-04-19T00:00:00Z" property="article:published_time"/><meta content="2026-04-19T00:00:00Z" property="article:modified_time"/><meta content="Manish KL" property="article:author"/><meta content="summary_large_image" name="twitter:card"/><meta content="Weight Streaming: Why Your Model's Weights Are the Real Decode Bottleneck" name="twitter:title"/><meta content="The KV cache gets all the attention. But for large models at low batch sizes, loading transformer layer weights from HBM dominates decode latency just as..." name="twitter:description"/><meta content="https://manishklach.github.io/og/weight-streaming-decode-bottleneck.png" name="twitter:image"/><script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Weight Streaming: Why Your Model's Weights Are the Real Decode Bottleneck",
+  "description": "The KV cache gets all the attention. But for large models at low batch sizes, loading transformer layer weights from HBM dominates decode latency just as...",
+  "url": "https://manishklach.github.io/writings/weight-streaming-decode-bottleneck.html",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/weight-streaming-decode-bottleneck.html",
+  "datePublished": "2026-04-19",
+  "dateModified": "2026-04-19",
+  "author": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  },
+  "inLanguage": "en"
+}</script><style>
+.reading-meta { margin: 0.9rem 0 0; font-size: 0.95rem; line-height: 1.6; color: inherit; opacity: 0.78; }
+.reading-meta a { color: inherit; border-bottom-color: currentColor; }
+.subscribe { margin: 2rem 0; display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.subscribe label { font-weight: 600; }
+.subscribe input[type=email] { padding: 0.6rem 0.8rem; width: 16rem; max-width: 100%; font: inherit; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 0.5rem; }
+.subscribe input[type=submit] { padding: 0.6rem 1rem; font: inherit; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 0.5rem; cursor: pointer; }
+#webmentions { margin-top: 2rem; }
+#webmentions img { width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; margin-right: 0.4rem; }
+.post-footer { margin-top: 1.5rem; padding-bottom: 2rem; font-size: 0.95rem; line-height: 1.7; }
+.post-footer a { color: inherit; border-bottom-color: currentColor; }
+</style></head>
+<body>
+<header class="site-header">
+<div class="container-wide">
+<nav class="nav">
+<a class="nav-back" href="/writings.html">← All posts</a>
+<span class="nav-tag">AI Infrastructure · Memory Systems</span>
+</nav>
+</div>
+</header>
+<article data-pagefind-body="">
+<div class="container">
+<div class="hero">
+<div class="hero-labels">
+<span class="label label-orange">AI Infrastructure</span>
+<span class="label label-blue">Weight Serving</span>
+<span class="label label-green">Decode Optimization</span>
+</div>
+<h1>Weight Streaming: Why Your Model's Weights Are the <em>Other</em> Decode Bottleneck</h1>
+<p class="hero-lede">The KV cache gets all the attention. But for large models at low batch sizes, loading transformer layer weights from HBM dominates decode latency just as much. This essay derives the weight bandwidth problem from first principles, shows where current systems leave performance on the table, and describes what a weight-streaming architecture looks like.</p>
+<div class="meta"><a href="/index.html">Manish KL</a><span class="meta-sep">·</span><time datetime="2026-04-19">Apr 19, 2026</time><span class="meta-sep">·</span>14 min read</div>
+</div>
+<div class="stats-bar">
+<div class="stat"><span class="stat-value">140 GB</span><span class="stat-label">Weight footprint of a 70B BF16 model — must cross HBM bus every decode step</span></div>
+<div class="stat"><span class="stat-value">~1 FLOP/B</span><span class="stat-label">Arithmetic intensity during decode — memory-bound by a factor of 150×</span></div>
+<div class="stat"><span class="stat-value">~53 ms</span><span class="stat-label">Weight-read time at 3.35 TB/s for a single 70B BF16 decode step, batch=1</span></div>
+<div class="stat"><span class="stat-value">3–7×</span><span class="stat-label">Theoretical decode throughput gain from weight streaming with quantization</span></div>
+</div>
+<div class="body">
+<!-- Section 1 -->
+<div class="section-num">01 — The Framing</div>
+<h2>Everything We Talk About Is KV Cache. Here Is What We Are Not Talking About.</h2>
+<p>The standard narrative for LLM decode optimization goes like this: autoregressive generation is memory-bound, the dominant memory pressure is the KV cache, and the solution space is KV compression, GQA, paging, tiering, and eviction policy. That narrative is correct. But it is incomplete in a way that becomes consequential at large model scale and low batch sizes.</p>
+<p>Consider what happens during a single decode step for a 70B BF16 model at batch size 1. The GPU must: load every transformer layer's weight matrices from HBM into the register file and L1 cache; compute a matrix-vector product with the current token's hidden state; apply the attention mechanism to a KV cache of some size; and emit a logit distribution for sampling.</p>
+<p>The weight matrices dominate. At BF16, a 70B-parameter model occupies approximately 140 GB of HBM. Every single decode step requires reading all 140 GB across the HBM bus. At H200's 3.35 TB/s bandwidth, that takes 41 milliseconds of pure memory time — before any arithmetic, before any KV cache reads, before any software overhead.</p>
+<div class="callout callout-data">
+<span class="callout-icon">📐</span>
+<div class="callout-body">
+<div class="callout-title">The Arithmetic</div>
+<p>For a single decode step: FLOPs ≈ 2 × parameters = 2 × 70B = 140 GFLOPs. Bytes read ≈ 2 × parameters (BF16) = 140 GB weights + KV reads. Arithmetic intensity = FLOPs / Bytes ≈ 1 FLOP/byte. H200 ridge point: ~148 FLOPs/byte. The GPU is operating at <strong>less than 1% of its compute efficiency</strong>. It is a 989 TFLOP/s machine being used as a 3.35 TB/s memory bus.</p>
+</div>
+</div>
+<p>This is the weight bandwidth problem. It is not new — it has been known since the first generation of large-model serving work. But its implications are underappreciated, particularly for the question of how to architect weight residency across a multi-tier memory hierarchy.</p>
+<blockquote><p>At batch size 1, loading model weights from HBM costs the same as loading the KV cache for a 32K-token context. Neither is free. Neither can be ignored.</p></blockquote>
+<!-- Section 2 -->
+<div class="section-num">02 — First Principles</div>
+<h2>Where the Bytes Come From: A Layer-by-Layer Breakdown</h2>
+<p>To understand the weight bandwidth problem precisely, we need to account for where the bytes actually come from in a transformer layer. Take a 70B-class model with the LLaMA-3 architecture as a concrete reference: 80 layers, model dimension 8192, GQA with 64 query heads and 8 KV heads, SwiGLU FFN with intermediate dimension ~28672.</p>
+<p>Per transformer layer, the weight matrices are:</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Matrix</th><th>Shape</th><th>BF16 Size</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td>W_q</td><td class="mono">8192 × 8192</td><td class="mono warn">128 MB</td><td>Query projection</td></tr>
+<tr><td>W_k</td><td class="mono">8192 × 1024</td><td class="mono good">16 MB</td><td>Key projection (8 KV heads)</td></tr>
+<tr><td>W_v</td><td class="mono">8192 × 1024</td><td class="mono good">16 MB</td><td>Value projection</td></tr>
+<tr><td>W_o</td><td class="mono">8192 × 8192</td><td class="mono warn">128 MB</td><td>Output projection</td></tr>
+<tr><td>W_gate</td><td class="mono">8192 × 28672</td><td class="mono bad">448 MB</td><td>SwiGLU gate branch</td></tr>
+<tr><td>W_up</td><td class="mono">8192 × 28672</td><td class="mono bad">448 MB</td><td>SwiGLU up branch</td></tr>
+<tr><td>W_down</td><td class="mono">28672 × 8192</td><td class="mono bad">448 MB</td><td>FFN down projection</td></tr>
+<tr><td colspan="2"><strong>Per-layer total</strong></td><td class="mono warn"><strong>~1.63 GB</strong></td><td>Dominates FFN (84% of per-layer weight)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Across 80 layers: ~130 GB. Plus embeddings, LM head, and norms: ~140 GB total. This entire volume must cross the HBM bus every decode step, because the GPU's on-chip SRAM (50 MB L2 + 256 KB register file per SM) is far too small to hold more than a tiny fraction of it.</p>
+<h3>The FFN Dominates</h3>
+<p>Notice the asymmetry above: the FFN weights (W_gate + W_up + W_down) account for roughly 1.34 GB per layer — 84% of per-layer weight. The attention weights (W_q + W_k + W_v + W_o) account for the remaining 16%. This is not an accident. SwiGLU FFNs with a 3.5× expansion ratio are parameter-heavy by design; the tradeoff is quality per FLOP.</p>
+<p>For weight streaming optimization, this asymmetry matters. Compressing or quantizing the FFN matrices delivers more bandwidth relief per unit of implementation complexity than compressing the attention matrices. A 4-bit FFN with a 16-bit attention module is a reasonable design point. The reverse is less compelling.</p>
+<!-- Section 3 -->
+<div class="section-num">03 — Batching as the Partial Cure</div>
+<h2>Why Batch Size Is the Free Variable That Hides the Problem</h2>
+<p>The textbook answer to the weight bandwidth problem is: increase batch size. If you process B tokens simultaneously, you pay the 140 GB weight-read cost once but generate B output tokens — amortizing the bandwidth cost by B. The arithmetic intensity scales as:</p>
+<pre><code><span class="token-comment"># Arithmetic intensity scales linearly with batch size</span>
+intensity(B) = FLOPs / Bytes = (2 × params × B) / (2 × params + B × KV_footprint)
+<span class="token-comment"># For large B, → FLOPs/KV_bytes ≈ B × model_dim (compute-bound)</span>
+<span class="token-comment"># For B=1, → ~1 FLOP/byte (deep memory bound)</span>
+<span class="token-comment"># Ridge point for H200: ~148 FLOPs/byte, requires B ≈ 148 for full utilization</span>
+B_ridge = 148 * (2 * params) / (2 * params)  <span class="token-comment"># ≈ 148 tokens simultaneously</span>
+</code></pre>
+<p>This analysis implies that a batch of 148 tokens would keep the H200 tensor cores fully occupied during decode. That sounds achievable. But it requires 148 concurrent sessions, each contributing exactly one decode step to the same batch. In practice, request arrivals are Poisson-distributed, context lengths vary, and prefill/decode mixing creates contention. Achieving B=148 consistently is harder than the math suggests.</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Batch Size</th><th>Arithmetic Intensity</th><th>Decode Latency (70B)</th><th>GPU Efficiency</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td class="mono">1</td><td class="mono bad">~1 FLOP/B</td><td class="mono bad">~41 ms</td><td class="bad">0.7%</td><td>Single user, terrible efficiency</td></tr>
+<tr><td class="mono">8</td><td class="mono warn">~8 FLOP/B</td><td class="mono warn">~42 ms</td><td class="warn">5%</td><td>8× throughput, same latency</td></tr>
+<tr><td class="mono">32</td><td class="mono warn">~32 FLOP/B</td><td class="mono warn">~43 ms</td><td class="warn">22%</td><td>Still memory-bound</td></tr>
+<tr><td class="mono">128</td><td class="mono good">~128 FLOP/B</td><td class="mono good">~46 ms</td><td class="good">86%</td><td>Near ridge point</td></tr>
+<tr><td class="mono">256</td><td class="mono good">~148 FLOP/B</td><td class="mono warn">~65 ms</td><td class="good">~100%</td><td>Compute-bound, latency rises</td></tr>
+</tbody>
+</table>
+</div>
+<p>The punchline is that for batch sizes below about 64, the decode step is dominated by weight reads, not by arithmetic. Every optimization effort focused on KV cache for these workloads is addressing the second bottleneck, not the first.</p>
+<!-- Section 4 -->
+<div class="section-num">04 — Weight Quantization as Bandwidth Relief</div>
+<h2>INT4 Weights Are Not About Accuracy. They Are About Bandwidth.</h2>
+<p>This is the most important reframe in this essay. The motivation for weight quantization in LLM serving is widely described in terms of model compression, memory footprint, or cost reduction. These are real benefits. But the primary mechanism of action for <strong>decode throughput</strong> improvement is bandwidth reduction.</p>
+<p>INT4 weights occupy half the bytes of BF16. Reading 140 GB of BF16 weights takes 41 ms at 3.35 TB/s. Reading the same model in INT4 takes 21 ms. That is a 2× decode throughput improvement at B=1, which degrades gradually as batch size increases (because the benefit amortizes). At B=32, the improvement is still ~1.8×. At B=128, it is ~1.2×. The entire "LLM.int8 is lossless, GPTQ is nearly lossless" literature is really an argument about whether we can capture the bandwidth benefit without sacrificing model quality — not an argument about compression for its own sake.</p>
+<div class="callout callout-insight">
+<span class="callout-icon">💡</span>
+<div class="callout-body">
+<div class="callout-title">The Quantization Reframe</div>
+<p>Weight quantization from BF16 to INT4 is a 4× bandwidth multiplier on the weight-read path. At B=1 and H200 bandwidth, this is equivalent to upgrading from an H200 (3.35 TB/s) to a hypothetical 13.4 TB/s memory system that does not exist. No hardware upgrade achieves this. Quantization is the only practical path to weight-bandwidth relief at current silicon economics.</p>
+</div>
+</div>
+<h3>The Accuracy-Bandwidth Tradeoff Landscape</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Format</th><th>Bytes/param</th><th>Weight BW (70B, H200)</th><th>Decode ms (B=1)</th><th>Relative Quality</th></tr></thead>
+<tbody>
+<tr><td>BF16</td><td class="mono">2</td><td class="mono bad">140 GB</td><td class="mono bad">~41 ms</td><td class="good">Baseline</td></tr>
+<tr><td>FP8</td><td class="mono">1</td><td class="mono warn">70 GB</td><td class="mono warn">~21 ms</td><td class="good">~0.1% degradation</td></tr>
+<tr><td>INT8 (W8A16)</td><td class="mono">1</td><td class="mono warn">70 GB</td><td class="mono warn">~21 ms</td><td class="good">Nearly lossless</td></tr>
+<tr><td>INT4 (GPTQ)</td><td class="mono">0.5</td><td class="mono good">35 GB</td><td class="mono good">~10 ms</td><td class="warn">0.5–2% perplexity rise</td></tr>
+<tr><td>INT4 (AWQ)</td><td class="mono">0.5</td><td class="mono good">35 GB</td><td class="mono good">~10 ms</td><td class="good">&lt;0.5% perplexity rise</td></tr>
+<tr><td>INT2 (AQLM)</td><td class="mono">0.25</td><td class="mono good">17.5 GB</td><td class="mono good">~5 ms</td><td class="bad">2–5% perplexity rise</td></tr>
+</tbody>
+</table>
+</div>
+<!-- Section 5 -->
+<div class="section-num">05 — Weight Streaming Architecture</div>
+<h2>What a Weight-Streaming System Actually Looks Like</h2>
+<p>Current serving systems load the full model into HBM at startup and keep it resident for the lifetime of the server process. This is optimal when HBM is large enough to hold both the model weights and the KV cache for the concurrent request load — which was true for 7B–13B models on 80 GB H100s, but is no longer true for 70B+ models at long context or high concurrency.</p>
+<p>A weight-streaming architecture abandons the assumption of full static residency. Instead, it treats weight tensors as data objects with known access patterns, and manages their placement across the memory hierarchy just as the KV cache manager manages KV pages.</p>
+<div class="diagram">
+<div class="diagram-title">Fig 1 — Weight Streaming: Tier Placement and Access Patterns</div>
+<svg style="width:100%;max-height:420px" viewbox="0 0 700 420" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<lineargradient id="wg1" x1="0%" x2="100%" y1="0%" y2="0%"><stop offset="0%" style="stop-color:#e8956d;stop-opacity:.8"></stop><stop offset="100%" style="stop-color:#6d9de8;stop-opacity:.8"></stop></lineargradient>
+<marker id="wa" markerheight="8" markerwidth="8" orient="auto" refx="7" refy="3"><polygon fill="#54546a" points="0 0,8 3,0 6"></polygon></marker>
+<marker id="wa2" markerheight="8" markerwidth="8" orient="auto" refx="7" refy="3"><polygon fill="#e8956d" points="0 0,8 3,0 6"></polygon></marker>
+</defs>
+<!-- Tier boxes -->
+<!-- HBM -->
+<rect fill="#1a1a24" height="80" rx="6" stroke="#e8956d" stroke-width="1.5" width="160" x="30" y="30"></rect>
+<text fill="#e8e8f0" font-family="Sora,sans-serif" font-size="13" font-weight="600" text-anchor="middle" x="110" y="58">GPU HBM</text>
+<text fill="#9090a8" font-family="DM Mono,monospace" font-size="11" text-anchor="middle" x="110" y="76">80–141 GB</text>
+<text fill="#6de89a" font-family="DM Mono,monospace" font-size="10" text-anchor="middle" x="110" y="93">3.35 TB/s</text>
+<!-- DRAM -->
+<rect fill="#1a1a24" height="80" rx="6" stroke="#6d9de8" stroke-width="1.5" width="160" x="270" y="30"></rect>
+<text fill="#e8e8f0" font-family="Sora,sans-serif" font-size="13" font-weight="600" text-anchor="middle" x="350" y="58">Host DRAM</text>
+<text fill="#9090a8" font-family="DM Mono,monospace" font-size="11" text-anchor="middle" x="350" y="76">512 GB – 2 TB</text>
+<text fill="#6de89a" font-family="DM Mono,monospace" font-size="10" text-anchor="middle" x="350" y="93">~50 GB/s (PCIe P2P)</text>
+<!-- NVMe -->
+<rect fill="#1a1a24" height="80" rx="6" stroke="#54546a" stroke-width="1.5" width="160" x="510" y="30"></rect>
+<text fill="#e8e8f0" font-family="Sora,sans-serif" font-size="13" font-weight="600" text-anchor="middle" x="590" y="58">NVMe SSD</text>
+<text fill="#9090a8" font-family="DM Mono,monospace" font-size="11" text-anchor="middle" x="590" y="76">10–100 TB</text>
+<text fill="#9090a8" font-family="DM Mono,monospace" font-size="10" text-anchor="middle" x="590" y="93">~12 GB/s</text>
+<!-- Arrows between tiers -->
+<line marker-end="url(#wa)" stroke="#54546a" stroke-width="1.5" x1="190" x2="270" y1="70" y2="70"></line>
+<line marker-end="url(#wa)" stroke="#54546a" stroke-width="1.5" x1="270" x2="190" y1="70" y2="70"></line>
+<line marker-end="url(#wa)" stroke="#54546a" stroke-width="1.5" x1="430" x2="510" y1="70" y2="70"></line>
+<!-- Tensor core block -->
+<rect fill="#13131a" height="60" rx="6" stroke="#23232f" stroke-width="1" width="160" x="30" y="180"></rect>
+<text fill="#e8e8f0" font-family="Sora,sans-serif" font-size="12" font-weight="600" text-anchor="middle" x="110" y="206">Tensor Cores</text>
+<text fill="#9090a8" font-family="DM Mono,monospace" font-size="10" text-anchor="middle" x="110" y="225">GEMV: weights × hidden</text>
+<!-- HBM to TC arrow -->
+<line marker-end="url(#wa2)" stroke="#e8956d" stroke-width="2" x1="110" x2="110" y1="110" y2="180"></line>
+<text fill="#e8956d" font-family="DM Mono,monospace" font-size="10" x="118" y="150">~41 ms (BF16)</text>
+<text fill="#6de89a" font-family="DM Mono,monospace" font-size="10" x="118" y="162">~10 ms (INT4)</text>
+<!-- Streaming engine -->
+<rect fill="#1a1a24" height="100" rx="6" stroke="#6d9de8" stroke-width="1.5" width="380" x="270" y="160"></rect>
+<text fill="#6d9de8" font-family="Sora,sans-serif" font-size="12" font-weight="600" text-anchor="middle" x="460" y="188">Weight Streaming Engine</text>
+<text fill="#9090a8" font-family="DM Mono,monospace" font-size="10" text-anchor="middle" x="460" y="208">Layer scheduler · DMA orchestrator · Prefetch predictor</text>
+<text fill="#9090a8" font-family="DM Mono,monospace" font-size="10" text-anchor="middle" x="460" y="224">Quantization decompressor · Residency tracker</text>
+<text fill="#9090a8" font-family="DM Mono,monospace" font-size="10" text-anchor="middle" x="460" y="240">Bandwidth budget: shared with KV prefetch</text>
+<!-- Streaming engine to HBM -->
+<path d="M 270 200 L 200 200 L 200 120 L 160 120" fill="none" marker-end="url(#wa)" stroke="#6d9de8" stroke-width="1.5"></path>
+<!-- Residency policy row -->
+<rect fill="#13131a" height="80" rx="6" stroke="#23232f" stroke-width="1" width="640" x="30" y="320"></rect>
+<text fill="#e8e8f0" font-family="Sora,sans-serif" font-size="12" font-weight="600" text-anchor="middle" x="350" y="345">Weight Residency Policy</text>
+<text fill="#6de89a" font-family="DM Mono,monospace" font-size="10" text-anchor="middle" x="115" y="368">Hot layers in HBM</text>
+<text fill="#9090a8" font-size="10" text-anchor="middle" x="115" y="382">(embed, first 8, last 8)</text>
+<text fill="#e8956d" font-family="DM Mono,monospace" font-size="10" text-anchor="middle" x="340" y="368">Mid layers: prefetch 2 ahead</text>
+<text fill="#9090a8" font-size="10" text-anchor="middle" x="340" y="382">(DRAM staging → HBM DMA)</text>
+<text fill="#9090a8" font-family="DM Mono,monospace" font-size="10" text-anchor="middle" x="570" y="368">Cold model variants: NVMe</text>
+<text fill="#9090a8" font-size="10" text-anchor="middle" x="570" y="382">(draft models, LoRA adapters)</text>
+</svg>
+<div class="diagram-caption">Weight streaming architecture. The streaming engine manages weight placement across HBM, DRAM, and NVMe tiers, prefetching layer weights ahead of the decode loop and decompressing quantized weights on-the-fly as they enter the GPU. The bandwidth budget is shared with the KV prefetch path.</div>
+</div>
+<h3>Layer Ordering Gives You Perfect Prefetch</h3>
+<p>Unlike the KV cache — whose access patterns are partially unpredictable (request length, tool calls, speculative rollbacks) — weight access during decode is <strong>completely deterministic</strong>. Layer 0 is always followed by layer 1. Layer 1 is always followed by layer 2. The weight streaming engine knows the entire access schedule in advance and can issue DMA prefetches with arbitrarily long lookahead.</p>
+<p>This is the key advantage weight streaming has over KV streaming: prediction is trivial. The only complexity is bandwidth budget management — ensuring that weight DMA transfers do not starve the KV prefetch path that is also competing for HBM write bandwidth.</p>
+<pre><code><span class="token-comment"># Pseudocode: weight streaming loop</span>
+<span class="token-keyword">for</span> decode_step <span class="token-keyword">in</span> range(max_tokens):
+    <span class="token-keyword">for</span> layer_idx <span class="token-keyword">in</span> range(num_layers):
+        <span class="token-comment"># Fire DMA for layer+2 while computing layer</span>
+        <span class="token-keyword">if</span> layer_idx + <span class="token-num">2</span> &lt; num_layers:
+            dma.prefetch_async(
+                src=weight_store.get(layer_idx + <span class="token-num">2</span>),
+                dst=hbm_staging_buffer,
+                priority=WEIGHT_STREAM,
+                bandwidth_cap=bw_budget * <span class="token-num">0.4</span>  <span class="token-comment"># leave 60% for KV</span>
+            )
+        <span class="token-comment"># Wait only if prefetch hasn't landed yet (rare)</span>
+        weights = hbm_staging_buffer.wait(layer_idx)
+        <span class="token-comment"># Decompress INT4 → BF16 in register during GEMV setup</span>
+        weights_bf16 = dequantize(weights, scale=scale_factors[layer_idx])
+        <span class="token-comment"># Execute GEMV</span>
+        hidden = matmul(weights_bf16, hidden_state)
+</code></pre>
+<!-- Section 6 -->
+<div class="section-num">06 — The Bandwidth Budget Problem</div>
+<h2>Weight Streaming Competes With KV Prefetch for the Same HBM Write Port</h2>
+<p>Here is the tension nobody talks about enough: weight streaming and KV cache prefetch both write to HBM. They share the same memory controllers and the same write bandwidth. If weight DMA and KV DMA are scheduled naively, they can overlap in the worst possible way — both saturating the HBM write path during the same GPU compute phase — causing stalls that eliminate the benefit of prefetch on either path.</p>
+<p>The right architecture treats HBM write bandwidth as an explicit resource with a scheduler. The weight streaming engine and the KV cache manager submit DMA requests to a shared bandwidth arbitrator, which:</p>
+<ul style="color: var(--text-dim); margin-left: 24px; margin-bottom: 20px; font-size: .975rem; line-height: 1.8;">
+<li>Tracks available HBM write bandwidth in real time (measured via hardware performance counters)</li>
+<li>Prioritizes KV prefetch for sessions with imminent next-token generation over weight prefetch</li>
+<li>Schedules weight DMA during compute-bound FFN phases (high arithmetic intensity = low HBM read pressure)</li>
+<li>Avoids DMA during memory-bound attention phases (long sequence = high HBM read pressure)</li>
+</ul>
+<div class="callout callout-warn">
+<span class="callout-icon">⚠️</span>
+<div class="callout-body">
+<div class="callout-title">The Naive Implementation Hazard</div>
+<p>A weight streaming implementation that does not model the GPU's memory access pattern can easily make decode latency <em>worse</em> than static HBM residency, by issuing weight DMA at exactly the wrong moment and creating HBM contention spikes. The bandwidth arbitrator is not optional. It is what makes streaming work.</p>
+</div>
+</div>
+<!-- Section 7 -->
+<div class="section-num">07 — MoE Makes This Much More Interesting</div>
+<h2>Sparse Expert Activation Creates a Weight Residency Prediction Problem</h2>
+<p>Everything above assumes a dense model where all weights are accessed at every layer. Mixture-of-Experts changes the problem fundamentally: in a 256-expert model (like DeepSeek-V3), each token activates 8 experts per FFN layer. The other 248 experts' weights are never read. This creates a new opportunity: <strong>only prefetch the experts that will actually be activated.</strong></p>
+<p>This is weight streaming's killer application. For a 671B-parameter MoE model with 37B active parameters per token, the FFN weight read per decode step is not 671B × 2 bytes = 1.34 TB. It is 37B × 2 bytes = 74 GB — only the active experts. But to achieve this, you need to know <em>which experts will be activated before you issue the DMA</em>.</p>
+<p>The router logit prediction problem: can you predict which experts a token will route to, before running the full forward pass that produces the routing decision? Partly yes. Several properties help:</p>
+<ul style="color: var(--text-dim); margin-left: 24px; margin-bottom: 20px; font-size: .975rem; line-height: 1.8;">
+<li><strong>Expert locality:</strong> Tokens of similar semantic type tend to route to similar expert subsets across multiple decode steps. A coding token is likely to route to coding-specialized experts on the next step too.</li>
+<li><strong>Historical trace:</strong> The router's decisions for the last 8–16 tokens are known and can be used to predict the next step's routing via a lightweight secondary model or frequency table.</li>
+<li><strong>Prefetch tolerance:</strong> Expert weights are large enough (~4 GB per expert for a 30B-per-expert MoE) that even a rough prediction (6/8 correct) meaningfully reduces stalls compared to reactive loading.</li>
+</ul>
+<p>This is why the MoE router history signal appears in the predictive weight orchestration essay — it is not just a curiosity, it is the signal that makes expert-granular weight streaming viable.</p>
+<!-- Section 8 -->
+<div class="section-num">08 — Practical Architecture</div>
+<h2>What Changes in the Serving Stack</h2>
+<p>Implementing weight streaming end-to-end requires changes at several layers of the serving stack. Here is a concrete inventory:</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Layer</th><th>Current State</th><th>Weight-Streaming State</th></tr></thead>
+<tbody>
+<tr><td>Weight storage</td><td>BF16 tensors in HBM, static</td><td>Quantized (INT4/FP8) in tiered store, metadata-annotated</td></tr>
+<tr><td>Layer execution</td><td>GEMV on pre-resident weights</td><td>GEMV + inline dequantization from streaming buffer</td></tr>
+<tr><td>DMA engine</td><td>Used for KV prefetch only</td><td>Shared arbitration: weight stream + KV prefetch</td></tr>
+<tr><td>HBM allocation</td><td>Static model partition + dynamic KV</td><td>Fluid: HBM shared between hot weights and hot KV</td></tr>
+<tr><td>Inference framework</td><td>Weight loading at startup</td><td>Layer-granular fetch, cancel, and re-prioritize APIs</td></tr>
+<tr><td>MoE routing</td><td>Router executes, then experts load</td><td>Router prediction → expert prefetch → verify-and-correct</td></tr>
+</tbody>
+</table>
+</div>
+<p>The hardest change is the HBM allocation model. Current systems partition HBM statically: N GB for model weights, M GB for KV cache, with a hard boundary between them. Weight streaming requires a fluid partition that can shift the boundary in real time as request load changes. A serving system with 10 long-context requests should hold fewer weight layers in HBM (more KV needed) than one with 100 short-context requests (KV pressure low, keep more weights hot). The memory scheduler needs to manage this boundary.</p>
+<!-- Section 9 -->
+<div class="section-num">09 — Where This Is Going</div>
+<h2>HBM4 Changes the Math, But Doesn't Solve the Problem</h2>
+<p>HBM4, expected in H200-successor products around 2026–2027, targets approximately 2 TB/s per stack — roughly 2× the HBM3e bandwidth. This will halve weight-read latency for the same model and batch size, moving the B=1 decode latency from ~41 ms to ~20 ms for a 70B BF16 model.</p>
+<p>That is genuinely useful. But it does not change the fundamental arithmetic: decode will still be memory-bandwidth-bound for batch sizes below the ridge point, and the ridge point will still require 100+ concurrent tokens. The weight bandwidth problem shrinks by 2×; it does not go away. And models are getting larger. An expected 400B-parameter frontier MoE model with 80B active parameters hits the same wall at different scale.</p>
+<p>The real unlock is the combination: HBM4 bandwidth × INT4 quantization × weight streaming with expert prediction. Together they can compress the effective weight-read time by 8–12× relative to BF16 static residency on HBM3e. That is the regime where decode latency for B=1 drops below 5 ms for a 70B-equivalent model — approaching the latency profile of a much smaller, less capable model.</p>
+<blockquote><p>Weights are not infrastructure. They are data. Once you treat them that way — with residency policies, prefetch schedules, and quantization as a bandwidth contract — the serving stack becomes significantly more capable at the same hardware cost.</p></blockquote>
+</div><!-- /body -->
+</div><!-- /container -->
+<form action="https://buttondown.email/api/emails/embed-subscribe/manishklach" class="subscribe" method="post" target="_blank"><label for="bd-email">Get new posts by email</label><input id="bd-email" name="email" placeholder="you@example.com" required="" type="email"/><input name="tag" type="hidden" value="blog"/><input type="submit" value="Subscribe"/></form><div id="webmentions"></div><footer class="post-footer"><hr/><p>© 2026 <a href="/index.html">Manish KL</a> · <a href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></p></footer></article>
+
+</body>
+</html>
