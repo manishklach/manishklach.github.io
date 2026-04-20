@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>GPU-to-CPU Deployment Ratios in Modern Server Deployments v1.3 | Manish KL</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+      animation: {
+        'fade-in': 'fadeIn 0.6s ease-out',
+        'slide-up': 'slideUp 0.5s ease-out',
+        'pulse-slow': 'pulse 3s ease-in-out infinite',
+      },
+      keyframes: {
+        fadeIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        slideUp: {
+          '0%': { transform: 'translateY(20px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+      }
+    }
+  }
+}
+</script>
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script async="" id="MathJax-script" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #0a0e1a;
+  --bg-elev: #111827;
+  --text: #e5e7eb;
+  --text-dim: #9ca3af;
+  --accent: #3b82f6;
+  --accent-2: #8b5cf6;
+  --border: #1f2937;
+  --success: #10b981;
+  --warn: #f59e0b;
+  --projection: #ef4444;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.prose h2 {
+  scroll-margin-top: 100px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.025em;
+}
+
+.badge-observed {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-model {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.badge-projection {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--projection);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.callout {
+  border-left: 3px solid var(--accent);
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.08) 0%, transparent 100%);
+}
+
+.code-block {
+  background: #0d1117;
+  border: 1px solid var(--border);
+}
+
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.nav-blur {
+  backdrop-filter: blur(12px);
+  background: rgba(10, 14, 26, 0.8);
+}
+
+@media (max-width: 768px) {
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+</style>
+<meta content="GPU:CPU planning is becoming workload-specific again. For long-context, retrieval-heavy, and orchestration-heavy inference, CPU capacity, memory bandwidth,..." name="description"/><meta content="gpu cpu ratios, server deployment ratios, inference infrastructure, ai server design, cpu gpu planning, long-context inference, Manish KL" name="keywords"/><meta content="Manish KL" name="author"/><meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/><meta content="light dark" name="color-scheme"/><link href="https://manishklach.github.io/writings/gpu-to-cpu-deployment-ratios-modern-server-deployments.html" rel="canonical"/><link href="/feed.xml" rel="alternate" title="Manish KL RSS" type="application/rss+xml"/><link href="/feed.json" rel="alternate" title="Manish KL JSON" type="application/feed+json"/><link href="https://webmention.io/manishklach.github.io/webmention" rel="webmention"/><link href="https://webmention.io/manishklach.github.io/xmlrpc" rel="pingback"/><meta content="article" property="og:type"/><meta content="GPU-to-CPU Deployment Ratios in Modern Server Deployments v1.3 | Manish KL" property="og:title"/><meta content="GPU:CPU planning is becoming workload-specific again. For long-context, retrieval-heavy, and orchestration-heavy inference, CPU capacity, memory bandwidth,..." property="og:description"/><meta content="https://manishklach.github.io/writings/gpu-to-cpu-deployment-ratios-modern-server-deployments.html" property="og:url"/><meta content="Manish KL" property="og:site_name"/><meta content="https://manishklach.github.io/og/gpu-to-cpu-deployment-ratios-modern-server-deployments.png" property="og:image"/><meta content="Preview image for GPU-to-CPU Deployment Ratios in Modern Server Deployments v1.3 by Manish KL" property="og:image:alt"/><meta content="2026-04-20T00:00:00Z" property="article:published_time"/><meta content="2026-04-20T00:00:00Z" property="article:modified_time"/><meta content="Manish KL" property="article:author"/><meta content="summary_large_image" name="twitter:card"/><meta content="GPU-to-CPU Deployment Ratios in Modern Server Deployments v1.3" name="twitter:title"/><meta content="GPU:CPU planning is becoming workload-specific again. For long-context, retrieval-heavy, and orchestration-heavy inference, CPU capacity, memory bandwidth,..." name="twitter:description"/><meta content="https://manishklach.github.io/og/gpu-to-cpu-deployment-ratios-modern-server-deployments.png" name="twitter:image"/><script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "GPU-to-CPU Deployment Ratios in Modern Server Deployments v1.3",
+  "description": "GPU:CPU planning is becoming workload-specific again. For long-context, retrieval-heavy, and orchestration-heavy inference, CPU capacity, memory bandwidth,...",
+  "url": "https://manishklach.github.io/writings/gpu-to-cpu-deployment-ratios-modern-server-deployments.html",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/gpu-to-cpu-deployment-ratios-modern-server-deployments.html",
+  "datePublished": "2026-04-20",
+  "dateModified": "2026-04-20",
+  "author": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/index.html"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/index.html"
+  },
+  "inLanguage": "en"
+}</script><style>
+.reading-meta { margin: 0.9rem 0 0; font-size: 0.95rem; line-height: 1.6; color: inherit; opacity: 0.78; }
+.reading-meta a { color: inherit; text-decoration: underline; }
+.subscribe { margin: 2rem 0; display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.subscribe label { font-weight: 600; }
+.subscribe input[type=email] { padding: 0.6rem 0.8rem; width: 16rem; max-width: 100%; font: inherit; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 0.5rem; }
+.subscribe input[type=submit] { padding: 0.6rem 1rem; font: inherit; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 0.5rem; cursor: pointer; }
+#webmentions { margin-top: 2rem; opacity: 0.85; }
+#webmentions img { width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; margin-right: 0.4rem; }
+.post-footer { margin-top: 1.5rem; padding-bottom: 2rem; font-size: 0.95rem; line-height: 1.7; opacity: 0.85; }
+.post-footer a { color: inherit; text-decoration: underline; }
+</style></head>
+<body class="antialiased"><div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6"><a class="text-sm opacity-80 hover:opacity-100" href="/writings.html">← All posts</a></div>
+<div class="sticky top-0 z-50 nav-blur border-b border-gray-800" id="nav">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex items-center justify-between h-16">
+<div class="flex items-center gap-3">
+<svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span class="font-bold text-lg">Infra Ratios v1.3</span>
+</div>
+<div class="hidden md:flex items-center gap-6 text-sm text-gray-400">
+<a class="hover:text-white transition" href="#intro">Intro</a>
+<a class="hover:text-white transition" href="#calculator">Calculator</a>
+<a class="hover:text-white transition" href="#architecture">Architecture</a>
+<a class="hover:text-white transition" href="#thermal">Thermal</a>
+<a class="hover:text-white transition" href="#refs">Refs</a>
+</div>
+</div>
+</div>
+</div>
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12" data-pagefind-body="">
+<section class="mb-16 animate-fade-in" id="intro">
+<div class="max-w-4xl">
+<div class="mb-4">
+<span class="badge badge-observed">v1.3 Technical Blog</span>
+</div>
+<h1 class="text-4xl md:text-6xl font-extrabold mb-6 leading-tight">
+        GPU-to-CPU Deployment Ratios in<br/><span class="gradient-text">Modern Server Deployments</span>
+</h1><p class="reading-meta">Published <time datetime="2026-04-20">Apr 20, 2026</time> · 6 min read · <a href="/index.html">Manish KL</a></p>
+<p class="text-xl md:text-2xl text-gray-300 mb-4 leading-relaxed">
+        GPU:CPU planning is becoming workload-specific again. For long-context, retrieval-heavy, and orchestration-heavy inference, CPU capacity, memory bandwidth, and data movement can become first-class constraints.
+      </p>
+<p class="text-base text-gray-400 mb-8">
+        This post examines where and why CPU importance rises in specific inference regimes. It is not a universal claim about all AI workloads, and it should not be read as a replacement for workload profiling.
+      </p>
+<div class="callout p-5 rounded-lg mb-8">
+<div class="flex items-start gap-3">
+<svg class="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<div>
+<p class="font-semibold text-white mb-1">Scope &amp; Definitions</p>
+<p class="text-sm text-gray-300">This analysis focuses on inference infrastructure. Training ratios often remain in the 4:1-8:1 range on NVLink systems. Unless stated otherwise, ratios here are physical GPU:CPU socket counts at the node level, not logical threads or vCPUs.</p>
+</div>
+</div>
+</div>
+<div class="flex flex-wrap gap-3">
+<span class="badge badge-observed">[Observed: Shipping Systems]</span>
+<span class="badge badge-model">[Model: Back-of-envelope]</span>
+<span class="badge badge-projection">[Projection: Architectural Trend]</span>
+</div>
+</div>
+</section>
+<section class="mb-16">
+<div class="grid md:grid-cols-3 gap-6">
+<div class="bg-gray-900/50 border border-gray-800 rounded-xl p-6 hover:border-blue-500/50 transition-all duration-300 animate-slide-up">
+<div class="flex items-center justify-between mb-4">
+<h3 class="text-lg font-bold">Training</h3>
+<span class="badge badge-observed">Observed</span>
+</div>
+<p class="text-3xl font-bold mb-2 text-blue-400">8:1 – 4:1</p>
+<p class="text-sm text-gray-400">H100/H200 NVL8. GPU-bound matmul. CPU feeds data loaders and NCCL.</p>
+</div>
+<div class="bg-gray-900/50 border border-gray-800 rounded-xl p-6 hover:border-purple-500/50 transition-all duration-300 animate-slide-up" style="animation-delay: 0.1s">
+<div class="flex items-center justify-between mb-4">
+<h3 class="text-lg font-bold">Short-context Inference</h3>
+<span class="badge badge-observed">Observed</span>
+</div>
+<p class="text-3xl font-bold mb-2 text-purple-400">8:2 – 4:2</p>
+<p class="text-sm text-gray-400">DGX H100, &lt; 8k tokens. KV cache fits in HBM. CPU for tokenization + scheduling.</p>
+</div>
+<div class="bg-gray-900/50 border border-gray-800 rounded-xl p-6 hover:border-red-500/50 transition-all duration-300 animate-slide-up" style="animation-delay: 0.2s">
+<div class="flex items-center justify-between mb-4">
+<h3 class="text-lg font-bold">Long-context / RAG</h3>
+<span class="badge badge-projection">Projection</span>
+</div>
+<p class="text-3xl font-bold mb-2 text-red-400">1:2 – 2:4</p>
+<p class="text-sm text-gray-400">128k-1M tokens. CPU memory bandwidth and capacity start to matter for retrieval, paging, and KV placement. GPU still dominates dense compute, but system balance shifts.</p>
+</div>
+</div>
+</section>
+<section class="mb-16 prose prose-invert max-w-none" id="generations">
+<h2 class="text-3xl font-extrabold mb-6">Platform Generations &amp; The Generational Shift</h2>
+<div class="table-wrapper">
+<table class="w-full text-sm border border-gray-800 rounded-lg overflow-hidden">
+<thead class="bg-gray-900">
+<tr class="border-b border-gray-800">
+<th class="text-left p-4 font-semibold">Platform</th>
+<th class="text-left p-4 font-semibold">Typical GPU:CPU</th>
+<th class="text-left p-4 font-semibold">Interconnect</th>
+<th class="text-left p-4 font-semibold">Classification</th>
+<th class="text-left p-4 font-semibold">Dominant Constraint</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-gray-800">
+<tr class="bg-gray-900/30">
+<td class="p-4 font-mono font-semibold">Hopper DGX H100</td>
+<td class="p-4">8:2</td>
+<td class="p-4">NVLink 900 GB/s die-to-die<br/>PCIe 5.0 128 GB/s to host</td>
+<td class="p-4"><span class="badge badge-observed">Observed</span></td>
+<td class="p-4">GPU HBM3 capacity, NVLink BW</td>
+</tr>
+<tr class="bg-gray-900/30">
+<td class="p-4 font-mono font-semibold">GH200 Grace-Hopper</td>
+<td class="p-4">1:1</td>
+<td class="p-4">NVLink-C2C 900 GB/s<br/>Cache-coherent</td>
+<td class="p-4"><span class="badge badge-observed">Observed</span></td>
+<td class="p-4">Balanced HBM + LPDDR5X</td>
+</tr>
+<tr class="bg-gray-900/30">
+<td class="p-4 font-mono font-semibold">GB200 Grace-Blackwell</td>
+<td class="p-4">2:1 NVL72</td>
+<td class="p-4">NVLink-C2C 1.8 TB/s</td>
+<td class="p-4"><span class="badge badge-observed">Observed</span></td>
+<td class="p-4">LPDDR5X BW for CPU</td>
+</tr>
+<tr class="bg-gray-900/30">
+<td class="p-4 font-mono font-semibold">Rubin Ultra <sup>1</sup></td>
+<td class="p-4">1:2 <span class="text-gray-500">(projected for some inference profiles)</span></td>
+<td class="p-4">NVLink-C2C &gt; 1.8 TB/s</td>
+<td class="p-4"><span class="badge badge-projection">Projection</span></td>
+<td class="p-4">CPU memory BW, socket count</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p class="text-xs text-gray-500 mt-3">
+<sup>1</sup> This row is a forward-looking workload projection, not a shipping product specification. It reflects how coherent CPU-GPU links, larger host-memory pools, and orchestration-heavy inference may push some future systems toward more CPU capacity per GPU.
+    </p>
+<div class="mt-8 p-6 bg-gray-900/50 border border-gray-800 rounded-xl">
+<h3 class="text-xl font-bold mb-4">Why the balance shifts for affected workloads</h3>
+<p class="text-gray-300 leading-relaxed mb-4">
+        Training-era sizing rules assume dense GPU compute is the primary limiter. For long-context inference, the roofline can shift toward memory movement and cache placement. KV-cache size grows with batch, layers, hidden size, and context length. Once working-set size stops fitting comfortably in local HBM, architects are forced to choose among sharding, paging, offload, or more aggressive batching trade-offs.
+      </p>
+<p class="text-gray-300 leading-relaxed">
+        Coherent CPU-GPU fabrics make host-memory participation far more practical than it was in PCIe-only designs. That does not make CPUs “the new accelerator”; it means some inference stacks become constrained by memory bandwidth, page movement, retrieval, tokenization, and orchestration before raw dense compute is exhausted. In those cases, adding GPU FLOPS alone may not improve end-to-end throughput or tail latency.
+      </p>
+</div>
+</section>
+<section class="mb-16" id="calculator">
+<h2 class="text-3xl font-extrabold mb-6">Workload Sizing Calculator</h2>
+<div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-5 mb-6">
+<div class="flex items-start gap-3">
+<svg class="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<div>
+<p class="font-semibold text-amber-300 mb-1">Back-of-the-envelope estimator</p>
+<p class="text-sm text-gray-300">Assumes a simplified roofline-style model and ignores NUMA effects, scheduler behavior, fragmentation, batching policy, quantization details, and software overheads. Use it as directional intuition, not procurement guidance. Any real sizing exercise should be validated with traces and production-like load tests.</p>
+</div>
+</div>
+</div>
+<div class="grid lg:grid-cols-2 gap-6">
+<div class="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+<h3 class="text-lg font-bold mb-4">Inputs</h3>
+<div class="space-y-4">
+<div>
+<label class="block text-sm font-medium text-gray-300 mb-2">Model Size <span class="text-gray-500">(params)</span></label>
+<select class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" id="calc-model">
+<option value="7">7B (Llama-2)</option>
+<option selected="" value="70">70B (Llama-3)</option>
+<option value="405">405B (Llama-3.1)</option>
+</select>
+</div>
+<div>
+<label class="block text-sm font-medium text-gray-300 mb-2">Batch Size</label>
+<input class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" id="calc-batch" max="1024" min="1" type="number" value="128"/>
+</div>
+<div>
+<label class="block text-sm font-medium text-gray-300 mb-2">Context Length <span class="text-gray-500">(tokens)</span></label>
+<input class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" id="calc-ctx" max="1048576" min="2048" step="1024" type="number" value="131072"/>
+</div>
+<div>
+<label class="block text-sm font-medium text-gray-300 mb-2">Target Platform</label>
+<select class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" id="calc-platform">
+<option value="h100">H100 DGX 8:2</option>
+<option value="gh200">GH200 1:1</option>
+<option selected="" value="gb200">GB200 NVL72</option>
+<option value="rubin">Rubin 1:2 (Projection)</option>
+</select>
+</div>
+<button class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition duration-200" id="calc-run">
+            Calculate Estimate
+          </button>
+</div>
+</div>
+<div class="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+<h3 class="text-lg font-bold mb-4">Estimate: Outputs <span class="badge badge-model ml-2">Model</span></h3>
+<div class="space-y-4" id="calc-output">
+<div class="text-sm text-gray-400">Run calculation to see estimates...</div>
+</div>
+</div>
+</div>
+</section>
+<section class="mb-16 prose prose-invert max-w-none" id="architecture">
+<h2 class="text-3xl font-extrabold mb-6">Section 5: Interconnect Nuance &amp; Coherent Memory</h2>
+<div class="callout p-5 rounded-lg mb-6">
+<p class="font-semibold text-white mb-2">NVLink-C2C at 900GB/s-1.8TB/s is cache-coherent</p>
+<p class="text-sm text-gray-300">
+        Coherent CPU-GPU links materially change the programming model. In PCIe-only systems, host participation often means explicit copies, managed-memory penalties, or page-fault-driven migration. In coherent C2C designs, some host-resident structures become cheaper to access and reason about. That does not eliminate locality concerns, but it reduces the software friction of hybrid memory use.
+      </p>
+</div>
+<p class="text-gray-300 leading-relaxed mb-4">
+<span class="badge badge-observed mr-2">Observed: Shipping Systems</span>
+      On PCIe-attached systems, host-to-device interaction is still much more constrained than on coherent packages. Managed-memory or spill-heavy designs can incur painful migration behavior and large latency penalties once access patterns become irregular. That is one reason long-context inference and memory-heavy retrieval pipelines often degrade sharply when they outgrow local HBM.
+    </p>
+<p class="text-gray-300 leading-relaxed mb-4">
+<span class="badge badge-observed mr-2">Observed: Shipping Systems</span>
+      On GH200- and GB200-style coherent systems, the CPU and GPU can participate in a much tighter memory model. The practical effect is that host memory becomes far more usable for certain classes of inference support work, even though local HBM is still the preferred home for the hottest data. That distinction matters: coherence improves what is feasible, but it does not erase the gap between “accessible” and “optimal.” <sup><a class="text-blue-400 hover:underline" href="#ref-1">[1]</a></sup>
+</p>
+<div class="code-block rounded-lg p-4 my-6 font-mono text-sm overflow-x-auto">
+<div class="text-gray-500 mb-2">// Hopper: Explicit copy required</div>
+<div class="text-blue-300">void* cpu_buf = malloc(1&lt;&lt;30);</div>
+<div class="text-blue-300">void* gpu_buf;</div>
+<div class="text-blue-300">cudaMalloc(&amp;gpu_buf, 1&lt;&lt;30);</div>
+<div class="text-red-400">cudaMemcpy(gpu_buf, cpu_buf, 1&lt;&lt;30, cudaMemcpyHostToDevice); // PCIe BW</div>
+<div class="text-gray-500 mt-4 mb-2">// Grace-Blackwell: Direct access</div>
+<div class="text-blue-300">void* unified_buf = malloc(1&lt;&lt;30); // CPU NUMA node</div>
+<div class="text-green-400">gpu_kernel&lt;&lt;&lt;...&gt;&gt;&gt;(unified_buf); // Coherent access path; locality still matters</div>
+</div>
+<p class="text-gray-300 leading-relaxed">
+<span class="badge badge-projection mr-2">Projection: Architectural Trend</span>
+      This opens the door to cleaner hybrid-memory designs. Tokenization, retrieval, safety checks, schedulers, and some queueing/orchestration logic can live closer to the CPU while the GPU stays focused on dense compute. The ratio implication is simple: if your bottleneck is on the host side, adding GPUs alone will not fix it.
+    </p>
+</section>
+<section class="mb-16 prose prose-invert max-w-none" id="thermal">
+<h2 class="text-3xl font-extrabold mb-6">Section 8 &amp; 9: Power, Cooling &amp; Facility Impact</h2>
+<div class="bg-red-500/10 border border-red-500/30 rounded-xl p-5 mb-6">
+<div class="flex items-start gap-3">
+<svg class="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<div>
+<p class="font-semibold text-red-300 mb-1">Thermal density note</p>
+<p class="text-sm text-gray-300">
+            Power and facility planning do not get simpler just because per-node GPU count may fall in some inference-oriented designs. A more CPU-heavy node can trade one bottleneck for another: socket density, DIMM count, memory-channel utilization, and cooling complexity all become more important. The architectural point is not that every future rack will be easier to cool; it is that planners may need to think about whole-node balance rather than GPU thermals in isolation.
+          </p>
+</div>
+</div>
+</div>
+<h3 class="text-xl font-bold mb-4">Section 8: Rules of Thumb for Capacity Planning</h3>
+<p class="text-gray-400 mb-4">Condense previous verbose list to three sizing rules. For detailed analysis, use calculator.</p>
+<ul class="space-y-3 text-gray-300">
+<li class="flex items-start gap-3">
+<span class="text-blue-400 font-bold mt-1">1.</span>
+<div>
+<span class="font-semibold text-white">Training &amp; Fine-tuning:</span> Size 4:1 to 8:1 GPU:CPU. Optimizer state and activations dominate HBM. CPU handles data loading only. NVLink &gt; 400 GB/s required.
+        </div>
+</li>
+<li class="flex items-start gap-3">
+<span class="text-purple-400 font-bold mt-1">2.</span>
+<div>
+<span class="font-semibold text-white">Short-context inference &lt; 32k:</span> Size 8:2 to 4:2. KV cache fits HBM. CPU for tokenization, batching. PCIe BW not critical.
+        </div>
+</li>
+<li class="flex items-start gap-3">
+<span class="text-red-400 font-bold mt-1">3.</span>
+<div>
+<span class="font-semibold text-white">Long-context/RAG &gt; 128k:</span> Start by testing 1:1 and, where coherent host memory is central to the design, evaluate whether more CPU capacity improves end-to-end behavior. Plan around memory bandwidth, placement, and software overheads, not just GPU count.
+        </div>
+</li>
+</ul>
+<h3 class="text-xl font-bold mb-4 mt-8">Section 9: Facility Manager Checklist</h3>
+<div class="grid md:grid-cols-2 gap-4">
+<div class="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+<h4 class="font-semibold text-white mb-2">Hopper-era DC</h4>
+<ul class="text-sm text-gray-400 space-y-1">
+<li>• 6-8kW per 8U node</li>
+<li>• 4x 200GbE NICs</li>
+<li>• 2 CPU sockets, 24-32 DIMMs</li>
+<li>• GPU cold plates, air for CPU</li>
+</ul>
+</div>
+<div class="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+<h4 class="font-semibold text-white mb-2">Rubin-era DC <span class="badge badge-projection ml-2">Projection</span></h4>
+<ul class="text-sm text-gray-400 space-y-1">
+<li>• 2.5-3.5kW per 2U node</li>
+<li>• 2x 400GbE/800GbE NICs</li>
+<li>• 4 CPU sockets, 48-64 DIMMs</li>
+<li>• Full-node liquid, rear door HX</li>
+</ul>
+</div>
+</div>
+</section>
+<section class="mb-16 prose prose-invert max-w-none" id="refs">
+<h2 class="text-3xl font-extrabold mb-6">References, Methodology &amp; Confidence Levels</h2>
+<div class="text-sm text-gray-400 leading-relaxed space-y-3">
+<p id="ref-1">
+        [1] NVIDIA public architecture materials and GTC sessions covering Grace Hopper, Grace Blackwell, and NVLink-C2C. These establish the existence and direction of coherent CPU-GPU memory fabrics used throughout this post.
+      </p>
+<p>
+        [2] Vendor architecture briefs, product pages, and public conference talks for H100, GH200, and GB200 platforms. These support the observed system-level ratios and interconnect discussion.
+      </p>
+<p>
+        [3] All calculator outputs are first-pass analytical estimates derived from simple working-set and bandwidth assumptions. They are included to illustrate directionality, not to claim benchmark-equivalent precision.
+      </p>
+<p class="text-xs text-gray-500 border-t border-gray-800 pt-4 mt-4">
+        Anything explicitly labeled <span class="badge badge-projection">[Projection]</span> should be read as architectural interpretation rather than established field consensus. Where exact public benchmarking is unavailable, the post intentionally uses softer language and separates observed platforms from forward-looking projections.
+      </p>
+</div>
+</section>
+<form action="https://buttondown.email/api/emails/embed-subscribe/manishklach" class="subscribe" method="post" target="_blank"><label for="bd-email">Get new posts by email</label><input id="bd-email" name="email" placeholder="you@example.com" required="" type="email"/><input name="tag" type="hidden" value="blog"/><input type="submit" value="Subscribe"/></form><div id="webmentions"></div><footer class="post-footer"><hr/><p>© 2026 <a href="/index.html">Manish KL</a> · <a href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></p></footer></main>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const MathJax = window.MathJax;
+  
+  if (MathJax) {
+    MathJax.typesetPromise();
+  }
+
+  const calcRun = document.getElementById('calc-run');
+  const calcOutput = document.getElementById('calc-output');
+  
+  const platformSpecs = {
+    h100: { name: 'H100 DGX', gpu_bw_tb: 3.35, cpu_bw_gb: 102, gpu_cpu_ratio: 8/2, nvlink_coherent: false, c2c_bw: 0 },
+    gh200: { name: 'GH200', gpu_bw_tb: 3.35, cpu_bw_gb: 900, gpu_cpu_ratio: 1/1, nvlink_coherent: true, c2c_bw: 900 },
+    gb200: { name: 'GB200 NVL72', gpu_bw_tb: 8.0, cpu_bw_gb: 1800, gpu_cpu_ratio: 2/1, nvlink_coherent: true, c2c_bw: 1800 },
+    rubin: { name: 'Rubin 1:2 (Projection)', gpu_bw_tb: 13.0, cpu_bw_gb: 2400, gpu_cpu_ratio: 1/2, nvlink_coherent: true, c2c_bw: 1800 }
+  };
+
+  function calculate() {
+    const model = parseFloat(document.getElementById('calc-model').value);
+    const batch = parseInt(document.getElementById('calc-batch').value);
+    const ctx = parseInt(document.getElementById('calc-ctx').value);
+    const platformKey = document.getElementById('calc-platform').value;
+    const platform = platformSpecs[platformKey];
+
+    // KV cache size: 2 * batch * ctx * hidden_size * num_layers * 2 bytes (fp16)
+    // Approximate: hidden_size ~ 8192 for 70B, layers ~ 80
+    const hidden = model === 7 ? 4096 : model === 70 ? 8192 : 16384;
+    const layers = model === 7 ? 32 : model === 70 ? 80 : 126;
+    const kvBytes = 2 * batch * ctx * hidden * layers * 2;
+    const kvGB = kvBytes / (1024**3);
+
+    // Decode phase: read KV for attention. Tokens per sec bound by BW
+    const bytesPerToken = batch * 2 * hidden * layers * 2; // K + V
+    const gpuToksSec = (platform.gpu_bw_tb * 1e12) / bytesPerToken;
+    const cpuToksSec = (platform.cpu_bw_gb * 1e9) / bytesPerToken;
+    const c2cToksSec = platform.nvlink_coherent ? (platform.c2c_bw * 1e9) / bytesPerToken : 0;
+
+    const bottleneck = Math.min(gpuToksSec, platform.nvlink_coherent ? cpuToksSec : Infinity);
+    const limiter = gpuToksSec < cpuToksSec ? 'GPU HBM' : platform.nvlink_coherent ? 'CPU Memory/C2C' : 'GPU HBM';
+
+    const recRatio = kvGB > 256 ? '1:2 CPU-heavy' : kvGB > 64 ? '1:1 Balanced' : '4:1 GPU-heavy';
+    
+    calcOutput.innerHTML = `
+      <div class="space-y-4 animate-fade-in">
+        <div class="pb-3 border-b border-gray-800">
+          <div class="text-xs text-gray-500 mb-1">Estimate: KV Cache Size</div>
+          <div class="text-2xl font-bold text-white">${kvGB.toFixed(1)} <span class="text-lg text-gray-400">GB</span></div>
+          <div class="text-xs text-gray-500 mt-1">${(kvBytes/1e12).toFixed(2)} TB @ ${batch} batch, ${ctx/1024}k ctx</div>
+        </div>
+        
+        <div class="pb-3 border-b border-gray-800">
+          <div class="text-xs text-gray-500 mb-1">Estimate: Decode Throughput Limit</div>
+          <div class="text-2xl font-bold text-blue-400">${bottleneck.toFixed(0)} <span class="text-lg text-gray-400">tok/s</span></div>
+          <div class="text-xs text-gray-500 mt-1">Bottleneck: ${limiter}</div>
+        </div>
+
+        <div class="pb-3 border-b border-gray-800">
+          <div class="text-xs text-gray-500 mb-1">Platform BW</div>
+          <div class="text-sm text-gray-300">GPU: ${platform.gpu_bw_tb} TB/s HBM</div>
+          <div class="text-sm text-gray-300">CPU: ${platform.cpu_bw_gb} GB/s ${platform.nvlink_coherent ? '+ ' + platform.c2c_bw + ' GB/s C2C' : 'PCIe'}</div>
+        </div>
+
+        <div class="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+          <div class="text-xs text-blue-400 font-semibold mb-1">Estimate: Recommended Ratio</div>
+          <div class="text-lg font-bold text-white">${recRatio}</div>
+          <div class="text-xs text-gray-400 mt-1">For ${platform.name}</div>
+        </div>
+
+        <div class="text-xs text-gray-500 pt-2">
+          <span class="badge badge-model">[Model: Back-of-envelope]</span> Simplified roofline. Ignores attention FLOPS, quantization, sparsity. Profile with nsys.
+        </div>
+      </div>
+    `;
+
+    if (MathJax) MathJax.typesetPromise([calcOutput]);
+  }
+
+  calcRun.addEventListener('click', calculate);
+  calculate(); // Initial run
+
+  // Smooth scroll for nav
+  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+      e.preventDefault();
+      const target = document.querySelector(this.getAttribute('href'));
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+});
+</script>
+</body>
+</html>
