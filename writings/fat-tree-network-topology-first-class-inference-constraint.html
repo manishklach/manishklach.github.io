@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A systems essay on why fat-tree topology breaks down for modern inference traffic, MoE routing, KV transfer, and topology-aware scheduling.">
+<meta name="author" content="MANISH AI">
+<meta name="keywords" content="fat-tree topology, AI networking, inference scheduling, MoE routing, KV cache transfer, topology-aware scheduling, AI cluster network topology">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://manishklach.github.io/writings/fat-tree-network-topology-first-class-inference-constraint.html">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Fat-Tree Is Lying to You: Network Topology as a First-Class Inference Constraint | MANISH AI">
+<meta property="og:description" content="A systems essay on why fat-tree topology breaks down for modern inference traffic, MoE routing, KV transfer, and topology-aware scheduling.">
+<meta property="og:url" content="https://manishklach.github.io/writings/fat-tree-network-topology-first-class-inference-constraint.html">
+<meta property="og:site_name" content="MANISH AI">
+<meta property="og:image" content="https://manishklach.github.io/og/fat-tree-network-topology-first-class-inference-constraint.png">
+<meta property="og:image:alt" content="Social preview for Fat-Tree Is Lying to You: Network Topology as a First-Class Inference Constraint">
+<meta property="article:published_time" content="2026-04-21">
+<meta property="article:modified_time" content="2026-04-21">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Fat-Tree Is Lying to You: Network Topology as a First-Class Inference Constraint | MANISH AI">
+<meta name="twitter:description" content="A systems essay on why fat-tree topology breaks down for modern inference traffic, MoE routing, KV transfer, and topology-aware scheduling.">
+<meta name="twitter:image" content="https://manishklach.github.io/og/fat-tree-network-topology-first-class-inference-constraint.png">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Fat-Tree Is Lying to You: Network Topology as a First-Class Inference Constraint","description":"A systems essay on why fat-tree topology breaks down for modern inference traffic, MoE routing, KV transfer, and topology-aware scheduling.","url":"https://manishklach.github.io/writings/fat-tree-network-topology-first-class-inference-constraint.html","datePublished":"2026-04-21","dateModified":"2026-04-21","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://manishklach.github.io/writings/fat-tree-network-topology-first-class-inference-constraint.html"},"image":"https://manishklach.github.io/og/fat-tree-network-topology-first-class-inference-constraint.png","inLanguage":"en-US","keywords":["fat-tree topology","AI networking","inference scheduling","MoE routing","KV cache transfer","topology-aware scheduling","AI cluster network topology"]}</script>
+<title>Fat-Tree Is Lying to You: Network Topology as a First-Class Inference Constraint | MANISH AI</title>
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --text: #e8e6e1;
+    --muted: #8a8680;
+    --accent: #c8a96e;
+    --border: #2a2825;
+    --code-bg: #1a1917;
+    --tag-bg: #1e1c1a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Georgia', serif; font-size: 18px; line-height: 1.75; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .site-header { padding: 1.5rem 2rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .site-logo { font-family: monospace; font-size: 0.85rem; color: var(--muted); }
+  .site-nav { display: flex; gap: 1.5rem; font-size: 0.85rem; font-family: monospace; }
+  .site-nav a { color: var(--muted); }
+  .back-link { font-family: monospace; font-size: 0.8rem; color: var(--muted); padding: 1.5rem 2rem 0; display: block; max-width: 820px; margin: 0 auto; }
+
+  .essay-container { max-width: 820px; margin: 0 auto; padding: 2.5rem 2rem 6rem; }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; }
+  .tag { background: var(--tag-bg); border: 1px solid var(--border); color: var(--muted); font-size: 0.72rem; font-family: monospace; padding: 0.25rem 0.6rem; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  h1 { font-size: 2.1rem; line-height: 1.25; font-weight: normal; color: var(--text); margin-bottom: 1rem; letter-spacing: -0.02em; }
+  .essay-meta { font-size: 0.82rem; font-family: monospace; color: var(--muted); margin-bottom: 1.5rem; }
+  .abstract { border-left: 3px solid var(--accent); padding: 1.2rem 1.5rem; background: var(--code-bg); margin-bottom: 2.5rem; font-size: 0.95rem; color: #c8c4bc; font-style: italic; line-height: 1.7; }
+  .abstract strong { color: var(--text); font-style: normal; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 3rem; }
+  .stat-box { background: var(--code-bg); border: 1px solid var(--border); padding: 1rem; text-align: center; }
+  .stat-num { font-family: monospace; font-size: 1.3rem; color: var(--accent); display: block; margin-bottom: 0.3rem; font-weight: bold; }
+  .stat-label { font-size: 0.72rem; color: var(--muted); font-family: monospace; line-height: 1.3; }
+
+  .toc { background: var(--code-bg); border: 1px solid var(--border); padding: 1.5rem; margin-bottom: 3rem; }
+  .toc-title { font-family: monospace; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 1rem; }
+  .toc ol { padding-left: 1.2rem; }
+  .toc li { font-size: 0.85rem; font-family: monospace; margin-bottom: 0.4rem; }
+  .toc a { color: var(--muted); }
+  .toc a:hover { color: var(--accent); }
+
+  h2 { font-size: 1.4rem; font-weight: normal; color: var(--text); margin: 3rem 0 1.2rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); letter-spacing: -0.01em; }
+  h3 { font-size: 1.1rem; font-weight: bold; color: var(--text); margin: 2rem 0 0.8rem; }
+  p { margin-bottom: 1.4rem; }
+
+  blockquote { border-left: 3px solid var(--accent); padding: 1rem 1.5rem; margin: 2rem 0; background: var(--code-bg); }
+  blockquote p { margin: 0; color: #c8c4bc; font-style: italic; }
+  blockquote strong { color: var(--text); font-style: normal; }
+
+  pre { background: var(--code-bg); border: 1px solid var(--border); padding: 1.4rem; overflow-x: auto; margin: 1.8rem 0; border-radius: 2px; }
+  code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82rem; color: #a8c4a2; line-height: 1.6; }
+  p code { background: var(--code-bg); padding: 0.1em 0.4em; color: #a8c4a2; font-size: 0.82rem; border: 1px solid var(--border); }
+
+  .code-label { font-family: monospace; font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: -1px; display: block; background: #141311; border: 1px solid var(--border); border-bottom: none; padding: 0.4rem 1rem; width: fit-content; }
+
+  table { width: 100%; border-collapse: collapse; margin: 2rem 0; font-size: 0.85rem; }
+  th { background: var(--code-bg); color: var(--muted); font-family: monospace; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.7rem 1rem; text-align: left; border: 1px solid var(--border); }
+  td { padding: 0.7rem 1rem; border: 1px solid var(--border); color: #c8c4bc; vertical-align: top; }
+  tr:nth-child(even) td { background: #141311; }
+  td strong { color: var(--text); }
+
+  .callout { background: #0d1a12; border: 1px solid #1e3a28; padding: 1.2rem 1.5rem; margin: 2rem 0; }
+  .callout-label { font-family: monospace; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: #4a9a6a; margin-bottom: 0.6rem; }
+  .callout p { margin: 0; font-size: 0.9rem; color: #b0ccb8; }
+
+  .callout-warn { background: #1a0d0d; border: 1px solid #3a1e1e; }
+  .callout-warn .callout-label { color: #c06060; }
+  .callout-warn p { color: #ccb0b0; }
+
+  .essay-footer { margin-top: 4rem; padding-top: 2rem; border-top: 1px solid var(--border); font-size: 0.8rem; font-family: monospace; color: var(--muted); }
+  #webmentions { margin-top: 3rem; }
+  @media (max-width: 760px) { .site-header { align-items: flex-start; flex-direction: column; gap: 1rem; } .site-nav { flex-wrap: wrap; gap: 1rem; } .stats-row { grid-template-columns: repeat(2, 1fr); } .essay-container { padding-inline: 1.25rem; } h1 { font-size: 1.72rem; } }
+  @media (max-width: 520px) { .stats-row { grid-template-columns: 1fr; } body { font-size: 16px; } }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-logo">MA · MANISH AI</div>
+  <nav class="site-nav">
+    <a href="/index.html">Home</a>
+    <a href="/patents.html">Patents</a>
+    <a href="/writings.html">Writings</a>
+    <a href="/index.html#contact">Contact</a>
+  </nav>
+</header>
+
+<a href="/writings.html" class="back-link">← All writings</a>
+
+<main class="essay-container" data-pagefind-body>
+
+  <div class="tags">
+    <span class="tag">AI Networking</span>
+    <span class="tag">Topology</span>
+    <span class="tag">Fat-Tree</span>
+    <span class="tag">Dragonfly</span>
+    <span class="tag">MoE Routing</span>
+    <span class="tag">Inference Architecture</span>
+  </div>
+
+  <h1>Fat-Tree Is Lying to You: Network Topology as a First-Class Inference Constraint</h1>
+
+  <div class="essay-meta">Published <time datetime="2026-04-21">Apr 21, 2026</time> · 22 min read · By <a href="/index.html">MANISH AI</a></div>
+
+  <div class="abstract">
+    <strong>Abstract.</strong> Fat-tree is the default network topology for AI clusters. It was designed for uniform all-to-all traffic — collective communications in distributed training where every node talks to every other node with roughly equal probability. Modern AI inference workloads are not uniform. MoE expert routing creates skewed all-to-few traffic. Prefill-decode disaggregation creates asymmetric producer-consumer pairs. KV cache transfer creates directed high-bandwidth flows between fixed endpoint pairs. Fat-tree is a bad match for all three. This essay argues that network topology is not a data-center infrastructure decision made once at cluster build time — it is a first-class inference constraint that should influence expert co-location decisions, disaggregation placement, and KV routing policy. We derive the traffic patterns of modern inference workloads from first principles, map them onto the bandwidth and latency profiles of Fat-tree, Dragonfly, and Rail-Optimized topologies, and show that topology-unaware scheduling wastes 30-50% of available network capacity on typical production inference loads. The right answer is not a new topology. It is making topology a visible input to the scheduler.
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-box">
+      <span class="stat-num">30–50%</span>
+      <span class="stat-label">network capacity wasted by topology-unaware MoE scheduling</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-num">8×</span>
+      <span class="stat-label">bisection bandwidth reduction in 3-tier Fat-tree under adversarial traffic</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-num">2–4 μs</span>
+      <span class="stat-label">extra latency per KV transfer hop crossing a spine switch vs. ToR</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-num">1</span>
+      <span class="stat-label">traffic model assumption underlying Fat-tree: uniform all-to-all. AI inference violates it.</span>
+    </div>
+  </div>
+
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#premise">The fat-tree assumption and where it breaks</a></li>
+      <li><a href="#traffic">The three traffic patterns of modern inference</a></li>
+      <li><a href="#fat-tree">Fat-tree under non-uniform load: the bisection bandwidth trap</a></li>
+      <li><a href="#dragonfly">Dragonfly: global routing and the locality problem</a></li>
+      <li><a href="#rail">Rail-optimized: the right topology for the wrong reason</a></li>
+      <li><a href="#moe-routing">MoE expert routing as a topology problem</a></li>
+      <li><a href="#pd-disagg">Prefill-decode disaggregation and asymmetric flow</a></li>
+      <li><a href="#kv-transfer">KV transfer topology: the missing scheduling input</a></li>
+      <li><a href="#scheduler">Making topology a scheduler input</a></li>
+      <li><a href="#close">The topology-aware cluster is not a hardware redesign</a></li>
+    </ol>
+  </div>
+
+  <h2 id="premise">1. The fat-tree assumption and where it breaks</h2>
+
+  <p>Fat-tree became the dominant AI cluster topology for a specific reason: it was designed to handle all-to-all collective communications in distributed training with full bisection bandwidth. In an ideal Fat-tree with enough oversubscription ratio, any node can communicate with any other node at line rate simultaneously. The topology is symmetric, non-blocking (in theory), and administratively simple — every port has the same bandwidth, routing is ECMP, and the cluster looks like a flat non-hierarchical network to the application.</p>
+
+  <p>The traffic model that justifies Fat-tree is: every node talks to every other node with equal probability, and the aggregate traffic matrix is close to uniform. This is a reasonable model for AllReduce in data-parallel training, where gradient updates from every GPU need to be aggregated and broadcast to every other GPU with roughly equal bandwidth in all directions.</p>
+
+  <p>It is not a reasonable model for inference.</p>
+
+  <p>Modern inference workloads have structured, non-uniform traffic matrices. The traffic is not uniformly distributed — it concentrates in specific patterns determined by the model architecture, the serving topology, and the request distribution. A Fat-tree network does not distinguish between traffic that crosses three switch hops and traffic that crosses zero — it routes all traffic the same way, burning bandwidth and adding latency on flows that could have stayed local, while creating congestion on uplinks that carry disproportionate traffic.</p>
+
+  <blockquote>
+    <p><strong>The thesis:</strong> The network topology you choose determines which traffic patterns are expensive and which are cheap. Modern inference has a specific, analyzable traffic matrix. Deploying it on a topology designed for a different traffic matrix — uniform all-to-all — is not infrastructure agnosticism. It is leaving performance on the table in ways that are measurable and avoidable.</p>
+  </blockquote>
+
+  <h2 id="traffic">2. The three traffic patterns of modern inference</h2>
+
+  <p>To understand why topology matters, we need to derive the traffic matrix of modern inference workloads from first principles. There are three distinct patterns, each with different bandwidth, latency, and locality requirements.</p>
+
+  <h3>2.1 MoE expert-to-expert traffic: all-to-few, skewed</h3>
+
+  <p>In a Mixture-of-Experts model, each token is routed by a learned router to a small subset of expert FFN blocks — typically 2 out of N experts, where N is 8, 64, or larger in frontier models. The router makes this decision independently for each token. In a distributed serving scenario where experts are sharded across GPUs, a token arriving at GPU 0 may be routed to experts on GPU 7 and GPU 23 — requiring two network transfers to process that token.</p>
+
+  <span class="code-label">MoE traffic matrix structure</span>
+  <pre><code>For a 64-expert MoE with top-2 routing, 32 GPUs, 2 experts/GPU:
+
+Per-token routing:
+  token → router → [expert_i, expert_j], i ≠ j with high probability
+
+Traffic matrix entry T[src][dst] = tokens routed from src GPU to dst GPU
+
+If routing were uniform:  T[src][dst] = 1/(N-1) for all src ≠ dst
+                           → uniform all-to-all matrix
+
+Observed in practice:     router learns expert specialization
+                           → hot experts receive 3-5× average load
+                           → cold experts receive 0.2-0.4× average load
+                           → traffic matrix is sparse and skewed
+
+Consequence: 3-5 "popular" expert GPUs receive 3-5× expected traffic
+             Those GPUs' uplinks become bottlenecks under Fat-tree routing</code></pre>
+
+  <p>The skewness is not random — it is learned and stable. Popular experts are popular because they specialize in common linguistic patterns. This means the traffic matrix of a deployed MoE model is predictable and persistent, making it possible to optimize placement for it. The question is whether the infrastructure layer is designed to exploit that predictability.</p>
+
+  <h3>2.2 Prefill-decode disaggregation: asymmetric producer-consumer</h3>
+
+  <p>Prefill-decode disaggregation (covered extensively in prior essays) routes prefill computation to high-compute GPUs and decode computation to high-bandwidth GPUs. The traffic pattern this creates is asymmetric: prefill GPUs produce KV caches and transfer them to decode GPUs. Every request generates one large KV transfer from a prefill node to a decode node.</p>
+
+  <p>For a 128K-context request on a 70B model, that transfer is approximately 139 GB. At typical inference throughput, a single prefill GPU might produce 2-4 such requests per minute, generating sustained 4-8 GB/s of directed traffic to a specific decode GPU pool. This is not all-to-all traffic. It is a structured producer-consumer flow between two dedicated GPU pools.</p>
+
+  <h3>2.3 KV cache mobility: rack-local preference</h3>
+
+  <p>For KV cache disaggregation and hierarchical KV storage (HBM → CXL DRAM → NVMe), the ideal traffic pattern is rack-local or pod-local. A decode GPU fetching KV pages from a CXL-attached memory device in the same rack generates no network traffic. The same fetch from a KV store in a different rack generates a network transfer with latency determined by the number of switch hops between them.</p>
+
+  <p>Under Fat-tree routing, a rack-to-rack transfer may traverse ToR → aggregation → spine → aggregation → ToR — four hops adding 8-16 μs of switching latency on top of the base propagation delay. For latency-sensitive decode steps where each step adds to TTFT (Time to First Token), this is not negligible.</p>
+
+  <h2 id="fat-tree">3. Fat-tree under non-uniform load: the bisection bandwidth trap</h2>
+
+  <p>Fat-tree achieves full bisection bandwidth under uniform traffic. Under non-uniform traffic, its performance degrades in a way that is analytically predictable but operationally surprising to teams that have not studied it.</p>
+
+  <p>Consider a 3-tier Fat-tree with k-port switches (k=64 is common for modern 400G switches). The topology has k²/4 = 1,024 servers, k/2 = 32 top-of-rack switches, k/2 = 32 aggregation switches, and (k/2)² / k = 16 core/spine switches. The bisection bandwidth between any two halves of the cluster is k²/4 × link_bandwidth.</p>
+
+  <span class="code-label">Fat-tree bisection bandwidth under skewed traffic</span>
+  <pre><code>Uniform traffic assumption:
+  Each server sends traffic to all other 1,023 servers equally
+  → Each uplink carries 1/32 of server traffic
+  → Spine switches see balanced load across all ports
+  → Full bisection bandwidth maintained
+
+MoE-skewed traffic (hot experts on 3 GPUs):
+  Hot GPUs receive 4× average inbound traffic
+  → Their ToR uplinks saturate at 4× average rate
+  → Aggregation switches serving those ToRs saturate
+  → ECMP begins hashing flows onto congested uplinks
+  → Effective bisection bandwidth to hot GPUs: ~1/4 of nominal
+
+Practical consequence:
+  Cluster with 400 Gbps uplinks and "full bisection" Fat-tree
+  delivers ~100 Gbps effective bandwidth to hot expert GPUs
+  during peak MoE routing load — a 4× degradation from spec.</code></pre>
+
+  <p>The problem is that ECMP (Equal-Cost Multi-Path routing) — the standard routing protocol used in Fat-tree — is flow-based. It assigns a flow to a path based on a hash of the flow's 5-tuple and keeps that flow on the same path for its duration. When multiple high-bandwidth flows hash onto the same uplinks, those uplinks become congested while other uplinks remain idle. The topology has the capacity, but the routing algorithm cannot redistribute it to where the load is.</p>
+
+  <div class="callout callout-warn">
+    <div class="callout-label">The ECMP Failure Mode</div>
+    <p>ECMP is designed to balance load across paths for uniform traffic. For structured traffic with persistent hot destinations (MoE expert GPUs, prefill nodes, KV servers), ECMP will consistently hash disproportionate traffic onto a subset of paths. This is not a configuration error. It is an architectural mismatch between a routing algorithm designed for uniform traffic and workloads with non-uniform traffic matrices.</p>
+  </div>
+
+  <h2 id="dragonfly">4. Dragonfly: global routing and the locality problem</h2>
+
+  <p>Dragonfly was designed to reduce the diameter of large-scale networks by adding global links between groups. In a k-level Dragonfly, each group of routers connects to every other group through a single global link. This dramatically reduces the worst-case hop count — from O(log N) in Fat-tree to O(1) in an ideal Dragonfly — at the cost of more complex routing and adaptive load balancing requirements.</p>
+
+  <p>For uniform all-to-all traffic, Dragonfly outperforms Fat-tree at scale because it achieves lower latency with fewer hops. For AI inference, Dragonfly introduces a different problem: it treats all inter-group traffic as equally costly, regardless of whether the source and destination are geographically adjacent or distant.</p>
+
+  <p>In practice, AI inference benefits strongly from locality. MoE experts that co-occur frequently should be co-located on the same ToR or same group to avoid global links. Prefill-decode pairs with high KV transfer volume should be in adjacent groups. KV cache stores should be rack-local to the decode GPUs that consume them most frequently. Dragonfly's global routing — which deliberately spreads traffic across all global links to avoid hotspots — works against locality optimization.</p>
+
+  <table>
+    <tr><th>Topology</th><th>Bisection BW (uniform)</th><th>Latency (worst case)</th><th>Locality support</th><th>MoE hot-expert handling</th></tr>
+    <tr><td><strong>3-tier Fat-tree</strong></td><td>Full (1:1)</td><td>4–6 hops</td><td>Rack-level</td><td>Poor — ECMP congestion</td></tr>
+    <tr><td><strong>Dragonfly</strong></td><td>Full at scale</td><td>2–3 hops</td><td>None — global routing</td><td>Moderate — adaptive routing helps, locality hurt</td></tr>
+    <tr><td><strong>Rail-Optimized</strong></td><td>Within-rail: full; cross-rail: limited</td><td>1–2 hops intra-rail</td><td>Rail = locality group</td><td>Good if hot experts on same rail</td></tr>
+    <tr><td><strong>Torus (TPU Pod)</strong></td><td>Topology-dependent</td><td>O(√N) hops</td><td>Strong — distance-aware</td><td>Excellent if workload mapped to geometry</td></tr>
+  </table>
+
+  <h2 id="rail">5. Rail-optimized: the right topology for the right reason</h2>
+
+  <p>Rail-optimized topology — used by Meta for large-scale FSDP training and increasingly adopted for inference clusters — partitions GPUs into groups called rails, where each rail is a fully connected subset of GPUs with high intra-rail bandwidth. Cross-rail bandwidth is lower. The design assumption is that most communication stays within a rail, with cross-rail traffic being the exception.</p>
+
+  <p>For distributed training with FSDP, the rail is sized to hold one full model replica. AllGather and ReduceScatter operations for parameter synchronization stay within the rail. Only gradient synchronization crosses rail boundaries. This makes the traffic pattern rail-local with predictable cross-rail overhead.</p>
+
+  <p>For inference, the rail abstraction maps naturally onto a different partition: the rail becomes a serving domain. MoE experts for a single model are co-located within a rail. Prefill and decode GPUs for a given request pair are within the same rail. KV cache stores are rail-local to their decode consumers. The rail boundary becomes a natural boundary for the inference topology, and cross-rail traffic is the exception that occurs only for model parallelism across very large models that don't fit within a single rail.</p>
+
+  <h3>5.1 Why rail-optimized is not universally superior</h3>
+
+  <p>Rail-optimized topology trades flexibility for locality. When the workload fits the rail partition, performance is excellent. When it does not — heterogeneous models requiring cross-rail parallelism, bursty request patterns that violate static partition assumptions, or multi-model serving where requests have different locality requirements — the restricted cross-rail bandwidth becomes a bottleneck rather than a feature.</p>
+
+  <p>The deeper issue is that rail-optimized topology is a static design choice made at cluster build time. The serving workload changes dynamically: model mix, request rate, context length distribution. A static topology cannot adapt to dynamic workload requirements.</p>
+
+  <h2 id="moe-routing">6. MoE expert routing as a topology problem</h2>
+
+  <p>The standard treatment of MoE routing focuses on the load balancing problem: how to ensure experts receive roughly equal traffic so none becomes a throughput bottleneck. The standard solution is auxiliary loss terms that penalize unbalanced routing during training. The topology dimension is almost entirely absent from the MoE literature.</p>
+
+  <p>This is a mistake. The MoE routing problem and the topology placement problem are coupled. Consider:</p>
+
+  <span class="code-label">MoE placement optimization (network-aware)</span>
+  <pre><code>Naive placement:
+  Experts 0..7  → GPUs 0..7  (rack 0)
+  Experts 8..15 → GPUs 8..15 (rack 1)
+  Experts 16..23 → GPUs 16..23 (rack 2)
+  ...
+  Expert co-occurrence ignored. Random token routing crosses rack boundaries uniformly.
+
+Network-aware placement:
+  Step 1: Collect expert co-occurrence statistics over production traffic
+          co_occur[i][j] = fraction of tokens routed to both expert i and expert j
+
+  Step 2: Build expert affinity graph where edge weight = co_occur[i][j]
+
+  Step 3: Graph partition to maximize intra-partition affinity under rack capacity
+          → Frequently co-occurring experts placed in same rack
+          → Most token dispatches stay intra-rack (zero spine switches crossed)
+
+  Expected result:
+  For top-2 routing, if 60% of token pairs co-occur within a rack:
+  → 60% of dispatch traffic is intra-rack (0-1 hops)
+  → 40% of dispatch traffic crosses rack (2-4 hops)
+  vs. naive: 100% of cross-GPU traffic potentially crosses rack boundary</code></pre>
+
+  <p>The graph partition step is computationally tractable because expert co-occurrence distributions are typically long-tailed — a small number of expert pairs account for a large fraction of co-occurrences. Placing the high-frequency pairs on the same rack produces most of the locality benefit.</p>
+
+  <p>More importantly: this optimization requires the serving system to be aware of the network topology. The scheduler needs to know which GPUs are in the same rack and what the bandwidth cost of different placements would be. This information is available — it is in the cluster's network configuration — but it is not today exposed to the inference scheduler in any major serving framework.</p>
+
+  <h2 id="pd-disagg">7. Prefill-decode disaggregation and asymmetric flow</h2>
+
+  <p>Prefill-decode disaggregation generates a directed, asymmetric, high-bandwidth flow from prefill nodes to decode nodes. The network implication depends entirely on where prefill and decode nodes are placed relative to each other in the topology.</p>
+
+  <p>Best case: prefill and decode nodes are in the same rack, connected through the same ToR switch. KV transfer is intra-rack, consuming zero spine bandwidth, with latency measured in microseconds.</p>
+
+  <p>Typical case under random placement: prefill and decode nodes are distributed across the cluster. KV transfer crosses aggregation and spine switches. Spine bandwidth is consumed. Latency is 4-8× higher than intra-rack.</p>
+
+  <p>Worst case: prefill nodes and decode nodes are in different pods or different fabrics. Every KV transfer crosses maximum hops, consuming maximum bandwidth at every switch tier.</p>
+
+  <span class="code-label">KV transfer cost vs. topology distance</span>
+  <pre><code>KV transfer size: 70B FP8, 32K context ≈ 35 GB
+
+Intra-rack transfer (ToR only):
+  Available BW: 400 Gbps (50 GB/s) per link
+  Transfer time: 35 GB / 50 GB/s ≈ 0.7 seconds
+  Switch hops: 1 (ToR)
+  Spine BW consumed: 0
+
+Cross-rack, same pod (ToR → Agg → ToR):
+  Available BW: 100-200 Gbps (oversubscribed uplinks)
+  Transfer time: 35 GB / 12.5-25 GB/s ≈ 1.4 – 2.8 seconds
+  Switch hops: 3
+  Spine BW consumed: 0, Agg BW consumed: yes
+
+Cross-pod (ToR → Agg → Spine → Agg → ToR):
+  Available BW: 50-100 Gbps (heavily oversubscribed)
+  Transfer time: 35 GB / 6-12.5 GB/s ≈ 2.8 – 5.8 seconds
+  Switch hops: 5
+  Spine BW consumed: yes</code></pre>
+
+  <p>A 4-8× increase in KV transfer time directly increases TTFT for disaggregated serving. For latency-sensitive applications, this is not acceptable. The only solution is topology-aware placement of prefill-decode pairs — ensuring that for any given model, the prefill and decode pools are topologically adjacent.</p>
+
+  <h2 id="kv-transfer">8. KV transfer topology: the missing scheduling input</h2>
+
+  <p>The essays in this series on KV fabrics, disaggregated inference, and RDMA have established that KV cache transfer is a first-class infrastructure concern. What has not been addressed is the topology layer: the scheduler that decides which KV store serves which decode request needs to know the network distance between every KV store and every decode GPU.</p>
+
+  <p>This is the missing input. Current KV routing systems (including the Seam Orchestrator essay's design) treat the network as a flat fabric with uniform cost. The actual cost of a KV fetch depends on the topology distance between the KV store and the requesting GPU. A KV page on a CXL-attached memory device in the same rack costs fundamentally less to fetch than the same page on a remote memory server two spine hops away.</p>
+
+  <div class="callout">
+    <div class="callout-label">The Missing Scheduler Input</div>
+    <p>Topology distance between KV store and decode GPU should be a first-class input to the KV admission and routing decision. A KV page that is "cold" by recency but physically close to the requesting GPU may be cheaper to serve than a "warm" page that requires spine-crossing network transfers. Topology-unaware eviction policies optimize for the wrong cost function.</p>
+  </div>
+
+  <h2 id="scheduler">9. Making topology a scheduler input</h2>
+
+  <p>The practical question is: what does it mean to make topology a scheduler input? It does not require redesigning the network. It requires four things:</p>
+
+  <p><strong>First:</strong> A topology distance matrix. For every pair of GPUs in the cluster, compute the hop count and available bandwidth between them. This is derivable from the switch configuration and does not change at serving time. Store it as a lookup table accessible to the serving scheduler.</p>
+
+  <p><strong>Second:</strong> Topology-aware placement for MoE experts. When a new model is deployed, run the co-occurrence-based graph partition algorithm to assign experts to GPUs that minimize expected dispatch traffic. Update the placement when co-occurrence statistics shift (e.g., after a new model version).</p>
+
+  <p><strong>Third:</strong> Topology-aware prefill-decode pairing. When a request arrives that will use disaggregated serving, assign it to a prefill-decode pair that is topologically adjacent. This requires the serving scheduler to have visibility into which prefill pools are topologically near which decode pools.</p>
+
+  <p><strong>Fourth:</strong> Topology distance in KV routing. When deciding which KV store to serve a fetch from, include topology distance as a cost term alongside recency and size. A KV page two hops away costs more to fetch than a page with slightly lower hit probability in the same rack.</p>
+
+  <table>
+    <tr><th>Optimization</th><th>Required Topology Information</th><th>Scheduling Decision Modified</th><th>Expected Gain</th></tr>
+    <tr><td><strong>MoE expert placement</strong></td><td>Rack assignment map, intra/inter-rack BW</td><td>Expert-to-GPU assignment at deployment</td><td>30-50% reduction in cross-rack MoE dispatch traffic</td></tr>
+    <tr><td><strong>P-D pair placement</strong></td><td>ToR-level proximity, uplink BW</td><td>Request assignment to prefill pool</td><td>2-4× reduction in KV transfer latency for disaggregated serving</td></tr>
+    <tr><td><strong>KV store routing</strong></td><td>Hop count + BW to each KV store</td><td>KV fetch source selection</td><td>15-25% reduction in average KV fetch latency</td></tr>
+    <tr><td><strong>Tensor parallel placement</strong></td><td>NVLink vs. InfiniBand cost model</td><td>TP group assignment to GPU set</td><td>Near-zero cross-rack TP traffic for properly placed groups</td></tr>
+  </table>
+
+  <h2 id="close">10. The topology-aware cluster is not a hardware redesign</h2>
+
+  <p>The argument of this essay is not that AI clusters need to adopt a new topology. Fat-tree is entrenched for good reasons: it is administratively simple, it scales, it is understood. Rail-optimized has merit for specific workloads. The point is not which topology is best.</p>
+
+  <p>The point is that topology should not be invisible to the serving software. Every inference scheduling decision that involves inter-GPU communication has an implicit network cost that varies with topology distance. Making that cost explicit — by exposing a topology distance matrix to the scheduler and using it in placement, routing, and eviction decisions — does not require any hardware change. It requires that the serving layer stop treating the network as a flat uniform fabric.</p>
+
+  <p>The network is not flat. It is a hierarchy with well-defined cost gradients. Intra-rack is cheap. Cross-rack is moderate. Cross-pod is expensive. The traffic patterns of modern inference — MoE dispatch, KV transfer, prefill-decode communication — vary in cost by 4-8× depending on where in the hierarchy they land. Topology-unaware scheduling wastes that 4-8× spread.</p>
+
+  <p>The scheduler is the right place to fix it. And the fix starts with treating topology not as a physical plant problem, but as a scheduling input.</p>
+
+  <div class="essay-footer">
+    <p>© 2026 <a href="/index.html">MANISH AI</a>. All rights reserved. · Systems architecture for AI infrastructure · <a href="/writings.html">← Back to writings</a></p>
+  </div>
+  <div id="webmentions"></div>
+
+</main>
+</body>
+</html>
