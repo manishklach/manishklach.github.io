@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>NVLink Switch Is Not NVLink: The Scale-Up Fabric Architecture Nobody Fully Explains | MANISH AI</title>
+<meta name="description" content="A systems-level explanation of NVLink Switch, NVL72 scale-up fabrics, GPU coherence boundaries, and where scale-up ends and scale-out begins."/>
+<meta name="keywords" content="NVLink, Scale-Up Fabric, AI Networking, AI infrastructure, GPU networking, systems architecture, connectivity series, MANISH AI"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/nvlink-switch-scale-up-fabric-architecture.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="NVLink Switch Is Not NVLink: The Scale-Up Fabric Architecture Nobody Fully Explains | MANISH AI"/>
+<meta property="og:description" content="A systems-level explanation of NVLink Switch, NVL72 scale-up fabrics, GPU coherence boundaries, and where scale-up ends and scale-out begins."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/nvlink-switch-scale-up-fabric-architecture.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/nvlink-switch-scale-up-fabric-architecture.png"/>
+<meta property="og:image:alt" content="NVLink Switch Is Not NVLink: The Scale-Up Fabric Architecture Nobody Fully Explains"/>
+<meta property="article:published_time" content="2026-04-21"/>
+<meta property="article:modified_time" content="2026-04-21"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="NVLink Switch Is Not NVLink: The Scale-Up Fabric Architecture Nobody Fully Explains | MANISH AI"/>
+<meta name="twitter:description" content="A systems-level explanation of NVLink Switch, NVL72 scale-up fabrics, GPU coherence boundaries, and where scale-up ends and scale-out begins."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/nvlink-switch-scale-up-fabric-architecture.png"/>
+<script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "NVLink Switch Is Not NVLink: The Scale-Up Fabric Architecture Nobody Fully Explains",
+  "description": "A systems-level explanation of NVLink Switch, NVL72 scale-up fabrics, GPU coherence boundaries, and where scale-up ends and scale-out begins.",
+  "url": "https://manishklach.github.io/writings/nvlink-switch-scale-up-fabric-architecture.html",
+  "datePublished": "2026-04-21",
+  "dateModified": "2026-04-21",
+  "inLanguage": "en",
+  "author": { "@type": "Person", "name": "MANISH AI", "url": "https://manishklach.github.io/" },
+  "publisher": { "@type": "Person", "name": "MANISH AI", "url": "https://manishklach.github.io/" },
+  "mainEntityOfPage": { "@type": "WebPage", "@id": "https://manishklach.github.io/writings/nvlink-switch-scale-up-fabric-architecture.html" }
+}</script>
+<style>
+  :root {
+    --bg: #0f0f0f; --text: #e8e6e1; --muted: #8a8680; --accent: #c8a96e;
+    --border: #2a2825; --code-bg: #1a1917; --tag-bg: #1e1c1a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Georgia', serif; font-size: 18px; line-height: 1.78; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+
+  .site-header { padding: 1.4rem 2rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .site-logo { font-family: monospace; font-size: 0.85rem; color: var(--muted); }
+  .site-nav { display: flex; gap: 1.5rem; font-size: 0.82rem; font-family: monospace; }
+  .site-nav a { color: var(--muted); }
+  .back-link { font-family: monospace; font-size: 0.78rem; color: var(--muted); padding: 1.4rem 2rem 0; display: block; max-width: 800px; margin: 0 auto; }
+
+  .essay-wrap { max-width: 800px; margin: 0 auto; padding: 2.4rem 2rem 6rem; }
+
+  .series-label { font-family: monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 1rem; }
+  .tags { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 1.4rem; }
+  .tag { background: var(--tag-bg); border: 1px solid var(--border); color: var(--muted); font-size: 0.7rem; font-family: monospace; padding: 0.22rem 0.55rem; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  h1 { font-size: 2.05rem; line-height: 1.22; font-weight: normal; color: var(--text); margin-bottom: 0.9rem; letter-spacing: -0.02em; }
+  .byline { font-size: 0.8rem; font-family: monospace; color: var(--muted); margin-bottom: 0.5rem; }
+  .lede { font-size: 1.05rem; color: #b8b4ad; line-height: 1.65; margin-bottom: 2rem; font-style: italic; border-bottom: 1px solid var(--border); padding-bottom: 1.6rem; }
+
+  .evidence-box { background: #111510; border: 1px solid #2a3a2a; padding: 1.4rem 1.6rem; margin-bottom: 2.6rem; }
+  .evidence-label { font-family: monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; color: #5a9a6a; margin-bottom: 0.9rem; }
+  .evidence-box ul { list-style: none; padding: 0; }
+  .evidence-box li { font-size: 0.88rem; color: #a8bea8; font-family: monospace; margin-bottom: 0.5rem; padding-left: 1.2rem; position: relative; line-height: 1.5; }
+  .evidence-box li::before { content: "▸"; position: absolute; left: 0; color: #5a9a6a; }
+  .evidence-box li strong { color: var(--text); }
+
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.9rem; margin-bottom: 2.8rem; }
+  .stat-box { background: var(--code-bg); border: 1px solid var(--border); padding: 1rem; text-align: center; }
+  .stat-num { font-family: monospace; font-size: 1.25rem; color: var(--accent); display: block; margin-bottom: 0.3rem; font-weight: bold; }
+  .stat-label { font-size: 0.68rem; color: var(--muted); font-family: monospace; line-height: 1.35; }
+
+  .toc { background: var(--code-bg); border: 1px solid var(--border); padding: 1.4rem; margin-bottom: 2.8rem; }
+  .toc-title { font-family: monospace; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.9rem; }
+  .toc ol { padding-left: 1.1rem; }
+  .toc li { font-size: 0.82rem; font-family: monospace; margin-bottom: 0.35rem; }
+  .toc a { color: var(--muted); } .toc a:hover { color: var(--accent); }
+
+  h2 { font-size: 1.35rem; font-weight: normal; color: var(--text); margin: 2.8rem 0 1.1rem; padding-bottom: 0.45rem; border-bottom: 1px solid var(--border); letter-spacing: -0.01em; }
+  h3 { font-size: 1.05rem; font-weight: bold; color: var(--text); margin: 1.9rem 0 0.7rem; }
+  p { margin-bottom: 1.35rem; }
+
+  blockquote { border-left: 3px solid var(--accent); padding: 0.9rem 1.4rem; margin: 1.8rem 0; background: var(--code-bg); }
+  blockquote p { margin: 0; color: #c0bcb4; font-style: italic; }
+  blockquote strong { color: var(--text); font-style: normal; }
+
+  .code-label { font-family: monospace; font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; display: block; background: #141311; border: 1px solid var(--border); border-bottom: none; padding: 0.35rem 0.9rem; width: fit-content; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); padding: 1.3rem; overflow-x: auto; margin: 0 0 1.8rem; }
+  code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.8rem; color: #a8c4a2; line-height: 1.6; }
+  p code { background: var(--code-bg); padding: 0.1em 0.35em; color: #a8c4a2; font-size: 0.8rem; border: 1px solid var(--border); }
+
+  table { width: 100%; border-collapse: collapse; margin: 1.8rem 0; font-size: 0.84rem; }
+  th { background: var(--code-bg); color: var(--muted); font-family: monospace; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.65rem 0.9rem; text-align: left; border: 1px solid var(--border); }
+  td { padding: 0.65rem 0.9rem; border: 1px solid var(--border); color: #c0bcb4; vertical-align: top; }
+  tr:nth-child(even) td { background: #141311; }
+  td strong { color: var(--text); }
+
+  .callout { background: #0d1a12; border: 1px solid #1e3a28; padding: 1.1rem 1.4rem; margin: 1.8rem 0; }
+  .callout-label { font-family: monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: #4a9a6a; margin-bottom: 0.55rem; }
+  .callout p { margin: 0; font-size: 0.88rem; color: #b0ccb8; }
+
+  .warn { background: #1a1008; border: 1px solid #3a2a10; }
+  .warn .callout-label { color: #c89a4a; }
+  .warn p { color: #c8baa0; }
+
+  .essay-footer { margin-top: 3.5rem; padding-top: 1.8rem; border-top: 1px solid var(--border); font-size: 0.78rem; font-family: monospace; color: var(--muted); }
+</style>
+<script async data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <a class="site-logo" href="/index.html">MA · MANISH AI</a>
+  <nav class="site-nav"><a href="/index.html">Home</a><a href="/patents.html">Patents</a><a href="/writings.html">Writing</a><a href="/index.html#contact">Contact</a></nav>
+</header>
+<a href="/writings.html" class="back-link">← All writings</a>
+
+<main class="essay-wrap" data-pagefind-body>
+  <div class="series-label">Systems Deep Dive · Connectivity Series</div>
+  <div class="tags">
+    <span class="tag">NVLink Switch</span><span class="tag">Scale-Up Fabric</span>
+    <span class="tag">NVL72</span><span class="tag">AI Interconnect</span>
+    <span class="tag">GPU Clusters</span>
+  </div>
+
+  <h1>NVLink Switch Is Not NVLink: The Scale-Up Fabric Architecture Nobody Fully Explains</h1>
+  <div class="byline">MANISH AI · April 2026 · 18 min read · Connectivity Series</div>
+  <p class="lede">Everyone knows NVLink connects GPUs fast. Almost nobody understands what NVLink Switch actually is, how it differs architecturally from NVLink itself, why it changes the failure domain and the topology simultaneously, and what GB300 NVL72's all-to-all non-blocking fabric means at the physics level.</p>
+
+  <div class="evidence-box">
+    <div class="evidence-label">Key Numbers</div>
+    <ul>
+      <li><strong>1.8 TB/s</strong> bidirectional per-GPU bandwidth across NVLink Switch fabric in GB300 NVL72</li>
+      <li><strong>130 TB/s</strong> total aggregate bisection bandwidth in a fully loaded NVL72 tray — non-blocking</li>
+      <li><strong>2 hops maximum</strong> between any two GPUs in a 72-GPU NVL switch domain</li>
+      <li><strong>5.6× more bandwidth</strong> than PCIe Gen5 x16 for GPU-to-GPU transfers within the same domain</li>
+      <li>NVLink Switch runs the NVLink protocol over dedicated switching silicon — it is <strong>not the same chip</strong> as the GPU's NVLink ports</li>
+    </ul>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-box"><span class="stat-num">1.8 TB/s</span><span class="stat-label">per-GPU BW in NVL72, bidirectional</span></div>
+    <div class="stat-box"><span class="stat-num">72</span><span class="stat-label">GPUs in a single non-blocking NVLink Switch domain</span></div>
+    <div class="stat-box"><span class="stat-num">2</span><span class="stat-label">max hop count GPU-to-GPU across all 72 nodes</span></div>
+    <div class="stat-box"><span class="stat-num">0</span><span class="stat-label">PCIe crossings for GPU-to-GPU transfers within NVL domain</span></div>
+  </div>
+
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#confusion">The NVLink naming confusion and why it matters</a></li>
+      <li><a href="#nvlink-port">What NVLink actually is at the port level</a></li>
+      <li><a href="#nvlink-switch-chip">The NVLink Switch chip: a dedicated switching ASIC</a></li>
+      <li><a href="#topology">How NVL72 builds a non-blocking all-to-all fabric from switch ASICs</a></li>
+      <li><a href="#bandwidth-math">The bandwidth math: where 1.8 TB/s comes from</a></li>
+      <li><a href="#vs-infiniband">NVLink Switch vs. InfiniBand for scale-up: not the same problem</a></li>
+      <li><a href="#failure">Failure domains and what non-blocking means under fault</a></li>
+      <li><a href="#software">NCCL over NVLink Switch: how the software layer sees the fabric</a></li>
+      <li><a href="#boundary">The scale-up / scale-out boundary: where NVLink ends and the problem begins</a></li>
+      <li><a href="#close">What NVLink Switch teaches us about the future of AI interconnect</a></li>
+    </ol>
+  </div>
+
+  <h2 id="confusion">1. The NVLink naming confusion and why it matters</h2>
+
+  <p>NVIDIA uses the word "NVLink" to describe three different things: the point-to-point serial link protocol between GPU chips, the NVLink Switch ASIC that forwards NVLink protocol frames between multiple GPUs, and the NVLink Switch System that comprises the full rack-scale fabric built from those ASICs. These are architecturally distinct components. Conflating them produces incorrect mental models of how the fabric actually behaves.</p>
+
+  <p>The confusion has real consequences. Engineers who think of NVLink as "the fast wire between two GPUs" misunderstand the latency profile of the switch domain (there are forwarding hops with non-zero latency). Engineers who think NVLink Switch is "just a bigger crossbar" misunderstand the failure mode taxonomy (switch ASIC failure vs. link failure vs. GPU failure produce different blast radii). Engineers who think the NVLink domain is "basically one big GPU" misunderstand the software model (NCCL still needs topology hints to generate optimal collective communication plans).</p>
+
+  <blockquote>
+    <p><strong>The framing this essay uses:</strong> NVLink is a protocol and physical link standard. NVLink Switch is a dedicated forwarding ASIC that implements that protocol in a switching context. NVLink Switch System (NVL72) is a topology built from those ASICs. Each level has distinct engineering tradeoffs and failure modes. Understanding all three is required to reason correctly about scale-up fabric design.</p>
+  </blockquote>
+
+  <h2 id="nvlink-port">2. What NVLink actually is at the port level</h2>
+
+  <p>NVLink at the physical link level is a high-speed differential serial link designed specifically for GPU-to-GPU and GPU-to-switch communication. It uses a point-to-point signaling scheme where each "link" is actually a bundle of lanes running at very high symbol rates. Each NVLink 4.0 link (Hopper generation) provides 25 GB/s bidirectional per link, and each H100 GPU has 18 such links for a total of 900 GB/s bidirectional aggregate NVLink bandwidth per GPU.</p>
+
+  <p>NVLink differs from PCIe in several fundamental ways. First, it is a coherent interconnect — it implements a cache-coherent protocol that allows GPU memories to participate in a shared address space. A GPU can read from another GPU's HBM using load instructions without explicit DMA operations. Second, it uses a credit-based flow control mechanism operating at very fine granularity (32-byte flit level), which gives it near-line-rate utilization even for small transfers — unlike PCIe, which has high per-transfer overhead that dominates for small messages. Third, it operates at substantially lower latency: NVLink 4.0 link latency is approximately 0.5 µs port-to-port, versus 1.5-2.5 µs for PCIe Gen5 over comparable distances.</p>
+
+  <span class="code-label">NVLink 4.0 vs PCIe Gen5 — Physical layer comparison</span>
+  <pre><code>                    NVLink 4.0         PCIe Gen5 x16
+Per-link bandwidth  25 GB/s bidir      ~63 GB/s unidir (128b/130b encoded)
+Links per H100      18                 1 slot (x16)
+Total GPU BW        900 GB/s bidir     ~55 GB/s effective unidir
+Coherency           Yes (shared addr)  No (DMA only)
+Small-msg overhead  ~32B flit granule  TLP header (20-32B) + per-xfer setup
+Port-to-port lat    ~0.5 µs            ~1.5-2.5 µs
+Flow control        Credit-based, fine Token bucket, coarse
+Protocol            Proprietary NVIDIA PCIe standard (open)</code></pre>
+
+  <p>The coherence property is architecturally significant. It means that within a NVLink domain, a GPU can issue a load to an address that physically resides in another GPU's HBM and receive the data without the source GPU's CPU or software involvement. This is the mechanism that allows NVL72 to present the illusion of a large unified memory space to software running across all 72 GPUs — not a perfect illusion (remote HBM access is slower than local), but a real one that simplifies programming models for certain workloads.</p>
+
+  <h2 id="nvlink-switch-chip">3. The NVLink Switch chip: a dedicated switching ASIC</h2>
+
+  <p>The NVLink Switch chip (codenamed "Laguna" in the Blackwell generation) is a dedicated switching ASIC — entirely separate from the GPU die. It implements the NVLink protocol in a switching context: it receives NVLink frames on input ports, inspects the destination address encoded in the frame header, and forwards the frame to the appropriate output port.</p>
+
+  <p>This is not a GPU. It has no compute, no HBM, no tensor cores. It is a packet-forwarding engine that happens to run the NVLink protocol. Its job is to provide full-bandwidth, low-latency forwarding between any pair of NVLink ports connected to it, simultaneously, without head-of-line blocking.</p>
+
+  <p>The Blackwell-generation NVLink Switch chip has 64 NVLink ports. Each port runs at the NVLink 4.0 or 5.0 line rate depending on the generation. The switch fabric inside the chip is a crossbar that provides full bisection bandwidth — any input port can send to any output port at full line rate simultaneously. The key metric is that the switch introduces approximately 90 nanoseconds of additional forwarding latency versus a direct NVLink connection, which at 0.5 µs base link latency is a ~18% increase — acceptable for the bandwidth gain.</p>
+
+  <h3>3.1 Why a dedicated ASIC and not a PCIe switch?</h3>
+
+  <p>The decision to build a dedicated NVLink switching ASIC rather than using PCIe switches (which are cheaper and commodity) was driven by three requirements that PCIe switches cannot satisfy simultaneously:</p>
+
+  <p><strong>Coherence maintenance at switch speed.</strong> NVLink's cache-coherence protocol requires the switch to participate in coherence transactions — it cannot simply forward packets blindly. A PCIe switch has no coherence logic and cannot be made to forward coherence probes correctly without CPU involvement.</p>
+
+  <p><strong>No host CPU involvement.</strong> PCIe switches route through the root complex — the host CPU's PCIe controller. Every GPU-to-GPU message crosses the CPU memory controller at least in the control plane. NVLink Switch routes entirely in the data plane without CPU involvement, which is why GPU-to-GPU transfers over NVLink have zero CPU overhead.</p>
+
+  <p><strong>Fine-grained flow control.</strong> NVLink's 32-byte flit-level flow control must be maintained end-to-end across the switch. PCIe's coarser flow control model (TLP-granular) cannot be retrofitted into NVLink without breaking the small-message latency properties.</p>
+
+  <h2 id="topology">4. How NVL72 builds a non-blocking fabric from switch ASICs</h2>
+
+  <p>GB300 NVL72 connects 72 B200 GPUs using a two-tier switch topology built from NVLink Switch ASICs. Understanding why it is non-blocking requires understanding the specific wiring pattern.</p>
+
+  <span class="code-label">NVL72 topology structure (GB300)</span>
+  <pre><code>72 GPUs × 18 NVLink ports each = 1,296 total GPU NVLink ports
+
+Tier 1: Leaf switches (9 switches × 64 ports)
+  - Each leaf switch connects to 8 GPUs (8 ports used as "downlinks")
+  - Each leaf switch connects to all 9 other leaf switches... 
+    wait — that's not right for non-blocking.
+
+Actual NVL72 wiring:
+  72 GPUs are organized into 9 groups of 8 GPUs
+  Each group of 8 GPUs connects to one "leaf" NVLink Switch
+  → 9 leaf switches, each with 8 "GPU-facing" ports
+
+  Each leaf switch also connects to all other 8 leaf switches
+  via dedicated inter-switch links (the "spine")
+  → 8 inter-switch ports per leaf switch
+
+  A GPU-to-GPU message within the same group: 1 hop (leaf switch only)
+  A GPU-to-GPU message across groups: 2 hops (source leaf → dest leaf)
+
+Non-blocking guarantee:
+  Each leaf switch has 8 GPU-facing ports at X GB/s each
+  Each leaf switch has 8 inter-switch ports at X GB/s each
+  → Inter-switch capacity = GPU-facing capacity (1:1, no oversubscription)
+  → Any traffic matrix is achievable: TRUE non-blocking</code></pre>
+
+  <p>The non-blocking guarantee is not marketing language — it is a mathematical property of the topology. When inter-switch bandwidth exactly equals GPU-facing bandwidth (1:1 ratio), any permutation traffic matrix — any combination of which GPU is sending to which other GPU — can be satisfied simultaneously at full line rate. This is the formal definition of non-blocking.</p>
+
+  <p>For comparison: most data-center Fat-tree deployments use 2:1 or 4:1 oversubscription at the aggregation layer, meaning half to one-quarter of the theoretical bisection bandwidth is actually available under adversarial traffic. NVL72's non-blocking guarantee means that all-reduce operations across all 72 GPUs proceed at the full line rate of the lowest-bandwidth GPU link — there is no "unlucky" traffic pattern that degrades collective performance.</p>
+
+  <h2 id="bandwidth-math">5. The bandwidth math: where 1.8 TB/s per GPU comes from</h2>
+
+  <span class="code-label">Per-GPU bandwidth derivation — GB300 NVL72</span>
+  <pre><code>B200 GPU NVLink configuration:
+  NVLink 5.0 per link: ~100 GB/s bidirectional (vs 50 GB/s for NVLink 4.0)
+  Links per B200: 18
+  Total GPU NVLink BW: 18 × 100 GB/s = 1,800 GB/s = 1.8 TB/s bidirectional
+
+Within same 8-GPU leaf group (1-hop):
+  Available bandwidth: limited by GPU NVLink port count and leaf switch capacity
+  Effective: ~1.8 TB/s bidirectional to any peer in the group
+
+Cross-group (2-hop):
+  Bandwidth: limited by inter-switch link capacity
+  In non-blocking config: same 1.8 TB/s bidirectional to any GPU in fabric
+
+Total fabric aggregate:
+  72 GPUs × 1.8 TB/s / 2 (bidirectional counted once) = 64.8 TB/s
+  Bisection bandwidth: ~32.4 TB/s (half of aggregate for any partition)
+  
+Compare to: H100 SXM5 NVL8 (8-GPU NVSwitch domain)
+  NVLink 4.0: 18 × 50 GB/s = 900 GB/s per GPU
+  NVL72 is 2× per-GPU BW and 9× larger GPU domain</code></pre>
+
+  <p>The 1.8 TB/s number is remarkable context: HBM3e on H100 provides 3.35 TB/s of memory bandwidth. NVLink bandwidth in NVL72 is roughly 54% of local HBM bandwidth. This ratio — NVLink bandwidth / HBM bandwidth — is the key parameter for distributed computation: if it is close to 1, you can communicate between GPUs nearly as fast as you can read from local memory, which means communication is not the binding constraint for well-designed parallel algorithms. Reaching 54% of HBM bandwidth over the network fabric is a significant engineering achievement.</p>
+
+  <h2 id="vs-infiniband">6. NVLink Switch vs. InfiniBand for scale-up: not the same problem</h2>
+
+  <p>A common question is: why not just use InfiniBand 400G/800G for scale-up between GPUs? It is cheaper, available from multiple vendors, and well understood. The answer reveals important architectural constraints.</p>
+
+  <table>
+    <tr><th>Property</th><th>NVLink Switch (NVL72)</th><th>InfiniBand NDR/XDR</th></tr>
+    <tr><td><strong>Cache coherence</strong></td><td>Yes — GPU load/store to remote HBM</td><td>No — RDMA only, no coherence</td></tr>
+    <tr><td><strong>CPU involvement</strong></td><td>Zero for data plane</td><td>Zero for data plane (RDMA), but coherence requires CPU</td></tr>
+    <tr><td><strong>Bandwidth per GPU</strong></td><td>1.8 TB/s (NVL72)</td><td>25-50 GB/s (2-4 ports × NDR 200Gbps)</td></tr>
+    <tr><td><strong>Latency</strong></td><td>~0.6 µs end-to-end (1 hop)</td><td>~1.5-2 µs MPI-level</td></tr>
+    <tr><td><strong>Scale</strong></td><td>72 GPUs max per domain</td><td>Thousands of nodes</td></tr>
+    <tr><td><strong>Protocol</strong></td><td>Proprietary NVLink</td><td>Open InfiniBand / RoCEv2</td></tr>
+    <tr><td><strong>Primary use</strong></td><td>Scale-up: tensor parallel within a job</td><td>Scale-out: data parallel across nodes</td></tr>
+  </table>
+
+  <p>InfiniBand and NVLink Switch solve fundamentally different problems. NVLink Switch provides the tight, coherent, very-high-bandwidth fabric needed for tensor parallelism — where a single transformer layer's computation is split across multiple GPUs and requires continuous high-bandwidth exchange of activation tensors between every layer. InfiniBand provides the broader, lower-bandwidth fabric needed for pipeline and data parallelism — where gradient updates or model shards need to be synchronized across hundreds or thousands of GPUs.</p>
+
+  <p>The scale ceiling of NVLink Switch (72 GPUs in current generation) is not a limitation — it is a design choice. Beyond 72 GPUs, the cross-switch link count grows as O(N²), making the all-to-all non-blocking fabric prohibitively expensive. At 72 GPUs, the fabric cost is justified by the use cases (a 405B parameter model fits in 72 B200 GPUs with tensor parallelism). At 720 GPUs, non-blocking all-to-all NVLink would require 100× more switch silicon — InfiniBand is the right tool at that scale.</p>
+
+  <h2 id="failure">7. Failure domains and what non-blocking means under fault</h2>
+
+  <p>Non-blocking is a bandwidth guarantee under normal operation. What happens when components fail is a separate question that the "non-blocking" label does not answer.</p>
+
+  <p>In NVL72, there are three distinct failure modes with different blast radii:</p>
+
+  <p><strong>Single NVLink port failure (GPU side).</strong> A GPU has 18 NVLink ports. If one port fails, that GPU loses 1/18 of its NVLink bandwidth. The fabric degrades gracefully — 17/18 of the bandwidth remains available. The GPU remains usable and the job continues with reduced bandwidth. NCCL will detect the topology change through its bandwidth measurement and generate a non-optimal but functional communication plan.</p>
+
+  <p><strong>Single NVLink Switch chip failure.</strong> One leaf switch serves 8 GPUs. If that switch fails, those 8 GPUs lose all NVLink connectivity — they are isolated from the rest of the fabric. The job running across the NVL72 domain will stall or fail, depending on the checkpoint strategy. This is an 8-GPU blast radius: 11% of the domain.</p>
+
+  <p><strong>Inter-switch link failure.</strong> A failure in the inter-switch links between leaf switches does not isolate any GPU but breaks the non-blocking guarantee. The fabric becomes partially oversubscribed for cross-group traffic. Jobs that require uniform all-to-all bandwidth will run slower; jobs with locality-aware collective communication plans may be unaffected.</p>
+
+  <div class="callout warn">
+    <div class="callout-label">Operational Implication</div>
+    <p>NVL72 does not provide the same failure independence as a distributed InfiniBand cluster. In an IB cluster, a single switch failure isolates a leaf group but the rest of the fabric routes around it. In NVL72, the tight coupling of the non-blocking fabric means that a leaf switch failure forces a job restart across the entire domain. For long-running training jobs on NVL72, checkpoint frequency is determined by switch MTBF, not GPU MTBF.</p>
+  </div>
+
+  <h2 id="software">8. NCCL over NVLink Switch: how the software layer sees the fabric</h2>
+
+  <p>NCCL (NVIDIA Collective Communications Library) is the primary software layer that uses NVLink Switch. Understanding how NCCL maps collective communication algorithms onto the NVLink topology explains why topology-awareness in the software matters even for a "non-blocking" fabric.</p>
+
+  <p>NCCL performs topology discovery at initialization using NVIDIA's topology detection APIs, which walk the system's device tree to identify which GPUs are connected through which switches. For NVL72, NCCL discovers the two-tier topology and uses it to generate ring or tree-based collective algorithms that respect the topology.</p>
+
+  <span class="code-label">NCCL topology awareness — NVL72 all-reduce pattern</span>
+  <pre><code>Naive all-reduce (topology-unaware):
+  Ring order: GPU0 → GPU1 → GPU2 → ... → GPU71 → GPU0
+  Problem: many steps cross leaf-switch boundaries (2-hop paths)
+  Effective BW: limited by inter-switch links utilized in arbitrary order
+
+NCCL topology-aware all-reduce:
+  Phase 1: Intra-group reduce-scatter (within each 8-GPU leaf group)
+           All traffic is 1-hop (within leaf switch)
+           8 groups execute in parallel → 8× parallelism
+  Phase 2: Inter-group all-reduce (one representative per group)
+           Only 9 GPUs participate; traffic crosses leaf-switch boundaries
+           Small volume (1/8 of original) × inter-switch BW
+  Phase 3: Intra-group all-gather (broadcast result within each group)
+           Again all 1-hop, 8 groups parallel
+
+Result: 7/8 of traffic never crosses leaf-switch boundary
+        Inter-switch links carry only 1/8 of total data
+        Effective BW: ~15% higher than naive ring for 72-GPU all-reduce</code></pre>
+
+  <p>The 15% improvement from topology-aware collectives is not dramatic, but it compounds with scale. The broader lesson is that non-blocking hardware topology does not eliminate the value of topology-aware software — it changes the optimization target from "avoid congestion" to "maximize locality and parallelism."</p>
+
+  <h2 id="boundary">9. The scale-up / scale-out boundary: where NVLink ends and the problem begins</h2>
+
+  <p>NVL72 is a scale-up fabric: it allows a single model instance to use up to 72 GPUs as if they were a single tightly coupled compute unit. Beyond 72 GPUs — for data parallelism at scale, pipeline parallelism across many stages, or multi-job multi-tenant clusters — the fabric transitions to InfiniBand or Ethernet. This boundary is where the most interesting engineering problems live.</p>
+
+  <p>The transition point between scale-up (NVLink) and scale-out (IB/Ethernet) is not just a bandwidth discontinuity. It is a coherence boundary. Within the NVLink domain, GPU memories participate in a shared coherent address space. Across the IB boundary, GPUs are isolated memory islands that communicate through explicit RDMA operations. Software must be aware of this boundary: operations that cross it require explicit buffers, explicit synchronization, and explicit data copies. Operations that stay within it can use simpler load/store semantics.</p>
+
+  <p>For production inference clusters running disaggregated prefill-decode serving, this boundary creates a design choice: should prefill and decode pools for a single model be within the same NVL72 domain (tight coupling, high bandwidth, shared failure domain) or in different NVL72 domains connected by IB (loose coupling, lower bandwidth, independent failure)? The answer depends on the model size relative to 72 GPUs and the operator's tolerance for correlated failure.</p>
+
+  <h2 id="close">10. What NVLink Switch teaches us about the future of AI interconnect</h2>
+
+  <p>NVLink Switch is a bet on a specific architectural philosophy: the most important communication for AI workloads happens within a tight group of GPUs running a single model, and that communication should have a dedicated, proprietary, high-bandwidth, coherent fabric that is architecturally distinct from the general-purpose cluster network.</p>
+
+  <p>The counterargument — that open standards (InfiniBand, Ultra Ethernet) will converge on the same bandwidth over time and replace NVLink — misses the coherence dimension. InfiniBand provides high bandwidth but not cache coherence. Coherence requires the interconnect to participate in the GPU's memory protocol, which means it cannot be a commodity component designed independently of the GPU. As long as cache coherence provides programming model advantages for tensor-parallel AI workloads, NVLink Switch's proprietary nature is a feature, not a lock-in risk.</p>
+
+  <p>The trajectory is clear: scale-up fabrics will get tighter (more GPUs per non-blocking domain, higher bandwidth per GPU), and scale-out fabrics will get broader (more nodes, higher total bandwidth, lower cost per bit). The boundary between them — and how software manages the coherence discontinuity at that boundary — is where the next generation of AI infrastructure systems problems will be solved.</p>
+
+  <footer class="essay-footer"><p><a href="/index.html">© 2026 MANISH AI</a> · Systems architecture for AI infrastructure · <a href="/writings.html">← Back to writings</a></p></footer>
+</main>
+</body>
+</html>

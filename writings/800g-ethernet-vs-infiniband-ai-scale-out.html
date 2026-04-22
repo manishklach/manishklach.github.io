@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>800G Ethernet vs. InfiniBand: The AI Scale-Out Decision Nobody Documents Honestly | MANISH AI</title>
+<meta name="description" content="A technical comparison of 800G Ethernet and InfiniBand for AI scale-out, covering congestion control, collectives, latency, cost, and operational tradeoffs."/>
+<meta name="keywords" content="InfiniBand, 800G Ethernet, Scale-Out, AI infrastructure, GPU networking, systems architecture, connectivity series, MANISH AI"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/800g-ethernet-vs-infiniband-ai-scale-out.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="800G Ethernet vs. InfiniBand: The AI Scale-Out Decision Nobody Documents Honestly | MANISH AI"/>
+<meta property="og:description" content="A technical comparison of 800G Ethernet and InfiniBand for AI scale-out, covering congestion control, collectives, latency, cost, and operational tradeoffs."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/800g-ethernet-vs-infiniband-ai-scale-out.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/800g-ethernet-vs-infiniband-ai-scale-out.png"/>
+<meta property="og:image:alt" content="800G Ethernet vs. InfiniBand: The AI Scale-Out Decision Nobody Documents Honestly"/>
+<meta property="article:published_time" content="2026-04-21"/>
+<meta property="article:modified_time" content="2026-04-21"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="800G Ethernet vs. InfiniBand: The AI Scale-Out Decision Nobody Documents Honestly | MANISH AI"/>
+<meta name="twitter:description" content="A technical comparison of 800G Ethernet and InfiniBand for AI scale-out, covering congestion control, collectives, latency, cost, and operational tradeoffs."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/800g-ethernet-vs-infiniband-ai-scale-out.png"/>
+<script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "800G Ethernet vs. InfiniBand: The AI Scale-Out Decision Nobody Documents Honestly",
+  "description": "A technical comparison of 800G Ethernet and InfiniBand for AI scale-out, covering congestion control, collectives, latency, cost, and operational tradeoffs.",
+  "url": "https://manishklach.github.io/writings/800g-ethernet-vs-infiniband-ai-scale-out.html",
+  "datePublished": "2026-04-21",
+  "dateModified": "2026-04-21",
+  "inLanguage": "en",
+  "author": { "@type": "Person", "name": "MANISH AI", "url": "https://manishklach.github.io/" },
+  "publisher": { "@type": "Person", "name": "MANISH AI", "url": "https://manishklach.github.io/" },
+  "mainEntityOfPage": { "@type": "WebPage", "@id": "https://manishklach.github.io/writings/800g-ethernet-vs-infiniband-ai-scale-out.html" }
+}</script>
+<style>
+  :root {
+    --bg: #0f0f0f; --text: #e8e6e1; --muted: #8a8680; --accent: #c8a96e;
+    --border: #2a2825; --code-bg: #1a1917; --tag-bg: #1e1c1a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Georgia', serif; font-size: 18px; line-height: 1.78; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  .site-header { padding: 1.4rem 2rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .site-logo { font-family: monospace; font-size: 0.85rem; color: var(--muted); }
+  .site-nav { display: flex; gap: 1.5rem; font-size: 0.82rem; font-family: monospace; }
+  .site-nav a { color: var(--muted); }
+  .back-link { font-family: monospace; font-size: 0.78rem; color: var(--muted); padding: 1.4rem 2rem 0; display: block; max-width: 800px; margin: 0 auto; }
+  .essay-wrap { max-width: 800px; margin: 0 auto; padding: 2.4rem 2rem 6rem; }
+  .series-label { font-family: monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 1rem; }
+  .tags { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 1.4rem; }
+  .tag { background: var(--tag-bg); border: 1px solid var(--border); color: var(--muted); font-size: 0.7rem; font-family: monospace; padding: 0.22rem 0.55rem; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.04em; }
+  h1 { font-size: 2.05rem; line-height: 1.22; font-weight: normal; color: var(--text); margin-bottom: 0.9rem; letter-spacing: -0.02em; }
+  .byline { font-size: 0.8rem; font-family: monospace; color: var(--muted); margin-bottom: 0.5rem; }
+  .lede { font-size: 1.05rem; color: #b8b4ad; line-height: 1.65; margin-bottom: 2rem; font-style: italic; border-bottom: 1px solid var(--border); padding-bottom: 1.6rem; }
+  .evidence-box { background: #111510; border: 1px solid #2a3a2a; padding: 1.4rem 1.6rem; margin-bottom: 2.6rem; }
+  .evidence-label { font-family: monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; color: #5a9a6a; margin-bottom: 0.9rem; }
+  .evidence-box ul { list-style: none; padding: 0; }
+  .evidence-box li { font-size: 0.88rem; color: #a8bea8; font-family: monospace; margin-bottom: 0.5rem; padding-left: 1.2rem; position: relative; line-height: 1.5; }
+  .evidence-box li::before { content: "▸"; position: absolute; left: 0; color: #5a9a6a; }
+  .evidence-box li strong { color: var(--text); }
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.9rem; margin-bottom: 2.8rem; }
+  .stat-box { background: var(--code-bg); border: 1px solid var(--border); padding: 1rem; text-align: center; }
+  .stat-num { font-family: monospace; font-size: 1.25rem; color: var(--accent); display: block; margin-bottom: 0.3rem; font-weight: bold; }
+  .stat-label { font-size: 0.68rem; color: var(--muted); font-family: monospace; line-height: 1.35; }
+  .toc { background: var(--code-bg); border: 1px solid var(--border); padding: 1.4rem; margin-bottom: 2.8rem; }
+  .toc-title { font-family: monospace; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.9rem; }
+  .toc ol { padding-left: 1.1rem; }
+  .toc li { font-size: 0.82rem; font-family: monospace; margin-bottom: 0.35rem; }
+  .toc a { color: var(--muted); } .toc a:hover { color: var(--accent); }
+  h2 { font-size: 1.35rem; font-weight: normal; color: var(--text); margin: 2.8rem 0 1.1rem; padding-bottom: 0.45rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.05rem; font-weight: bold; color: var(--text); margin: 1.9rem 0 0.7rem; }
+  p { margin-bottom: 1.35rem; }
+  blockquote { border-left: 3px solid var(--accent); padding: 0.9rem 1.4rem; margin: 1.8rem 0; background: var(--code-bg); }
+  blockquote p { margin: 0; color: #c0bcb4; font-style: italic; }
+  blockquote strong { color: var(--text); font-style: normal; }
+  .code-label { font-family: monospace; font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; display: block; background: #141311; border: 1px solid var(--border); border-bottom: none; padding: 0.35rem 0.9rem; width: fit-content; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); padding: 1.3rem; overflow-x: auto; margin: 0 0 1.8rem; }
+  code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.8rem; color: #a8c4a2; line-height: 1.6; }
+  p code { background: var(--code-bg); padding: 0.1em 0.35em; color: #a8c4a2; font-size: 0.8rem; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; margin: 1.8rem 0; font-size: 0.84rem; }
+  th { background: var(--code-bg); color: var(--muted); font-family: monospace; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.65rem 0.9rem; text-align: left; border: 1px solid var(--border); }
+  td { padding: 0.65rem 0.9rem; border: 1px solid var(--border); color: #c0bcb4; vertical-align: top; }
+  tr:nth-child(even) td { background: #141311; }
+  td strong { color: var(--text); }
+  .callout { background: #0d1a12; border: 1px solid #1e3a28; padding: 1.1rem 1.4rem; margin: 1.8rem 0; }
+  .callout-label { font-family: monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: #4a9a6a; margin-bottom: 0.55rem; }
+  .callout p { margin: 0; font-size: 0.88rem; color: #b0ccb8; }
+  .warn { background: #1a1008; border: 1px solid #3a2a10; }
+  .warn .callout-label { color: #c89a4a; }
+  .warn p { color: #c8baa0; }
+  .essay-footer { margin-top: 3.5rem; padding-top: 1.8rem; border-top: 1px solid var(--border); font-size: 0.78rem; font-family: monospace; color: var(--muted); }
+</style>
+<script async data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <a class="site-logo" href="/index.html">MA · MANISH AI</a>
+  <nav class="site-nav"><a href="/index.html">Home</a><a href="/patents.html">Patents</a><a href="/writings.html">Writing</a><a href="/index.html#contact">Contact</a></nav>
+</header>
+<a href="/writings.html" class="back-link">← All writings</a>
+
+<main class="essay-wrap" data-pagefind-body>
+  <div class="series-label">Systems Deep Dive · Connectivity Series</div>
+  <div class="tags">
+    <span class="tag">800G Ethernet</span><span class="tag">InfiniBand</span>
+    <span class="tag">Ultra Ethernet</span><span class="tag">RoCEv2</span>
+    <span class="tag">Scale-Out Fabric</span><span class="tag">AI Networking</span>
+  </div>
+
+  <h1>800G Ethernet vs. InfiniBand: The AI Scale-Out Decision Nobody Documents Honestly</h1>
+  <div class="byline">MANISH AI · April 2026 · 20 min read · Connectivity Series</div>
+  <p class="lede">The InfiniBand vs. Ethernet debate has been running for a decade. Most of it has been vendor marketing. This essay cuts through to the actual physics, protocol, and operational tradeoffs — with specific numbers — to explain why the answer depends entirely on your traffic pattern, your congestion control requirements, and your operational team.</p>
+
+  <div class="evidence-box">
+    <div class="evidence-label">Key Numbers</div>
+    <ul>
+      <li>InfiniBand NDR: <strong>400 Gbps per port</strong>; XDR (roadmap): 800 Gbps per port</li>
+      <li>800G Ethernet (Ultra Ethernet / RoCEv2): <strong>800 Gbps per port</strong>, now in production at hyperscalers</li>
+      <li>InfiniBand latency advantage: <strong>~0.6 µs MPI</strong> vs. ~1.2-1.8 µs for RoCEv2 at equivalent scale</li>
+      <li>Meta's RoCEv2 cluster: <strong>over 24,000 GPUs</strong> running production training on Ethernet-based RDMA</li>
+      <li>Congestion control is where <strong>90% of the real performance difference</strong> lives — not raw bandwidth</li>
+    </ul>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-box"><span class="stat-num">2×</span><span class="stat-label">IB latency advantage over RoCEv2 at scale (µs level)</span></div>
+    <div class="stat-box"><span class="stat-num">30–40%</span><span class="stat-label">cost premium for IB vs. 800G Ethernet at same port count</span></div>
+    <div class="stat-box"><span class="stat-num">3</span><span class="stat-label">congestion control mechanisms IB provides that Ethernet lacks natively</span></div>
+    <div class="stat-box"><span class="stat-num">~0</span><span class="stat-label">native multicast support in RDMA — both IB and RoCE handle it differently</span></div>
+  </div>
+
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#framing">Why the debate is framed wrong</a></li>
+      <li><a href="#ib-architecture">InfiniBand architecture: what it actually provides</a></li>
+      <li><a href="#roce">RoCEv2: Ethernet's RDMA answer and its real constraints</a></li>
+      <li><a href="#congestion">Congestion control: where the performance gap actually lives</a></li>
+      <li><a href="#ultra-ethernet">Ultra Ethernet Consortium: fixing RoCEv2's congestion problem</a></li>
+      <li><a href="#ai-traffic">AI training traffic patterns and which fabric handles them better</a></li>
+      <li><a href="#inference-traffic">Inference traffic: a different animal entirely</a></li>
+      <li><a href="#operational">Operational reality: who can run IB and who should use Ethernet</a></li>
+      <li><a href="#decision">The actual decision framework</a></li>
+      <li><a href="#close">The convergence thesis and what it means for future clusters</a></li>
+    </ol>
+  </div>
+
+  <h2 id="framing">1. Why the debate is framed wrong</h2>
+
+  <p>The IB vs. Ethernet debate is usually framed as a bandwidth question: which technology provides more GB/s between GPUs? At 800G, both technologies are at parity on raw bandwidth per port. The question resolved itself at the physical layer years ago. Yet the debate persists because the bandwidth framing misses what actually matters.</p>
+
+  <p>The real question is: for the specific traffic patterns of AI training and inference, which fabric provides better tail latency, better congestion behavior under adversarial load, and lower operational cost at scale? The answer to each of these is different, and they point in different directions depending on your workload.</p>
+
+  <blockquote>
+    <p><strong>The framing this essay uses:</strong> Raw bandwidth is not the decision variable. Congestion control, transport semantics, and operational complexity are. Most teams making the IB vs. Ethernet decision are optimizing for bandwidth (which is at parity) instead of congestion behavior and operational fit (which differ substantially).</p>
+  </blockquote>
+
+  <h2 id="ib-architecture">2. InfiniBand architecture: what it actually provides</h2>
+
+  <p>InfiniBand is a complete network architecture — it includes the physical layer, data link layer, network layer, transport layer, and a rich set of services built on top. Understanding what each layer provides is necessary to understand where IB's advantages come from and which of them are genuinely hard to replicate.</p>
+
+  <p><strong>Physical layer:</strong> InfiniBand NDR (Next Data Rate) provides 400 Gbps per port using 4× 100 Gbps lanes with PAM4 signaling. XDR (roadmap) doubles this to 800 Gbps. Physical layer is now at parity with 800G Ethernet — no intrinsic advantage either way.</p>
+
+  <p><strong>Data link layer:</strong> InfiniBand uses a credit-based flow control scheme at the link level. Before sending data, a transmitter must have credits from the receiver indicating available buffer space. Credits are fine-grained (measured in 64-byte units). This makes InfiniBand links lossless by construction — packets are never dropped at the switch level because the switch only accepts a packet when it has confirmed the downstream link has buffer space. Losslessness is foundational to RDMA performance.</p>
+
+  <p><strong>Network layer:</strong> InfiniBand has its own routable network layer with 16-bit Local Identifiers (LIDs) for subnet routing and 128-bit Global Identifiers (GUIDs) for inter-subnet routing. The subnet manager — an IB-specific control plane component — computes routing tables and distributes them to all switches. This is fundamentally different from IP routing and requires IB-specific tooling and expertise.</p>
+
+  <p><strong>Transport layer:</strong> IB provides multiple transport types — Reliable Connected (RC), Unreliable Connected (UC), and Unreliable Datagram (UD) — each with different performance and semantic tradeoffs. RDMA operations (Read, Write, Send, Atomic) are implemented in hardware on the Host Channel Adapter (HCA). The hardware transport means that RDMA operations complete without CPU involvement in the data path.</p>
+
+  <h3>2.1 What makes IB genuinely hard to replicate</h3>
+
+  <p>Three IB properties are difficult to replicate with Ethernet:</p>
+
+  <p><strong>End-to-end credit-based flow control.</strong> IB's credit system extends from sender through every switch hop to receiver. At no point in the network can a packet be dropped due to buffer overflow — the network back-pressures the sender before buffers fill. Ethernet's flow control (PFC — Priority Flow Control) operates per-hop and creates persistent pause frames that propagate backward through the fabric, causing head-of-line blocking and potentially deadlock.</p>
+
+  <p><strong>Subnet manager and adaptive routing.</strong> IB's centralized subnet manager can observe the global traffic matrix and update routing tables in real-time to avoid hot links. Ethernet's distributed ECMP routing makes locally-optimal decisions that can globally create congestion. IB's adaptive routing (NVIDIA's SHIELD, Cornelis's ARK) reroutes individual packets based on observed per-port queue depths.</p>
+
+  <p><strong>Hardware-level congestion notification.</strong> IB switches inject congestion notification packets into the data stream when they detect queue buildup. Senders receive these notifications and reduce their injection rate. This is a hardware-level closed-loop control system with ~microsecond reaction time. Ethernet's DCQCN (Data Center Quantized Congestion Notification) is a software-assisted approximation with higher latency in the control loop.</p>
+
+  <h2 id="roce">3. RoCEv2: Ethernet's RDMA answer and its real constraints</h2>
+
+  <p>RoCEv2 (RDMA over Converged Ethernet v2) is the standard for running RDMA verbs over IP/Ethernet. It provides the same RDMA programming model as InfiniBand — the same verbs (Send/Receive, RDMA Write/Read, Atomic), the same memory registration model, the same queue pair abstraction — but runs over IP/UDP rather than IB transport.</p>
+
+  <p>This means that software written for IB RDMA can run on RoCEv2 with minimal changes. NCCL supports both. The MPI implementations support both. The application layer is largely portable. The difference is in what happens when traffic gets congested.</p>
+
+  <span class="code-label">RoCEv2 vs. IB transport comparison</span>
+  <pre><code>                    IB RC transport        RoCEv2 (UDP/IP)
+Lossless guarantee  Yes (credit-based)     Requires PFC + ECN (lossy by default)
+Congestion control  Hardware CC (SHIELD)   DCQCN (SW-assisted, higher latency)
+Timeout/retry       Hardware retransmit    SW retransmit via ibverbs
+Packet ordering     Guaranteed per QP      Guaranteed per flow (5-tuple)
+Multipath           Adaptive routing       ECMP (per-flow, not per-packet)
+Deadlock risk       Low (per-VL credits)   Yes under PFC with cyclic deps
+MTU                 4096 bytes             Up to 9000 bytes (jumbo frames)
+Address model       LID/GID               IP address
+Subnet management   IB Subnet Manager     Standard IP routing
+Ops complexity      High (IB-specific)    Moderate (IP tools work)</code></pre>
+
+  <p>The losslessness issue is the core. RDMA over a lossy network is not just slower — it is fundamentally broken for many operations. RDMA Write requires that the receiver side has already posted a buffer for the data to land in. If a packet is lost in transit, the write operation fails silently — the data ends up in the wrong buffer or triggers a protection fault. The RDMA transport must therefore guarantee delivery. IB does this in hardware through credits. RoCEv2 does it through a combination of PFC (to make the network lossless) and retransmission (as a backup when PFC fails).</p>
+
+  <h3>3.1 The PFC problem: pause frames and deadlock</h3>
+
+  <p>PFC (Priority Flow Control) is Ethernet's mechanism for creating a lossless network. When a switch port's receive buffer fills, it sends a PAUSE frame to the upstream sender on that specific traffic class, stopping that sender for a specified duration. This prevents the switch from dropping packets.</p>
+
+  <p>The problem is that PAUSE frames propagate. If switch A pauses sender B, and sender B was also receiving data from sender C, then B's switch port toward C fills and B pauses C. The pause propagates backward through the fabric. In a network with cyclic dependencies — which is easy to create accidentally with multipath routing — a permanent deadlock can form where every flow is paused waiting for a flow that is also paused.</p>
+
+  <p>InfiniBand avoids this through its credit system: no packet is ever sent unless the downstream buffer has confirmed capacity. PFC-based systems react after the fact — they pause when buffer fills rather than preventing the fill. The reaction latency means that PFC is always operating in a mode where buffers are partially full, which creates baseline latency degradation even when deadlock does not occur.</p>
+
+  <h2 id="congestion">4. Congestion control: where the performance gap actually lives</h2>
+
+  <p>At 800G with no congestion, IB and RoCEv2 perform comparably. The performance gap opens under congestion — and AI training generates a lot of congestion. AllReduce operations across thousands of GPUs create incast patterns: many senders simultaneously targeting a small number of aggregation points. This is exactly the traffic pattern where congestion control quality matters most.</p>
+
+  <span class="code-label">Incast congestion scenario — AllReduce at 1,024 GPUs</span>
+  <pre><code>AllReduce ring-reduce phase:
+  1,024 GPUs, each sending 1/1,024 of gradient tensor to next ring neighbor
+  Simultaneously: multiple aggregation steps in progress
+  → Multiple flows arriving at each switch port simultaneously
+  → Switch port receive buffer fills in microseconds
+
+IB response:
+  Credit system: sender throttles before buffer fills
+  Adaptive routing: hot ports detected, flows rerouted within microseconds
+  Result: buffer occupancy stays low, latency increase ~10-20%
+
+RoCEv2 / DCQCN response:
+  ECN marks packets when queue exceeds threshold
+  Marked packets trigger rate reduction at sender (via RoCEv2 CNP packets)
+  Round-trip time for notification: ~2-5 µs
+  During 2-5 µs RTT: packets continue arriving at full rate
+  → Queue builds, PFC PAUSE triggered
+  → PAUSE propagates backward: affects ALL flows on that port, not just congested one
+  → Head-of-line blocking: non-congested flows paused alongside congested flows
+  Result: p99 latency increase 3-5× during AllReduce phases</code></pre>
+
+  <p>The 3-5× p99 latency increase during AllReduce is not a worst-case — it is a typical case in production clusters under heavy training load. This translates directly to GPU utilization: GPUs waiting for AllReduce to complete are idle. The tail latency in collective operations determines the effective utilization of the weakest link in the synchronization barrier.</p>
+
+  <h2 id="ultra-ethernet">5. Ultra Ethernet Consortium: fixing RoCEv2's congestion problem</h2>
+
+  <p>The Ultra Ethernet Consortium (UEC), formed in 2023 with participation from AMD, Broadcom, Cisco, Intel, Meta, and Microsoft, is developing a new transport standard designed to provide RDMA semantics over Ethernet with better congestion control than RoCEv2. The key technical improvements are:</p>
+
+  <p><strong>Per-packet adaptive routing.</strong> Unlike ECMP (which assigns entire flows to paths), UEC specifies per-packet load balancing with out-of-order delivery tolerance. This allows traffic to use all available paths simultaneously rather than being hashed onto a subset.</p>
+
+  <p><strong>Packet spraying.</strong> Packets from a single flow can be sent across multiple paths and reordered at the receiver. This eliminates the "unlucky hash" problem in ECMP where a flow consistently maps to a congested path.</p>
+
+  <p><strong>Improved congestion control with sub-RTT reaction.</strong> UEC specifies switch-assisted congestion signals that are injected into the data path with lower latency than DCQCN's ECN-based mechanism, enabling faster reaction without PFC propagation.</p>
+
+  <table>
+    <tr><th>Property</th><th>Standard RoCEv2</th><th>Ultra Ethernet (UEC)</th><th>InfiniBand NDR</th></tr>
+    <tr><td><strong>Lossless mechanism</strong></td><td>PFC + ECN</td><td>UEC CC (no PFC needed)</td><td>Credit-based (no loss)</td></tr>
+    <tr><td><strong>Multipath</strong></td><td>ECMP per-flow</td><td>Per-packet spray</td><td>Adaptive per-packet (SHIELD)</td></tr>
+    <tr><td><strong>Congestion reaction</strong></td><td>~RTT (µs)</td><td>Sub-RTT (switch-assisted)</td><td>Hardware (~0.1 µs)</td></tr>
+    <tr><td><strong>Deadlock risk</strong></td><td>Yes (PFC)</td><td>Low (no PFC)</td><td>Very low (credits)</td></tr>
+    <tr><td><strong>Ecosystem</strong></td><td>Multi-vendor, mature</td><td>Emerging (2025-2026)</td><td>NVIDIA-dominated</td></tr>
+    <tr><td><strong>Ops complexity</strong></td><td>Moderate</td><td>Moderate</td><td>High</td></tr>
+  </table>
+
+  <p>UEC is promising but has not been widely deployed in production AI clusters as of early 2026. The implementations are arriving in silicon from Broadcom (Thor-2) and Marvell (Octeon 10), but the ecosystem of drivers, NCCL backends, and operational tooling is still maturing. The teams making cluster fabric decisions today are choosing between proven RoCEv2 (with known congestion issues) and proven IB (with known operational complexity), not between either of those and a not-yet-validated UEC deployment.</p>
+
+  <h2 id="ai-traffic">6. AI training traffic patterns and which fabric handles them better</h2>
+
+  <p>AI training generates four distinct traffic patterns that stress the network differently:</p>
+
+  <p><strong>AllReduce (data parallel gradient sync):</strong> Many-to-many, high bandwidth, sustained. IB's adaptive routing and hardware congestion control handle the incast patterns better. RoCEv2 with well-tuned DCQCN is adequate but requires careful configuration and more conservative bandwidth utilization (typically 70-75% of line rate to keep PFC from triggering).</p>
+
+  <p><strong>Pipeline parallel activation passing:</strong> Directed point-to-point flows between adjacent pipeline stages. Both IB and RoCEv2 handle this well — congestion is minimal because traffic patterns are regular and predictable. No meaningful advantage for either.</p>
+
+  <p><strong>Expert dispatch (MoE):</strong> Many-to-few, bursty, with hot destinations. IB's adaptive routing reroutes flows away from hot expert GPUs more quickly. RoCEv2 ECMP creates persistent hot paths. This is a measurable IB advantage for large MoE training.</p>
+
+  <p><strong>Checkpoint I/O:</strong> Periodic bulk transfers from GPUs to storage. Standard TCP/IP or RDMA to storage targets. Both IB and Ethernet work. Not a differentiator.</p>
+
+  <h2 id="inference-traffic">7. Inference traffic: a different animal entirely</h2>
+
+  <p>Inference has a fundamentally different traffic profile from training — and this changes the IB vs. Ethernet calculus significantly.</p>
+
+  <p>Training is dominated by AllReduce: high bandwidth, many-to-many, sustained, synchronous. This favors IB's congestion handling. Inference is dominated by: KV cache transfers (directed, point-to-point, medium bandwidth), MoE dispatch (bursty, many-to-few), and prefill-decode KV migration (large sequential transfers). These patterns are less congestion-intensive and more bandwidth-oriented.</p>
+
+  <p>For inference specifically, the IB latency advantage (0.6 µs vs. 1.2-1.8 µs MPI-level) matters for token latency when network transfers are in the critical path. KV cache fetches of small pages (the 73% under 128KB case from the PCIe Tax essay) are exactly where low latency matters most. IB provides a genuine latency advantage here that accumulates per-hop across inference critical paths.</p>
+
+  <p>However: at the scale most inference clusters operate (hundreds to a few thousand GPUs, not tens of thousands), RoCEv2 congestion events are rare enough that the operational simplicity advantage of Ethernet outweighs the latency penalty. The inflection point is approximately cluster size >2,000 GPUs running dense multi-node inference workloads with synchronous collective communications.</p>
+
+  <h2 id="operational">8. Operational reality: who can run IB and who should use Ethernet</h2>
+
+  <p>InfiniBand clusters require specialized operational knowledge that is genuinely difficult to acquire. The IB subnet manager must be configured correctly for every topology change. Adaptive routing parameters must be tuned for the specific traffic pattern. Congestion isolation requires careful virtual lane assignment. Debugging performance problems requires IB-specific telemetry tools (perfquery, ibdiagnet, etc.) that have no Ethernet equivalents.</p>
+
+  <div class="callout warn">
+    <div class="callout-label">Operational Reality Check</div>
+    <p>A misconfigured IB subnet manager can silently degrade performance by 40-60% without any obvious error messages. A misconfigured PFC on a RoCEv2 cluster can trigger cluster-wide pause storms that look like GPU slowdowns. Both technologies fail in silent, hard-to-diagnose ways — but IB requires more specialized knowledge to configure correctly in the first place. If your networking team is primarily IP/Ethernet engineers, starting with RoCEv2 and investing in DCQCN tuning is likely to produce better results than deploying IB without IB expertise.</p>
+  </div>
+
+  <p>The hyperscalers who run IB at scale (primarily NVIDIA-infrastructure-heavy shops) have invested heavily in IB operational expertise. Meta's decision to build their AI Research SuperCluster on RoCEv2 was partly a reflection of their Ethernet-first operational culture — they have deep IP networking expertise and chose to apply it to AI rather than build parallel IB expertise.</p>
+
+  <h2 id="decision">9. The actual decision framework</h2>
+
+  <p>Given all of the above, here is the honest decision framework:</p>
+
+  <table>
+    <tr><th>Scenario</th><th>Recommended Fabric</th><th>Rationale</th></tr>
+    <tr><td><strong>&lt;1,000 GPU cluster, mixed training/inference</strong></td><td>RoCEv2 / 400G-800G Ethernet</td><td>Congestion events rare; operational simplicity wins; lower cost</td></tr>
+    <tr><td><strong>1,000-10,000 GPU training cluster</strong></td><td>InfiniBand NDR if team has IB expertise; RoCEv2 + careful DCQCN tuning otherwise</td><td>Congestion starts mattering; IB advantage real but requires expertise</td></tr>
+    <tr><td><strong>&gt;10,000 GPU frontier training</strong></td><td>InfiniBand or UEC (when available)</td><td>AllReduce congestion at this scale makes DCQCN limitations costly</td></tr>
+    <tr><td><strong>Inference-only cluster</strong></td><td>RoCEv2 / 800G Ethernet</td><td>Traffic pattern less congestion-prone; latency gap acceptable for inference SLOs</td></tr>
+    <tr><td><strong>MoE training at scale</strong></td><td>InfiniBand</td><td>Expert dispatch incast handled significantly better</td></tr>
+    <tr><td><strong>Hyperscaler with IP-first ops team</strong></td><td>RoCEv2</td><td>Operational fit trumps raw performance in 24/7 production environments</td></tr>
+  </table>
+
+  <h2 id="close">10. The convergence thesis and what it means for future clusters</h2>
+
+  <p>The IB vs. Ethernet debate will eventually resolve — not because one technology wins, but because the gap is closing from both sides. InfiniBand is adopting more standard IP interfaces (GRH headers, IP addressing) to reduce operational friction. Ultra Ethernet is adopting IB-like congestion control mechanisms to close the performance gap. The future state is likely a convergence on a common set of transport semantics — RDMA, lossless, adaptive routing — implemented over a substrate that is administratively IP-compatible.</p>
+
+  <p>The Ultra Ethernet Consortium's work is the most concrete signal of this convergence. If UEC delivers on its technical specifications in production, it will eliminate most of the genuine performance advantages of InfiniBand while retaining Ethernet's operational accessibility. At that point, the IB vs. Ethernet decision becomes straightforward: Ethernet, at lower cost, with familiar tooling, and without vendor lock-in.</p>
+
+  <p>Until UEC is production-validated, the honest answer is: the decision depends on your cluster scale, traffic pattern, operational team expertise, and tolerance for the operational complexity of IB. There is no universal answer. Anyone who tells you otherwise is selling something.</p>
+
+  <footer class="essay-footer"><p><a href="/index.html">© 2026 MANISH AI</a> · Systems architecture for AI infrastructure · <a href="/writings.html">← Back to writings</a></p></footer>
+</main>
+</body>
+</html>
