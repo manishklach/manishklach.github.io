@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Storage Primer: From NAND Physics to GPUDirect and the Memory Wall | MANISH AI</title>
+  <meta name="description" content="A technical primer on AI storage, from NAND and SSD controllers to GPUDirect Storage, HDD economics, HBF, and the memory wall in modern AI systems." />
+  <style>
+    :root{
+      --bg:#09101f; --bg2:#0b1326; --text:#eef3ff; --muted:#bac5e6;
+      --line:rgba(255,255,255,.10); --brand:#7da2ff; --brand2:#6fe2ff;
+      --shadow:0 28px 64px rgba(0,0,0,.34); --max:1260px;
+    }
+    *{box-sizing:border-box} html{scroll-behavior:smooth}
+    body{
+      margin:0; color:var(--text); line-height:1.74;
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      background:
+        radial-gradient(circle at 92% 0%, rgba(111,226,255,.10), transparent 26%),
+        radial-gradient(circle at 4% 0%, rgba(125,162,255,.10), transparent 24%),
+        linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);
+    }
+    a{color:#d7e6ff}
+    .wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
+    header.hero{padding:84px 0 44px;border-bottom:1px solid var(--line)}
+    .eyebrow{
+      display:inline-block;padding:8px 14px;border-radius:999px;
+      border:1px solid rgba(125,162,255,.24); background:rgba(125,162,255,.06);
+      color:var(--brand); text-transform:uppercase; font-size:12px; font-weight:800;
+      letter-spacing:.16em; margin-bottom:18px;
+    }
+    h1{margin:0;max-width:12ch;font-size:clamp(3rem,6vw,5.35rem);line-height:.96;letter-spacing:-.05em}
+    .subtitle{margin:20px 0 26px;max-width:86ch;color:var(--muted);font-size:1.13rem}
+    .meta{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:32px}
+    .meta span{padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:#d8e1ff;font-size:.95rem}
+    .hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:stretch}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.02));border:1px solid var(--line);border-radius:28px;box-shadow:var(--shadow)}
+    .intro-card,.toc{padding:24px}
+    .intro-card{position:relative;overflow:hidden;min-height:430px}
+    .intro-card::after{content:"";position:absolute;right:-40px;bottom:-60px;width:240px;height:240px;border-radius:999px;background:radial-gradient(circle,rgba(111,226,255,.18),transparent 68%);pointer-events:none}
+    .toc h3,.intro-card h3{margin:0 0 10px;font-size:1.08rem}
+    .intro-card p{margin:0;color:var(--muted)}
+    .chip-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
+    .chip,.node,.box2,.compare .box,.mini{
+      padding:15px;border-radius:18px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03)
+    }
+    .chip b,.node b,.box2 b{display:block;margin-bottom:6px;color:#dfe8ff;font-size:.86rem;text-transform:uppercase;letter-spacing:.08em}
+    .chip span{color:var(--muted);font-size:.95rem}
+    .toc ol{margin:0;padding-left:18px;color:var(--muted)} .toc li{margin:7px 0}
+    main{padding:42px 0 88px}
+    article{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:34px;align-items:start}
+    .content h2{margin:54px 0 14px;font-size:clamp(1.95rem,2.9vw,2.85rem);line-height:1.08;letter-spacing:-.03em}
+    .content h3{margin:30px 0 10px;font-size:1.24rem;letter-spacing:-.02em}
+    .content p{margin:14px 0}
+    .pull{margin:26px 0;padding:18px 20px;border-left:3px solid var(--brand2);background:rgba(111,226,255,.06);border-radius:0 16px 16px 0;color:#edf8ff;font-size:1.06rem}
+    .tri{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:18px 0}
+    .four{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:18px 0}
+    .figure{margin:28px 0 18px;padding:16px;border-radius:24px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.02))}
+    .figcap{margin-top:10px;color:var(--muted);font-size:.95rem}
+    .compare{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:20px 0}
+    .compare h4{margin:0 0 6px;font-size:1rem}.compare p{margin:0;color:var(--muted);font-size:.95rem}
+    table{width:100%;border-collapse:collapse;margin:20px 0 10px;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.02)}
+    th,td{padding:12px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);font-size:.97rem}
+    th{color:#e3ebff;background:rgba(125,162,255,.08);font-weight:700}
+    td{color:var(--muted)} tr:last-child td{border-bottom:none}
+    code.inline{padding:2px 6px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;color:#edf3ff}
+    .aside{position:sticky;top:24px;display:flex;flex-direction:column;gap:16px}
+    .mini h4{margin:0 0 8px;font-size:.98rem}.mini p,.mini li{color:var(--muted);font-size:.95rem}.mini ul{margin:8px 0 0;padding-left:18px}
+    .footer-box{margin-top:46px;padding:24px;border-radius:24px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(125,162,255,.08),rgba(255,255,255,.03))}
+    .refs{margin-top:32px;padding-top:10px;border-top:1px solid var(--line)} .refs ol{padding-left:22px;color:var(--muted)} .refs li{margin:10px 0}
+    .refs a{text-decoration:none;border-bottom:1px dashed rgba(210,226,255,.30)} .refs a:hover{border-bottom-color:rgba(210,226,255,.75)}
+    .small{font-size:.92rem}
+    @media (max-width:1080px){
+      .hero-grid,.compare,.tri,.chip-grid,.four{grid-template-columns:1fr 1fr}
+      article{grid-template-columns:1fr}.aside{position:static}
+    }
+    @media (max-width:760px){
+      .wrap{padding:0 18px} header.hero{padding:64px 0 36px}
+      .hero-grid,.compare,.tri,.chip-grid,.four{grid-template-columns:1fr}
+      h1{max-width:100%}
+      table,thead,tbody,th,td,tr{display:block}
+      thead{display:none} tr{border-bottom:1px solid var(--line)} td{padding:10px 12px}
+      td::before{content:attr(data-label);display:block;margin-bottom:4px;color:#e3ebff;font-size:.84rem;font-weight:700}
+    }
+  
+    .site-top{position:sticky;top:0;z-index:20;border-bottom:1px solid var(--line);background:rgba(9,16,31,.78);backdrop-filter:blur(16px)}
+    .site-top .wrap{min-height:64px;display:flex;align-items:center;justify-content:space-between;gap:18px}
+    .site-brand{font-weight:900;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;color:var(--text);font-size:.95rem}
+    .site-brand:hover,.site-back:hover,.site-footer a:hover{opacity:.82;text-decoration:none}
+    .site-back{color:var(--muted);font-weight:800;font-size:.86rem;text-decoration:none;transition:opacity .2s ease}
+    .site-footer{border-top:1px solid var(--line);margin-top:52px;padding:28px 0 36px;color:var(--muted)}
+    .site-footer .wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px}
+    .site-footer a{color:var(--text);font-weight:800;text-decoration:none;transition:opacity .2s ease}
+    .site-footer .small{font-size:.92rem}
+  </style>
+
+  <meta name="keywords" content="AI storage, NAND flash, NVMe SSD, GPUDirect Storage, AI memory wall, HBF flash, HDD AI storage, SSD controller, NVMe over Fabrics, MANISH AI" />
+  <meta name="author" content="MANISH AI" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/ai-storage-primer-nand-gpudirect-memory-wall.html" />
+  <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml" />
+  <link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json" />
+  <link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention" />
+  <link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="AI Storage Primer: From NAND Physics to GPUDirect and the Memory Wall | MANISH AI" />
+  <meta property="og:description" content="A technical primer on AI storage, from NAND and SSD controllers to GPUDirect Storage, HDD economics, HBF, and the memory wall in modern AI systems." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/ai-storage-primer-nand-gpudirect-memory-wall.html" />
+  <meta property="og:site_name" content="MANISH AI" />
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <meta property="og:image:alt" content="MANISH AI technical essay preview" />
+  <meta property="article:published_time" content="2026-04-23T00:00:00-07:00" />
+  <meta property="article:modified_time" content="2026-04-23T00:00:00-07:00" />
+  <meta property="article:section" content="AI Infrastructure" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="AI Storage Primer: From NAND Physics to GPUDirect and the Memory Wall | MANISH AI" />
+  <meta name="twitter:description" content="A technical primer on AI storage, from NAND and SSD controllers to GPUDirect Storage, HDD economics, HBF, and the memory wall in modern AI systems." />
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "AI Storage Primer: From NAND Physics to GPUDirect and the Memory Wall",
+  "description": "A technical primer on AI storage, from NAND and SSD controllers to GPUDirect Storage, HDD economics, HBF, and the memory wall in modern AI systems.",
+  "url": "https://manishklach.github.io/writings/ai-storage-primer-nand-gpudirect-memory-wall.html",
+  "image": "https://manishklach.github.io/assets/og-image.png",
+  "datePublished": "2026-04-23",
+  "dateModified": "2026-04-23",
+  "inLanguage": "en-US",
+  "author": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://github.com/manishklach"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://manishklach.github.io/writings/ai-storage-primer-nand-gpudirect-memory-wall.html"
+  },
+  "keywords": [
+    "AI storage",
+    "NAND flash",
+    "NVMe SSD",
+    "GPUDirect Storage",
+    "AI memory wall",
+    "HBF flash",
+    "HDD AI storage",
+    "SSD controller",
+    "NVMe over Fabrics",
+    "MANISH AI"
+  ]
+}
+  </script>
+</head>
+<body>
+  <nav class="site-top" aria-label="Essay navigation">
+    <div class="wrap">
+      <a class="site-brand" href="/">MAN\SH AI</a>
+      <a class="site-back" href="/writings.html">← All writings</a>
+    </div>
+  </nav>
+  <header class="hero">
+    <div class="wrap">
+      <div class="eyebrow">Systems · Infrastructure · Storage · Memory · Data Movement</div>
+      <h1>AI Storage Primer: From NAND Physics to GPUDirect and the Memory Wall</h1>
+      <p class="subtitle">
+        This is a primer, not a hype piece. The goal is to explain AI storage from first principles: what storage is, how SSDs and HDDs actually work,
+        why NAND design choices matter, what NVMe changes, why GPUs still starve, how GPUDirect Storage alters the data path, and why ideas like High
+        Bandwidth Flash exist at all. Modern AI is not just a compute problem. It is a storage-and-data-movement problem wrapped around compute.
+      </p>
+      <div class="meta">
+        <span><time datetime="2026-04-23">Apr 23, 2026</time></span><span>Primer-grade long form</span><span>NAND · NVMe · GDS · HBF</span><span>Seagate · WD · Sandisk</span>
+      </div>
+      <div class="hero-grid">
+        <div class="card intro-card">
+          <h3>The thesis</h3>
+          <p>
+            The right way to think about AI storage is not “what drive is fastest?” It is “what data belongs on what tier, with what latency, bandwidth,
+            endurance, and cost profile?” HDD, SSD, DRAM, and HBM are not substitutes. They are layers in a hierarchy. AI hurts when the hierarchy is badly
+            matched to the workload.
+          </p>
+          <div class="chip-grid">
+            <div class="chip"><b>Persistence</b><span>Storage exists because memory is fast but volatile and too expensive to hold everything.</span></div>
+            <div class="chip"><b>Latency</b><span>The difference between nanoseconds, microseconds, and milliseconds defines what can sit on the hot path.</span></div>
+            <div class="chip"><b>Bandwidth</b><span>AI systems often care less about peak device specs than about sustained end-to-end data flow.</span></div>
+            <div class="chip"><b>IOPS</b><span>Random access patterns, metadata churn, and vector retrieval can break systems even when sequential throughput looks good.</span></div>
+          </div>
+        </div>
+        <div class="card toc">
+          <h3>In this primer</h3>
+          <ol>
+            <li><a href="#basics">Storage basics: latency, bandwidth, IOPS, persistence</a></li>
+            <li><a href="#nand">NAND flash from first principles</a></li>
+            <li><a href="#ssd">Inside an SSD: controller, channels, FTL, DRAM</a></li>
+            <li><a href="#nvme">NVMe and PCIe: how data really moves</a></li>
+            <li><a href="#hdd">Why HDD still matters in AI</a></li>
+            <li><a href="#hierarchy">HBM vs DRAM vs SSD vs HDD</a></li>
+            <li><a href="#workloads">How AI workloads stress storage</a></li>
+            <li><a href="#vendors">Seagate, WD, Sandisk</a></li>
+            <li><a href="#gds">GPUDirect Storage</a></li>
+            <li><a href="#hbf">Why HBF exists</a></li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </header>
+  <main data-pagefind-body>
+    <div class="wrap">
+      <article>
+        <div class="content">
+          <section id="basics">
+            <h2>1. Storage Basics: Persistence, Latency, Bandwidth, and IOPS</h2>
+            <p>
+              A good storage mental model starts with a simple distinction: <strong>memory is where active state lives right now; storage is where state survives</strong>.
+              DRAM and HBM are fast but volatile. Power them off and their contents disappear. HDDs and SSDs are persistent. They survive reboots, failures, and restarts.
+            </p>
+            <div class="four">
+              <div class="box2"><b>Latency</b>The time to begin getting the data. Nanoseconds matter for memory. Microseconds matter for flash. Milliseconds matter for disks.</div>
+              <div class="box2"><b>Bandwidth</b>How many bytes per second can flow once transfers are underway. AI training and checkpointing often care about this intensely.</div>
+              <div class="box2"><b>IOPS</b>How many small operations per second a device can sustain. Random read-heavy systems like vector retrieval care here.</div>
+              <div class="box2"><b>Persistence</b>Whether data survives power loss. Persistent media is essential for datasets, checkpoints, logs, and model distribution.</div>
+            </div>
+            <p>
+              AI workloads stress all four at once. Training wants huge throughput. Retrieval wants lots of random reads. Checkpointing wants sustained write bandwidth.
+              Long-context systems force hot and cold state to move across tiers. That is why storage design in AI is not just “buy faster SSDs.” It is workload matching.
+            </p>
+          </section>
+
+          <section id="nand">
+            <h2>2. NAND Flash from First Principles</h2>
+            <p>
+              SSDs are built on NAND flash. At a very high level, NAND stores charge in cells. The more bits you try to pack into each cell, the cheaper and denser the storage becomes,
+              but the harder it gets to read and write quickly and reliably.
+            </p>
+            <table>
+              <thead><tr><th>Type</th><th>Bits per cell</th><th>Best property</th><th>Main compromise</th></tr></thead>
+              <tbody>
+                <tr><td data-label="Type">SLC</td><td data-label="Bits per cell">1</td><td data-label="Best property">Fastest, most durable</td><td data-label="Main compromise">Too expensive for broad capacity use</td></tr>
+                <tr><td data-label="Type">MLC</td><td data-label="Bits per cell">2</td><td data-label="Best property">Balanced performance/endurance</td><td data-label="Main compromise">Lower density than TLC/QLC</td></tr>
+                <tr><td data-label="Type">TLC</td><td data-label="Bits per cell">3</td><td data-label="Best property">Good mainstream tradeoff</td><td data-label="Main compromise">More fragile and slower than lower-bit cells</td></tr>
+                <tr><td data-label="Type">QLC</td><td data-label="Bits per cell">4</td><td data-label="Best property">Maximum density / low cost per bit</td><td data-label="Main compromise">Lower endurance and weaker write behavior</td></tr>
+              </tbody>
+            </table>
+            <p>
+              This is why QLC exists: AI infrastructure wants absurd capacity, and capacity has to be paid for. If the hot path does not require the endurance or write behavior of TLC,
+              then QLC becomes attractive because it pushes cost per terabyte down.
+            </p>
+            <h3>Program/erase cycles and endurance</h3>
+            <p>
+              NAND cells wear out. They can only tolerate a limited number of program/erase cycles before reliability degrades. That is why SSD endurance is a real design variable, not a footnote.
+              AI checkpointing, heavy logging, and write-heavy preprocessing can stress endurance much more than read-mostly serving.
+            </p>
+            <h3>Write amplification</h3>
+            <p>
+              NAND cannot overwrite arbitrarily the way RAM can. Data is written in pages, but erasure happens in larger blocks. That mismatch means the SSD controller often has to move and rewrite
+              more data internally than the host actually requested. That is write amplification. In practical terms, it hurts both performance and endurance.
+            </p>
+            <div class="pull">
+              SSD performance is not just about the flash chips. It is about how intelligently the controller hides NAND’s awkward physics from the software above it.
+            </div>
+          </section>
+
+          <section id="ssd">
+            <h2>3. Inside an SSD: Controller, Channels, FTL, and DRAM</h2>
+            <p>
+              An SSD is not “just fast flash.” It is a storage computer. The controller schedules reads and writes across many NAND packages and channels in parallel, manages wear leveling,
+              garbage collection, error correction, mapping tables, and often a DRAM cache.
+            </p>
+            <div class="tri">
+              <div class="node"><b>Channels</b>SSD throughput comes from parallelism. More channels and packages mean more simultaneous operations.</div>
+              <div class="node"><b>FTL</b>The Flash Translation Layer maps logical block addresses to physical flash locations and hides erase-block awkwardness.</div>
+              <div class="node"><b>DRAM cache</b>Often stores mapping metadata and helps performance; DRAM-less designs can be cheaper but usually give up some behavior.</div>
+            </div>
+            <p>
+              The right mental model is: <strong>SSD performance = flash media + controller architecture + parallelism + firmware policy</strong>. Two SSDs with similar NAND may behave very differently
+              because of controller and firmware choices.
+            </p>
+            <p>
+              This matters in AI because workloads are mixed. A training-stage staging SSD may see huge sequential reads. A vector system may see random reads. A checkpoint SSD may see bursts of large writes.
+              The same device class can look great in one workload and mediocre in another.
+            </p>
+          </section>
+
+          <section id="nvme">
+            <h2>4. NVMe and PCIe: How Data Really Moves</h2>
+            <p>
+              NVMe matters because the older SATA/AHCI stack was built for a different era. NVMe was designed for solid-state storage and deep parallelism. It uses PCIe directly and supports many queues with deep queue depth.
+              In plain language: NVMe is the protocol/storage stack that lets SSDs behave more like parallel devices and less like single-file storage appliances.
+            </p>
+            <div class="figure">
+              <svg viewBox="0 0 1100 300" width="100%" role="img" aria-label="SATA/AHCI vs NVMe queues">
+                <defs><linearGradient id="nv" x1="0" x2="1"><stop offset="0%" stop-color="#7da2ff"/><stop offset="100%" stop-color="#6fe2ff"/></linearGradient></defs>
+                <rect x="96" y="86" width="330" height="130" rx="24" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.12)"/>
+                <rect x="674" y="62" width="330" height="178" rx="24" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.12)"/>
+                <text x="190" y="118" fill="#eef3ff" font-size="24" font-weight="700">Legacy SATA / AHCI</text>
+                <text x="162" y="154" fill="#bac5e6" font-size="17">few queues, shallow parallelism</text>
+                <text x="196" y="182" fill="#bac5e6" font-size="17">designed before SSD concurrency</text>
+                <text x="792" y="102" fill="#eef3ff" font-size="24" font-weight="700">NVMe over PCIe</text>
+                <text x="748" y="136" fill="#bac5e6" font-size="17">many queues, deep queue depth</text>
+                <text x="728" y="164" fill="#bac5e6" font-size="17">matches SSD internal parallelism</text>
+                <text x="730" y="192" fill="#bac5e6" font-size="17">much better fit for AI-scale data flow</text>
+                <path d="M440 150 C 520 120, 600 120, 660 150" stroke="url(#nv)" stroke-width="8" fill="none" stroke-linecap="round"/>
+              </svg>
+              <div class="figcap">NVMe matters because SSDs are parallel devices. The software stack has to let that parallelism surface.</div>
+            </div>
+            <p>
+              PCIe lane count matters too. A PCIe x4 SSD is not just “a drive”; it is a device attached to a fabric with defined bandwidth and contention properties. In AI systems, that matters because multiple SSDs,
+              NICs, and accelerators often compete on the same host root complexes and switches.
+            </p>
+          </section>
+
+          <section id="hdd">
+            <h2>5. Why HDD Still Matters in AI</h2>
+            <p>
+              HDD is not dead in AI. It simply occupies a different place in the hierarchy. Large AI datasets, logs, archived checkpoints, compliance retention, replay data, and cold object stores do not disappear
+              because GPUs got faster. In fact, the more AI generates and consumes data, the more attractive cheap bulk storage becomes.
+            </p>
+            <p>
+              Seagate’s public AI-storage positioning leans directly into this point, arguing that high-capacity hard-drive storage paired with SSD caching remains useful for AI pipelines and that NVMe connectivity can make
+              HDD easier to integrate into modern storage fabrics. WD’s own AI Data Cycle also explicitly keeps HDD in the picture as part of the cost-optimized storage mix. That is the real answer: HDD survives because
+              the economics of cheap capacity still matter at AI scale. 
+            </p>
+          </section>
+
+          <section id="hierarchy">
+            <h2>6. HBM vs DRAM vs SSD vs HDD: The Hierarchy That Actually Exists</h2>
+            <p>
+              AI pain often comes from pretending these layers are interchangeable when they are not.
+            </p>
+            <table>
+              <thead><tr><th>Tier</th><th>Persistence</th><th>Typical latency class</th><th>Typical bandwidth class</th><th>Primary AI role</th></tr></thead>
+              <tbody>
+                <tr><td data-label="Tier">HBM</td><td data-label="Persistence">No</td><td data-label="Typical latency class">sub-microsecond / memory-class</td><td data-label="Typical bandwidth class">TB/s class</td><td data-label="Primary AI role">accelerator-local active working set</td></tr>
+                <tr><td data-label="Tier">DRAM</td><td data-label="Persistence">No</td><td data-label="Typical latency class">~100ns order</td><td data-label="Typical bandwidth class">tens to hundreds of GB/s</td><td data-label="Primary AI role">host memory, staging, buffers, metadata</td></tr>
+                <tr><td data-label="Tier">NVMe SSD</td><td data-label="Persistence">Yes</td><td data-label="Typical latency class">tens to hundreds of microseconds</td><td data-label="Typical bandwidth class">GB/s class</td><td data-label="Primary AI role">hot persistent data, checkpoints, vectors, spill</td></tr>
+                <tr><td data-label="Tier">HDD</td><td data-label="Persistence">Yes</td><td data-label="Typical latency class">milliseconds</td><td data-label="Typical bandwidth class">hundreds of MB/s</td><td data-label="Primary AI role">bulk lake, archive, cold retention</td></tr>
+              </tbody>
+            </table>
+            <div class="pull">
+              The hierarchy gap is the whole story. HBM can be orders of magnitude faster than SSD, and SSD can still be orders of magnitude faster than HDD. AI systems hurt when they are forced to operate across that gap carelessly.
+            </div>
+          </section>
+
+          <section id="workloads">
+            <h2>7. How AI Workloads Stress Storage</h2>
+            <div class="four">
+              <div class="box2"><b>Training ingest</b>Usually throughput-heavy and sequential, but can become ugly if preprocessing or shuffling creates many random accesses.</div>
+              <div class="box2"><b>Checkpointing</b>Large writes with strong durability expectations; burst handling and sustained bandwidth matter.</div>
+              <div class="box2"><b>Inference + retrieval</b>Often random-read heavy and latency-sensitive; vector indexes and embeddings can stress IOPS more than raw throughput.</div>
+              <div class="box2"><b>Telemetry/logging</b>Steady write streams that can quietly become huge at fleet scale and push cold tiers back into strategic importance.</div>
+            </div>
+            <p>
+              This is why a storage primer for AI cannot just talk about device peak speed. Workload shape matters. Sequential training data streaming is a different problem from low-latency vector retrieval.
+              Checkpointing is a different problem from log retention. The correct storage design almost always begins with the I/O profile.
+            </p>
+          </section>
+
+          <section id="vendors">
+            <h2>8. Seagate, WD, and Sandisk: Three Different Bets</h2>
+            <h3>WD: the AI Data Cycle framing</h3>
+            <p>
+              WD’s strongest public contribution is conceptual. Its AI Data Cycle framework argues that AI needs a storage mix aligned to workflow stage, not a single hero medium. WD has also tied specific products like its Gen5 SN861 SSD to AI-heavy deployments,
+              including certification messaging around NVIDIA GB200 NVL72 systems.
+            </p>
+            <h3>Seagate: cheap capacity is strategic, not old-fashioned</h3>
+            <p>
+              Seagate’s public AI storage writing stresses that AI’s data footprint keeps expanding and that large-capacity HDDs paired with faster tiers still make architectural sense. The interesting part of Seagate’s argument is not nostalgia for disks.
+              It is the claim that AI needs economically scalable capacity, and that means storage hierarchy, not flash monoculture.
+            </p>
+            <h3>Sandisk: push flash upward</h3>
+            <p>
+              Sandisk’s public positioning is the most aggressive on flash evolution: very large enterprise SSDs, AI-oriented QLC roadmaps, and HBF as a response to the AI memory wall. That is a useful signal. Sandisk is effectively arguing that flash is being asked to move closer to the memory plane.
+            </p>
+          </section>
+
+          <section id="gds">
+            <h2>9. GPUDirect Storage: When the CPU Becomes Too Expensive in the Path</h2>
+            <p>
+              NVIDIA describes GPUDirect Storage as a direct data path between local or remote storage and GPU memory that avoids extra copies through CPU memory. In practical terms, that means DMA engines near storage or network adapters can move data more directly into GPU memory.
+              The reason this matters is simple: once datasets get large enough, bouncing everything through the CPU becomes both a latency cost and a bandwidth tax.
+            </p>
+            <div class="figure">
+              <svg viewBox="0 0 1100 310" width="100%" role="img" aria-label="Traditional storage path versus GPUDirect Storage">
+                <defs><linearGradient id="gds" x1="0" x2="1"><stop offset="0%" stop-color="#7da2ff"/><stop offset="100%" stop-color="#6fe2ff"/></linearGradient></defs>
+                <text x="120" y="64" fill="#eef3ff" font-size="24" font-weight="700">Traditional path</text>
+                <rect x="82" y="94" width="136" height="74" rx="16" fill="rgba(125,162,255,.14)" stroke="rgba(125,162,255,.34)"/><rect x="280" y="94" width="136" height="74" rx="16" fill="rgba(125,162,255,.14)" stroke="rgba(125,162,255,.34)"/><rect x="478" y="94" width="136" height="74" rx="16" fill="rgba(125,162,255,.14)" stroke="rgba(125,162,255,.34)"/><rect x="676" y="94" width="136" height="74" rx="16" fill="rgba(111,226,255,.14)" stroke="rgba(111,226,255,.34)"/>
+                <text x="120" y="138" fill="#eef3ff" font-size="18" font-weight="700">SSD</text><text x="315" y="138" fill="#eef3ff" font-size="18" font-weight="700">CPU</text><text x="504" y="138" fill="#eef3ff" font-size="18" font-weight="700">DRAM</text><text x="712" y="138" fill="#eef3ff" font-size="18" font-weight="700">GPU</text>
+                <path d="M218 131 L 280 131" stroke="url(#gds)" stroke-width="7" stroke-linecap="round"/><path d="M416 131 L 478 131" stroke="url(#gds)" stroke-width="7" stroke-linecap="round"/><path d="M614 131 L 676 131" stroke="url(#gds)" stroke-width="7" stroke-linecap="round"/>
+                <text x="120" y="232" fill="#eef3ff" font-size="24" font-weight="700">GPUDirect Storage path</text>
+                <rect x="82" y="256" width="136" height="74" rx="16" fill="rgba(125,162,255,.14)" stroke="rgba(125,162,255,.34)"/><rect x="676" y="256" width="136" height="74" rx="16" fill="rgba(111,226,255,.14)" stroke="rgba(111,226,255,.34)"/>
+                <text x="120" y="300" fill="#eef3ff" font-size="18" font-weight="700">SSD</text><text x="712" y="300" fill="#eef3ff" font-size="18" font-weight="700">GPU</text>
+                <path d="M218 293 C 390 223, 510 223, 676 293" stroke="url(#gds)" stroke-width="8" fill="none" stroke-linecap="round"/>
+              </svg>
+              <div class="figcap">The whole point of GPUDirect Storage is that the CPU can become an unnecessary middleman for high-volume AI data movement.</div>
+            </div>
+            <p>
+              GPUDirect Storage does not magically erase bad storage design. It simply removes one kind of overhead and exposes the next bottleneck more clearly.
+            </p>
+          </section>
+
+          <section id="hbf">
+            <h2>10. Why High Bandwidth Flash Exists</h2>
+            <p>
+              High Bandwidth Flash is revealing because it exists only if the current hierarchy is too painful. Sandisk describes HBF as a new form of NAND aimed at the AI memory wall,
+              and publicly positions it as delivering far more capacity than HBM while chasing enough bandwidth to matter for AI inference-scale workloads.
+            </p>
+            <div class="tri">
+              <div class="node"><b>What HBF tries to do</b>Move flash upward so it behaves less like backend storage and more like an expanded near-memory capacity tier.</div>
+              <div class="node"><b>What problem it targets</b>The gap between HBM capacity and AI working-set size, especially for long-context and memory-hungry inference.</div>
+              <div class="node"><b>What it cannot erase</b>Flash still has very different latency and write behavior than DRAM/HBM, so software policy remains central.</div>
+            </div>
+            <div class="pull">
+              HBF is what happens when NAND realizes it must compete with memory, not just with storage.
+            </div>
+          </section>
+
+          <section>
+            <h2>Conclusion</h2>
+            <p>
+              AI storage is not an afterthought. It is the persistent half of the memory hierarchy. HDD remains the economic base layer. SSD is the active persistent tier. GPUDirect Storage shortens the path to accelerators.
+              HBF is an attempt to close the widening gap between storage and memory. The bigger the models get, the more storage architecture starts to feel like core AI infrastructure rather than backend plumbing.
+            </p>
+            <div class="footer-box">
+              <h3>Bottom line</h3>
+              <p>
+                The right primer takeaway is simple: AI performance is increasingly a function of data placement. Storage is not just where data rests. It is part of how data flows.
+              </p>
+            </div>
+
+            <div class="refs">
+              <h2>Selected references</h2>
+              <ol>
+                <li><a href="https://www.westerndigital.com/en-in/company/newsroom/press-releases/2024/2024-06-06-western-digital-introduces-new-ai-data-cycle-storage-framework">Western Digital AI Data Cycle framework</a></li>
+                <li><a href="https://www.seagate.com/blog/nvme-hard-drives-and-the-future-of-ai-storage/">Seagate on NVMe HDDs and AI storage</a></li>
+                <li><a href="https://www.sandisk.com/company/newsroom/blogs/2025/scaling-beyond-the-wall-inside-sandisks-high-bandwidth-flash-for-ai">Sandisk on HBF and the AI memory wall</a></li>
+                <li><a href="https://developer.nvidia.com/gpudirect-storage">NVIDIA GPUDirect Storage</a></li>
+                <li><a href="https://docs.nvidia.com/gpudirect-storage/overview-guide/index.html">NVIDIA GPUDirect Storage overview guide</a></li>
+              </ol>
+              <p class="small">This primer combines stable systems explanations with current public vendor positioning where relevant.</p>
+            </div>
+          </section>
+        </div>
+
+        <aside class="aside">
+          <div class="mini"><h4>Primer takeaway</h4><p>Storage in AI is about matching persistence, latency, bandwidth, endurance, and cost to the right part of the workflow.</p></div>
+          <div class="mini"><h4>Best mental model</h4><ul><li>HDD = cheap bulk capacity</li><li>SSD = hot persistent tier</li><li>DRAM = host working memory</li><li>HBM = accelerator working memory</li></ul></div>
+          <div class="mini"><h4>What to watch</h4><ul><li>Very large QLC SSDs</li><li>GPUDirect Storage adoption</li><li>NVMe-over-Fabrics</li><li>HBF standardization</li><li>AI data-lake economics</li></ul></div>
+        </aside>
+      </article>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="small">MANISH AI · Essays · April 2026 · <a href="/writings.html">← All writings</a></div>
+      <div class="small">© 2026 <a href="https://github.com/manishklach">MANISH AI</a>. All rights reserved.</div>
+    </div>
+  </footer>
+</body>
+</html>
