@@ -1,0 +1,1084 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The CPU Is Back: Why AI Broke the GPU-Only Illusion | MANISH AI</title>
+  <meta name="description" content="A technical essay on why CPUs are becoming central again in AI infrastructure: memory movement, GPU orchestration, agentic workloads, power, and runtime control." />
+  <style>
+    :root{
+      --bg:#0b1020;
+      --panel:#10172b;
+      --panel2:#0f1630;
+      --text:#edf2ff;
+      --muted:#b8c3e3;
+      --line:rgba(255,255,255,.10);
+      --line2:rgba(125,162,255,.18);
+      --brand:#7da2ff;
+      --brand2:#6ce0ff;
+      --accent:#a9b9ff;
+      --green:#7df0c7;
+      --warn:#ffd27d;
+      --shadow:0 24px 60px rgba(0,0,0,.35);
+      --max:1180px;
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(108,224,255,.09), transparent 26%),
+        radial-gradient(circle at top left, rgba(125,162,255,.10), transparent 28%),
+        linear-gradient(180deg, #0b1020 0%, #0b1122 100%);
+      color:var(--text);
+      line-height:1.72;
+    }
+    a{color:inherit}
+    .wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
+    header.hero{
+      padding:84px 0 42px;
+      border-bottom:1px solid var(--line);
+    }
+    .eyebrow{
+      display:inline-block;
+      margin-bottom:18px;
+      padding:8px 14px;
+      border:1px solid rgba(125,162,255,.24);
+      border-radius:999px;
+      color:var(--brand);
+      font-size:12px;
+      font-weight:800;
+      letter-spacing:.16em;
+      text-transform:uppercase;
+      background:rgba(125,162,255,.06);
+    }
+    h1{
+      margin:0;
+      max-width:12ch;
+      font-size:clamp(3rem,6vw,5.5rem);
+      line-height:.98;
+      letter-spacing:-.05em;
+    }
+    .subtitle{
+      margin:18px 0 26px;
+      max-width:77ch;
+      color:var(--muted);
+      font-size:1.12rem;
+    }
+    .meta{
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      color:#d4ddfb;
+      font-size:.98rem;
+    }
+    .meta span{
+      padding:8px 12px;
+      border:1px solid var(--line);
+      border-radius:999px;
+      background:rgba(255,255,255,.03);
+    }
+    .lead-grid{
+      display:grid;
+      grid-template-columns: 1.08fr .92fr;
+      gap:28px;
+      align-items:stretch;
+      margin-top:34px;
+    }
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.025));
+      border:1px solid var(--line);
+      border-radius:26px;
+      box-shadow:var(--shadow);
+    }
+    .hero-card{
+      padding:22px;
+      position:relative;
+      overflow:hidden;
+      min-height:390px;
+    }
+    .hero-card::after{
+      content:"";
+      position:absolute;
+      inset:auto -40px -40px auto;
+      width:220px;height:220px;border-radius:999px;
+      background:radial-gradient(circle, rgba(108,224,255,.14), transparent 70%);
+      pointer-events:none;
+    }
+    .hero-card h3{
+      margin:0 0 8px;
+      font-size:1.1rem;
+      color:#dce5ff;
+      letter-spacing:-.02em;
+    }
+    .hero-card p{
+      margin:0;
+      color:var(--muted);
+      max-width:52ch;
+    }
+    .chip-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:14px;
+      margin-top:18px;
+    }
+    .chip{
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:18px;
+      padding:14px;
+    }
+    .chip b{display:block;font-size:.84rem;letter-spacing:.08em;text-transform:uppercase;color:#d7e2ff;margin-bottom:6px}
+    .chip span{color:var(--muted);font-size:.95rem}
+    .toc{
+      padding:22px;
+    }
+    .toc h3{margin:0 0 12px;font-size:1.02rem}
+    .toc ol{margin:0;padding-left:18px;color:var(--muted)}
+    .toc li{margin:7px 0}
+    main{padding:44px 0 88px}
+    article{
+      display:grid;
+      grid-template-columns:minmax(0, 1fr) 300px;
+      gap:34px;
+      align-items:start;
+    }
+    .content{min-width:0}
+    .content h2{
+      margin:54px 0 14px;
+      font-size:clamp(1.8rem,2.6vw,2.6rem);
+      line-height:1.08;
+      letter-spacing:-.03em;
+    }
+    .content h3{
+      margin:28px 0 10px;
+      font-size:1.24rem;
+      letter-spacing:-.02em;
+    }
+    .content p{margin:14px 0;color:var(--text)}
+    .content .muted{color:var(--muted)}
+    .pull{
+      margin:28px 0;
+      padding:18px 20px;
+      border-left:3px solid var(--brand2);
+      background:rgba(108,224,255,.06);
+      color:#edf6ff;
+      border-radius:0 16px 16px 0;
+      font-size:1.07rem;
+    }
+    .compare{
+      margin:28px 0;
+      display:grid;
+      grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:14px;
+    }
+    .compare .box{
+      padding:16px;
+      border-radius:18px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.03);
+    }
+    .compare .box h4{
+      margin:0 0 6px;
+      font-size:1rem;
+      letter-spacing:-.02em;
+    }
+    .compare .box p{
+      margin:0;
+      color:var(--muted);
+      font-size:.96rem;
+    }
+    .figure{
+      margin:28px 0 18px;
+      padding:16px;
+      border:1px solid var(--line);
+      border-radius:24px;
+      background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.02));
+    }
+    .figcap{
+      margin-top:10px;
+      color:var(--muted);
+      font-size:.95rem;
+    }
+    .aside{
+      position:sticky;
+      top:24px;
+      display:flex;
+      flex-direction:column;
+      gap:16px;
+    }
+    .aside .mini{
+      padding:18px;
+      border-radius:20px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.03);
+    }
+    .aside h4{margin:0 0 8px;font-size:.98rem}
+    .aside p,.aside li{color:var(--muted);font-size:.95rem}
+    .aside ul{margin:8px 0 0;padding-left:18px}
+    .timeline{
+      display:grid;
+      gap:14px;
+      margin:22px 0 10px;
+    }
+    .trow{
+      display:grid;
+      grid-template-columns:116px minmax(0,1fr);
+      gap:14px;
+      align-items:start;
+      padding:14px 0;
+      border-top:1px solid var(--line);
+    }
+    .trow:first-child{border-top:none;padding-top:0}
+    .year{
+      color:var(--brand2);
+      font-weight:800;
+      letter-spacing:.06em;
+      text-transform:uppercase;
+      font-size:.86rem;
+      padding-top:2px;
+    }
+    .tcontent strong{display:block;margin-bottom:4px}
+    .tcontent span{color:var(--muted)}
+    .tri{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:14px;
+      margin:18px 0;
+    }
+    .tri .node{
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.03);
+      border-radius:18px;
+      padding:15px;
+    }
+    .node b{
+      display:block;
+      margin-bottom:6px;
+      color:#dce6ff;
+      letter-spacing:-.01em;
+    }
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin:20px 0 8px;
+      border:1px solid var(--line);
+      border-radius:18px;
+      overflow:hidden;
+      background:rgba(255,255,255,.02);
+    }
+    th,td{
+      padding:12px 14px;
+      text-align:left;
+      border-bottom:1px solid var(--line);
+      vertical-align:top;
+      font-size:.97rem;
+    }
+    th{
+      color:#deebff;
+      background:rgba(125,162,255,.08);
+      font-weight:700;
+    }
+    td{color:var(--muted)}
+    tr:last-child td{border-bottom:none}
+    .footer-box{
+      margin-top:46px;
+      padding:24px;
+      border-radius:24px;
+      border:1px solid var(--line);
+      background:linear-gradient(180deg, rgba(125,162,255,.08), rgba(255,255,255,.03));
+    }
+    .footer-box h3{margin-top:0}
+    .refs{
+      margin-top:30px;
+      padding-top:8px;
+      border-top:1px solid var(--line);
+    }
+    .refs ol{
+      padding-left:22px;
+      color:var(--muted);
+    }
+    .refs li{margin:10px 0}
+    .refs a{
+      color:#cfe0ff;
+      text-decoration:none;
+      border-bottom:1px dashed rgba(207,224,255,.28);
+    }
+    .refs a:hover{border-bottom-color:rgba(207,224,255,.7)}
+    .small{font-size:.92rem}
+    .tagline{
+      margin-top:26px;
+      display:flex;flex-wrap:wrap;gap:10px
+    }
+    .tagline span{
+      padding:8px 12px;
+      border-radius:999px;
+      background:rgba(255,255,255,.03);
+      border:1px solid var(--line);
+      color:#dce5ff;
+      font-size:.92rem;
+    }
+    code.inline{
+      padding:2px 6px;
+      border-radius:8px;
+      background:rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.08);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:.92em;
+      color:#eaf3ff;
+    }
+    @media (max-width:1080px){
+      .lead-grid,.compare,.tri{grid-template-columns:1fr 1fr}
+      article{grid-template-columns:1fr}
+      .aside{position:static}
+    }
+    @media (max-width:760px){
+      header.hero{padding:64px 0 34px}
+      .wrap{padding:0 18px}
+      .lead-grid,.compare,.tri,.chip-grid{grid-template-columns:1fr}
+      h1{max-width:100%}
+      .trow{grid-template-columns:1fr}
+      table, thead, tbody, th, td, tr{display:block}
+      thead{display:none}
+      tr{border-bottom:1px solid var(--line)}
+      td{padding:10px 12px}
+      td::before{
+        content:attr(data-label);
+        display:block;
+        color:#dce5ff;
+        font-size:.84rem;
+        font-weight:700;
+        margin-bottom:4px;
+      }
+    }
+  
+    .site-top{position:sticky;top:0;z-index:20;border-bottom:1px solid var(--line);background:rgba(11,16,32,.78);backdrop-filter:blur(16px)}
+    .site-top .wrap{min-height:64px;display:flex;align-items:center;justify-content:space-between;gap:18px}
+    .site-brand{font-weight:900;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;color:var(--text);font-size:.95rem}
+    .site-brand:hover,.site-back:hover,.site-footer a:hover{opacity:.82;text-decoration:none}
+    .site-back{color:var(--muted);font-weight:800;font-size:.86rem;text-decoration:none;transition:opacity .2s ease}
+    .site-footer{border-top:1px solid var(--line);margin-top:52px;padding:28px 0 36px;color:var(--muted)}
+    .site-footer .wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px}
+    .site-footer a{color:var(--text);font-weight:800;text-decoration:none;transition:opacity .2s ease}
+    .site-footer .small{font-size:.92rem}
+  </style>
+
+  <meta name="keywords" content="CPU AI infrastructure, GPU orchestration, AI runtime systems, memory movement, agentic AI infrastructure, power-aware scheduling, Intel Xeon, AMD EPYC, Arm AGI, NVIDIA Vera, MANISH AI" />
+  <meta name="author" content="MANISH AI" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/the-cpu-is-back-why-ai-broke-the-gpu-only-illusion.html" />
+  <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml" />
+  <link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json" />
+  <link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention" />
+  <link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="The CPU Is Back: Why AI Broke the GPU-Only Illusion | MANISH AI" />
+  <meta property="og:description" content="A technical essay on why CPUs are becoming central again in AI infrastructure: memory movement, GPU orchestration, agentic workloads, power, and runtime control." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/the-cpu-is-back-why-ai-broke-the-gpu-only-illusion.html" />
+  <meta property="og:site_name" content="MANISH AI" />
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <meta property="og:image:alt" content="MANISH AI technical essay preview" />
+  <meta property="article:published_time" content="2026-04-23T00:00:00-07:00" />
+  <meta property="article:modified_time" content="2026-04-23T00:00:00-07:00" />
+  <meta property="article:section" content="AI Infrastructure" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="The CPU Is Back: Why AI Broke the GPU-Only Illusion | MANISH AI" />
+  <meta name="twitter:description" content="A technical essay on why CPUs are becoming central again in AI infrastructure: memory movement, GPU orchestration, agentic workloads, power, and runtime control." />
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png" />
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "The CPU Is Back: Why AI Broke the GPU-Only Illusion",
+  "description": "A technical essay on why CPUs are becoming central again in AI infrastructure: memory movement, GPU orchestration, agentic workloads, power, and runtime control.",
+  "url": "https://manishklach.github.io/writings/the-cpu-is-back-why-ai-broke-the-gpu-only-illusion.html",
+  "image": "https://manishklach.github.io/assets/og-image.png",
+  "datePublished": "2026-04-23",
+  "dateModified": "2026-04-23",
+  "inLanguage": "en-US",
+  "author": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://github.com/manishklach"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://manishklach.github.io/writings/the-cpu-is-back-why-ai-broke-the-gpu-only-illusion.html"
+  },
+  "keywords": [
+    "CPU AI infrastructure",
+    "GPU orchestration",
+    "AI runtime systems",
+    "memory movement",
+    "agentic AI infrastructure",
+    "power-aware scheduling",
+    "Intel Xeon",
+    "AMD EPYC",
+    "Arm AGI",
+    "NVIDIA Vera",
+    "MANISH AI"
+  ]
+}
+  </script>
+</head>
+<body>
+  <nav class="site-top" aria-label="Essay navigation">
+    <div class="wrap">
+      <a class="site-brand" href="/">MAN\SH AI</a>
+      <a class="site-back" href="/writings.html">← All writings</a>
+    </div>
+  </nav>
+  <header class="hero">
+    <div class="wrap">
+      <div class="eyebrow">Systems · Infrastructure · GPU · Memory · Power</div>
+      <h1>The CPU Is Back: Why AI Broke the GPU-Only Illusion</h1>
+      <p class="subtitle">
+        For a few years, the market talked as if the CPU had become background infrastructure and the GPU had become the entire story.
+        That framing was always incomplete. In modern AI systems—especially inference, retrieval, agentic workflows, and large-scale control
+        planes—the hardest problems are no longer just matrix multiplications. They are memory movement, orchestration, scheduling, power,
+        isolation, and recovery. Those are CPU problems. The CPU did not lose importance. It became the layer everyone stopped looking at,
+        right before it became strategically central again.
+      </p>
+      <div class="meta">
+        <span><time datetime="2026-04-23">Apr 23, 2026</time></span>
+        <span>Long-form technical essay</span>
+        <span>Intel · AMD · Arm · NVIDIA Vera</span>
+        <span>Agentic AI · Power · Runtime Systems</span>
+      </div>
+
+      <div class="lead-grid">
+        <div class="card hero-card">
+          <h3>The new job description of the CPU</h3>
+          <p>
+            The CPU is no longer just “general-purpose compute.” In AI factories it is increasingly a
+            <strong>system controller</strong>: a memory orchestrator, scheduler, I/O manager, failure-handling layer,
+            and control-plane engine that keeps accelerators fed and the surrounding software legible.
+          </p>
+          <div class="chip-grid">
+            <div class="chip">
+              <b>What changed</b>
+              <span>AI moved from monolithic training jobs toward distributed inference, long context, retrieval, orchestration, and tool use.</span>
+            </div>
+            <div class="chip">
+              <b>Why it matters</b>
+              <span>Those workloads are rich in branching, metadata, memory pressure, networking, and scheduling—not just dense tensor math.</span>
+            </div>
+            <div class="chip">
+              <b>Who wins</b>
+              <span>Vendors that treat the CPU as a first-class systems component, not a leftover host processor.</span>
+            </div>
+            <div class="chip">
+              <b>Core thesis</b>
+              <span>The future battle is not GPU versus CPU. It is system versus system.</span>
+            </div>
+          </div>
+          <div class="tagline">
+            <span>Runtime systems</span>
+            <span>Memory orchestration</span>
+            <span>Power-aware scheduling</span>
+            <span>Agentic infrastructure</span>
+          </div>
+        </div>
+
+        <div class="card toc">
+          <h3>In this essay</h3>
+          <ol>
+            <li><a href="#invisible">The CPU went invisible, not irrelevant</a></li>
+            <li><a href="#timeline">Generational evolution: Intel, AMD, Arm</a></li>
+            <li><a href="#gpu-limit">What CPUs solve that GPUs do not</a></li>
+            <li><a href="#agentic">Why agentic AI is a CPU-heavy systems problem</a></li>
+            <li><a href="#intel">Intel’s arc: continuity, I/O, and platform gravity</a></li>
+            <li><a href="#amd">AMD’s arc: chiplets, density, and parallel control</a></li>
+            <li><a href="#arm">Arm’s arc: power management and rack economics</a></li>
+            <li><a href="#nvidia">Grace to Vera: NVIDIA moves up the stack</a></li>
+            <li><a href="#future">What the next decade of CPUs is really about</a></li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main data-pagefind-body>
+    <div class="wrap">
+      <article>
+        <div class="content">
+          <section id="invisible">
+            <h2>The CPU Didn’t Disappear. It Went Invisible.</h2>
+            <p>
+              During the first great accelerator boom of modern AI, the public story simplified itself into a convenient myth:
+              GPUs are where the “real” work happens, and everything else is support machinery. That story tracks benchmarking
+              culture more than system reality. Benchmarks surface dense compute. Production systems surface everything dense
+              compute depends on.
+            </p>
+            <p>
+              Under the benchmark layer, CPUs kept doing the work that makes clusters function:
+              process scheduling, memory mapping, storage orchestration, networking stacks, RPC termination, retry logic,
+              checkpointing, telemetry, security boundaries, and data marshaling. These tasks were easy to ignore while the
+              main workload looked like giant training jobs that could be summarized as “more FLOPs.” They become impossible
+              to ignore once the system becomes interactive, retrieval-heavy, disaggregated, or agentic.
+            </p>
+            <div class="pull">
+              The easiest way to misunderstand AI infrastructure is to confuse the place where the arithmetic happens with the
+              place where the system is controlled.
+            </div>
+            <p>
+              That distinction matters more now because modern AI stacks have accumulated large amounts of <em>state</em>:
+              key-value caches, retrieval indices, embedding stores, tool call graphs, context windows, execution histories,
+              rate limits, placement policies, and fine-grained service coordination. The GPU may process tokens, but the CPU
+              increasingly decides <em>which</em> tokens, <em>which</em> memory, <em>which</em> storage tier, and <em>which</em>
+              network path are involved in getting them served at all.
+            </p>
+          </section>
+
+          <section id="timeline">
+            <h2>From Compute Engine to System Controller: The Generational Shift</h2>
+            <p>
+              A useful way to read server CPU history is not just by clock speed or benchmark score, but by what problem each generation
+              was trying to solve. The center of gravity moved over time: from raw scalar performance, to virtualization and sockets, to
+              memory channels and I/O, to chiplets and efficiency, and now to something broader—control of the surrounding AI system.
+            </p>
+
+            <div class="figure">
+              <svg viewBox="0 0 1100 330" width="100%" role="img" aria-label="Timeline of server CPU evolution toward AI system control">
+                <defs>
+                  <linearGradient id="g1" x1="0" x2="1">
+                    <stop offset="0%" stop-color="#7da2ff"/>
+                    <stop offset="100%" stop-color="#6ce0ff"/>
+                  </linearGradient>
+                </defs>
+                <rect x="28" y="154" width="1040" height="4" rx="2" fill="url(#g1)" opacity=".65"/>
+                <g font-family="Inter, sans-serif">
+                  <circle cx="120" cy="156" r="10" fill="#7da2ff"/>
+                  <text x="88" y="120" fill="#edf2ff" font-size="17" font-weight="700">2010s</text>
+                  <text x="48" y="198" fill="#b8c3e3" font-size="15">Virtualization</text>
+                  <text x="48" y="222" fill="#b8c3e3" font-size="15">socket scale</text>
+
+                  <circle cx="330" cy="156" r="10" fill="#7da2ff"/>
+                  <text x="282" y="120" fill="#edf2ff" font-size="17" font-weight="700">mid-2010s</text>
+                  <text x="247" y="198" fill="#b8c3e3" font-size="15">Cloud density</text>
+                  <text x="250" y="222" fill="#b8c3e3" font-size="15">I/O + memory</text>
+
+                  <circle cx="560" cy="156" r="10" fill="#7da2ff"/>
+                  <text x="516" y="120" fill="#edf2ff" font-size="17" font-weight="700">late-2010s</text>
+                  <text x="488" y="198" fill="#b8c3e3" font-size="15">Chiplets</text>
+                  <text x="468" y="222" fill="#b8c3e3" font-size="15">core-count race</text>
+
+                  <circle cx="790" cy="156" r="10" fill="#7da2ff"/>
+                  <text x="754" y="120" fill="#edf2ff" font-size="17" font-weight="700">early AI era</text>
+                  <text x="712" y="198" fill="#b8c3e3" font-size="15">GPU host</text>
+                  <text x="698" y="222" fill="#b8c3e3" font-size="15">memory orchestration</text>
+
+                  <circle cx="1012" cy="156" r="10" fill="#6ce0ff"/>
+                  <text x="960" y="120" fill="#edf2ff" font-size="17" font-weight="700">agentic era</text>
+                  <text x="922" y="198" fill="#b8c3e3" font-size="15">scheduler</text>
+                  <text x="883" y="222" fill="#b8c3e3" font-size="15">control plane + power</text>
+                </g>
+              </svg>
+              <div class="figcap">
+                The role of the server CPU has expanded from “general compute” into memory control, host orchestration, and AI-factory scheduling.
+              </div>
+            </div>
+
+            <div class="timeline">
+              <div class="trow">
+                <div class="year">Intel arc</div>
+                <div class="tcontent">
+                  <strong>Skylake → Ice Lake → Sapphire Rapids → Emerald Rapids → Granite Rapids / Xeon 6</strong>
+                  <span>
+                    The emphasis shifted from core performance and platform continuity toward AI-era host duties: more memory channels,
+                    higher I/O throughput, integrated accelerators, and a stronger claim to being the stable control plane under increasingly
+                    accelerator-heavy systems.
+                  </span>
+                </div>
+              </div>
+              <div class="trow">
+                <div class="year">AMD arc</div>
+                <div class="tcontent">
+                  <strong>Naples → Rome → Milan → Genoa / Bergamo → Turin</strong>
+                  <span>
+                    AMD’s breakthrough came from chiplets, core density, and aggressive platform economics. The result was not merely better CPU
+                    performance, but a different way to think about the CPU: a massively parallel host that could absorb orchestration, storage,
+                    and network-heavy workloads at scale.
+                  </span>
+                </div>
+              </div>
+              <div class="trow">
+                <div class="year">Arm arc</div>
+                <div class="tcontent">
+                  <strong>Neoverse-era server rise → hyperscaler adoption → AI-specific Arm servers</strong>
+                  <span>
+                    Arm’s server ascent has always been tied to energy efficiency, customization, and rack-level economics. What changes in the AI
+                    era is that those properties are no longer “nice to have.” They directly determine density, cooling, cluster shape, and
+                    power-aware scheduling strategy.
+                  </span>
+                </div>
+              </div>
+              <div class="trow">
+                <div class="year">NVIDIA arc</div>
+                <div class="tcontent">
+                  <strong>Grace → Grace Hopper / Grace Blackwell → Vera</strong>
+                  <span>
+                    This is not a side project. It is an attempt to absorb host responsibilities into a tightly coordinated CPU-GPU system where
+                    coherency, memory bandwidth, and control-heavy AI services live inside one optimized platform.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="gpu-limit">
+            <h2>What CPUs Solve That GPUs Fundamentally Do Not</h2>
+            <p>
+              This is where the conversation usually goes wrong. GPUs are incredible machines, but they are optimized for a very specific category
+              of work: regular, data-parallel, throughput-oriented computation. That is not the full shape of a production AI system. A production
+              AI system also contains small control decisions, irregular accesses, storage lookups, serialization, networking, backpressure,
+              error handling, tenant isolation, and policy. Those do not disappear just because some kernels run on a GPU.
+            </p>
+
+            <div class="tri">
+              <div class="node">
+                <b>Irregular control flow</b>
+                Branch-heavy software—planners, routers, service coordinators, retrieval layers, tool wrappers, runtime dispatch, queue management—
+                remains much more natural on CPUs than on GPUs.
+              </div>
+              <div class="node">
+                <b>Memory-oriented work</b>
+                Moving bytes across DRAM, NVMe, NICs, and disaggregated memory tiers is often more expensive than the arithmetic that follows.
+                CPUs still own most of that control logic.
+              </div>
+              <div class="node">
+                <b>System scheduling</b>
+                GPUs execute kernels. CPUs decide which kernels run, when they run, where their inputs come from, and what happens when the plan changes.
+              </div>
+            </div>
+
+            <h3>The control problem</h3>
+            <p>
+              GPUs are built to keep thousands of lanes busy on work that looks coherent and divisible. But system control rarely looks like that.
+              It looks like metadata, state transitions, interrupts, ownership, decisions, and fallbacks. It looks like “now that tool call B
+              failed, reroute to service C, update the planner state, fetch new context, reissue a smaller request, and keep the user-facing tail
+              latency inside budget.” That is classic CPU territory.
+            </p>
+
+            <h3>The memory problem</h3>
+            <p>
+              Modern AI infrastructure is increasingly constrained not by arithmetic intensity, but by data placement. A system that spills from HBM
+              to DRAM, from local DRAM to remote DRAM, from cache to object store, or from local context to shared KV infrastructure is living inside
+              a memory hierarchy problem. GPUs do not solve memory hierarchy by themselves. They amplify the cost of getting it wrong.
+            </p>
+
+            <h3>The recovery problem</h3>
+            <p>
+              Production systems fail asymmetrically. A GPU kernel either runs or it does not. Real infrastructure needs to absorb retries, timeouts,
+              node loss, stale metadata, partial completion, backpressure, rebatching, and admission control. Those are CPU-owned responsibilities
+              because they are system responsibilities.
+            </p>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>Problem type</th>
+                  <th>CPU strength</th>
+                  <th>GPU strength</th>
+                  <th>Why it matters in AI</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td data-label="Problem type">Branching / orchestration</td>
+                  <td data-label="CPU strength">Excellent</td>
+                  <td data-label="GPU strength">Poor to awkward</td>
+                  <td data-label="Why it matters in AI">Agentic systems, planners, control loops, retries, tool invocation, request routing.</td>
+                </tr>
+                <tr>
+                  <td data-label="Problem type">Dense tensor math</td>
+                  <td data-label="CPU strength">Adequate for many tasks, not ideal at scale</td>
+                  <td data-label="GPU strength">Exceptional</td>
+                  <td data-label="Why it matters in AI">Training, inference kernels, attention, GEMMs, fused operators.</td>
+                </tr>
+                <tr>
+                  <td data-label="Problem type">Memory / I/O coordination</td>
+                  <td data-label="CPU strength">Excellent</td>
+                  <td data-label="GPU strength">Indirect</td>
+                  <td data-label="Why it matters in AI">Context movement, checkpointing, remote memory, storage pipelines.</td>
+                </tr>
+                <tr>
+                  <td data-label="Problem type">Failure handling / isolation</td>
+                  <td data-label="CPU strength">Excellent</td>
+                  <td data-label="GPU strength">Not the right abstraction</td>
+                  <td data-label="Why it matters in AI">Multi-tenant serving, scheduling, platform durability, cluster reliability.</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="agentic">
+            <h2>Agentic AI Is Not Primarily a GPU Story</h2>
+            <p>
+              The moment you move from <code class="inline">input → model → output</code> toward <code class="inline">input → planner → retrieval → tool call → model → validator → memory → output</code>,
+              the center of gravity shifts. The workload becomes less like a single giant kernel pipeline and more like a distributed operating system
+              for cognition-adjacent services.
+            </p>
+            <p>
+              That shift changes everything about infrastructure design:
+            </p>
+            <ul>
+              <li>Requests get smaller and more numerous instead of fewer and larger.</li>
+              <li>State gets externalized into memory layers, indices, logs, and tool contexts.</li>
+              <li>Tail latency gets determined by the slowest orchestration step, not the fastest accelerator.</li>
+              <li>Schedulers matter because there are more micro-decisions per end-user task.</li>
+              <li>Power and placement matter because the rack is now running a heterogeneous pipeline, not one homogeneous job.</li>
+            </ul>
+            <p>
+              That is why “agentic AI” often feels CPU-hungry even when the model math is still on GPUs. You are not just serving tokens. You are
+              serving a live execution graph with many memory boundaries and decision points. In that environment, the CPU is not a helper. It is the
+              runtime spine.
+            </p>
+            <div class="pull">
+              The faster the model becomes, the more visible the orchestration overhead around it becomes.
+            </div>
+            <p>
+              This is also why the old “just add more GPUs” mental model breaks. More GPUs help if the bottleneck is arithmetic throughput. They do
+              much less if the bottleneck is planner churn, context assembly, retrieval fan-out, queueing, network setup, or host-side data marshaling.
+              At that point the CPU, DRAM capacity, NIC, storage path, and scheduler become the performance envelope.
+            </p>
+          </section>
+
+          <section id="intel">
+            <h2>Intel: The Gravity of Continuity, I/O, and Platform Control</h2>
+            <p>
+              Intel’s recent CPU story has often been framed through market-share drama, but there is a deeper systems story underneath it. Intel
+              remains powerful anywhere the operator values continuity, broad platform compatibility, networking integration, and a proven control
+              layer under heterogeneous infrastructure.
+            </p>
+            <p>
+              The current Xeon 6 family is being marketed around performance and efficiency across a wide range of workloads, including networking,
+              edge, and AI-adjacent deployment shapes. Intel also recently highlighted that Xeon 6 is being used as the host CPU in NVIDIA DGX
+              Rubin NVL8 systems—an important signal that even a GPU-first platform can still choose x86 continuity where the host role matters most.
+            </p>
+
+            <h3>What Intel generations were really optimizing</h3>
+            <p>
+              A rough reading of Intel’s server generations is helpful:
+            </p>
+            <div class="timeline">
+              <div class="trow">
+                <div class="year">Skylake</div>
+                <div class="tcontent"><strong>Cloud baseline era</strong><span>General-purpose server compute, strong ecosystem gravity, broad platform adoption.</span></div>
+              </div>
+              <div class="trow">
+                <div class="year">Ice Lake</div>
+                <div class="tcontent"><strong>More memory and I/O relevance</strong><span>Better fit for cloud-native systems where memory channels, PCIe, and platform scale mattered more.</span></div>
+              </div>
+              <div class="trow">
+                <div class="year">Sapphire Rapids</div>
+                <div class="tcontent"><strong>Host complexity grows</strong><span>Acceleration, memory, and platform features became more central as AI-era mixed workloads matured.</span></div>
+              </div>
+              <div class="trow">
+                <div class="year">Emerald / Granite / Xeon 6</div>
+                <div class="tcontent"><strong>Efficiency, range, and host resilience</strong><span>The CPU becomes the dependable control layer beneath a more accelerator-dense data center.</span></div>
+              </div>
+            </div>
+
+            <p>
+              Intel’s strongest strategic argument is not that the CPU should outrun every competitor at every benchmark. It is that the CPU in a modern
+              AI factory is a reliability-and-platform anchor. If your environment has NICs, storage, virtualization, observability, security, and
+              multiple classes of accelerators, the value of a stable host platform compounds.
+            </p>
+          </section>
+
+          <section id="amd">
+            <h2>AMD: Chiplets Turned the CPU Into a Parallel Orchestration Machine</h2>
+            <p>
+              AMD’s server rise did not matter only because it improved CPU benchmarks. It mattered because chiplets changed the economics and shape
+              of the server CPU. With EPYC, AMD made core count, memory bandwidth, and density the defining language of the product line, which maps
+              unusually well to orchestration-heavy AI deployments.
+            </p>
+            <p>
+              The 5th Gen EPYC 9005 family now scales up to 192 cores and is explicitly positioned for AI-enabled, business-critical data center workloads.
+              The significance is not just “more cores.” It is that a single host can absorb more simultaneous system work: queue handling, metadata,
+              retrieval, storage pipelines, sidecar services, compression, and network-heavy concurrency.
+            </p>
+
+            <h3>Why AMD’s generation story matters</h3>
+            <div class="timeline">
+              <div class="trow">
+                <div class="year">Naples</div>
+                <div class="tcontent"><strong>Re-entry</strong><span>Re-established AMD as a serious server CPU vendor.</span></div>
+              </div>
+              <div class="trow">
+                <div class="year">Rome</div>
+                <div class="tcontent"><strong>Chiplet thesis proves out</strong><span>Scale, core density, and economic pressure shift the market.</span></div>
+              </div>
+              <div class="trow">
+                <div class="year">Milan</div>
+                <div class="tcontent"><strong>Maturity</strong><span>Operational confidence increases; the platform becomes credible for broad deployment.</span></div>
+              </div>
+              <div class="trow">
+                <div class="year">Genoa / Bergamo</div>
+                <div class="tcontent"><strong>Density and specialization</strong><span>The CPU becomes a tool for packing more orchestration and cloud-native services per socket.</span></div>
+              </div>
+              <div class="trow">
+                <div class="year">Turin</div>
+                <div class="tcontent"><strong>AI-era host scale</strong><span>192 cores signal that the host itself is a parallel systems engine.</span></div>
+              </div>
+            </div>
+
+            <p>
+              The hidden win here is that chiplets make the CPU more naturally aligned with the distributed character of modern infrastructure.
+              The product itself is already a modular system. That pushes design toward scalable memory attachment, platform flexibility, and broad
+              throughput rather than only the narrow pursuit of the single fastest thread.
+            </p>
+          </section>
+
+          <section id="arm">
+            <h2>Arm: Efficiency, Power Management, and the Rack as the Unit of Design</h2>
+            <p>
+              Arm’s rise in servers is often summarized as “better performance per watt,” which is true but too shallow. The deeper point is that Arm
+              forces designers to think at the right unit of analysis for modern AI infrastructure: not the individual core, but the <em>rack budget</em>.
+              AI data centers are becoming power-constrained, cooling-constrained, and density-constrained. Once that happens, raw peak compute matters
+              less than what the architecture lets you fit, cool, and sustain in production.
+            </p>
+            <p>
+              Arm’s new AGI CPU is unusually explicit about this. The official product material positions it as production silicon for AI infrastructure
+              and agentic AI workloads, with up to 136 Arm Neoverse V3 cores, a 300W TDP, 96 PCIe Gen6 lanes, CXL 3.0 support, and a rack-scale claim
+              of up to 8,160 cores in a 36kW air-cooled rack. Even if you treat vendor marketing carefully, the emphasis is revealing: Arm is being sold
+              not just as a CPU architecture, but as a way to reclaim data-center density under real power limits.
+            </p>
+
+            <h3>Why power management is not a side issue</h3>
+            <p>
+              In classical server procurement, power efficiency was important but not existential. In modern AI clusters, it can become the hard outer
+              boundary of what is deployable. High-density accelerator racks force every supporting component—CPU included—to justify its watts. That
+              changes CPU design in several ways:
+            </p>
+            <ul>
+              <li><strong>Efficiency becomes schedulability.</strong> A more efficient host can leave more of the rack budget for accelerators and networking.</li>
+              <li><strong>Thermal behavior becomes topology.</strong> The physical arrangement of compute changes when you can air-cool more of the host side.</li>
+              <li><strong>Memory policy becomes power policy.</strong> Moving data through the wrong tier does not just cost latency; it costs joules.</li>
+              <li><strong>Density becomes a systems feature.</strong> More useful host capability per rack means denser orchestration and less stranded accelerator capacity.</li>
+            </ul>
+
+            <h3>Why Arm fits agentic infrastructure so well</h3>
+            <p>
+              Agentic systems need lots of “always on” host-side work: planners, cache lookups, service coordinators, queues, memory managers,
+              validation layers, gateway services. Those are exactly the kinds of tasks that benefit from a CPU architecture optimized around efficient,
+              sustained throughput rather than brute-force legacy assumptions.
+            </p>
+            <div class="pull">
+              In the AI era, performance per watt is not an optimization metric. It is a shape-of-the-cluster metric.
+            </div>
+          </section>
+
+          <section id="nvidia">
+            <h2>Grace to Vera: NVIDIA Is Not Building a Host CPU. It Is Building a Full System.</h2>
+            <p>
+              NVIDIA’s CPU story is the most strategically interesting because it is not a “me too” server entry. Grace and Vera only make sense if
+              you see NVIDIA’s objective clearly: control the entire execution path around the accelerator.
+            </p>
+
+            <h3>Grace: bandwidth, coherency, and host-side memory relevance</h3>
+            <p>
+              Grace already made the direction obvious. The Grace CPU Superchip couples 144 Arm-based cores with up to 1 TB/s of LPDDR5X memory bandwidth,
+              and NVIDIA positioned it around data movement efficiency and coherent attachment via NVLink-C2C. The point was not merely to make a CPU.
+              The point was to make the CPU a high-bandwidth partner in a coherent CPU-GPU complex.
+            </p>
+
+            <h3>Vera: purpose-built for AI factories</h3>
+            <p>
+              Vera pushes the design further. NVIDIA’s official materials describe Vera as an 88-core Armv9.2-compatible CPU built around custom Olympus
+              cores, explicitly designed for RL, agentic AI, compilers, runtime engines, analytics pipelines, and orchestration services. That wording is
+              the story. NVIDIA is telling you that the CPU beside the GPU is no longer just there to boot Linux and feed PCIe. It is there to run the
+              software environment around the model.
+            </p>
+            <p>
+              NVIDIA has also disclosed details that reinforce this interpretation: a shared coherency fabric, strong energy-efficiency claims, 176 threads
+              via spatial multithreading, and a stated focus on control-heavy environments. In other words, the CPU is being tailored to the exact workloads
+              that traditional “GPU-only” narratives overlook.
+            </p>
+
+            <div class="figure">
+              <svg viewBox="0 0 1100 360" width="100%" role="img" aria-label="Grace to Vera architectural shift">
+                <defs>
+                  <linearGradient id="gv" x1="0" x2="1">
+                    <stop offset="0%" stop-color="#7da2ff"/>
+                    <stop offset="100%" stop-color="#6ce0ff"/>
+                  </linearGradient>
+                </defs>
+                <rect x="70" y="88" width="280" height="170" rx="22" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.12)"/>
+                <text x="106" y="126" fill="#edf2ff" font-size="24" font-weight="700">Grace</text>
+                <text x="106" y="158" fill="#b8c3e3" font-size="17">144 Arm-based cores</text>
+                <text x="106" y="186" fill="#b8c3e3" font-size="17">Up to 1 TB/s memory bandwidth</text>
+                <text x="106" y="214" fill="#b8c3e3" font-size="17">Coherent CPU-GPU linkage</text>
+                <text x="106" y="242" fill="#b8c3e3" font-size="17">Data-movement-aware host</text>
+
+                <rect x="748" y="88" width="280" height="170" rx="22" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.12)"/>
+                <text x="784" y="126" fill="#edf2ff" font-size="24" font-weight="700">Vera</text>
+                <text x="784" y="158" fill="#b8c3e3" font-size="17">88 Olympus cores / 176 threads</text>
+                <text x="784" y="186" fill="#b8c3e3" font-size="17">Armv9.2 compatible</text>
+                <text x="784" y="214" fill="#b8c3e3" font-size="17">Agentic + runtime focus</text>
+                <text x="784" y="242" fill="#b8c3e3" font-size="17">Purpose-built AI-factory control</text>
+
+                <path d="M360 173 C 500 105, 600 105, 740 173" stroke="url(#gv)" stroke-width="7" fill="none" stroke-linecap="round"/>
+                <text x="450" y="118" fill="#dce6ff" font-size="18" font-weight="700">shift in emphasis</text>
+                <text x="420" y="141" fill="#b8c3e3" font-size="15">from high-bandwidth host partnership</text>
+                <text x="444" y="163" fill="#b8c3e3" font-size="15">to AI-factory orchestration CPU</text>
+
+                <rect x="378" y="260" width="344" height="54" rx="18" fill="rgba(125,162,255,.08)" stroke="rgba(125,162,255,.24)"/>
+                <text x="405" y="294" fill="#edf2ff" font-size="18" font-weight="700">System vs system, not CPU vs CPU</text>
+              </svg>
+              <div class="figcap">
+                Grace established the coherent, bandwidth-rich host idea. Vera extends it into a control-heavy CPU tailored for AI factories.
+              </div>
+            </div>
+
+            <h3>Why this matters beyond NVIDIA</h3>
+            <p>
+              The significance of Vera is broader than NVIDIA’s product line. It signals that the winning CPU in AI infrastructure may not be the one
+              with the simplest benchmark story. It may be the one best integrated into a larger memory, runtime, and networking strategy.
+            </p>
+            <p>
+              NVIDIA is effectively saying: if the future bottlenecks are orchestration, memory movement, coherent attachment, and agentic runtime services,
+              then the host CPU should be designed in the image of those bottlenecks. That is a very different thesis from the old server market.
+            </p>
+          </section>
+
+          <section id="future">
+            <h2>What the Next Decade of CPUs Is Really About</h2>
+            <p>
+              The old framing treated CPUs as generic and GPUs as specialized. The emerging framing is more interesting:
+              GPUs are specialized arithmetic engines, while CPUs are becoming increasingly specialized <em>system-control engines</em>.
+            </p>
+            <p>
+              That means future CPU competition will revolve around several questions:
+            </p>
+            <ul>
+              <li><strong>Who can orchestrate memory best?</strong> Not just DRAM bandwidth, but how well the platform coordinates tiers, coherency, and overflow paths.</li>
+              <li><strong>Who can control accelerators best?</strong> The host matters more when the rack is heterogeneous and the software stack is complex.</li>
+              <li><strong>Who can schedule under power constraints best?</strong> Rack economics now shape architecture choices.</li>
+              <li><strong>Who can support agentic runtime software best?</strong> The planner, cache, tool, and verifier ecosystem is a host-side workload boom.</li>
+              <li><strong>Who can unify system design best?</strong> This is where Grace/Vera, Xeon continuity, EPYC density, and Arm efficiency become competing answers to the same systems question.</li>
+            </ul>
+
+            <div class="compare">
+              <div class="box">
+                <h4>Intel</h4>
+                <p>Strongest where continuity, broad compatibility, I/O maturity, and host stability dominate the decision.</p>
+              </div>
+              <div class="box">
+                <h4>AMD</h4>
+                <p>Strongest where density, chiplet economics, and many-core host throughput create better platform efficiency.</p>
+              </div>
+              <div class="box">
+                <h4>Arm</h4>
+                <p>Strongest where rack power, thermals, and efficiency-first system design define the cluster shape.</p>
+              </div>
+              <div class="box">
+                <h4>NVIDIA</h4>
+                <p>Strongest where the CPU is treated as part of a tightly coordinated accelerator platform, not a separate server line.</p>
+              </div>
+            </div>
+
+            <p>
+              The important point is that all four strategies are converging on the same reality: AI is exposing the system around the model.
+              Once that happens, the CPU stops being a commodity backdrop and becomes a strategic layer again.
+            </p>
+          </section>
+
+          <section>
+            <h2>Conclusion: The CPU Is Not Back Because the GPU Failed</h2>
+            <p>
+              The CPU is back because AI systems became more honest about where the real difficulty lives.
+            </p>
+            <p>
+              The hard problems are not only dense kernels. They are memory tiers, host coordination, context assembly, storage paths, network setup,
+              power ceilings, retries, control software, and multi-tenant runtime behavior. Those are all reasons the CPU matters more in 2026 than many
+              people expected in 2021.
+            </p>
+            <p>
+              The market shorthand will still say “AI is a GPU story,” because that is how simple stories work. But the infrastructure truth is richer:
+              <strong>the GPU defines peak compute, while the CPU increasingly defines whether the system is schedulable, feedable, power-feasible,
+              and deployable at scale.</strong>
+            </p>
+
+            <div class="footer-box">
+              <h3>My view</h3>
+              <p>
+                The next great CPU battle will not be won by the vendor that proves the CPU can impersonate a GPU. It will be won by the vendor that
+                best understands that modern AI infrastructure is a memory-and-control problem wrapped around a compute problem.
+              </p>
+              <p>
+                That is why the CPU is back. Not as a nostalgia object. As the operating layer of the AI factory.
+              </p>
+            </div>
+
+            <div class="refs">
+              <h2>Selected references</h2>
+              <ol>
+                <li><a href="https://www.intel.com/content/www/us/en/products/details/processors/xeon.html">Intel Xeon 6 official product page</a> — Intel positions Xeon 6 around performance and efficiency across data-center, networking, and edge workloads.</li>
+                <li><a href="https://newsroom.intel.com/data-center/intel-xeon-6-used-as-host-cpus-in-nvidia-dgx-rubin-nvl8-systems">Intel newsroom: Xeon 6 used in NVIDIA DGX Rubin NVL8 systems</a> — useful signal for how x86 continuity still matters in AI host roles.</li>
+                <li><a href="https://www.amd.com/en/products/processors/server/epyc/9005-series.html">AMD EPYC 9005 series official page</a> — up to 192 Zen 5 / Zen 5c cores with memory bandwidth and capacity positioned for modern data-center workloads.</li>
+                <li><a href="https://www.amd.com/en/products/processors/server/epyc.html">AMD EPYC family FAQ</a> — notes that 5th Gen EPYC currently reaches 192 cores.</li>
+                <li><a href="https://www.arm.com/products/cloud-datacenter/arm-agi-cpu">Arm AGI CPU official page</a> — production silicon for AI infrastructure and agentic AI workloads.</li>
+                <li><a href="https://www.arm.com/static/az/pdf/product-brief/arm-agi-cpu-product-brief.pdf">Arm AGI CPU product brief (PDF)</a> — cites up to 136 Neoverse V3 cores, 300W TDP, 96 PCIe Gen6 lanes, CXL 3.0 support, and rack-scale density claims.</li>
+                <li><a href="https://www.nvidia.com/en-us/data-center/nvlink-c2c/">NVIDIA NVLink-C2C page</a> — Grace CPU Superchip uses NVLink-C2C; Grace is positioned with 144 cores and 1 TB/s of memory bandwidth.</li>
+                <li><a href="https://developer.nvidia.com/blog/nvidia-grace-cpu-delivers-high-bandwidth-and-efficiency-for-modern-data-centers/">NVIDIA developer blog on Grace</a> — Grace described as a high-bandwidth, energy-efficient CPU for modern data centers.</li>
+                <li><a href="https://www.nvidia.com/en-us/data-center/vera-cpu/">NVIDIA Vera CPU official page</a> — 88 Olympus cores, Armv9.2 compatibility, AI-factory and agentic-AI positioning.</li>
+                <li><a href="https://nvidianews.nvidia.com/news/nvidia-launches-vera-cpu-purpose-built-for-agentic-ai">NVIDIA newsroom: Vera purpose-built for agentic AI</a> — frames Vera around compilers, runtime engines, analytics pipelines, orchestration services, and multi-tenant AI factories.</li>
+                <li><a href="https://developer.nvidia.com/blog/nvidia-vera-cpu-delivers-high-performance-bandwidth-and-efficiency-for-ai-factories/">NVIDIA developer blog on Vera</a> — details around shared coherency fabric and memory-bandwidth emphasis.</li>
+              </ol>
+              <p class="small muted">
+                This essay uses current public positioning from the vendors themselves where possible. Where it extrapolates beyond product specs, it does so
+                as systems analysis rather than as a claim of undisclosed roadmap detail.
+              </p>
+            </div>
+          </section>
+        </div>
+
+        <aside class="aside">
+          <div class="mini">
+            <h4>Core claim</h4>
+            <p>
+              AI did not make CPUs obsolete. It made their non-benchmark roles central: memory movement, host orchestration,
+              power-aware control, and agentic runtime management.
+            </p>
+          </div>
+
+          <div class="mini">
+            <h4>Useful lens</h4>
+            <ul>
+              <li>GPU = arithmetic engine</li>
+              <li>CPU = system-control engine</li>
+              <li>Winner = vendor with the better whole-system story</li>
+            </ul>
+          </div>
+
+          <div class="mini">
+            <h4>What to watch next</h4>
+            <ul>
+              <li>CPU-to-GPU coherency fabrics</li>
+              <li>CXL and memory pooling</li>
+              <li>Agentic runtime software load</li>
+              <li>Rack-level power ceilings</li>
+              <li>Host CPU role in AI factories</li>
+            </ul>
+          </div>
+        </aside>
+      </article>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="small">MANISH AI · Essays · April 2026 · <a href="/writings.html">← All writings</a></div>
+      <div class="small">© 2026 <a href="https://github.com/manishklach">MANISH AI</a>. All rights reserved.</div>
+    </div>
+  </footer>
+</body>
+</html>
