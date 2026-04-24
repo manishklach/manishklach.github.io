@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Rambus SOCAMM2: The Modular LPDDR Memory Layer for AI Servers | MANISH AI</title>
+<meta name="description" content="A systems-level primer on Rambus SOCAMM2, LPDDR5X server modules, AI memory hierarchy, bandwidth math, power delivery, and the emerging SOCAMM2 ecosystem." />
+<style>
+:root{
+  --bg:#071018;
+  --panel:#0d1b2a;
+  --panel2:#102238;
+  --ink:#eaf2ff;
+  --muted:#b9c7d8;
+  --line:#25415f;
+  --accent:#62d6ff;
+  --accent2:#a78bfa;
+  --good:#77f2a1;
+  --warn:#ffd166;
+  --hot:#ff7b7b;
+  --shadow:0 18px 60px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  background:
+    radial-gradient(circle at 20% 5%, rgba(98,214,255,.18), transparent 28%),
+    radial-gradient(circle at 90% 15%, rgba(167,139,250,.16), transparent 30%),
+    linear-gradient(180deg,#06101a 0%,#071018 45%,#050910 100%);
+  color:var(--ink);
+  line-height:1.7;
+}
+a{color:var(--accent)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px}
+.hero{
+  min-height:74vh;
+  display:flex;
+  align-items:center;
+  position:relative;
+  overflow:hidden;
+  border-bottom:1px solid rgba(98,214,255,.18);
+}
+.hero:before{
+  content:"";
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(rgba(98,214,255,.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(98,214,255,.06) 1px, transparent 1px);
+  background-size:44px 44px;
+  mask-image:linear-gradient(to bottom,rgba(0,0,0,.8),transparent 85%);
+}
+.kicker{
+  display:inline-flex;gap:10px;align-items:center;
+  padding:8px 13px;border:1px solid rgba(98,214,255,.35);
+  border-radius:999px;background:rgba(13,27,42,.72);color:#ccefff;
+  backdrop-filter:blur(10px);font-weight:700;font-size:.9rem;
+}
+.kicker .dot{width:9px;height:9px;border-radius:50%;background:var(--good);box-shadow:0 0 16px var(--good)}
+h1{
+  margin:22px 0 12px;
+  font-size:clamp(2.55rem,6vw,5.75rem);
+  line-height:.98;
+  letter-spacing:-.065em;
+}
+.lede{font-size:clamp(1.08rem,2vw,1.35rem);max-width:850px;color:var(--muted)}
+.hero-grid{position:relative;z-index:1;display:grid;grid-template-columns:1.15fr .85fr;gap:34px;align-items:center}
+.hero-card{
+  background:linear-gradient(145deg,rgba(16,34,56,.9),rgba(8,18,31,.82));
+  border:1px solid rgba(98,214,255,.25);
+  box-shadow:var(--shadow);
+  border-radius:28px;
+  padding:26px;
+  backdrop-filter:blur(14px);
+}
+.chip-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
+.metric{padding:16px;border-radius:18px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08)}
+.metric b{display:block;font-size:1.75rem;color:#fff;line-height:1.15}
+.metric span{color:var(--muted);font-size:.93rem}
+.page-nav{
+  position:sticky;top:0;z-index:20;
+  background:rgba(5,10,17,.75);
+  backdrop-filter:blur(14px);
+  border-bottom:1px solid rgba(98,214,255,.13);
+}
+.page-nav .wrap{display:flex;gap:18px;overflow:auto;white-space:nowrap;padding-top:12px;padding-bottom:12px}
+.page-nav a{text-decoration:none;color:#d9ebff;font-size:.92rem;opacity:.82}
+section{padding:64px 0;border-bottom:1px solid rgba(98,214,255,.10)}
+h2{font-size:clamp(1.75rem,3vw,2.65rem);line-height:1.15;letter-spacing:-.035em;margin:0 0 20px}
+h3{font-size:1.2rem;margin:24px 0 8px}
+p{color:var(--muted);margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
+.card{
+  background:linear-gradient(180deg,rgba(16,34,56,.74),rgba(10,20,34,.78));
+  border:1px solid rgba(98,214,255,.16);
+  border-radius:24px;
+  padding:24px;
+  box-shadow:0 10px 35px rgba(0,0,0,.22);
+}
+.span4{grid-column:span 4}.span5{grid-column:span 5}.span6{grid-column:span 6}.span7{grid-column:span 7}.span8{grid-column:span 8}.span12{grid-column:span 12}
+.callout{
+  border-left:4px solid var(--accent);
+  background:linear-gradient(90deg,rgba(98,214,255,.12),rgba(98,214,255,.02));
+  padding:18px 20px;border-radius:18px;margin:22px 0;color:#dff7ff
+}
+.callout strong{color:#fff}
+table{width:100%;border-collapse:collapse;overflow:hidden;border-radius:18px;margin:18px 0;background:rgba(9,18,30,.9)}
+th,td{padding:14px 16px;border-bottom:1px solid rgba(98,214,255,.13);text-align:left;vertical-align:top}
+th{color:#fff;background:rgba(98,214,255,.10)}
+td{color:var(--muted)}
+.badge{display:inline-block;padding:5px 10px;border:1px solid rgba(98,214,255,.25);border-radius:999px;background:rgba(98,214,255,.08);color:#dff7ff;font-size:.82rem;font-weight:700}
+.math{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-size:1.05rem;color:#eaf7ff;background:#050b12;border:1px solid rgba(98,214,255,.2);
+  padding:18px;border-radius:18px;overflow:auto;margin:16px 0
+}
+.diagram{
+  width:100%;height:auto;display:block;margin:10px 0 0;border-radius:20px;
+  background:radial-gradient(circle at 50% 0%,rgba(98,214,255,.10),transparent 55%), #08131f;
+  border:1px solid rgba(98,214,255,.16)
+}
+.ref-list li{color:var(--muted);margin-bottom:8px}
+.footer{padding:52px 0;color:#7890aa;text-align:center}
+@media(max-width:850px){
+  .hero-grid,.grid{display:block}
+  .card,.hero-card{margin-bottom:18px}
+  .chip-row{grid-template-columns:1fr}
+}
+
+.site-top{position:sticky;top:0;z-index:120;border-bottom:1px solid rgba(98,214,255,.18);background:rgba(7,16,24,.82);backdrop-filter:blur(14px)}
+.site-top .wrap{min-height:62px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.site-brand{font-weight:900;letter-spacing:.12em;text-transform:uppercase;font-size:.88rem;color:var(--ink);text-decoration:none}
+.site-links{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.site-link{padding:7px 12px;border-radius:999px;border:1px solid rgba(98,214,255,.2);background:rgba(13,27,42,.72);color:#d8ecff;font-weight:700;font-size:.82rem;text-decoration:none;transition:opacity .2s ease,border-color .2s ease}
+.site-brand:hover,.site-link:hover,.site-footer a:hover{opacity:.82}
+.site-footer{padding:34px 0 64px;color:#9fb3cb}
+.site-footer .wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid rgba(98,214,255,.18);padding-top:18px}
+.site-footer .small{font-size:.88rem}
+@media(max-width:900px){.site-top .wrap{min-height:56px}.site-links{gap:8px}.site-link{font-size:.76rem;padding:6px 10px}}
+</style>
+
+<meta name="keywords" content="Rambus SOCAMM2, SOCAMM2, LPDDR5X server memory, AI server memory, modular LPDDR memory, AI memory hierarchy, Rambus server chipset, MANISH AI" />
+<meta name="author" content="MANISH AI" />
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+<meta name="color-scheme" content="dark" />
+<link rel="canonical" href="https://manishklach.github.io/writings/rambus-socamm2-modular-lpddr-memory-layer-ai-servers.html" />
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml" />
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json" />
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention" />
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Rambus SOCAMM2: The Modular LPDDR Memory Layer for AI Servers | MANISH AI" />
+<meta property="og:description" content="A systems-level primer on Rambus SOCAMM2, LPDDR5X server modules, AI memory hierarchy, bandwidth math, power delivery, and the emerging SOCAMM2 ecosystem." />
+<meta property="og:url" content="https://manishklach.github.io/writings/rambus-socamm2-modular-lpddr-memory-layer-ai-servers.html" />
+<meta property="og:site_name" content="MANISH AI" />
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png" />
+<meta property="og:image:alt" content="MANISH AI technical essay preview" />
+<meta property="article:published_time" content="2026-04-24T00:00:00-07:00" />
+<meta property="article:modified_time" content="2026-04-24T00:00:00-07:00" />
+<meta property="article:section" content="AI Memory Systems" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Rambus SOCAMM2: The Modular LPDDR Memory Layer for AI Servers | MANISH AI" />
+<meta name="twitter:description" content="A systems-level primer on Rambus SOCAMM2, LPDDR5X server modules, AI memory hierarchy, bandwidth math, power delivery, and the emerging SOCAMM2 ecosystem." />
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png" />
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Rambus SOCAMM2: The Modular LPDDR Memory Layer for AI Servers",
+  "description": "A systems-level primer on Rambus SOCAMM2, LPDDR5X server modules, AI memory hierarchy, bandwidth math, power delivery, and the emerging SOCAMM2 ecosystem.",
+  "url": "https://manishklach.github.io/writings/rambus-socamm2-modular-lpddr-memory-layer-ai-servers.html",
+  "image": "https://manishklach.github.io/assets/og-image.png",
+  "datePublished": "2026-04-24",
+  "dateModified": "2026-04-24",
+  "inLanguage": "en-US",
+  "author": {"@type":"Person","name":"MANISH AI","url":"https://github.com/manishklach"},
+  "publisher": {"@type":"Organization","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "mainEntityOfPage": {"@type":"WebPage","@id":"https://manishklach.github.io/writings/rambus-socamm2-modular-lpddr-memory-layer-ai-servers.html"},
+  "keywords": ["Rambus SOCAMM2","SOCAMM2","LPDDR5X server memory","AI server memory","modular LPDDR memory","AI memory hierarchy","Rambus server chipset","MANISH AI"]
+}
+</script>
+</head>
+<body>
+<nav class="site-top" aria-label="Site navigation"><div class="wrap"><a class="site-brand" href="/">MAN\SH AI</a><div class="site-links"><a class="site-link" href="/writings.html">← All writings</a><a class="site-link" href="/">Home</a></div></div></nav>
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="kicker"><span class="dot"></span>AI memory architecture / April 2026</div>
+      <h1>Rambus SOCAMM2</h1>
+      <p class="lede">The new support-chipset behind modular LPDDR5X server memory — and why it matters for AI systems where bandwidth, power, capacity, and serviceability are becoming first-class architectural constraints.</p>
+      <div class="chip-row">
+        <div class="metric"><b>9.6 Gb/s</b><span>LPDDR5X data rate supported by the Rambus SOCAMM2 chipset</span></div>
+        <div class="metric"><b>12A + 3A</b><span>on-module voltage regulators for localized power conversion</span></div>
+      </div>
+    </div>
+    <div class="hero-card">
+      <svg viewBox="0 0 720 520" class="diagram" aria-label="SOCAMM2 hero diagram">
+        <defs>
+          <linearGradient id="g1" x1="0" x2="1"><stop stop-color="#62d6ff"/><stop offset="1" stop-color="#a78bfa"/></linearGradient>
+          <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <rect x="58" y="170" width="270" height="160" rx="28" fill="#102238" stroke="#62d6ff" opacity=".96"/>
+        <text x="193" y="238" fill="#fff" text-anchor="middle" font-size="32" font-weight="800">AI SoC / CPU</text>
+        <text x="193" y="278" fill="#b9c7d8" text-anchor="middle" font-size="19">memory controller</text>
+        <rect x="430" y="70" width="230" height="380" rx="24" fill="#0d1b2a" stroke="#a78bfa" opacity=".96"/>
+        <text x="545" y="116" fill="#fff" text-anchor="middle" font-size="28" font-weight="800">SOCAMM2</text>
+        <rect x="465" y="155" width="160" height="58" rx="12" fill="#143052" stroke="#62d6ff"/>
+        <text x="545" y="191" fill="#dff7ff" text-anchor="middle" font-size="18">LPDDR5X DRAM</text>
+        <rect x="465" y="235" width="160" height="58" rx="12" fill="#17294a" stroke="#a78bfa"/>
+        <text x="545" y="271" fill="#f1eaff" text-anchor="middle" font-size="18">SPD Hub</text>
+        <rect x="465" y="315" width="72" height="58" rx="12" fill="#17294a" stroke="#ffd166"/>
+        <text x="501" y="351" fill="#fff3c7" text-anchor="middle" font-size="17">12A VR</text>
+        <rect x="553" y="315" width="72" height="58" rx="12" fill="#17294a" stroke="#ffd166"/>
+        <text x="589" y="351" fill="#fff3c7" text-anchor="middle" font-size="17">3A VR</text>
+        <path d="M330 250 C365 250 382 250 430 250" stroke="url(#g1)" stroke-width="11" fill="none" filter="url(#glow)"/>
+        <path d="M330 275 C365 275 382 275 430 275" stroke="#77f2a1" stroke-width="4" fill="none" opacity=".85"/>
+        <text x="380" y="228" fill="#cdefff" text-anchor="middle" font-size="17">short, high-speed channel</text>
+        <text x="545" y="414" fill="#b9c7d8" text-anchor="middle" font-size="18">detachable LPDDR server module</text>
+      </svg>
+    </div>
+  </div>
+</header>
+
+<nav class="page-nav">
+  <div class="wrap">
+    <a href="#what">What it is</a>
+    <a href="#chipset">Rambus chipset</a>
+    <a href="#math">Bandwidth math</a>
+    <a href="#hierarchy">Memory hierarchy</a>
+    <a href="#ecosystem">Ecosystem</a>
+    <a href="#limits">Limits</a>
+    <a href="#thesis">Thesis</a>
+  </div>
+</nav>
+
+<main data-pagefind-body>
+<section id="what">
+  <div class="wrap grid">
+    <div class="span7">
+      <h2>SOCAMM2 is not “a Rambus-only product.” It is an emerging LPDDR server-module ecosystem.</h2>
+      <p>SOCAMM2 stands for <strong>Small Outline Compression Attached Memory Module 2</strong>. It brings LPDDR-class power efficiency into a detachable server memory module, aimed at AI infrastructure where memory capacity and energy efficiency matter as much as raw compute.</p>
+      <p>The key idea is simple: LPDDR has excellent energy characteristics, but historically it has been soldered close to the processor. SOCAMM2 tries to keep the short-distance, efficient LPDDR model while making the memory modular, serviceable, and upgradeable.</p>
+      <div class="callout"><strong>Correct framing:</strong> SOCAMM2 is a module standard / form-factor direction. Rambus provides one critical chipset that makes such modules practical: telemetry, configuration, and local power conversion.</div>
+    </div>
+    <div class="span5 card">
+      <h3>Why now?</h3>
+      <p>AI servers increasingly need more memory near compute without exploding power, board area, or service cost. Traditional RDIMMs are modular but power-hungry and board-area heavy. HBM is fast but fixed and expensive. SOCAMM2 tries to fill the gap.</p>
+      <span class="badge">HBM ≠ replaced</span>
+      <span class="badge">DDR ≠ obsolete</span>
+      <span class="badge">new middle tier</span>
+    </div>
+  </div>
+</section>
+
+<section id="chipset">
+  <div class="wrap">
+    <h2>What the Rambus SOCAMM2 chipset actually does</h2>
+    <p>Rambus did not launch DRAM. It launched the <strong>support silicon</strong> needed to build LPDDR5X-based SOCAMM2 server modules. This is closer to the “infrastructure chipset” on a memory module: identity, telemetry, and power conversion.</p>
+    <div class="grid">
+      <div class="span4 card">
+        <h3>1. SPD Hub</h3>
+        <p>The SPD Hub identifies the module, exposes configuration information, and provides telemetry. Rambus notes that its SPD Hub includes an integrated temperature sensor and communicates important data over I3C.</p>
+      </div>
+      <div class="span4 card">
+        <h3>2. 12A voltage regulator</h3>
+        <p>Converts high-voltage input down to low-voltage rails used by LPDDR DRAM and active components on the module. Local regulation reduces distribution loss and improves power control.</p>
+      </div>
+      <div class="span4 card">
+        <h3>3. 3A voltage regulator</h3>
+        <p>Provides an additional localized rail for lower-current supply needs. The point is not just power delivery; it is cleaner, finer-grained power management near the memory devices.</p>
+      </div>
+    </div>
+    <svg viewBox="0 0 1100 430" class="diagram" aria-label="Rambus SOCAMM2 chipset functional diagram">
+      <defs>
+        <linearGradient id="wire" x1="0" x2="1"><stop stop-color="#62d6ff"/><stop offset="1" stop-color="#77f2a1"/></linearGradient>
+      </defs>
+      <rect x="60" y="70" width="980" height="290" rx="30" fill="#0c1b2d" stroke="#25415f"/>
+      <text x="550" y="44" fill="#fff" font-size="28" text-anchor="middle" font-weight="800">SOCAMM2 module: what Rambus enables</text>
+      <rect x="105" y="122" width="220" height="155" rx="20" fill="#102b46" stroke="#62d6ff"/>
+      <text x="215" y="175" fill="#fff" text-anchor="middle" font-size="24" font-weight="700">SPD Hub</text>
+      <text x="215" y="210" fill="#b9c7d8" text-anchor="middle" font-size="16">ID · config · telemetry</text>
+      <text x="215" y="235" fill="#b9c7d8" text-anchor="middle" font-size="16">temperature sensor · I3C</text>
+      <rect x="440" y="105" width="110" height="90" rx="18" fill="#182940" stroke="#ffd166"/>
+      <text x="495" y="158" fill="#fff" text-anchor="middle" font-size="20" font-weight="700">12A VR</text>
+      <rect x="575" y="105" width="110" height="90" rx="18" fill="#182940" stroke="#ffd166"/>
+      <text x="630" y="158" fill="#fff" text-anchor="middle" font-size="20" font-weight="700">3A VR</text>
+      <rect x="790" y="100" width="185" height="210" rx="22" fill="#123050" stroke="#a78bfa"/>
+      <text x="883" y="160" fill="#fff" text-anchor="middle" font-size="24" font-weight="700">LPDDR5X</text>
+      <text x="883" y="198" fill="#b9c7d8" text-anchor="middle" font-size="16">high bandwidth</text>
+      <text x="883" y="224" fill="#b9c7d8" text-anchor="middle" font-size="16">low power</text>
+      <text x="883" y="250" fill="#b9c7d8" text-anchor="middle" font-size="16">detachable module</text>
+      <path d="M325 200 L440 150" stroke="url(#wire)" stroke-width="6" fill="none"/>
+      <path d="M685 150 L790 175" stroke="#ffd166" stroke-width="6" fill="none"/>
+      <path d="M325 220 C475 330 665 330 790 240" stroke="#62d6ff" stroke-width="5" fill="none" opacity=".75"/>
+      <text x="560" y="332" fill="#cfefff" text-anchor="middle" font-size="18">module management + clean local power + reliable server operation</text>
+    </svg>
+  </div>
+</section>
+
+<section id="math">
+  <div class="wrap grid">
+    <div class="span6">
+      <h2>Bandwidth math: why 9.6 Gb/s per pin matters</h2>
+      <p>A simple first-order calculation shows the appeal. If an LPDDR5X interface runs at 9.6 Gb/s per pin and has a 128-bit effective data width:</p>
+      <div class="math">Bandwidth = 9.6 Gb/s × 128 ÷ 8 = 153.6 GB/s</div>
+      <p>That does not beat HBM. It is not supposed to. The point is that SOCAMM2 can add meaningful bandwidth in a modular, lower-power form factor.</p>
+    </div>
+    <div class="span6 card">
+      <h3>Approximate positioning</h3>
+      <table>
+        <tr><th>Memory tier</th><th>Role</th><th>Tradeoff</th></tr>
+        <tr><td>HBM</td><td>Maximum bandwidth near accelerator</td><td>Expensive, fixed, package-constrained</td></tr>
+        <tr><td>SOCAMM2</td><td>Fast modular LPDDR tier near CPU/SoC</td><td>Slower than HBM, faster/more efficient than many DDR-style approaches</td></tr>
+        <tr><td>DDR5 RDIMM</td><td>Mainstream server memory</td><td>Broad ecosystem, but higher power/area for some AI use cases</td></tr>
+        <tr><td>CXL memory</td><td>Large capacity / pooled tier</td><td>Higher latency, fabric complexity</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="hierarchy">
+  <div class="wrap">
+    <h2>The AI memory hierarchy is becoming multi-tier</h2>
+    <p>SOCAMM2 is best understood as a <strong>middle memory layer</strong>, not as a silver bullet. A plausible AI server stack looks like this:</p>
+    <svg viewBox="0 0 1100 390" class="diagram" aria-label="AI memory hierarchy diagram">
+      <rect x="110" y="55" width="880" height="70" rx="22" fill="#132d4a" stroke="#62d6ff"/>
+      <text x="550" y="99" fill="#fff" text-anchor="middle" font-size="24" font-weight="800">HBM: ultra-fast, on-package, scarce</text>
+      <rect x="160" y="145" width="780" height="70" rx="22" fill="#1a2d4f" stroke="#a78bfa"/>
+      <text x="550" y="189" fill="#fff" text-anchor="middle" font-size="24" font-weight="800">SOCAMM2: fast, modular LPDDR memory</text>
+      <rect x="210" y="235" width="680" height="70" rx="22" fill="#102238" stroke="#77f2a1"/>
+      <text x="550" y="279" fill="#fff" text-anchor="middle" font-size="24" font-weight="800">CXL / DDR capacity tier: bigger, slower</text>
+      <rect x="275" y="325" width="550" height="45" rx="17" fill="#0d1b2a" stroke="#25415f"/>
+      <text x="550" y="354" fill="#b9c7d8" text-anchor="middle" font-size="18">NVMe / object storage / remote data</text>
+    </svg>
+    <div class="callout"><strong>Systems insight:</strong> The future is not one memory technology. It is orchestration across tiers — HBM for hot working sets, SOCAMM2 for large near-memory capacity, CXL/DDR for expansion, and storage for persistence.</div>
+  </div>
+</section>
+
+<section id="ecosystem">
+  <div class="wrap">
+    <h2>Ecosystem: who does what?</h2>
+    <table>
+      <tr><th>Layer</th><th>Companies / examples</th><th>What they provide</th></tr>
+      <tr><td>Module support chipset</td><td>Rambus</td><td>SPD Hub, telemetry, 12A/3A regulators, module enablement for LPDDR5X SOCAMM2</td></tr>
+      <tr><td>DRAM + modules</td><td>Micron, Samsung, SK hynix</td><td>LPDDR5X devices and SOCAMM2 modules for AI / data-center systems</td></tr>
+      <tr><td>CPU / platform adopters</td><td>AMD, hyperscalers, server OEMs</td><td>Memory controllers, platforms, and server designs that can exploit LPDDR server modules</td></tr>
+      <tr><td>Alternative memory approaches</td><td>NVIDIA / AMD HBM systems, CXL vendors</td><td>On-package HBM, accelerator fabrics, pooled memory, and other memory hierarchy strategies</td></tr>
+    </table>
+    <p>The strategic point: Rambus is not trying to be the DRAM vendor. It is trying to own a valuable slice of the support-silicon layer if SOCAMM2 becomes broadly adopted.</p>
+  </div>
+</section>
+
+<section id="limits">
+  <div class="wrap grid">
+    <div class="span6 card">
+      <h2>Where SOCAMM2 wins</h2>
+      <ul>
+        <li>Lower power profile versus traditional server DIMM approaches for some AI memory configurations.</li>
+        <li>Detachable and serviceable, unlike soldered LPDDR.</li>
+        <li>Better density and board-space efficiency than many legacy memory module layouts.</li>
+        <li>Good fit for CPU-attached AI inference, long-context workloads, and memory-rich nodes.</li>
+      </ul>
+    </div>
+    <div class="span6 card">
+      <h2>Where it breaks</h2>
+      <ul>
+        <li>It does not replace HBM for maximum accelerator bandwidth.</li>
+        <li>High-speed connectors and module channels are difficult to design and validate.</li>
+        <li>The ecosystem is still young; platform adoption is the real test.</li>
+        <li>Software has to learn which data belongs in HBM, SOCAMM2, CXL, or storage.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="thesis">
+  <div class="wrap">
+    <h2>Final thesis: Rambus is selling the control plane for modular AI memory</h2>
+    <p>SOCAMM2 should not be viewed as just a module. It is a sign that AI system design is moving away from a simple CPU ↔ DIMM model toward a layered memory hierarchy where power, bandwidth, footprint, thermal behavior, and serviceability are all negotiated together.</p>
+    <div class="callout"><strong>The big idea:</strong> HBM remains the accelerator’s hot tier. SOCAMM2 may become the modular, power-efficient near-memory tier. CXL and DDR remain capacity tiers. The winning systems will schedule data across all of them intelligently.</div>
+    <p>That is why the Rambus chipset matters. SPD telemetry, localized voltage regulation, and module support logic may sound mundane, but without that plumbing, modular LPDDR server memory does not become a deployable AI infrastructure building block.</p>
+  </div>
+</section>
+
+<section id="refs">
+  <div class="wrap">
+    <h2>References</h2>
+    <ul class="ref-list">
+      <li>Rambus SOCAMM2 Server Chipset product page — SPD Hub, I3C telemetry, and 12A/3A voltage regulators.</li>
+      <li>Rambus / BusinessWire launch announcement — LPDDR5X SOCAMM2 chipset, up to 9.6 Gb/s, detachable/upgradable modules.</li>
+      <li>Micron SOCAMM2 product materials — LPDDR5X data-center module positioning and high-capacity SOCAMM2 roadmap.</li>
+      <li>Samsung SOCAMM2 materials — LPDDR5X-based modular server memory for AI infrastructure.</li>
+      <li>AMD blog on LPDDR5X server memory — energy efficiency and modular serviceability context.</li>
+    </ul>
+  </div>
+</section>
+</main>
+
+<footer class="site-footer"><div class="wrap"><div class="small">MANISH AI · Essays · April 2026 · <a href="/writings.html">← All writings</a></div><div class="small">© 2026 <a href="https://github.com/manishklach">MANISH AI</a>. All rights reserved.</div></div></footer>
+</body>
+</html>
