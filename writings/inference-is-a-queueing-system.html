@@ -377,6 +377,20 @@
         optimism. It cares about burstiness, variance, and whether the system can shed or reshape load before
         waiting time compounds.
       </p>
+      <h3>A concrete serving-day failure mode</h3>
+      <p>
+        Imagine a fleet sized for an average of 3,000 active decode streams with enough headroom for prompt bursts.
+        At noon, one product surface launches a feature and request arrivals briefly double. The first thing that
+        happens is not “the GPU maxes out.” The first thing that happens is queue depth rises at ingress, then batch
+        formation windows stretch, then short requests start waiting behind longer ones, and finally decode loops
+        inherit the instability as uneven work arrives at each step. By the time utilization dashboards look alarming,
+        the user-facing damage is already underway.
+      </p>
+      <p>
+        This is one reason interactive systems feel brittle. A few seconds of demand distortion can produce minutes of
+        recovery because the system is not draining from a clean state. It is draining from an inflated queue whose
+        requests now carry more waiting time, more cancellation risk, and often more retries.
+      </p>
 
       <div class="diagram">
         <svg viewBox="0 0 920 300" aria-label="Inference queueing diagram">
@@ -437,6 +451,44 @@
         but it also increases admission delay and couples short jobs to long jobs. If the fleet is operating near
         saturation, even small batch-formation delays can push p95 and p99 into uncomfortable territory.
       </p>
+      <h3>A simple quantitative intuition</h3>
+      <p>
+        Suppose effective arrival rate is 900 requests per second and the average time in system is 120 milliseconds.
+        Little’s Law says the system carries about 108 requests in flight on average. If memory stalls or batching
+        overhead stretch average time in system to 180 milliseconds, in-flight work rises to about 162 requests
+        without any increase in demand. That extra backlog is exactly what operators experience as “mysterious”
+        saturation.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Arrival rate</th>
+            <th>Average time in system</th>
+            <th>Average in-flight work</th>
+            <th>Operator-visible effect</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>900 req/s</td>
+            <td>120 ms</td>
+            <td>108 requests</td>
+            <td>Stable queue, modest tail</td>
+          </tr>
+          <tr>
+            <td>900 req/s</td>
+            <td>180 ms</td>
+            <td>162 requests</td>
+            <td>Longer waiting and stickier backlog</td>
+          </tr>
+          <tr>
+            <td>1,050 req/s</td>
+            <td>180 ms</td>
+            <td>189 requests</td>
+            <td>Tail starts to climb sharply</td>
+          </tr>
+        </tbody>
+      </table>
     </section>
 
     <section id="prefill-decode">
@@ -456,6 +508,14 @@
         why scheduler policy matters so much, and why “GPU underutilization” can mean very different things in
         each phase. A half-idle prefill pool and a decode pool with unstable queue growth are not interchangeable
         pathologies.
+      </p>
+      <h3>Why this breaks naive fleet planning</h3>
+      <p>
+        If prefill and decode are combined into one resource pool, the scheduler tends to trade one kind of pain for
+        another. Dense prompt bursts can monopolize admission opportunities while decode streams accumulate small
+        but compounding waits. Conversely, protecting decode too aggressively can cause prompt ingress to become
+        spiky enough that batch formation quality collapses. The right answer depends on request mix, but the wrong
+        answer is to assume there is one universal pool-level optimum.
       </p>
       <table>
         <thead>
@@ -527,6 +587,13 @@
         preference. The scheduler needs to know when to refuse batch growth because the tail is more expensive than
         the extra throughput.
       </p>
+      <h3>What the batch window is really doing</h3>
+      <p>
+        The batch window is a latency budget auction. Every extra millisecond spent waiting for another request is a
+        bet that the future arithmetic gain will more than repay the waiting cost. That bet can make sense for long
+        throughput-oriented generations, and make no sense at all for short interactive turns. Strong serving systems
+        therefore let the window vary by traffic class instead of pretending one global batching rule is intelligent.
+      </p>
     </section>
 
     <section id="memory">
@@ -566,6 +633,13 @@
         residency, reducing remote fetch probability, and making scheduling more topology-aware are queue-stability
         measures, not just micro-optimizations.
       </p>
+      <h3>The tail-explosion path</h3>
+      <p>
+        The dangerous pattern is not one isolated miss. It is a miss that widens one request’s service time, which
+        then extends the batch, which then delays the next dispatch opportunity, which then increases waiting for
+        other requests. Under enough concurrency, the queue turns a local memory event into a fleet-level latency
+        event. This is why long-context decode often feels stable until it suddenly does not.
+      </p>
     </section>
 
     <section id="design">
@@ -595,6 +669,13 @@
           <p>p95 and p99 need first-class SLO handling. Averages are not a sufficient steering signal.</p>
         </div>
       </div>
+      <h3>Metrics that actually deserve attention</h3>
+      <p>
+        The dashboards that matter most are usually not the glamorous ones. Queue depth by class, time spent waiting
+        before batch admission, service-time variance for decode, KV transfer frequency, cancellation rate, and retry
+        amplification tell you far more about serving quality than a single fleetwide utilization number. The point is
+        not to collect more graphs. It is to measure where the queue is being distorted.
+      </p>
       <p>
         This also explains why the most interesting serving companies and internal infrastructure teams are becoming
         scheduling companies. Once the math path is “good enough,” operational excellence shifts to controlling the
@@ -617,6 +698,8 @@
         <li>NVIDIA TensorRT-LLM, Triton Inference Server, and CUDA performance guidance for batching and serving.</li>
         <li>Public engineering writing on prefill/decode disaggregation, KV transfer, and long-context inference serving.</li>
         <li>Classical work on tail latency, datacenter queueing, and service-time variability in distributed systems.</li>
+        <li>Dean and Barroso, “The Tail at Scale,” for why small variance matters so much in large interactive systems.</li>
+        <li>Production guidance from hyperscaler and inference-runtime teams on admission control, retry storms, and latency SLO design.</li>
       </ul>
     </section>
   </main>

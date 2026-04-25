@@ -361,6 +361,13 @@
         In AI systems, the penalty of a miss is measured not only in nanoseconds, but in bytes moved, queues disturbed,
         and concurrency lost.
       </div>
+      <h3>Why this matters more in inference than in many older workloads</h3>
+      <p>
+        A lot of classic software could often hide a miss behind other work. Modern decode loops have much less room
+        to hide. They repeatedly ask for the next small slice of useful state, and they ask under tight latency
+        budgets. Once that state is not local, the machine is forced into a logistics problem at exactly the moment
+        it wants to be doing forward progress.
+      </p>
     </section>
 
     <section id="tiers">
@@ -398,6 +405,44 @@
         </svg>
       </div>
       <p class="caption">AI memory misses should be thought of across the full residency and transport hierarchy, not just one local cache boundary.</p>
+      <h3>An approximate latency ladder intuition</h3>
+      <p>
+        Exact numbers vary by platform, but the shape is the point: an on-chip hit is qualitatively different from an
+        HBM access, an HBM access is qualitatively different from host DRAM, and anything that crosses a congested
+        fabric or reaches storage is in a completely different regime. Each outward step buys capacity, but it also
+        buys orders of magnitude more coordination cost.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Tier</th>
+            <th>Typical intuition</th>
+            <th>What usually hurts</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>On-chip SRAM</td>
+            <td>Very low latency, tightly bounded</td>
+            <td>Scarcity and replacement pressure</td>
+          </tr>
+          <tr>
+            <td>HBM</td>
+            <td>Fast, but still a shared bandwidth resource</td>
+            <td>Bandwidth saturation and thermal throttling</td>
+          </tr>
+          <tr>
+            <td>Host / pooled memory</td>
+            <td>Much larger, much farther away</td>
+            <td>Transport overhead and queueing</td>
+          </tr>
+          <tr>
+            <td>Storage / deep tier</td>
+            <td>Useful for capacity, hostile to interactive misses</td>
+            <td>Refill burst size and latency cliffs</td>
+          </tr>
+        </tbody>
+      </table>
     </section>
 
     <section id="taxonomy">
@@ -451,6 +496,12 @@
         miss in long-context inference are not identical, but they are siblings. Both are manifestations of insufficient
         residency for an object whose timely availability matters to the next unit of work.
       </p>
+      <h3>A useful operator question</h3>
+      <p>
+        When performance degrades, ask not just “What is missing?” but “What path did the miss force?” The answer may
+        be more revealing than the object itself. A moderately important object fetched locally from HBM is one kind of
+        event. The same object fetched across a busy fabric or from a spilled tier is a very different event.
+      </p>
     </section>
 
     <section id="economics">
@@ -474,6 +525,13 @@
           <p>Other requests now compete with the refill, so one miss can perturb a whole queue.</p>
         </div>
       </div>
+      <h3>A bytes-per-token thought experiment</h3>
+      <p>
+        Suppose a decode path needs a hot object every step for 200 output tokens. If that object remains in the right
+        fast tier, the system pays the movement cost once or amortizes it heavily. If the object is repeatedly missed
+        and refetched, the machine may effectively re-purchase the same bytes 200 times. That is why miss policy ends
+        up showing up in dollars per token, not just in latency traces.
+      </p>
       <p>
         This is why “bytes moved per token” is such a useful mental model. It captures something FLOPs alone cannot:
         how much logistical work the machine must do to sustain each output token. Misses inflate that logistics tax.
@@ -496,6 +554,13 @@
         recency and generic replacement logic are often too blind for AI objects whose future value is highly
         structured. A shared prefix KV block or a reused layer weight can look ordinary to a generic system while
         being enormously valuable to throughput and latency.
+      </p>
+      <h3>Residency classes matter</h3>
+      <p>
+        Not every object deserves the same treatment. Some state is disposable, some is recompute-cheap, some is
+        latency-critical, and some has shared value across many requests. Systems that treat all objects as generic
+        lines or pages end up paying preventable misses. Systems that distinguish object classes can make better
+        protection and demotion choices before pain appears.
       </p>
       <div class="diagram">
         <svg viewBox="0 0 920 280" aria-label="Miss prevention policy diagram">
@@ -547,6 +612,12 @@
           <p>Queue isolation and class-aware policy stop one miss-heavy stream from poisoning latency for everything else.</p>
         </div>
       </div>
+      <h3>What a better miss budget looks like</h3>
+      <p>
+        Great systems implicitly maintain a miss budget. They decide which misses are tolerable, which are acceptable
+        only in background paths, and which are catastrophic for interactive work. That framing is useful because it
+        moves the conversation away from impossible perfection and toward explicit operational tradeoffs.
+      </p>
       <p>
         The deeper point is that misses should be treated as first-class infrastructure economics. They are where
         latency, bandwidth, topology, and policy intersect. Once you see that clearly, a lot of “mysterious”
@@ -573,6 +644,7 @@
         <li>NVIDIA, CUDA, and GPUDirect materials related to bandwidth, transfers, and memory movement overheads.</li>
         <li>Distributed storage and networking literature on remote fetch, queueing under contention, and tail amplification.</li>
         <li>Systems work on locality-aware scheduling, explicit residency control, and regret-aware admission/eviction policy.</li>
+        <li>Classical work on locality, working sets, and miss-ratio curves as precursors to today’s residency-aware AI systems thinking.</li>
       </ul>
     </section>
   </main>

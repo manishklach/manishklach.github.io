@@ -365,6 +365,13 @@
         poor placement, cold-state fetches, unstable batching, and needless contention. Another appears “faster”
         because its control plane prevents expensive mistakes before they happen.
       </p>
+      <h3>The operational consequence</h3>
+      <p>
+        In practice, this means infrastructure teams are increasingly paid to remove avoidable bad decisions. A badly
+        placed request can trigger remote KV fetches, colder weights, noisier fabric contention, and more tail
+        latency than the accelerator difference between two adjacent GPU SKUs. The platform with better policy often
+        looks like it has better hardware because it is simply making fewer expensive mistakes per unit of demand.
+      </p>
     </section>
 
     <section id="what">
@@ -392,6 +399,14 @@
         Once you add these together, it becomes obvious why scheduling quality now dominates the practical outcome.
         The scheduler is deciding not only whether work runs, but whether work runs with the right state, over the
         right path, inside the right thermal and memory envelope.
+      </p>
+      <h3>A concrete decision chain</h3>
+      <p>
+        Consider a long-context inference request with an existing KV footprint and moderate latency sensitivity. A
+        high-quality scheduler may decide to keep it on a node whose immediate GPU is not the numerically least busy,
+        because that node already holds the right prefix state and sits on a cleaner path to the decode pool. A
+        naive scheduler may send it to the “freest” accelerator, only to pay for cross-node state movement, extra
+        queueing, and a worse tail. The right decision is a systems decision, not a scalar utilization decision.
       </p>
 
       <div class="diagram">
@@ -476,6 +491,13 @@
       <div class="callout alt">
         Once layers couple this tightly, static rules lose value. Policy engines and feedback-aware schedulers gain it.
       </div>
+      <h3>Why rule stacks usually degrade</h3>
+      <p>
+        Many platforms start with local heuristics: one rule for admission, another for placement, another for cache
+        residency, another for retries. Over time those rules collide. The admission layer optimizes one metric while
+        the placement layer quietly worsens another. That is why mature AI systems increasingly consolidate decisions
+        into a more explicit policy model with shared objectives instead of isolated if-else islands.
+      </p>
     </section>
 
     <section id="economics">
@@ -495,6 +517,32 @@
           <p>You buy less panic capacity because the system avoids cold-state placement, unstable batching, and pathologically bad routing decisions.</p>
         </div>
       </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Policy lever</th>
+            <th>What improves</th>
+            <th>Economic effect</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Topology-aware placement</td>
+            <td>Less remote fetch and lower tail jitter</td>
+            <td>Higher useful throughput from the same hardware</td>
+          </tr>
+          <tr>
+            <td>Class-aware admission</td>
+            <td>Fewer latency-sensitive requests trapped behind throughput traffic</td>
+            <td>Better product quality without brute-force overprovisioning</td>
+          </tr>
+          <tr>
+            <td>Residency-aware state policy</td>
+            <td>Lower repeated transfer cost for hot objects</td>
+            <td>More work done per byte moved and per watt spent</td>
+          </tr>
+        </tbody>
+      </table>
       <p>
         This is why the best AI platforms increasingly look differentiated even when they rent similar hardware. Their
         scheduler is effectively compressing waste out of the system. Better control means fewer expensive mistakes per
@@ -518,6 +566,12 @@
         tight tail constraints. This is another reason policy quality becomes product quality: the control plane
         decides whether bad local conditions remain local.
       </p>
+      <h3>From liveness to usefulness</h3>
+      <p>
+        This is a major mental shift. Classical infrastructure often asks, “Is the machine alive?” AI infrastructure
+        increasingly has to ask, “Is this resource useful for this exact workload right now?” Those are not the same
+        question, and the scheduler is where the distinction becomes operational.
+      </p>
     </section>
 
     <section id="moat">
@@ -531,6 +585,13 @@
       <div class="callout">
         In AI infrastructure, the scheduler is where product judgment becomes executable systems behavior.
       </div>
+      <h3>Why this compounds over time</h3>
+      <p>
+        Better policy is sticky because it accumulates incident memory. Every production surprise teaches the system
+        which request classes are incompatible, which topologies are fragile, which objects deserve protection, and
+        which control loops should trigger earlier. That knowledge tends to be local, empirical, and difficult to copy
+        cleanly from outside.
+      </p>
       <p>
         That is why the deepest infrastructure companies are becoming policy companies. They are not just exposing
         hardware. They are encoding decisions about where to place, what to protect, when to defer, when to reroute,
@@ -553,6 +614,8 @@
         <li>Research and production writing on cluster gray failures, partial degradation, and tail-latency containment.</li>
         <li>CXL, GPUDirect, and memory-tier orchestration materials relevant to placement and data movement policy.</li>
         <li>Distributed-systems work on useful throughput, tail tolerance, and cross-layer feedback control.</li>
+        <li>Borg, Omega, and Kubernetes scheduler literature for the evolution from resource placement to policy-aware orchestration.</li>
+        <li>Public cloud and hyperscaler work on admission control, SLO-aware scheduling, and cluster-level control loops.</li>
       </ul>
     </section>
   </main>
