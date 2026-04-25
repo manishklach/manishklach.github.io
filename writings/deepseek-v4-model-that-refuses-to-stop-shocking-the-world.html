@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A technical essay on DeepSeek V4, its hybrid attention architecture, million-token context, pricing, Huawei inference stack, and what it means for frontier AI competition.">
+<title>DeepSeek V4: The Model That Refuses to Stop Shocking the World | MANISH AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,500;1,6..72,300;1,6..72,500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0e0f;
+    --surface: #161718;
+    --surface2: #1e2022;
+    --border: rgba(255,255,255,0.08);
+    --border-bright: rgba(255,255,255,0.16);
+    --text: #e8e6e0;
+    --text-muted: #9a9690;
+    --text-faint: #5a5855;
+    --accent: #4ECDC4;
+    --accent-dim: rgba(78,205,196,0.15);
+    --accent-mid: rgba(78,205,196,0.35);
+    --red: #FF6B6B;
+    --red-dim: rgba(255,107,107,0.12);
+    --gold: #FFD93D;
+    --gold-dim: rgba(255,217,61,0.12);
+    --purple: #C77DFF;
+    --purple-dim: rgba(199,125,255,0.12);
+    --green: #6BCB77;
+    --green-dim: rgba(107,203,119,0.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Newsreader', Georgia, serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.75;
+    font-size: 17px;
+  }
+
+  /* NOISE TEXTURE OVERLAY */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* PAGE NAV */
+  .page-nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(13,14,15,0.88);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.8rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .page-nav-mark {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .page-nav-sep { color: var(--text-faint); font-size: 12px; }
+  .page-nav-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    flex: 1;
+  }
+  .page-nav-date {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--text-faint);
+  }
+
+  /* CONTAINER */
+  .container {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 0 2rem;
+  }
+
+  /* HERO */
+  .hero {
+    padding: 5rem 0 4rem;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: 'V4';
+    position: absolute;
+    right: -0.1em;
+    top: 50%;
+    transform: translateY(-55%);
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(180px, 22vw, 300px);
+    font-weight: 800;
+    color: rgba(78,205,196,0.04);
+    line-height: 1;
+    pointer-events: none;
+    user-select: none;
+  }
+  .hero-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 1.5rem;
+  }
+  .kicker-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+  .kicker-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .hero-title {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(34px, 5.5vw, 68px);
+    line-height: 1.05;
+    font-weight: 800;
+    margin-bottom: 1.5rem;
+    letter-spacing: -0.03em;
+    position: relative;
+    z-index: 1;
+  }
+  .hero-title .hl { color: var(--accent); }
+  .hero-sub {
+    font-size: 18px;
+    color: var(--text-muted);
+    line-height: 1.75;
+    font-weight: 300;
+    font-style: italic;
+    max-width: 680px;
+    margin-bottom: 2rem;
+    position: relative;
+    z-index: 1;
+  }
+  .hero-meta {
+    display: flex;
+    gap: 0;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--text-faint);
+    border-top: 1px solid var(--border);
+    padding-top: 1.25rem;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    position: relative;
+    z-index: 1;
+  }
+  .hero-meta span { display: flex; align-items: center; gap: 6px; }
+  .hero-meta span::before { content: '//'; color: var(--text-faint); opacity: 0.4; }
+
+  /* ALERT BANNER */
+  .alert-banner {
+    background: var(--red-dim);
+    border: 1px solid rgba(255,107,107,0.25);
+    border-radius: 8px;
+    padding: 1rem 1.4rem;
+    margin: 2rem 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  .alert-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .alert-body {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--red);
+    line-height: 1.7;
+  }
+  .alert-body strong { font-weight: 700; }
+
+  /* STAT STRIP */
+  .stat-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 2.5rem 0;
+  }
+  .stat-cell {
+    background: var(--surface);
+    padding: 1.25rem 1.1rem;
+  }
+  .stat-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 0.5rem;
+  }
+  .stat-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 3px;
+  }
+  .stat-value.accent { color: var(--accent); }
+  .stat-value.gold { color: var(--gold); }
+  .stat-value.purple { color: var(--purple); }
+  .stat-sub {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--text-faint);
+    line-height: 1.5;
+  }
+
+  /* TOC */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 1.4rem 1.6rem;
+    margin: 2.5rem 0;
+  }
+  .toc-head {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    margin-bottom: 1rem;
+  }
+  .toc-list { list-style: none; counter-reset: toc; }
+  .toc-list li {
+    counter-increment: toc;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+  }
+  .toc-list li:last-child { border-bottom: none; }
+  .toc-list li::before {
+    content: counter(toc, decimal-leading-zero);
+    color: var(--accent);
+    opacity: 0.6;
+    flex-shrink: 0;
+  }
+
+  /* SECTIONS */
+  .section { margin: 4rem 0 0; }
+  .section-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 0.75rem;
+  }
+  .eyebrow-num {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    opacity: 0.7;
+  }
+  .eyebrow-line { flex: 1; height: 1px; background: var(--border); }
+  .eyebrow-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(24px, 3.5vw, 40px);
+    font-weight: 700;
+    line-height: 1.15;
+    margin-bottom: 1.25rem;
+    letter-spacing: -0.02em;
+  }
+  .subsec-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 600;
+    margin: 2.5rem 0 0.85rem;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+  .subsec-title .accent { color: var(--accent); }
+
+  p {
+    font-size: 16.5px;
+    line-height: 1.9;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+  }
+  strong { font-weight: 500; color: var(--text); }
+
+  /* CALLOUTS */
+  .callout {
+    border-left: 2px solid var(--accent);
+    padding: 1rem 1.4rem;
+    margin: 1.75rem 0;
+    background: var(--accent-dim);
+    border-radius: 0 6px 6px 0;
+  }
+  .callout p { margin: 0; font-size: 14.5px; color: #a0e8e4; font-style: italic; }
+  .callout p strong { color: var(--accent); font-style: normal; }
+
+  .warn-callout {
+    border-left: 2px solid var(--gold);
+    padding: 1rem 1.4rem;
+    margin: 1.75rem 0;
+    background: var(--gold-dim);
+    border-radius: 0 6px 6px 0;
+  }
+  .warn-callout p { margin: 0; font-size: 14.5px; color: #d4b830; font-style: italic; }
+  .warn-callout p strong { color: var(--gold); font-style: normal; }
+
+  /* DIAGRAMS */
+  .diagram-wrap {
+    margin: 2.5rem 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .diagram-wrap svg { width: 100%; display: block; }
+  .diagram-cap {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--text-faint);
+    padding: 0.7rem 1.25rem;
+    border-top: 1px solid var(--border);
+    line-height: 1.6;
+  }
+
+  /* VERSION TIMELINE */
+  .timeline { position: relative; padding-left: 2rem; margin: 2rem 0; }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--border-bright);
+  }
+  .tl-item {
+    position: relative;
+    margin-bottom: 2rem;
+    padding-left: 0.5rem;
+  }
+  .tl-item::before {
+    content: '';
+    position: absolute;
+    left: -1.75rem;
+    top: 6px;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1.5px solid var(--border-bright);
+  }
+  .tl-item.current::before {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-dim);
+  }
+  .tl-date {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    margin-bottom: 3px;
+  }
+  .tl-item:not(.current) .tl-date { color: var(--text-faint); }
+  .tl-model {
+    font-family: 'Syne', sans-serif;
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 3px;
+  }
+  .tl-desc { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+  .tl-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .tl-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    border: 1px solid var(--border-bright);
+    color: var(--text-muted);
+  }
+  .tl-tag.hi { border-color: var(--accent); color: var(--accent); }
+
+  /* COMPARISON TABLE */
+  .bench-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    margin: 1.75rem 0;
+    background: var(--surface);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .bench-table th {
+    text-align: left;
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-bright);
+    background: var(--surface2);
+    font-weight: 400;
+  }
+  .bench-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    vertical-align: middle;
+  }
+  .bench-table tr:last-child td { border-bottom: none; }
+  .bench-table tr:hover td { background: var(--surface2); }
+  .bench-table td:first-child { font-family: 'Space Mono', monospace; font-size: 12px; font-weight: 700; color: var(--text); }
+  .bench-table .win { color: var(--accent); font-weight: 500; }
+  .bench-table .close { color: var(--gold); font-weight: 500; }
+  .bench-table .lag { color: var(--text-faint); }
+
+  /* BAR CHART */
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+  }
+  .bar-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    width: 160px;
+    flex-shrink: 0;
+  }
+  .bar-bg {
+    flex: 1;
+    height: 8px;
+    background: var(--surface2);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+  .bar-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    min-width: 40px;
+    text-align: right;
+    color: var(--text-muted);
+  }
+
+  /* MODEL CARD GRID */
+  .model-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 2rem 0;
+  }
+  .model-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .model-card.featured { border-color: var(--accent); }
+  .model-header {
+    padding: 1.1rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .model-header.acc { border-left: 3px solid var(--accent); }
+  .model-header.gold { border-left: 3px solid var(--gold); }
+  .model-name { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; margin-bottom: 2px; }
+  .model-sub { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--text-faint); }
+  .model-body { padding: 1rem 1.2rem; }
+  .model-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12.5px;
+    gap: 8px;
+  }
+  .model-row:last-child { border-bottom: none; }
+  .mr-label { color: var(--text-faint); font-family: 'Space Mono', monospace; font-size: 11px; }
+  .mr-val { font-weight: 500; color: var(--text); text-align: right; }
+  .mr-val.good { color: var(--accent); }
+  .mr-val.ok { color: var(--gold); }
+
+  /* PRICING BLOCK */
+  .pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 2rem 0;
+  }
+  .price-cell {
+    background: var(--surface);
+    padding: 1.25rem 1.1rem;
+    position: relative;
+  }
+  .price-cell.featured { background: var(--accent-dim); }
+  .price-model { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--text-faint); margin-bottom: 6px; }
+  .price-in {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+  .price-in.cheap { color: var(--accent); }
+  .price-in.mid { color: var(--text); }
+  .price-in.exp { color: var(--text-faint); }
+  .price-unit { font-family: 'Space Mono', monospace; font-size: 9px; color: var(--text-faint); margin-bottom: 8px; }
+  .price-out { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--text-muted); }
+
+  /* CHIP INDICATOR */
+  .chip-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin: 2rem 0;
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+  }
+  .chip-icon { font-size: 32px; flex-shrink: 0; }
+  .chip-content {}
+  .chip-title { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 600; margin-bottom: 0.4rem; }
+  .chip-desc { font-size: 14px; color: var(--text-muted); line-height: 1.7; }
+
+  /* DIVIDER */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4.5rem 0;
+    position: relative;
+  }
+  .divider::before {
+    content: '◆';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--text-faint);
+    font-size: 10px;
+    background: var(--bg);
+    padding: 0 10px;
+  }
+
+  /* VERDICT GRID */
+  .verdict-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 2rem 0;
+  }
+  .verdict-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.1rem;
+  }
+  .verdict-card .vc-cat { font-family: 'Space Mono', monospace; font-size: 9px; color: var(--text-faint); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+  .verdict-card .vc-winner { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .verdict-card .vc-why { font-size: 12px; color: var(--text-muted); line-height: 1.55; }
+
+  /* FOOTER */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 2.5rem 0 4rem;
+    margin-top: 4rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--text-faint);
+    line-height: 1.9;
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 640px) {
+    .container { padding: 0 1.25rem; }
+    .model-grid { grid-template-columns: 1fr; }
+    .hero-title { font-size: 36px; }
+    nav { padding: 0.7rem 1.25rem; }
+    .hero::before { font-size: 140px; opacity: 0.03; }
+  }
+.site-top{position:sticky;top:0;z-index:120;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(13,14,15,.92);backdrop-filter:blur(14px)}
+.site-top .shell{max-width:1200px;margin:0 auto;padding:0 24px;min-height:62px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.site-brand{font-family:'Space Mono',monospace;font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:.88rem;color:var(--text);text-decoration:none}
+.site-links{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.site-link{padding:7px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(22,23,24,.92);color:var(--text-muted);font-weight:500;font-size:.82rem;text-decoration:none;transition:opacity .2s ease,border-color .2s ease}
+.site-brand:hover,.site-link:hover,.site-footer a:hover{opacity:.82}
+.site-footer{padding:34px 0 64px;color:var(--text-faint)}
+.site-footer .shell{max-width:1200px;margin:0 auto;padding:0 24px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid var(--border);padding-top:18px}
+.site-footer .small{font-size:.88rem}
+@media(max-width:900px){.site-top .shell{min-height:56px;padding:0 18px}.site-links{gap:8px}.site-link{font-size:.76rem;padding:6px 10px}}
+</style>
+<meta name="keywords" content="DeepSeek V4, DeepSeek model, hybrid attention architecture, million token context, Huawei Ascend 950, open weight LLM, frontier AI competition, MANISH AI" />
+<meta name="author" content="MANISH AI" />
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+<meta name="color-scheme" content="dark" />
+<link rel="canonical" href="https://manishklach.github.io/writings/deepseek-v4-model-that-refuses-to-stop-shocking-the-world.html" />
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml" />
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json" />
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention" />
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="DeepSeek V4: The Model That Refuses to Stop Shocking the World | MANISH AI" />
+<meta property="og:description" content="A technical essay on DeepSeek V4, its hybrid attention architecture, million-token context, pricing, Huawei inference stack, and what it means for frontier AI competition." />
+<meta property="og:url" content="https://manishklach.github.io/writings/deepseek-v4-model-that-refuses-to-stop-shocking-the-world.html" />
+<meta property="og:site_name" content="MANISH AI" />
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png" />
+<meta property="og:image:alt" content="MANISH AI technical essay preview" />
+<meta property="article:published_time" content="2026-04-25T00:00:00-07:00" />
+<meta property="article:modified_time" content="2026-04-25T00:00:00-07:00" />
+<meta property="article:section" content="AI Models" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="DeepSeek V4: The Model That Refuses to Stop Shocking the World | MANISH AI" />
+<meta name="twitter:description" content="A technical essay on DeepSeek V4, its hybrid attention architecture, million-token context, pricing, Huawei inference stack, and what it means for frontier AI competition." />
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png" />
+<script type="application/ld+json">{
+  "@context":"https://schema.org",
+  "@type":"TechArticle",
+  "headline":"DeepSeek V4: The Model That Refuses to Stop Shocking the World",
+  "description":"A technical essay on DeepSeek V4, its hybrid attention architecture, million-token context, pricing, Huawei inference stack, and what it means for frontier AI competition.",
+  "url":"https://manishklach.github.io/writings/deepseek-v4-model-that-refuses-to-stop-shocking-the-world.html",
+  "image":"https://manishklach.github.io/assets/og-image.png",
+  "datePublished":"2026-04-25",
+  "dateModified":"2026-04-25",
+  "inLanguage":"en-US",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://github.com/manishklach"},
+  "publisher":{"@type":"Organization","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "mainEntityOfPage":{"@type":"WebPage","@id":"https://manishklach.github.io/writings/deepseek-v4-model-that-refuses-to-stop-shocking-the-world.html"},
+  "keywords":["DeepSeek V4","DeepSeek model","hybrid attention architecture","million token context","Huawei Ascend 950","open weight LLM","frontier AI competition"]
+}</script>
+</head>
+<body>
+<nav class="site-top" aria-label="Site navigation"><div class="shell"><a class="site-brand" href="/">MAN\SH AI</a><div class="site-links"><a class="site-link" href="/writings.html">← All writings</a><a class="site-link" href="/">Home</a></div></div></nav>
+
+<nav class="page-nav">
+  <span class="page-nav-mark">DEEPSEEK WATCH</span>
+  <span class="page-nav-sep">/</span>
+  <span class="page-nav-title">V4 Launch Analysis</span>
+  <span class="page-nav-date">APR 25, 2026</span>
+</nav>
+
+<main data-pagefind-body class="container">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-kicker">
+      <div class="kicker-dot"></div>
+      <span class="kicker-text">Breaking · Just Released</span>
+    </div>
+    <h1 class="hero-title">
+      DeepSeek <span class="hl">V4</span>:<br>
+      The Model That Refuses<br>to Stop Shocking the World
+    </h1>
+    <p class="hero-sub">1.6 trillion parameters. 1 million token context. A Hybrid Attention Architecture Silicon Valley didn't see coming. One year after R1 rattled markets, Hangzhou is back — and this time it's bigger in every sense.</p>
+    <div class="hero-meta">
+      <span>40 min read</span>
+      <span>V4-Pro · V4-Flash · MoE · MLA · Hybrid Attention</span>
+      <span>Published April 25, 2026</span>
+    </div>
+  </div>
+
+  <!-- BREAKING BANNER -->
+  <div class="alert-banner">
+    <div class="alert-icon">⚡</div>
+    <div class="alert-body">
+      <strong>PREVIEW RELEASED APRIL 24, 2026</strong> — DeepSeek V4-Pro and V4-Flash are preview models. Full technical paper not yet published. This analysis draws on Hugging Face model cards, benchmark results released by DeepSeek, and independent technical coverage. Some architectural details remain under NDA or undisclosed.
+    </div>
+  </div>
+
+  <!-- STAT STRIP -->
+  <div class="stat-strip">
+    <div class="stat-cell">
+      <div class="stat-label">V4-Pro Parameters</div>
+      <div class="stat-value accent">1.6T</div>
+      <div class="stat-sub">49B active per token<br>(MoE: ~3% utilisation)</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-label">V4-Flash Parameters</div>
+      <div class="stat-value">284B</div>
+      <div class="stat-sub">13B active per token<br>Low-latency variant</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-label">Context Window</div>
+      <div class="stat-value gold">1M</div>
+      <div class="stat-sub">tokens — entire codebases<br>or book-length documents</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-label">V4-Flash Input Price</div>
+      <div class="stat-value accent">$0.14</div>
+      <div class="stat-sub">per million tokens<br>cheapest frontier-class API</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-label">Biggest Open Model</div>
+      <div class="stat-value purple">#1</div>
+      <div class="stat-sub">Beats Kimi K2.6 (1.1T)<br>MiniMax M1 (456B)</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-label">Knowledge Lag vs SOTA</div>
+      <div class="stat-value" style="color:var(--red)">3–6mo</div>
+      <div class="stat-sub">behind GPT-5.4 &amp; Gemini 3.1<br>(self-reported)</div>
+    </div>
+  </div>
+
+  <!-- TOC -->
+  <div class="toc">
+    <div class="toc-head">// TABLE OF CONTENTS</div>
+    <ol class="toc-list">
+      <li>The DeepSeek Story: From Startup to Sputnik</li>
+      <li>V4 at a Glance: What Just Dropped</li>
+      <li>Architecture Deep Dive: Mixture of Experts</li>
+      <li>Multi-Head Latent Attention (MLA): The Memory Miracle</li>
+      <li>Hybrid Attention Architecture: The V4 Innovation</li>
+      <li>The 1 Million Token Context Window</li>
+      <li>Benchmark Performance: How Does V4 Actually Score?</li>
+      <li>Pricing: The Cost-Destruction Machine</li>
+      <li>The Chip Question: Huawei Ascend &amp; Nvidia Restrictions</li>
+      <li>V4 vs. The Competition</li>
+      <li>The Distillation Controversy</li>
+      <li>Geopolitics, Bans, and the Open-Source Gambit</li>
+      <li>Verdict: What V4 Actually Means</li>
+    </ol>
+  </div>
+
+  <!-- SECTION 1 -->
+  <div class="section">
+    <div class="section-eyebrow">
+      <span class="eyebrow-num">01</span>
+      <div class="eyebrow-line"></div>
+      <span class="eyebrow-tag">Background</span>
+    </div>
+    <h2 class="section-title">The DeepSeek Story: From Startup to Sputnik</h2>
+
+    <p>In the summer of 2023, a small Hangzhou-based quant trading firm called High-Flyer quietly spun out an AI research team with a seemingly impossible mandate: build frontier large language models without frontier compute. DeepSeek — the team and later the company — was handed a budget that would be laughed out of any Silicon Valley AI lab. What they built instead redefined what "efficient" means in the context of large language models.</p>
+    <p>The world noticed in December 2024, when DeepSeek V3 arrived with 671 billion parameters, a then-jaw-dropping architecture, and a training cost claim of just $5.5 million — a fraction of the hundreds of millions being spent by OpenAI, Google, and Anthropic on comparable models. V3 outperformed every other open-weight model and nipped at the heels of frontier closed models.</p>
+    <p>Then came <strong>R1</strong>, in January 2025. A reasoning model trained with reinforcement learning that matched OpenAI's o1 on benchmark after benchmark. The training cost: under $6 million. The market reaction: NVIDIA lost $600 billion in market cap in a single day. Marc Andreessen called it "AI's Sputnik moment." The US government launched an immediate investigation into whether DeepSeek had violated chip export controls to acquire the Nvidia H800 chips used in training.</p>
+    <p>Now it's April 2026. DeepSeek has been quiet since R1 — dealing with personnel departures, regulatory scrutiny from both US and Chinese governments, and the pressure of following up arguably the most impactful single AI release in history. V4 is what they built in that silence.</p>
+  </div>
+
+  <!-- VERSION TIMELINE -->
+  <div class="timeline">
+    <div class="tl-item">
+      <div class="tl-date">Dec 2024</div>
+      <div class="tl-model">DeepSeek V3</div>
+      <div class="tl-desc">671B parameters (37B active). MoE + MLA architecture. $5.5M training cost claim. Best open-weight model at launch.</div>
+      <div class="tl-tags">
+        <span class="tl-tag">671B params</span>
+        <span class="tl-tag">37B active</span>
+        <span class="tl-tag">MoE + MLA</span>
+        <span class="tl-tag">128K context</span>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-date">Jan 2025</div>
+      <div class="tl-model">DeepSeek R1 ⚡ The Sputnik</div>
+      <div class="tl-desc">Reasoning model via GRPO RL. Matched OpenAI o1 on AIME, MATH-500, SWE-bench. Sub-$6M training cost. Crashed NVIDIA by $600B market cap in one day.</div>
+      <div class="tl-tags">
+        <span class="tl-tag hi">Market crash</span>
+        <span class="tl-tag hi">GRPO RL</span>
+        <span class="tl-tag">Chain-of-thought</span>
+        <span class="tl-tag">&lt;$6M cost</span>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-date">Sep 2025</div>
+      <div class="tl-model">DeepSeek V3.2 / V3.2-Exp</div>
+      <div class="tl-desc">Added DeepSeek Sparse Attention (DSA). Incremental improvement. Used as infrastructure warm-up for V4. Returned to Nvidia chips after Huawei experiment.</div>
+      <div class="tl-tags">
+        <span class="tl-tag">DSA attention</span>
+        <span class="tl-tag">Sparse attn.</span>
+        <span class="tl-tag">Infra testbed</span>
+      </div>
+    </div>
+    <div class="tl-item current">
+      <div class="tl-date">Apr 24, 2026 — TODAY</div>
+      <div class="tl-model">DeepSeek V4-Pro &amp; V4-Flash</div>
+      <div class="tl-desc">1.6T parameters (49B active). 1M token context. Hybrid Attention Architecture. Biggest open-weight model ever released. Huawei Ascend 950 chip cluster deployed for inference.</div>
+      <div class="tl-tags">
+        <span class="tl-tag hi">1.6T params</span>
+        <span class="tl-tag hi">1M context</span>
+        <span class="tl-tag hi">Hybrid attention</span>
+        <span class="tl-tag hi">Huawei Ascend</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 2 -->
+  <div class="section">
+    <div class="section-eyebrow">
+      <span class="eyebrow-num">02</span>
+      <div class="eyebrow-line"></div>
+      <span class="eyebrow-tag">What Just Dropped</span>
+    </div>
+    <h2 class="section-title">V4 at a Glance: What Just Dropped</h2>
+    <p>DeepSeek released the model as DeepSeek V4-Pro and DeepSeek V4-Flash. V4-Pro is a larger model aimed at more demanding tasks, while V4-Flash is a smaller version designed to respond faster and cost less to run.</p>
+
+    <div class="model-grid">
+      <div class="model-card featured">
+        <div class="model-header acc">
+          <div class="model-name">V4-Pro</div>
+          <div class="model-sub">Flagship · Complex reasoning · Coding · Agents</div>
+        </div>
+        <div class="model-body">
+          <div class="model-row"><span class="mr-label">Total params</span><span class="mr-val good">1.6 trillion</span></div>
+          <div class="model-row"><span class="mr-label">Active per token</span><span class="mr-val good">49 billion</span></div>
+          <div class="model-row"><span class="mr-label">Context window</span><span class="mr-val good">1M tokens</span></div>
+          <div class="model-row"><span class="mr-label">Architecture</span><span class="mr-val">MoE + Hybrid Attn</span></div>
+          <div class="model-row"><span class="mr-label">Reasoning mode</span><span class="mr-val good">Yes</span></div>
+          <div class="model-row"><span class="mr-label">Multimodal</span><span class="mr-val" style="color:var(--text-faint)">Text only</span></div>
+          <div class="model-row"><span class="mr-label">Input price</span><span class="mr-val good">$0.145/M tokens</span></div>
+          <div class="model-row"><span class="mr-label">Output price</span><span class="mr-val ok">$3.48/M tokens</span></div>
+          <div class="model-row"><span class="mr-label">Open-weight</span><span class="mr-val good">Yes (HuggingFace)</span></div>
+        </div>
+      </div>
+      <div class="model-card">
+        <div class="model-header gold">
+          <div class="model-name">V4-Flash</div>
+          <div class="model-sub">Speed variant · Low latency · Cost-critical apps</div>
+        </div>
+        <div class="model-body">
+          <div class="model-row"><span class="mr-label">Total params</span><span class="mr-val">284 billion</span></div>
+          <div class="model-row"><span class="mr-label">Active per token</span><span class="mr-val">13 billion</span></div>
+          <div class="model-row"><span class="mr-label">Context window</span><span class="mr-val good">1M tokens</span></div>
+          <div class="model-row"><span class="mr-label">Architecture</span><span class="mr-val">MoE + Hybrid Attn</span></div>
+          <div class="model-row"><span class="mr-label">Reasoning mode</span><span class="mr-val good">Yes</span></div>
+          <div class="model-row"><span class="mr-label">Multimodal</span><span class="mr-val" style="color:var(--text-faint)">Text only</span></div>
+          <div class="model-row"><span class="mr-label">Input price</span><span class="mr-val good">$0.14/M tokens</span></div>
+          <div class="model-row"><span class="mr-label">Output price</span><span class="mr-val good">$0.28/M tokens</span></div>
+          <div class="model-row"><span class="mr-label">Open-weight</span><span class="mr-val good">Yes (HuggingFace)</span></div>
+        </div>
+      </div>
+    </div>
+
+    <p>The Pro model has a total of 1.6 trillion parameters (49 billion active), which makes it the biggest open-weight model available, outstripping Moonshot AI's Kimi K 2.6 (1.1 trillion), MiniMax's M1 (456 billion), and more than double DeepSeek V3.2 (671 billion). The jump from V3.2 to V4-Pro is not an incremental model update — it's a more than doubling of total model capacity and a complete architectural overhaul of how the model handles attention at long contexts.</p>
+
+    <div class="callout">
+      <p><strong>The open-source wager:</strong> Both V4 models are available for download and local deployment on Hugging Face — under the same liberal license as prior DeepSeek releases. This "open everything" strategy is not altruism; it is a calculated geopolitical move. Open models build global adoption infrastructure that closed US models cannot replicate. Running DeepSeek on your own hardware means your data never touches DeepSeek's servers — a compelling answer to national security concerns in some markets.</p>
+    </div>
+  </div>
+
+  <!-- SECTION 3 -->
+  <div class="section">
+    <div class="section-eyebrow">
+      <span class="eyebrow-num">03</span>
+      <div class="eyebrow-line"></div>
+      <span class="eyebrow-tag">Architecture</span>
+    </div>
+    <h2 class="section-title">Architecture Deep Dive: Mixture of Experts</h2>
+    <p>To understand V4, you first need to understand the two-pillar architecture that DeepSeek pioneered in V3 and has now supercharged in V4: <strong>Mixture of Experts (MoE)</strong> and <strong>Multi-Head Latent Attention (MLA)</strong>. Together, they explain why DeepSeek can build 1.6 trillion parameter models that don't cost a trillion dollars to run.</p>
+  </div>
+
+  <!-- DIAGRAM 1: MoE -->
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 860 260" xmlns="http://www.w3.org/2000/svg">
+      <rect width="860" height="260" fill="#161718"/>
+      <text x="430" y="26" text-anchor="middle" font-size="12" font-weight="600" fill="#e8e6e0" font-family="Syne, sans-serif">Mixture of Experts (MoE): How 49B Active Parameters Come From 1.6T Total</text>
+      <text x="215" y="50" text-anchor="middle" font-size="11" fill="#9a9690" font-family="Space Mono, monospace">Dense Model (old approach)</text>
+      <text x="645" y="50" text-anchor="middle" font-size="11" fill="#4ECDC4" font-family="Space Mono, monospace">DeepSeek V4 MoE (new approach)</text>
+      <line x1="430" y1="40" x2="430" y2="248" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="4,3"/>
+
+      <!-- Dense model -->
+      <rect x="80" y="65" width="270" height="45" rx="4" fill="#1e2022" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      <text x="215" y="85" text-anchor="middle" font-size="10" fill="#e8e6e0" font-family="Space Mono, monospace">Input Token</text>
+      <text x="215" y="102" text-anchor="middle" font-size="9" fill="#5a5855" font-family="Space Mono, monospace">ALL parameters active for every token</text>
+      <line x1="215" y1="110" x2="215" y2="130" stroke="#5a5855" stroke-width="1"/>
+      <rect x="80" y="130" width="270" height="30" rx="4" fill="#5a5855" opacity="0.4"/>
+      <rect x="115" y="130" width="50" height="30" rx="3" fill="#5a5855" opacity="0.7"/>
+      <rect x="175" y="130" width="50" height="30" rx="3" fill="#5a5855" opacity="0.7"/>
+      <rect x="235" y="130" width="50" height="30" rx="3" fill="#5a5855" opacity="0.7"/>
+      <rect x="295" y="130" width="40" height="30" rx="3" fill="#5a5855" opacity="0.7"/>
+      <text x="215" y="149" text-anchor="middle" font-size="9" fill="#9a9690" font-family="Space Mono, monospace">FFN (all neurons — expensive)</text>
+      <rect x="130" y="175" width="170" height="28" rx="4" fill="#1e2022" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+      <text x="215" y="193" text-anchor="middle" font-size="10" fill="#9a9690" font-family="Space Mono, monospace">Output</text>
+      <text x="215" y="230" text-anchor="middle" font-size="9" fill="#FF6B6B" font-family="Space Mono, monospace">100% of parameters activated → high cost</text>
+
+      <!-- MoE model -->
+      <rect x="510" y="65" width="270" height="45" rx="4" fill="#1e2022" stroke="#4ECDC4" stroke-width="1" opacity="0.6"/>
+      <text x="645" y="85" text-anchor="middle" font-size="10" fill="#e8e6e0" font-family="Space Mono, monospace">Input Token</text>
+      <text x="645" y="102" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">Router selects 8 experts + 1 shared</text>
+      <!-- Router -->
+      <rect x="600" y="110" width="90" height="22" rx="3" fill="rgba(78,205,196,0.15)" stroke="#4ECDC4" stroke-width="0.5"/>
+      <text x="645" y="124" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">Router</text>
+      <!-- Experts row -->
+      <g opacity="0.25">
+        <rect x="510" y="145" width="34" height="26" rx="3" fill="#9a9690"/>
+        <rect x="550" y="145" width="34" height="26" rx="3" fill="#9a9690"/>
+      </g>
+      <!-- Active experts -->
+      <rect x="590" y="138" width="36" height="34" rx="3" fill="#4ECDC4" opacity="0.8"/>
+      <rect x="632" y="138" width="36" height="34" rx="3" fill="#4ECDC4" opacity="0.8"/>
+      <text x="608" y="158" text-anchor="middle" font-size="8" fill="#0d0e0f" font-family="Space Mono, monospace">E3</text>
+      <text x="650" y="158" text-anchor="middle" font-size="8" fill="#0d0e0f" font-family="Space Mono, monospace">E7</text>
+      <g opacity="0.25">
+        <rect x="674" y="145" width="34" height="26" rx="3" fill="#9a9690"/>
+        <rect x="714" y="145" width="34" height="26" rx="3" fill="#9a9690"/>
+        <rect x="754" y="145" width="26" height="26" rx="3" fill="#9a9690"/>
+      </g>
+      <text x="645" y="198" text-anchor="middle" font-size="9" fill="#9a9690" font-family="Space Mono, monospace">256 experts total; 8 activated per token</text>
+      <rect x="560" y="208" width="170" height="28" rx="4" fill="#1e2022" stroke="rgba(78,205,196,0.3)" stroke-width="1"/>
+      <text x="645" y="226" text-anchor="middle" font-size="10" fill="#4ECDC4" font-family="Space Mono, monospace">Output</text>
+      <text x="645" y="248" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">~3% of parameters activated → low cost</text>
+    </svg>
+    <div class="diagram-cap">Fig. 1 — Mixture of Experts vs. Dense model. V4-Pro's 1.6T parameters are divided into 256 routed experts plus 1 always-active shared expert. A router selects 8 specialists per token — meaning only ~49B parameters (3%) are active at any time. This decouples model capacity (what it knows) from inference cost (what it costs to run).</div>
+  </div>
+
+  <p>The genius of MoE is that it decouples two things that were previously coupled: <strong>model knowledge capacity</strong> and <strong>inference compute cost</strong>. In a dense model, a 1.6 trillion parameter model would require activating all 1.6 trillion parameters for every single token generated — making it essentially unusable at commercial scale without extreme hardware. With MoE, a 1.6 trillion parameter model activates only 49 billion parameters per token. The other 1.55 trillion sit dormant, waiting for the type of input they specialize in.</p>
+
+    <div class="callout">
+      <p>DeepSeek V3's MoE uses 1 shared expert (always active, every token) plus 256 routed experts (8 selected per token). The shared expert is crucial — it solves the token-dropping problem that plagued earlier MoE designs. In naive MoE, low-confidence tokens can get poorly routed and end up undertrained. The shared expert guarantees every token has at least one strong processing path regardless of routing confidence.</p>
+    </div>
+
+  <p>DeepSeek V4-Pro scales this dramatically: with 1.6T total parameters — more than double V3.2's 671B — the model's potential knowledge capacity is enormous, yet its inference cost (governed by active parameters) remains comparable to a 49B dense model. This is the single architectural fact that makes V4's pricing ($0.145/M input tokens) possible.</p>
+
+  <!-- SECTION 4 -->
+  <div class="section">
+    <div class="section-eyebrow">
+      <span class="eyebrow-num">04</span>
+      <div class="eyebrow-line"></div>
+      <span class="eyebrow-tag">Attention Innovation</span>
+    </div>
+    <h2 class="section-title">Multi-Head Latent Attention: The Memory Miracle</h2>
+    <p>The second pillar of DeepSeek's architecture is MLA — Multi-Head Latent Attention, first introduced in DeepSeek V2 and refined in every major release since. To understand why MLA matters, you first need to understand the KV cache problem that plagues all transformer-based large language models at long context lengths.</p>
+    <p>When a transformer model generates text token-by-token, it needs to "remember" every previous token in the conversation to compute attention correctly. This is done through a KV (Key-Value) cache — stored representations of every prior token at every layer of the model. For standard multi-head attention (MHA), the memory required for this cache grows proportionally with sequence length. At 1 million token context windows, this becomes catastrophically expensive.</p>
+  </div>
+
+  <!-- DIAGRAM 2: MLA -->
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 860 270" xmlns="http://www.w3.org/2000/svg">
+      <rect width="860" height="270" fill="#161718"/>
+      <text x="430" y="26" text-anchor="middle" font-size="12" font-weight="600" fill="#e8e6e0" font-family="Syne, sans-serif">Multi-Head Latent Attention (MLA): KV Cache Compression</text>
+
+      <!-- LEFT: Standard MHA -->
+      <text x="215" y="48" text-anchor="middle" font-size="11" fill="#9a9690" font-family="Space Mono, monospace">Standard MHA (old)</text>
+      <line x1="430" y1="38" x2="430" y2="258" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="4,3"/>
+
+      <!-- Input token -->
+      <rect x="155" y="58" width="120" height="24" rx="3" fill="#1e2022" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+      <text x="215" y="74" text-anchor="middle" font-size="9" fill="#9a9690" font-family="Space Mono, monospace">Input h_t</text>
+
+      <!-- MHA KV full size -->
+      <rect x="105" y="96" width="75" height="30" rx="3" fill="#5a5855" opacity="0.6"/>
+      <rect x="185" y="96" width="75" height="30" rx="3" fill="#5a5855" opacity="0.6"/>
+      <text x="142" y="115" text-anchor="middle" font-size="9" fill="#9a9690" font-family="Space Mono, monospace">K (full)</text>
+      <text x="222" y="115" text-anchor="middle" font-size="9" fill="#9a9690" font-family="Space Mono, monospace">V (full)</text>
+
+      <!-- Cache -->
+      <rect x="80" y="140" width="270" height="34" rx="4" fill="#FF6B6B" opacity="0.18" stroke="rgba(255,107,107,0.3)" stroke-width="1"/>
+      <text x="215" y="162" text-anchor="middle" font-size="9" fill="#FF6B6B" font-family="Space Mono, monospace">KV Cache: ~82KB per token per layer 🔴</text>
+      <text x="215" y="200" text-anchor="middle" font-size="9" fill="#FF6B6B" font-family="Space Mono, monospace">128K context → ~40GB KV cache memory</text>
+      <text x="215" y="220" text-anchor="middle" font-size="9" fill="#FF6B6B" font-family="Space Mono, monospace">1M context → ~320GB KV cache memory</text>
+      <text x="215" y="248" text-anchor="middle" font-size="9" fill="#5a5855" font-family="Space Mono, monospace">→ Requires 32+ high-end GPUs</text>
+
+      <!-- RIGHT: MLA -->
+      <text x="645" y="48" text-anchor="middle" font-size="11" fill="#4ECDC4" font-family="Space Mono, monospace">MLA (DeepSeek V2–V4)</text>
+
+      <rect x="585" y="58" width="120" height="24" rx="3" fill="#1e2022" stroke="rgba(78,205,196,0.3)" stroke-width="0.5"/>
+      <text x="645" y="74" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">Input h_t</text>
+
+      <!-- Down projection to latent -->
+      <rect x="580" y="96" width="130" height="28" rx="3" fill="rgba(78,205,196,0.15)" stroke="#4ECDC4" stroke-width="0.5"/>
+      <text x="645" y="114" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">Down-project → latent c</text>
+      <text x="645" y="128" text-anchor="middle" font-size="7" fill="#4ECDC4" font-family="Space Mono, monospace" opacity="0.7">W_DKV matrix</text>
+
+      <!-- Cache compressed -->
+      <rect x="510" y="145" width="270" height="34" rx="4" fill="rgba(78,205,196,0.1)" stroke="rgba(78,205,196,0.35)" stroke-width="1"/>
+      <text x="645" y="167" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">KV Cache: ~1.15KB per token per layer ✓</text>
+
+      <!-- Up projection -->
+      <rect x="580" y="192" width="130" height="26" rx="3" fill="rgba(78,205,196,0.08)" stroke="rgba(78,205,196,0.2)" stroke-width="0.5"/>
+      <text x="645" y="208" text-anchor="middle" font-size="9" fill="#9a9690" font-family="Space Mono, monospace">Up-project → K, V (attn time)</text>
+
+      <text x="645" y="236" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">1M context → ~500MB KV cache</text>
+      <text x="645" y="254" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">→ Fits on 4 GPUs instead of 32+</text>
+    </svg>
+    <div class="diagram-cap">Fig. 2 — Standard MHA vs. MLA KV cache comparison. MLA compresses K and V tensors into a low-dimensional latent vector before caching. At inference time, these are decompressed back to full size for attention computation. The result: 98.6% memory reduction, from roughly 82KB to roughly 1.15KB per token per layer — the difference between needing 32+ GPUs and 4 GPUs for a 1M-token context session.</div>
+  </div>
+
+  <p>MLA achieves this through a low-rank joint compression of keys and values. Instead of storing a full-size Key and Value vector for every token at every layer, MLA compresses both into a single low-dimensional latent vector via a learned down-projection matrix. Only this compressed latent is stored in cache. At attention time, it's decompressed back to full-size K and V via an up-projection. The KV cache footprint shrinks by 98.6% — not a rounding error, a transformation.</p>
+
+  <p>This is why DeepSeek V4 can offer a 1 million token context window at commercially viable prices. Without MLA, a 1M token context on V4-Pro would require hundreds of gigabytes of GPU memory just for the KV cache, making it economically impossible to offer at $0.145 per million input tokens.</p>
+
+  <!-- SECTION 5 -->
+  <div class="section">
+    <div class="section-eyebrow">
+      <span class="eyebrow-num">05</span>
+      <div class="eyebrow-line"></div>
+      <span class="eyebrow-tag">V4's New Innovation</span>
+    </div>
+    <h2 class="section-title">Hybrid Attention Architecture: What Makes V4 Different</h2>
+    <p>DeepSeek singled out a technique it dubbed Hybrid Attention Architecture, which it said improves the ability of an AI platform to remember queries across long conversations. This is V4's signature architectural innovation — the reason it represents a genuine leap beyond V3 rather than a simple scaling exercise.</p>
+    <p>The core problem it solves is a fundamental tension in transformer attention: full attention (where every token attends to every other token) provides perfect recall but scales quadratically with sequence length. Sparse attention (where tokens only attend to a local window) is linear but "forgets" distant context. Prior DeepSeek models used MLA to reduce the <em>memory</em> cost of full attention, but the computational cost still scaled with sequence length.</p>
+  </div>
+
+  <!-- DIAGRAM 3: Hybrid Attention -->
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 860 240" xmlns="http://www.w3.org/2000/svg">
+      <rect width="860" height="240" fill="#161718"/>
+      <text x="430" y="24" text-anchor="middle" font-size="12" font-weight="600" fill="#e8e6e0" font-family="Syne, sans-serif">Hybrid Attention Architecture: Combining Full &amp; Sparse Attention Per Layer</text>
+
+      <!-- Full attention layers (some layers) -->
+      <text x="60" y="55" font-size="10" fill="#9a9690" font-family="Space Mono, monospace">Layer stack</text>
+
+      <!-- Layer stack -->
+      <!-- Full attn layers -->
+      <rect x="100" y="65" width="660" height="22" rx="3" fill="rgba(78,205,196,0.18)" stroke="rgba(78,205,196,0.4)" stroke-width="0.5"/>
+      <text x="430" y="80" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">Layer 1 — Full MLA Attention (attends entire 1M context)</text>
+
+      <rect x="100" y="92" width="660" height="22" rx="3" fill="rgba(78,205,196,0.08)" stroke="rgba(78,205,196,0.2)" stroke-width="0.5"/>
+      <text x="430" y="107" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">Layer 2 — Sparse Local Attention (window: nearby tokens only)</text>
+
+      <rect x="100" y="119" width="660" height="22" rx="3" fill="rgba(78,205,196,0.08)" stroke="rgba(78,205,196,0.2)" stroke-width="0.5"/>
+      <text x="430" y="134" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">Layer 3 — Sparse Local Attention (window: nearby tokens only)</text>
+
+      <rect x="100" y="146" width="660" height="22" rx="3" fill="rgba(78,205,196,0.08)" stroke="rgba(78,205,196,0.2)" stroke-width="0.5"/>
+      <text x="430" y="161" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">Layer 4 — Sparse Local Attention (window: nearby tokens only)</text>
+
+      <rect x="100" y="173" width="660" height="22" rx="3" fill="rgba(78,205,196,0.18)" stroke="rgba(78,205,196,0.4)" stroke-width="0.5"/>
+      <text x="430" y="188" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">Layer N — Full MLA Attention (global context refresh)</text>
+
+      <text x="100" y="196" font-size="8" fill="#5a5855" font-family="Space Mono, monospace">· · ·</text>
+
+      <!-- Annotations -->
+      <rect x="100" y="210" width="310" height="22" rx="3" fill="rgba(78,205,196,0.07)"/>
+      <text x="255" y="224" text-anchor="middle" font-size="9" fill="#4ECDC4" font-family="Space Mono, monospace">Full layers: perfect recall, higher cost</text>
+
+      <rect x="450" y="210" width="310" height="22" rx="3" fill="rgba(78,205,196,0.04)"/>
+      <text x="605" y="224" text-anchor="middle" font-size="9" fill="#9a9690" font-family="Space Mono, monospace">Sparse layers: fast, efficient, local memory</text>
+    </svg>
+    <div class="diagram-cap">Fig. 3 — Hybrid Attention Architecture in DeepSeek V4. Full MLA attention layers appear at strategic intervals in the layer stack, providing global context recall across the full 1M token window. The majority of layers use sparse local attention for efficiency. This "dial" between full and sparse attention is the architectural innovation that enables 1M context at practical cost.</div>
+  </div>
+
+  <p>The Hybrid Attention Architecture is DeepSeek's answer: alternate between full MLA attention layers and sparse local attention layers within the same model. Full attention layers appear at regular intervals, providing global context recall — the model's "memory refresh" across the entire 1M token window. The majority of layers use cheaper local attention, drastically reducing per-layer compute for the bulk of the processing. The result is a model that can genuinely remember a conversation from token 1 to token 1,000,000 — not just the recent window — without the quadratic compute cost of full attention at every layer.</p>
+
+  <p>This is meaningfully different from prior approaches. Earlier long-context models either truncated context, compressed it losily, or simply used sliding windows that effectively forgot older content. V4's Hybrid Attention maintains true long-range dependencies across million-token contexts, which matters enormously for the codebase analysis and long-document reasoning use cases DeepSeek is targeting.</p>
+
+  <!-- SECTION 6 -->
+  <div class="section">
+    <div class="section-eyebrow">
+      <span class="eyebrow-num">06</span>
+      <div class="eyebrow-line"></div>
+      <span class="eyebrow-tag">Context Window</span>
+    </div>
+    <h2 class="section-title">The 1 Million Token Context Window</h2>
+    <p>DeepSeek pushed the 1 million-token context window — a leap that allows entire codebases or long documents to be sent as a single prompt. To contextualize this: 1 million tokens is roughly 750,000 words — the equivalent of 3–4 average novels, an entire medium-sized codebase, a semester of research papers, or 80+ hours of meeting transcripts. This is no longer a model that helps you with tasks; it's a model that can ingest your entire work product at once and reason across all of it.</p>
+
+    <div class="stat-strip">
+      <div class="stat-cell">
+        <div class="stat-label">1M tokens ≈</div>
+        <div class="stat-value accent" style="font-size:20px">750K</div>
+        <div class="stat-sub">words — 3–4 novels<br>or a full codebase</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-label">vs. GPT-4o</div>
+        <div class="stat-value" style="font-size:20px">8×</div>
+        <div class="stat-sub">larger context than<br>128K token models</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-label">V3.2 context</div>
+        <div class="stat-value" style="font-size:20px">128K</div>
+        <div class="stat-sub">tokens — V4 is<br>8× larger</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-label">MLA memory savings</div>
+        <div class="stat-value accent" style="font-size:20px">98.6%</div>
+        <div class="stat-sub">KV cache reduction<br>makes 1M viable</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 7 -->
+  <div class="section">
+    <div class="section-eyebrow">
+      <span class="eyebrow-num">07</span>
+      <div class="eyebrow-line"></div>
+      <span class="eyebrow-tag">Benchmarks</span>
+    </div>
+    <h2 class="section-title">Benchmark Performance: How Does V4 Actually Score?</h2>
+    <p>DeepSeek says both models are more efficient and performant than DeepSeek V3.2 due to architectural improvements, and have almost "closed the gap" with current leading models, both open and closed, on reasoning benchmarks. The honest picture from DeepSeek's own benchmark release is more nuanced than that summary suggests.</p>
+
+    <h3 class="subsec-title">Coding &amp; <span class="accent">Mathematics</span> — Category Leaders</h3>
+    <p>DeepSeek-V4-Pro beats all rival open models for maths and coding. On LiveCodeBench and competitive programming benchmarks, V4-Pro and V4-Flash both claim performance "comparable to GPT-5.4" — the current top closed-source coding model. This is V4's strongest category and where DeepSeek's architectural innovations in long-context reasoning pay clearest dividends: multi-file codebase analysis, long-chain mathematical proofs, and complex agentic coding tasks.</p>
+
+    <!-- Bar chart: coding -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.4rem;margin:1.5rem 0;">
+      <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text-faint);margin-bottom:1rem;letter-spacing:0.08em;">// CODING BENCHMARK — LiveCodeBench (approx. composite, normalized)</div>
+      <div class="bar-row">
+        <div class="bar-label">DeepSeek V4-Pro</div>
+        <div class="bar-bg"><div class="bar-fill" style="width:93%;background:#4ECDC4;"></div></div>
+        <div class="bar-val" style="color:#4ECDC4">~93</div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label">GPT-5.4 (OpenAI)</div>
+        <div class="bar-bg"><div class="bar-fill" style="width:95%;background:#9a9690;"></div></div>
+        <div class="bar-val">~95</div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label">Gemini 3.1 Pro</div>
+        <div class="bar-bg"><div class="bar-fill" style="width:91%;background:#9a9690;"></div></div>
+        <div class="bar-val">~91</div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label">DeepSeek V4-Flash</div>
+        <div class="bar-bg"><div class="bar-fill" style="width:88%;background:#4ECDC4;opacity:0.7;"></div></div>
+        <div class="bar-val" style="color:#4ECDC4">~88</div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label">Kimi K2.6</div>
+        <div class="bar-bg"><div class="bar-fill" style="width:84%;background:#5a5855;"></div></div>
+        <div class="bar-val">~84</div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label">DeepSeek V3.2</div>
+        <div class="bar-bg"><div class="bar-fill" style="width:79%;background:#5a5855;"></div></div>
+        <div class="bar-val">~79</div>
+      </div>
+      <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text-faint);margin-top:0.75rem;">Approximate composite from DeepSeek-published benchmarks. Exact methodology not yet disclosed in full paper.</div>
+    </div>
+
+    <h3 class="subsec-title">Reasoning — <span class="accent">Near Frontier</span></h3>
+    <p>The company claims its new V4-Pro-Max model outperforms its opensource peers across reasoning benchmarks, and outstrips OpenAI's GPT-5.2 and Gemini 3.0 Pro on some tasks. Both V4 models include a dedicated reasoning mode — like R1, the model generates explicit chain-of-thought reasoning tokens before producing its final answer. DeepSeek claims this mode substantially improves performance on multi-step mathematical proofs, logical puzzles, and complex coding challenges.</p>
+
+    <h3 class="subsec-title">World Knowledge — The Honest Gap</h3>
+    <p>The models seem to fall slightly behind frontier models in knowledge tests, specifically OpenAI's GPT-5.4 and Google's latest Gemini 3.1 Pro. This lag suggests a "developmental trajectory that trails state-of-the-art frontier models by approximately 3 to 6 months." This is a remarkably candid self-assessment from DeepSeek — and it reflects a genuine strategic tradeoff. DeepSeek's architecture optimizes for reasoning efficiency and coding capability; richer world knowledge requires more diverse pretraining data at scale, an area where OpenAI and Google still have meaningful advantages through their proprietary training pipelines and web access.</p>
+
+    <h3 class="subsec-title">Overall Benchmark Table</h3>
+    <table class="bench-table">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Coding</th>
+          <th>Reasoning/Math</th>
+          <th>World Knowledge</th>
+          <th>Open-weight?</th>
+          <th>Context</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>V4-Pro</td>
+          <td class="win">≈ GPT-5.4 ✓</td>
+          <td class="win">Beats GPT-5.2 ✓</td>
+          <td class="close">3–6mo lag</td>
+          <td class="win">Yes</td>
+          <td class="win">1M</td>
+        </tr>
+        <tr>
+          <td>V4-Flash</td>
+          <td class="win">≈ GPT-5.4 ✓</td>
+          <td class="close">Near frontier</td>
+          <td class="close">3–6mo lag</td>
+          <td class="win">Yes</td>
+          <td class="win">1M</td>
+        </tr>
+        <tr>
+          <td>GPT-5.4 (OpenAI)</td>
+          <td class="win">SOTA</td>
+          <td class="win">SOTA</td>
+          <td class="win">SOTA</td>
+          <td class="lag">No (closed)</td>
+          <td>128K</td>
+        </tr>
+        <tr>
+          <td>Gemini 3.1 Pro</td>
+          <td class="close">Strong</td>
+          <td class="win">SOTA</td>
+          <td class="win">SOTA</td>
+          <td class="lag">No (closed)</td>
+          <td>1M</td>
+        </tr>
+        <tr>
+          <td>Kimi K2.6</td>
+          <td class="close">Strong</td>
+          <td class="close">Strong</td>
+          <td class="close">Good</td>
+          <td class="win">Yes</td>
+          <td>128K</td>
+        </tr>
+        <tr>
+          <td>DeepSeek V3.2</td>
+          <td class="close">Good</td>
+          <td class="close">Good</td>
+          <td class="close">Good</td>
+          <td class="win">Yes</td>
+          <td class="lag">128K</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- SECTION 8 -->
+  <div class="section">
+    <div class="section-eyebrow">
+      <span class="eyebrow-num">08</span>
+      <div class="eyebrow-line"></div>
+      <span class="eyebrow-tag">Pricing</span>
+    </div>
+    <h2 class="section-title">Pricing: The Cost-Destruction Machine, Again</h2>
+    <p>If DeepSeek's architecture story is impressive, its pricing story is the part that genuinely disrupts the AI industry's business model. V4 follows the same playbook as V3 and R1: deliver near-frontier capability at a price that makes competing products look embarrassing.</p>
+
+    <div class="pricing-grid">
+      <div class="price-cell featured">
+        <div class="price-model">V4-Flash (input)</div>
+        <div class="price-in cheap">$0.14</div>
+        <div class="price-unit">per million tokens</div>
+        <div class="price-out">Out: $0.28/M · Beats GPT-5.4 Mini, Claude Haiku 4.5</div>
+      </div>
+      <div class="price-cell featured">
+        <div class="price-model">V4-Pro (input)</div>
+        <div class="price-in cheap">$0.145</div>
+        <div class="price-unit">per million tokens</div>
+        <div class="price-out">Out: $3.48/M · Beats Gemini 3.1 Pro, GPT-5.5, Claude Opus 4.7</div>
+      </div>
+      <div class="price-cell">
+        <div class="price-model">Claude Opus 4.7 (input)</div>
+        <div class="price-in mid">$15.00</div>
+        <div class="price-unit">per million tokens (est.)</div>
+        <div class="price-out">Out: ~$75/M · Closed-source</div>
+      </div>
+      <div class="price-cell">
+        <div class="price-model">GPT-5.5 (input)</div>
+        <div class="price-in mid">~$10.00</div>
+        <div class="price-unit">per million tokens (est.)</div>
+        <div class="price-out">Out: ~$30/M · Closed-source</div>
+      </div>
+      <div class="price-cell">
+        <div class="price-model">Gemini 3.1 Pro (input)</div>
+        <div class="price-in mid">~$3.50</div>
+        <div class="price-unit">per million tokens (est.)</div>
+        <div class="price-out">Out: ~$10/M · Closed-source</div>
+      </div>
+      <div class="price-cell">
+        <div class="price-model">Self-hosted V4-Pro</div>
+        <div class="price-in cheap">$0.00</div>
+        <div class="price-unit">API cost (infra only)</div>
+        <div class="price-out">Open-weight; run on your hardware</div>
+      </div>
+    </div>
+
+    <p>The smaller V4 Flash model costs $0.14 per million input tokens and $0.28 per million output tokens, undercutting GPT-5.4 Nano, Gemini 3.1 Flash, GPT-5.4 Mini, and Claude Haiku 4.5. The larger V4 Pro model, meanwhile, costs $0.145 per million input tokens and $3.48 per million output tokens, also undercutting Gemini 3.1 Pro, GPT-5.5, Claude Opus 4.7, and GPT-5.4.</p>
+
+    <div class="callout">
+      <p><strong>The nuclear option:</strong> V4-Flash's $0.28/M output price for a near-frontier model is within the cost range of running GPT-3.5 class models just two years ago. For high-volume production applications — search re-ranking, document classification, agentic coding pipelines — this price point changes the ROI calculus entirely. DeepSeek isn't just winning on benchmarks; it's making the business case for US closed-source models significantly harder to justify.</p>
+    </div>
+  </div>
+
+  <!-- SECTION 9 -->
+  <div class="section">
+    <div class="section-eyebrow">
+      <span class="eyebrow-num">09</span>
+      <div class="eyebrow-line"></div>
+      <span class="eyebrow-tag">Chip Strategy</span>
+    </div>
+    <h2 class="section-title">The Chip Question: Huawei Ascend &amp; the Export Control Maze</h2>
+
+    <div class="chip-box">
+      <div class="chip-icon">🔴</div>
+      <div class="chip-content">
+        <div class="chip-title">Huawei Ascend 950 "Supernode" clusters now confirmed for V4 inference</div>
+        <div class="chip-desc">DeepSeek partnered with Chinese tech giant Huawei, which confirmed that its latest AI computing cluster, powered by its "Ascend 950" chips, can support DeepSeek's V4 model. Huawei supports the AI startup with its "Supernode" technology by combining large clusters of its Ascend 950 chips to provide more computing power. It remains unclear how extensively Huawei's chips were used in training V4, versus Nvidia hardware. DeepSeek has been restricted from directly purchasing Nvidia's most advanced AI chips due to Washington's ever-shifting export controls.</div>
+      </div>
+    </div>
+
+    <p>Wei Sun, principal analyst at market analysis firm Counterpoint Research, highlighted that V4 is run on domestic chips from Huawei and Cambricon. "It allows AI systems to be built and deployed without relying solely on Nvidia, which is why V4 could ultimately have an even bigger impact than R1 — accelerating adoption domestically and contributing to faster global AI development overall."</p>
+    <p>The chip situation around DeepSeek V4 is more complex than the headline suggests. V3.2 notably reverted to Nvidia hardware after experimenting with Huawei during training — suggesting Huawei's Ascend chips were insufficiently competitive for model <em>training</em> at that point. V4 appears to use Huawei Ascend 950 for inference (serving requests) while training provenance remains unclear. The significance of the Huawei confirmation is strategic rather than technical: it demonstrates that China can now serve frontier-class AI models at scale without depending on Nvidia for inference infrastructure.</p>
+
+    <div class="warn-callout">
+      <p><strong>Market reaction:</strong> After DeepSeek announced V4's release, shares of Chinese contract chip manufacturers rose sharply in Hong Kong, with SMIC surging 9% and Hua Hong Semiconductor rising 15%. The market interpreted V4 as validation that China's domestic chip ecosystem can support frontier AI inference — a significant shift from the narrative that Nvidia dominance was unassailable.</p>
+    </div>
+  </div>
+
+  <!-- SECTION 10 -->
+  <div class="section">
+    <div class="section-eyebrow">
+      <span class="eyebrow-num">10</span>
+      <div class="eyebrow-line"></div>
+      <span class="eyebrow-tag">Competitive Landscape</span>
+    </div>
+    <h2 class="section-title">V4 vs. The Competition: Where DeepSeek Wins and Loses</h2>
+    <p>The competitive landscape that V4 enters is very different from the one R1 shook in January 2025. V4's debut is unlikely to have the same market impact as R1, because traders have already priced in the reality that Chinese AI is competitive and cheaper to use. That doesn't mean V4 is unimportant — it means the industry has recalibrated its expectations upward for what DeepSeek can build.</p>
+
+    <div class="verdict-grid">
+      <div class="verdict-card">
+        <div class="vc-cat">Best for Coding</div>
+        <div class="vc-winner" style="color:var(--accent)">V4-Pro / V4-Flash</div>
+        <div class="vc-why">Both models claim performance "comparable to GPT-5.4" on coding benchmarks. At 1/100th the API cost, for pure coding applications this is a no-brainer.</div>
+      </div>
+      <div class="verdict-card">
+        <div class="vc-cat">Best for World Knowledge</div>
+        <div class="vc-winner" style="color:var(--text-muted)">GPT-5.4 / Gemini 3.1 Pro</div>
+        <div class="vc-why">DeepSeek admits a 3–6 month lag here. For tasks requiring deep world knowledge, current events, or broad factual Q&amp;A, US closed-source models still lead.</div>
+      </div>
+      <div class="verdict-card">
+        <div class="vc-cat">Best Open-Weight Overall</div>
+        <div class="vc-winner" style="color:var(--accent)">DeepSeek V4-Pro</div>
+        <div class="vc-why">Biggest open-weight model ever at 1.6T params. Beats Kimi K2.6, MiniMax M1, and all prior open models on coding. Freely downloadable.</div>
+      </div>
+      <div class="verdict-card">
+        <div class="vc-cat">Best Price/Performance</div>
+        <div class="vc-winner" style="color:var(--accent)">V4-Flash</div>
+        <div class="vc-why">$0.14/M input tokens for near-frontier performance. No other model in this performance tier comes within 5× of this price point via API.</div>
+      </div>
+      <div class="verdict-card">
+        <div class="vc-cat">Best Long-Context</div>
+        <div class="vc-winner" style="color:var(--accent)">V4 (tied Gemini 3.1)</div>
+        <div class="vc-why">1M token context window matches Gemini 3.1 Pro. V4's Hybrid Attention Architecture may offer better coherence at extreme lengths — not yet independently verified.</div>
+      </div>
+      <div class="verdict-card">
+        <div class="vc-cat">Best for Multimodal</div>
+        <div class="vc-winner" style="color:var(--text-muted)">GPT-5.4 / Gemini 3.1</div>
+        <div class="vc-why">V4 is text-only. No vision, audio, or video. This is a significant gap versus US frontier models that now handle images, audio, and video natively.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 11 -->
+  <div class="section">
+    <div class="section-eyebrow">
+      <span class="eyebrow-num">11</span>
+      <div class="eyebrow-line"></div>
+      <span class="eyebrow-tag">Controversy</span>
+    </div>
+    <h2 class="section-title">The Distillation Controversy</h2>
+    <p>The launch comes a day after the US accused China of stealing American AI labs' IP on an industrial scale using thousands of proxy accounts. DeepSeek itself has been accused by Anthropic and OpenAI of "distilling," essentially copying, their AI models. This accusation — that DeepSeek used the outputs of closed frontier models to train its own — has shadowed the company since R1's release.</p>
+    <p>Model distillation is a legitimate and widely-used machine learning technique where a smaller or different model is trained to mimic the outputs of a larger "teacher" model. The controversy is that the terms of service of OpenAI, Anthropic, and Google explicitly prohibit using their model outputs to train competing AI systems. The US White House's Office of Science and Technology Policy has accused unnamed Chinese entities of conducting "industrial-scale" campaigns through proxy accounts to extract training data from US AI APIs.</p>
+    <p>DeepSeek has not publicly responded to these specific accusations regarding V4. The situation represents a fundamental tension in the AI landscape: open benchmarks and API access make it technically straightforward to distill from frontier models, but the legal and ethical lines around what constitutes legitimate research versus IP theft remain hotly contested.</p>
+  </div>
+
+  <!-- SECTION 12 -->
+  <div class="section">
+    <div class="section-eyebrow">
+      <span class="eyebrow-num">12</span>
+      <div class="eyebrow-line"></div>
+      <span class="eyebrow-tag">Geopolitics</span>
+    </div>
+    <h2 class="section-title">Geopolitics, Bans, and the Open-Source Gambit</h2>
+    <p>Some countries banned government agencies from using DeepSeek, including Italy, the United States, and South Korea, citing national security concerns. Germany also banned DeepSeek in Apple and Google app stores in 2025, citing illegal transfer of user data to China. These bans reflect real concerns: DeepSeek's privacy policy, like most Chinese consumer internet services, is subject to Chinese data laws that include government access provisions.</p>
+    <p>And yet: the open-weight release of V4 is a perfect answer to this concern for any organization capable of self-hosting. Download the weights, run the model on your own infrastructure in your own country, and you have none of the data sovereignty concerns of using DeepSeek's API. This is the open-source gambit: by releasing model weights, DeepSeek maximizes global adoption while sidestepping many of the privacy arguments that governments have used to justify bans.</p>
+    <p>According to Stanford's 2026 AI Index, Chinese companies have "effectively closed" the AI performance gap with their US rivals. While American proprietary models like Claude, ChatGPT and Gemini remain at the top of the industry ladder for now, the gap is narrowing. V4 is evidence that this assessment is correct — and that the pace of narrowing is accelerating, not slowing.</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- SECTION 13 -->
+  <div class="section">
+    <div class="section-eyebrow">
+      <span class="eyebrow-num">13</span>
+      <div class="eyebrow-line"></div>
+      <span class="eyebrow-tag">Final Analysis</span>
+    </div>
+    <h2 class="section-title">Verdict: What DeepSeek V4 Actually Means</h2>
+    <p>DeepSeek V4 is not another R1. It won't crash stock markets overnight or force a Senate hearing by Monday morning. The industry has priced in Chinese AI competitiveness — and that recalibration is, itself, V4's most important predecessor. What V4 represents instead is something more durable: <strong>evidence that the gap-closing is structural, not episodic</strong>.</p>
+    <p>The Hybrid Attention Architecture is a genuine research contribution — not just a scaling exercise. The 1 million token context at $0.14 per million tokens is a commercial fact that no closed-source competitor can currently match on price. The 1.6 trillion parameter open-weight model is the largest ever released to the public, available for any organization in the world to download, run, and fine-tune. And the inference cluster running on Huawei Ascend 950 chips is a proof-of-concept for an AI supply chain that doesn't depend on Nvidia or US export licenses.</p>
+    <p>The real story of V4 isn't any single benchmark. It's that a company working under chip restrictions, regulatory scrutiny from two governments, personnel departures, and the impossible pressure of following up R1 still delivered the world's biggest open-weight model — with a novel attention architecture, million-token context, and pricing that undercuts the competition by an order of magnitude. The "Sputnik moment" framing from 2025 implied a single alarming event. V4 suggests something more patient and more consequential: a systematic program of efficient frontier AI research that keeps delivering, regardless of what the US throws at it.</p>
+    <p>For developers and enterprises: V4 deserves immediate evaluation for coding, long-document analysis, and agentic applications. The pricing and context length are genuinely differentiated. The knowledge gap is real and matters for certain use cases. For AI strategists and policymakers: the open-source delivery mechanism makes national bans increasingly performative. The weights are already on Hugging Face. That genie does not return to the bottle.</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <footer>
+    <div style="margin-bottom:0.5rem;color:var(--accent);letter-spacing:0.08em;">// SOURCES &amp; REFERENCES</div>
+    Bloomberg News: "DeepSeek Unveils Newest Flagship AI Model" (Apr 24, 2026) //
+    TechCrunch: "DeepSeek previews new AI model that closes the gap" (Apr 24, 2026) //
+    Euronews Next: "Everything to know about DeepSeek's new AI model V4" (Apr 24, 2026) //
+    CNBC: "China's DeepSeek releases preview of long-awaited V4 model" (Apr 24, 2026) //
+    CNN Business: "China's DeepSeek drops new model" (Apr 24, 2026) //
+    Al Jazeera: "China's DeepSeek unveils latest models" (Apr 24, 2026) //
+    MIT Technology Review: "Three reasons why DeepSeek's new model matters" (Apr 24, 2026) //
+    Sebastian Raschka / Ahead of AI: "A Technical Tour of the DeepSeek Models from V3 to V3.2" (Dec 2025) //
+    Epoch AI: "How has DeepSeek improved the Transformer architecture?" //
+    DeepSeek V3 Technical Report (arXiv:2412.19437) //
+    Towards Data Science: "DeepSeek-V3 Explained 1: Multi-head Latent Attention" //
+    Medium / Gavin Yap: "Three Dials, Not One: Why DeepSeek V4 Will Be the First True Hybrid" (Mar 2026) //
+    DeepSeek V4 Hugging Face model card (Apr 24, 2026) //
+    Stanford 2026 AI Index Report
+  </footer>
+
+  <div class="divider"></div>
+  <footer class="site-footer"><div class="shell"><div class="small">MANISH AI · Essays · April 2026 · <a href="/writings.html">← All writings</a></div><div class="small">© 2026 <a href="https://github.com/manishklach">MANISH AI</a>. All rights reserved.</div></div></footer>
+
+</main><!-- /container -->
+</body>
+</html>
