@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="A technical essay unifying cache misses, KV misses, remote memory fetches, and fabric misses into one systems concept for modern AI infrastructure." />
+  <title>The Real Cost of a Miss: Unifying Cache Misses, KV Misses, Fabric Misses, and Remote Fetch in AI Systems | MANISH AI</title>
+  <style>
+    :root {
+      --bg: #f4f7f6;
+      --card: #ffffff;
+      --ink: #13181b;
+      --muted: #5a676d;
+      --line: #d4e0df;
+      --accent: #0f766e;
+      --accent-soft: #e8f7f5;
+      --blue: #2563eb;
+      --blue-soft: #eef4ff;
+      --amber: #a16207;
+      --amber-soft: #fdf2df;
+      --shadow: 0 22px 58px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.11), transparent 28rem),
+        radial-gradient(circle at top right, rgba(37, 99, 235, 0.09), transparent 24rem),
+        var(--bg);
+      line-height: 1.7;
+    }
+    a { color: var(--blue); }
+    .page { max-width: 1120px; margin: 0 auto; padding: 32px 18px 72px; }
+    .site-top {
+      position: sticky;
+      top: 0;
+      z-index: 120;
+      backdrop-filter: blur(16px);
+      background: rgba(244, 247, 246, 0.86);
+      border-bottom: 1px solid rgba(212, 224, 223, 0.9);
+    }
+    .shell { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+    .site-top .shell {
+      min-height: 66px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    .site-brand {
+      text-decoration: none;
+      color: #0f172a;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-size: 1rem;
+    }
+    .site-links { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .site-link {
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(15, 23, 42, 0.1);
+      background: rgba(255, 255, 255, 0.78);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.82rem;
+      text-decoration: none;
+      transition: opacity 0.2s ease;
+    }
+    .site-brand:hover, .site-link:hover, .site-footer a:hover { opacity: 0.82; }
+    .hero {
+      background: linear-gradient(138deg, #0f172a 0%, #0f766e 48%, #2563eb 100%);
+      color: white;
+      border-radius: 28px;
+      padding: 54px 44px;
+      box-shadow: 0 30px 90px rgba(15, 23, 42, 0.22);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -150px;
+      top: -160px;
+      width: 410px;
+      height: 410px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 13px;
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.1);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: clamp(38px, 5.8vw, 66px);
+      line-height: 0.98;
+      letter-spacing: -0.05em;
+      margin: 0 0 22px;
+      max-width: 920px;
+    }
+    .subtitle {
+      font-size: clamp(18px, 2vw, 23px);
+      max-width: 850px;
+      color: #dbeafe;
+      margin: 0;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 32px;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-card {
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.11);
+      border-radius: 18px;
+      padding: 18px;
+      backdrop-filter: blur(10px);
+    }
+    .hero-card b {
+      display: block;
+      margin-bottom: 6px;
+      color: #bfdbfe;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .hero-card span { font-size: 18px; font-weight: 700; }
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin: 28px 0;
+    }
+    .toc a {
+      text-decoration: none;
+      color: var(--ink);
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 14px 16px;
+      border-radius: 16px;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+      font-weight: 700;
+    }
+    section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 34px;
+      margin-top: 24px;
+      box-shadow: var(--shadow);
+    }
+    h2 {
+      font-size: clamp(26px, 3.2vw, 40px);
+      line-height: 1.12;
+      letter-spacing: -0.035em;
+      margin: 0 0 18px;
+    }
+    h3 {
+      font-size: 22px;
+      margin: 28px 0 10px;
+      letter-spacing: -0.02em;
+    }
+    p { margin: 14px 0; }
+    .lead { font-size: 19px; color: #294045; }
+    .callout {
+      border-left: 5px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 20px 22px;
+      border-radius: 18px;
+      margin: 22px 0;
+      font-size: 18px;
+      font-weight: 650;
+    }
+    .callout.alt { border-left-color: var(--blue); background: var(--blue-soft); }
+    .callout.warn { border-left-color: var(--amber); background: var(--amber-soft); }
+    .grid-2, .grid-3 { display: grid; gap: 18px; margin: 22px 0; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .mini-card {
+      background: #fbfefd;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+    }
+    .mini-card b { display: block; margin-bottom: 8px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 22px 0;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      font-size: 15px;
+    }
+    th, td {
+      padding: 14px 15px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #edf5f5;
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #334155;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .diagram {
+      background: #f8fcfb;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 22px;
+      margin: 28px 0;
+      overflow-x: auto;
+    }
+    svg { width: 100%; height: auto; display: block; }
+    .caption {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: -12px;
+      margin-bottom: 22px;
+      text-align: center;
+    }
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      background: #edf4f7;
+      border-radius: 8px;
+      padding: 2px 7px;
+      font-size: 0.92em;
+    }
+    .refs li { margin: 10px 0; }
+    .site-footer {
+      padding: 10px 0 64px;
+      color: var(--muted);
+    }
+    .site-footer .shell {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+    }
+    .site-footer .small { font-size: 0.9rem; }
+    @media (max-width: 860px) {
+      .hero { padding: 38px 24px; }
+      .hero-grid, .toc, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      section { padding: 24px; }
+      .site-top .shell { min-height: 58px; padding: 0 18px; }
+      .site-links { gap: 8px; }
+      .site-link { font-size: 0.76rem; padding: 6px 10px; }
+    }
+  </style>
+  <meta name="keywords" content="cost of a miss AI, KV miss, cache miss AI systems, fabric miss, remote memory fetch AI, HBM miss latency, AI memory hierarchy, MANISH AI" />
+  <meta name="author" content="MANISH AI" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <meta name="color-scheme" content="light" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/real-cost-of-a-miss-ai-memory-systems.html" />
+  <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml" />
+  <link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json" />
+  <link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention" />
+  <link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="The Real Cost of a Miss: Unifying Cache Misses, KV Misses, Fabric Misses, and Remote Fetch in AI Systems | MANISH AI" />
+  <meta property="og:description" content="A technical essay unifying cache misses, KV misses, remote memory fetches, and fabric misses into one systems concept for modern AI infrastructure." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/real-cost-of-a-miss-ai-memory-systems.html" />
+  <meta property="og:site_name" content="MANISH AI" />
+  <meta property="og:image" content="https://manishklach.github.io/og/real-cost-of-a-miss-ai-memory-systems.png" />
+  <meta property="og:image:alt" content="MANISH AI technical essay preview" />
+  <meta property="article:published_time" content="2026-04-25T00:00:00-07:00" />
+  <meta property="article:modified_time" content="2026-04-25T00:00:00-07:00" />
+  <meta property="article:section" content="Memory Systems" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="The Real Cost of a Miss: Unifying Cache Misses, KV Misses, Fabric Misses, and Remote Fetch in AI Systems | MANISH AI" />
+  <meta name="twitter:description" content="A technical essay unifying cache misses, KV misses, remote memory fetches, and fabric misses into one systems concept for modern AI infrastructure." />
+  <meta name="twitter:image" content="https://manishklach.github.io/og/real-cost-of-a-miss-ai-memory-systems.png" />
+  <script type="application/ld+json">{
+    "@context":"https://schema.org",
+    "@type":"TechArticle",
+    "headline":"The Real Cost of a Miss: Unifying Cache Misses, KV Misses, Fabric Misses, and Remote Fetch in AI Systems",
+    "description":"A technical essay unifying cache misses, KV misses, remote memory fetches, and fabric misses into one systems concept for modern AI infrastructure.",
+    "url":"https://manishklach.github.io/writings/real-cost-of-a-miss-ai-memory-systems.html",
+    "image":"https://manishklach.github.io/og/real-cost-of-a-miss-ai-memory-systems.png",
+    "datePublished":"2026-04-25",
+    "dateModified":"2026-04-25",
+    "inLanguage":"en-US",
+    "author":{"@type":"Person","name":"MANISH AI","url":"https://github.com/manishklach"},
+    "publisher":{"@type":"Organization","name":"MANISH AI","url":"https://manishklach.github.io/"},
+    "mainEntityOfPage":{"@type":"WebPage","@id":"https://manishklach.github.io/writings/real-cost-of-a-miss-ai-memory-systems.html"},
+    "keywords":["cost of a miss AI","KV miss","cache miss AI systems","fabric miss","remote memory fetch AI","HBM miss latency","AI memory hierarchy"]
+  }</script>
+</head>
+<body>
+  <nav class="site-top" aria-label="Site navigation">
+    <div class="shell">
+      <a class="site-brand" href="/">MAN\SH AI</a>
+      <div class="site-links">
+        <a class="site-link" href="/writings.html">← All writings</a>
+        <a class="site-link" href="/">Home</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="page" data-pagefind-body>
+    <header class="hero">
+      <div class="eyebrow">Memory hierarchy · misses · remote fetch</div>
+      <h1>The Real Cost of a Miss</h1>
+      <p class="subtitle">
+        AI systems inherit the old language of cache misses, but the modern machine pays miss penalties across a far
+        wider hierarchy: on-chip SRAM, HBM, host DRAM, pooled memory, storage, and fabric-attached state. If we keep
+        reasoning only in L1/L2 terms, we miss the actual economics of inference.
+      </p>
+      <div class="hero-grid">
+        <div class="hero-card"><b>Core idea</b><span>A miss is a latency amplification event across tiers</span></div>
+        <div class="hero-card"><b>Modern form</b><span>KV miss, fabric miss, remote shard miss, spill miss</span></div>
+        <div class="hero-card"><b>Why it matters</b><span>Misses determine p99, bytes moved, and useful throughput</span></div>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="Contents">
+      <a href="#old">1. The old definition of a miss is too small now</a>
+      <a href="#tiers">2. AI systems stretch the memory hierarchy</a>
+      <a href="#taxonomy">3. A practical taxonomy of misses</a>
+      <a href="#economics">4. Why misses are really byte-movement events</a>
+      <a href="#policy">5. Misses are scheduler and residency problems</a>
+      <a href="#design">6. How better systems reduce miss damage</a>
+    </nav>
+
+    <section id="old">
+      <h2>1. The old definition of a miss is too small now</h2>
+      <p class="lead">
+        Traditional architecture education teaches a miss as a simple event: data is not in the cache, so the request
+        must go to the next level. That intuition still matters, but it is no longer sufficient for AI infrastructure.
+        Modern inference systems do not just miss L1 and consult L2. They may miss a local KV block, a weight tile,
+        a fabric-near shard, or a pooled-memory replica, and each miss changes both latency and transport load.
+      </p>
+      <p>
+        The core insight is this: a miss is not merely a lookup failure. It is a forced movement event. Something now
+        has to travel farther, over a slower or more contended path, often with queueing and arbitration attached.
+        That is why misses show up not only in latency charts, but in bandwidth charts, network hot spots, and power
+        curves.
+      </p>
+      <div class="callout">
+        In AI systems, the penalty of a miss is measured not only in nanoseconds, but in bytes moved, queues disturbed,
+        and concurrency lost.
+      </div>
+    </section>
+
+    <section id="tiers">
+      <h2>2. AI systems stretch the memory hierarchy</h2>
+      <p>
+        The hierarchy for a modern AI machine is no longer a neat CPU textbook stack. It is a layered, distributed
+        system that may include registers, on-chip SRAM, local HBM, host DRAM, peer-device memory, pooled or CXL
+        memory, SSD, and remote memory-like services reached over a fabric. The farther a request travels, the more
+        opportunities there are for arbitration, queueing, serialization, and thermal or congestion effects.
+      </p>
+      <div class="diagram">
+        <svg viewBox="0 0 920 300" aria-label="Extended AI memory hierarchy diagram">
+          <rect x="90" y="40" width="140" height="54" rx="16" fill="#dcfce7" stroke="#0f766e" stroke-width="2"/>
+          <text x="160" y="72" text-anchor="middle" font-size="18" font-weight="700" fill="#0f766e">On-chip SRAM</text>
+          <rect x="250" y="40" width="130" height="54" rx="16" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+          <text x="315" y="72" text-anchor="middle" font-size="18" font-weight="700" fill="#2563eb">HBM</text>
+          <rect x="400" y="40" width="130" height="54" rx="16" fill="#eef4ff" stroke="#2563eb" stroke-width="2"/>
+          <text x="465" y="72" text-anchor="middle" font-size="18" font-weight="700" fill="#1d4ed8">Host DRAM</text>
+          <rect x="550" y="40" width="150" height="54" rx="16" fill="#effdfb" stroke="#0f766e" stroke-width="2"/>
+          <text x="625" y="72" text-anchor="middle" font-size="18" font-weight="700" fill="#0f766e">Pooled Memory</text>
+          <rect x="720" y="40" width="110" height="54" rx="16" fill="#fdf2df" stroke="#a16207" stroke-width="2"/>
+          <text x="775" y="72" text-anchor="middle" font-size="18" font-weight="700" fill="#a16207">SSD</text>
+
+          <path d="M160 106 L160 164 L775 164 L775 106" fill="none" stroke="#94a3b8" stroke-width="3" />
+          <text x="465" y="194" text-anchor="middle" font-size="16" fill="#475569">Every step outward adds latency, queues, contention, and bytes moved</text>
+
+          <circle cx="160" cy="164" r="8" fill="#0f766e"/>
+          <circle cx="315" cy="164" r="8" fill="#2563eb"/>
+          <circle cx="465" cy="164" r="8" fill="#2563eb"/>
+          <circle cx="625" cy="164" r="8" fill="#0f766e"/>
+          <circle cx="775" cy="164" r="8" fill="#a16207"/>
+
+          <text x="156" y="238" text-anchor="middle" font-size="13" fill="#0f766e">fastest</text>
+          <text x="777" y="238" text-anchor="middle" font-size="13" fill="#a16207">largest / slowest</text>
+        </svg>
+      </div>
+      <p class="caption">AI memory misses should be thought of across the full residency and transport hierarchy, not just one local cache boundary.</p>
+    </section>
+
+    <section id="taxonomy">
+      <h2>3. A practical taxonomy of misses</h2>
+      <p>
+        Not all misses are the same. For operators and system designers, it helps to classify them by the state they
+        fail to find and the path they trigger.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Miss type</th>
+            <th>What was absent</th>
+            <th>What penalty gets paid</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Cache miss</td>
+            <td>Requested line not in the local fast tier</td>
+            <td>Next-tier lookup and stall</td>
+          </tr>
+          <tr>
+            <td>KV miss</td>
+            <td>Decode-needed context block not resident near compute</td>
+            <td>Extra memory or network fetch per token step</td>
+          </tr>
+          <tr>
+            <td>Weight miss</td>
+            <td>Hot layer weights evicted or not staged in time</td>
+            <td>Repeated transfer from slower memory during serving</td>
+          </tr>
+          <tr>
+            <td>Fabric miss</td>
+            <td>State is on the wrong node, rack, or pool</td>
+            <td>Transport over a more expensive topology path</td>
+          </tr>
+          <tr>
+            <td>Spill miss</td>
+            <td>State previously demoted to storage or slower memory</td>
+            <td>Large refill burst, queue growth, and possible recomputation</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout alt">
+        These events differ in mechanism, but they are unified by one truth: the system now has to move bytes farther
+        than it wanted to.
+      </div>
+      <p>
+        That unification matters because it lets us reason across old and new worlds. A cache miss on a CPU and a KV
+        miss in long-context inference are not identical, but they are siblings. Both are manifestations of insufficient
+        residency for an object whose timely availability matters to the next unit of work.
+      </p>
+    </section>
+
+    <section id="economics">
+      <h2>4. Why misses are really byte-movement events</h2>
+      <p>
+        The reason misses matter so much in AI is that token generation is often dominated by movement rather than raw
+        arithmetic. Once the model is large and the decode step is relatively narrow, the expensive part becomes
+        fetching the right state again and again at low latency.
+      </p>
+      <div class="grid-3">
+        <div class="mini-card">
+          <b>Latency cost</b>
+          <p>The request waits because the needed state is not local.</p>
+        </div>
+        <div class="mini-card">
+          <b>Bandwidth cost</b>
+          <p>The system spends scarce link or memory bandwidth refilling what should have stayed hot.</p>
+        </div>
+        <div class="mini-card">
+          <b>Concurrency cost</b>
+          <p>Other requests now compete with the refill, so one miss can perturb a whole queue.</p>
+        </div>
+      </div>
+      <p>
+        This is why “bytes moved per token” is such a useful mental model. It captures something FLOPs alone cannot:
+        how much logistical work the machine must do to sustain each output token. Misses inflate that logistics tax.
+      </p>
+      <div class="callout warn">
+        If a system keeps paying to move the same hot state repeatedly, it is not suffering a compute problem. It is
+        suffering a residency and orchestration problem.
+      </div>
+    </section>
+
+    <section id="policy">
+      <h2>5. Misses are scheduler and residency problems</h2>
+      <p>
+        Once misses are understood as byte-movement events, the fix no longer lives only in microarchitecture. The
+        fix also lives in policy. Which requests are placed where? Which weights remain resident? Which KV blocks get
+        protected? Which nodes are eligible for work that depends on particular state? These are scheduler questions.
+      </p>
+      <p>
+        This is one reason AI systems are pushing toward explicit memory policy and richer runtime hints. Generic
+        recency and generic replacement logic are often too blind for AI objects whose future value is highly
+        structured. A shared prefix KV block or a reused layer weight can look ordinary to a generic system while
+        being enormously valuable to throughput and latency.
+      </p>
+      <div class="diagram">
+        <svg viewBox="0 0 920 280" aria-label="Miss prevention policy diagram">
+          <rect x="50" y="106" width="180" height="72" rx="18" fill="#eef4ff" stroke="#2563eb" stroke-width="2"/>
+          <text x="140" y="136" text-anchor="middle" font-size="18" font-weight="700" fill="#1e3a8a">Work Arrival</text>
+          <text x="140" y="160" text-anchor="middle" font-size="14" fill="#1e3a8a">request + expected state</text>
+
+          <rect x="300" y="92" width="210" height="100" rx="20" fill="#e8f7f5" stroke="#0f766e" stroke-width="2"/>
+          <text x="405" y="128" text-anchor="middle" font-size="20" font-weight="700" fill="#115e59">Policy Layer</text>
+          <text x="405" y="154" text-anchor="middle" font-size="14" fill="#115e59">placement · protection · prefetch · spill</text>
+
+          <rect x="590" y="106" width="150" height="72" rx="18" fill="#dcfce7" stroke="#0f766e" stroke-width="2"/>
+          <text x="665" y="136" text-anchor="middle" font-size="18" font-weight="700" fill="#0f766e">Hit Path</text>
+          <text x="665" y="160" text-anchor="middle" font-size="14" fill="#0f766e">state already local</text>
+
+          <rect x="770" y="106" width="110" height="72" rx="18" fill="#fdf2df" stroke="#a16207" stroke-width="2"/>
+          <text x="825" y="136" text-anchor="middle" font-size="18" font-weight="700" fill="#a16207">Miss Path</text>
+          <text x="825" y="160" text-anchor="middle" font-size="14" fill="#a16207">bytes must move</text>
+
+          <path d="M230 142 C255 142, 265 142, 300 142" stroke="#2563eb" stroke-width="4" fill="none"/>
+          <path d="M510 130 C535 130, 555 130, 590 130" stroke="#0f766e" stroke-width="4" fill="none"/>
+          <path d="M510 158 C612 158, 708 158, 770 158" stroke="#a16207" stroke-width="4" fill="none"/>
+        </svg>
+      </div>
+      <p class="caption">Miss reduction is not only a hardware concern. It is a policy concern about how work and state meet.</p>
+    </section>
+
+    <section id="design">
+      <h2>6. How better systems reduce miss damage</h2>
+      <p>
+        Great systems do not eliminate misses entirely. They reduce the frequency of expensive misses, reduce the
+        distance traveled when misses happen, and prevent one miss from destabilizing everything around it.
+      </p>
+      <div class="grid-2">
+        <div class="mini-card">
+          <b>Protect high-value state</b>
+          <p>Pin or prioritize objects whose future reuse is obvious: hot weights, shared prefixes, frequently accessed expert subsets.</p>
+        </div>
+        <div class="mini-card">
+          <b>Place work near state</b>
+          <p>Topology-aware scheduling reduces the chance that the next token must traverse an expensive fabric path.</p>
+        </div>
+        <div class="mini-card">
+          <b>Prefetch with intent</b>
+          <p>Move state before it is demanded when routing, phase boundaries, or compile-time structure make the future legible.</p>
+        </div>
+        <div class="mini-card">
+          <b>Contain variance</b>
+          <p>Queue isolation and class-aware policy stop one miss-heavy stream from poisoning latency for everything else.</p>
+        </div>
+      </div>
+      <p>
+        The deeper point is that misses should be treated as first-class infrastructure economics. They are where
+        latency, bandwidth, topology, and policy intersect. Once you see that clearly, a lot of “mysterious”
+        performance cliffs become explainable.
+      </p>
+      <div class="callout">
+        The future of AI infrastructure will belong to teams that understand misses not as isolated events, but as
+        system-wide byte-movement decisions with consequences that ripple through queues, fabrics, and margins.
+      </div>
+      <p>
+        That is why the real cost of a miss is so much larger than the old textbook framing suggests. In the AI era,
+        a miss is often the point where locality fails, orchestration fails, and the machine starts paying logistics
+        tax instead of doing useful work.
+      </p>
+    </section>
+
+    <section id="references">
+      <h2>References and further reading</h2>
+      <ul class="refs">
+        <li>Classical computer architecture texts on cache hierarchy, locality, and miss penalties.</li>
+        <li>HBM architecture materials and public references on stacked memory bandwidth and access behavior.</li>
+        <li>CXL Consortium materials on memory expansion, pooling, and multi-tier memory systems.</li>
+        <li>LLM serving papers and engineering notes on KV cache management, PagedAttention, and long-context inference.</li>
+        <li>NVIDIA, CUDA, and GPUDirect materials related to bandwidth, transfers, and memory movement overheads.</li>
+        <li>Distributed storage and networking literature on remote fetch, queueing under contention, and tail amplification.</li>
+        <li>Systems work on locality-aware scheduling, explicit residency control, and regret-aware admission/eviction policy.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell">
+      <div class="small">MANISH AI · Essays · April 2026 · <a href="/writings.html">← All writings</a></div>
+      <div class="small">© 2026 <a href="https://github.com/manishklach">MANISH AI</a>. All rights reserved.</div>
+    </div>
+  </footer>
+</body>
+</html>

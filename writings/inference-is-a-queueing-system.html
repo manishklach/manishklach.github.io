@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="A technical essay on AI inference as a queueing system, covering arrival curves, batching, prefill/decode asymmetry, tail latency, and throughput under memory pressure." />
+  <title>Inference Is a Queueing System: Why AI Serving Lives or Dies by Arrival Curves, Batching, and Tail Latency | MANISH AI</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --card: #ffffff;
+      --ink: #16181d;
+      --muted: #5c6471;
+      --line: #d7deea;
+      --accent: #2563eb;
+      --accent-soft: #edf4ff;
+      --accent-2: #0f766e;
+      --accent-2-soft: #e6f7f4;
+      --warn: #b45309;
+      --warn-soft: #fff5e8;
+      --shadow: 0 22px 60px rgba(15, 23, 42, 0.08);
+      --radius: 24px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 28rem),
+        radial-gradient(circle at top right, rgba(15, 118, 110, 0.10), transparent 24rem),
+        var(--bg);
+      line-height: 1.7;
+    }
+
+    a { color: var(--accent); }
+    .page { max-width: 1120px; margin: 0 auto; padding: 32px 18px 72px; }
+    .site-top {
+      position: sticky;
+      top: 0;
+      z-index: 120;
+      backdrop-filter: blur(16px);
+      background: rgba(246, 247, 251, 0.84);
+      border-bottom: 1px solid rgba(215, 222, 234, 0.9);
+    }
+    .shell { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+    .site-top .shell {
+      min-height: 66px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    .site-brand {
+      text-decoration: none;
+      color: #0f172a;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-size: 1rem;
+    }
+    .site-links { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .site-link {
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(15, 23, 42, 0.1);
+      background: rgba(255, 255, 255, 0.8);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.82rem;
+      text-decoration: none;
+      transition: opacity 0.2s ease, border-color 0.2s ease;
+    }
+    .site-brand:hover, .site-link:hover, .site-footer a:hover { opacity: 0.82; }
+
+    .hero {
+      background: linear-gradient(140deg, #0f172a 0%, #1d4ed8 60%, #0f766e 100%);
+      color: #fff;
+      border-radius: 28px;
+      padding: 54px 44px;
+      box-shadow: 0 28px 80px rgba(15, 23, 42, 0.22);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -140px;
+      top: -120px;
+      width: 380px;
+      height: 380px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 13px;
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.1);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: clamp(38px, 5.8vw, 68px);
+      line-height: 0.98;
+      letter-spacing: -0.05em;
+      margin: 0 0 22px;
+      max-width: 920px;
+    }
+    .subtitle {
+      font-size: clamp(18px, 2vw, 23px);
+      max-width: 840px;
+      color: #dbeafe;
+      margin: 0;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 32px;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-card {
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.11);
+      border-radius: 18px;
+      padding: 18px;
+      backdrop-filter: blur(10px);
+    }
+    .hero-card b {
+      display: block;
+      margin-bottom: 6px;
+      color: #bfdbfe;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .hero-card span { font-size: 18px; font-weight: 700; }
+
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin: 28px 0;
+    }
+    .toc a {
+      text-decoration: none;
+      color: var(--ink);
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 14px 16px;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+      font-weight: 700;
+    }
+
+    section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 34px;
+      margin-top: 24px;
+      box-shadow: var(--shadow);
+    }
+    h2 {
+      font-size: clamp(26px, 3.2vw, 40px);
+      line-height: 1.12;
+      letter-spacing: -0.035em;
+      margin: 0 0 18px;
+    }
+    h3 {
+      font-size: 22px;
+      margin: 28px 0 10px;
+      letter-spacing: -0.02em;
+    }
+    p { margin: 14px 0; }
+    .lead { font-size: 19px; color: #273447; }
+    .callout {
+      border-left: 5px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 20px 22px;
+      border-radius: 18px;
+      margin: 22px 0;
+      font-size: 18px;
+      font-weight: 650;
+    }
+    .callout.alt { border-left-color: var(--accent-2); background: var(--accent-2-soft); }
+    .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+    .grid-2, .grid-3 {
+      display: grid;
+      gap: 18px;
+      margin: 22px 0;
+    }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .mini-card {
+      background: #fbfdff;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+    }
+    .mini-card b { display: block; margin-bottom: 8px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 22px 0;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      font-size: 15px;
+    }
+    th, td {
+      padding: 14px 15px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #eff4fb;
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #334155;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .diagram {
+      background: #f8fbff;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 22px;
+      margin: 28px 0;
+      overflow-x: auto;
+    }
+    svg { width: 100%; height: auto; display: block; }
+    .caption {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: -12px;
+      margin-bottom: 22px;
+      text-align: center;
+    }
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      background: #eef3fb;
+      border-radius: 8px;
+      padding: 2px 7px;
+      font-size: 0.92em;
+    }
+    .refs li { margin: 10px 0; }
+    .site-footer {
+      padding: 10px 0 64px;
+      color: var(--muted);
+    }
+    .site-footer .shell {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+    }
+    .site-footer .small { font-size: 0.9rem; }
+    @media (max-width: 860px) {
+      .hero { padding: 38px 24px; }
+      .hero-grid, .toc, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      section { padding: 24px; }
+      .site-top .shell { min-height: 58px; padding: 0 18px; }
+      .site-links { gap: 8px; }
+      .site-link { font-size: 0.76rem; padding: 6px 10px; }
+    }
+  </style>
+  <meta name="keywords" content="AI inference queueing system, tail latency AI serving, batching inference, prefill decode latency, queueing theory AI infrastructure, Little's Law LLM serving, MANISH AI" />
+  <meta name="author" content="MANISH AI" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <meta name="color-scheme" content="light" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/inference-is-a-queueing-system.html" />
+  <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml" />
+  <link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json" />
+  <link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention" />
+  <link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Inference Is a Queueing System: Why AI Serving Lives or Dies by Arrival Curves, Batching, and Tail Latency | MANISH AI" />
+  <meta property="og:description" content="A technical essay on AI inference as a queueing system, covering arrival curves, batching, prefill/decode asymmetry, tail latency, and throughput under memory pressure." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/inference-is-a-queueing-system.html" />
+  <meta property="og:site_name" content="MANISH AI" />
+  <meta property="og:image" content="https://manishklach.github.io/og/inference-is-a-queueing-system.png" />
+  <meta property="og:image:alt" content="MANISH AI technical essay preview" />
+  <meta property="article:published_time" content="2026-04-25T00:00:00-07:00" />
+  <meta property="article:modified_time" content="2026-04-25T00:00:00-07:00" />
+  <meta property="article:section" content="Inference Systems" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Inference Is a Queueing System: Why AI Serving Lives or Dies by Arrival Curves, Batching, and Tail Latency | MANISH AI" />
+  <meta name="twitter:description" content="A technical essay on AI inference as a queueing system, covering arrival curves, batching, prefill/decode asymmetry, tail latency, and throughput under memory pressure." />
+  <meta name="twitter:image" content="https://manishklach.github.io/og/inference-is-a-queueing-system.png" />
+  <script type="application/ld+json">{
+    "@context":"https://schema.org",
+    "@type":"TechArticle",
+    "headline":"Inference Is a Queueing System: Why AI Serving Lives or Dies by Arrival Curves, Batching, and Tail Latency",
+    "description":"A technical essay on AI inference as a queueing system, covering arrival curves, batching, prefill/decode asymmetry, tail latency, and throughput under memory pressure.",
+    "url":"https://manishklach.github.io/writings/inference-is-a-queueing-system.html",
+    "image":"https://manishklach.github.io/og/inference-is-a-queueing-system.png",
+    "datePublished":"2026-04-25",
+    "dateModified":"2026-04-25",
+    "inLanguage":"en-US",
+    "author":{"@type":"Person","name":"MANISH AI","url":"https://github.com/manishklach"},
+    "publisher":{"@type":"Organization","name":"MANISH AI","url":"https://manishklach.github.io/"},
+    "mainEntityOfPage":{"@type":"WebPage","@id":"https://manishklach.github.io/writings/inference-is-a-queueing-system.html"},
+    "keywords":["AI inference queueing system","tail latency AI serving","batching inference","prefill decode latency","queueing theory AI infrastructure","Little's Law LLM serving"]
+  }</script>
+</head>
+<body>
+  <nav class="site-top" aria-label="Site navigation">
+    <div class="shell">
+      <a class="site-brand" href="/">MAN\SH AI</a>
+      <div class="site-links">
+        <a class="site-link" href="/writings.html">← All writings</a>
+        <a class="site-link" href="/">Home</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="page" data-pagefind-body>
+    <header class="hero">
+      <div class="eyebrow">Inference systems · queueing · tail latency</div>
+      <h1>Inference Is a Queueing System</h1>
+      <p class="subtitle">
+        Most teams still talk about serving in the language of model size, GPU count, and tokens per second.
+        Production inference lives somewhere harsher: arrivals bunch, queues form, memory stalls stretch service
+        times, and p99 blows up long before theoretical throughput is reached.
+      </p>
+      <div class="hero-grid">
+        <div class="hero-card"><b>Core claim</b><span>Latency is a queueing outcome, not a single-kernel outcome</span></div>
+        <div class="hero-card"><b>Practical lens</b><span>Prefill, decode, batching, and routing are coupled queues</span></div>
+        <div class="hero-card"><b>Operator takeaway</b><span>Control arrival geometry or pay at the tail</span></div>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="Contents">
+      <a href="#why">1. Why serving breaks before GPUs look “full” </a>
+      <a href="#little">2. Little’s Law is the missing primitive</a>
+      <a href="#prefill-decode">3. Prefill and decode are different service centers</a>
+      <a href="#batching">4. Batching helps until it quietly hurts</a>
+      <a href="#memory">5. Memory pressure changes the service-time distribution</a>
+      <a href="#design">6. What a sane inference control plane should optimize</a>
+    </nav>
+
+    <section id="why">
+      <h2>1. Why serving breaks before GPUs look “full”</h2>
+      <p class="lead">
+        The most misleading chart in AI infrastructure is often the “GPU utilization” chart. A fleet can show
+        moderate utilization and still deliver awful user experience because the problem is not simply whether the
+        accelerator is doing work. The problem is whether requests are waiting in line, whether batches are forming
+        coherently, and whether the system can keep service times stable as the request mix changes.
+      </p>
+      <p>
+        Production inference is not one clean workload. It is a moving superposition of prompt lengths, output
+        lengths, arrival bursts, tenant interference, cache locality, routing randomness, and transport delays.
+        That means the system is better understood as a queueing network than as a single giant matrix multiply.
+      </p>
+      <div class="callout">
+        A serving stack fails at the tail when arrival rate approaches unstable effective service rate, even if
+        average accelerator occupancy still looks “reasonable.”
+      </div>
+      <p>
+        This is why teams get blindsided. They size the fleet using average tokens per second, then discover that
+        user-visible quality is set by the worst 1% to 5% of interactions. The queue does not care about average
+        optimism. It cares about burstiness, variance, and whether the system can shed or reshape load before
+        waiting time compounds.
+      </p>
+
+      <div class="diagram">
+        <svg viewBox="0 0 920 300" aria-label="Inference queueing diagram">
+          <rect x="30" y="80" width="130" height="72" rx="18" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+          <text x="95" y="112" text-anchor="middle" font-size="18" font-weight="700" fill="#1e3a8a">Arrivals</text>
+          <text x="95" y="136" text-anchor="middle" font-size="14" fill="#1e3a8a">bursty prompts</text>
+          <rect x="220" y="70" width="150" height="92" rx="20" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+          <text x="295" y="106" text-anchor="middle" font-size="18" font-weight="700" fill="#1e3a8a">Ingress Queue</text>
+          <text x="295" y="132" text-anchor="middle" font-size="14" fill="#1e3a8a">tenant mix + shaping</text>
+          <rect x="440" y="48" width="170" height="68" rx="18" fill="#ecfeff" stroke="#0f766e" stroke-width="2"/>
+          <text x="525" y="78" text-anchor="middle" font-size="18" font-weight="700" fill="#115e59">Prefill</text>
+          <text x="525" y="99" text-anchor="middle" font-size="14" fill="#115e59">high arithmetic density</text>
+          <rect x="440" y="160" width="170" height="68" rx="18" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+          <text x="525" y="190" text-anchor="middle" font-size="18" font-weight="700" fill="#1e3a8a">Decode</text>
+          <text x="525" y="211" text-anchor="middle" font-size="14" fill="#1e3a8a">memory-dominated loop</text>
+          <rect x="690" y="80" width="190" height="72" rx="18" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+          <text x="785" y="110" text-anchor="middle" font-size="18" font-weight="700" fill="#b45309">Tail Latency</text>
+          <text x="785" y="135" text-anchor="middle" font-size="14" fill="#9a3412">waiting + service variance</text>
+          <path d="M160 116 C190 116, 195 116, 220 116" stroke="#2563eb" stroke-width="4" fill="none" />
+          <path d="M370 116 C400 116, 405 82, 440 82" stroke="#0f766e" stroke-width="4" fill="none" />
+          <path d="M370 116 C402 116, 405 194, 440 194" stroke="#2563eb" stroke-width="4" fill="none" />
+          <path d="M610 82 C648 82, 654 105, 690 116" stroke="#0f766e" stroke-width="4" fill="none" />
+          <path d="M610 194 C648 194, 654 130, 690 116" stroke="#2563eb" stroke-width="4" fill="none" />
+        </svg>
+      </div>
+      <p class="caption">Inference quality emerges from waiting time plus service-time variability across multiple stages, not from one average kernel speed number.</p>
+    </section>
+
+    <section id="little">
+      <h2>2. Little’s Law is the missing primitive</h2>
+      <p>
+        A lot of inference design confusion clears up once you bring back one boring but brutal identity:
+        <code>L = λW</code>. Average queue length equals arrival rate times average time in system. That one relation
+        does not tell you everything, but it forces discipline. If arrival rate rises or if service time stretches,
+        the number of requests in system grows. That growth appears to the user as “the model feels slow.”
+      </p>
+      <p>
+        In serving, <code>W</code> is not just compute time. It is admission delay, batching delay, scheduler delay,
+        transfer delay, prefill time, decode iterations, and any waiting induced by cache or memory pressure.
+        Once you look at the full path, it becomes obvious why small inefficiencies accumulate into visible tail pain.
+      </p>
+      <div class="grid-3">
+        <div class="mini-card">
+          <b>Arrival rate</b>
+          <p>Traffic is rarely Poisson and rarely polite. Interactive products create synchronized spikes around human behavior, retries, and product events.</p>
+        </div>
+        <div class="mini-card">
+          <b>Service time</b>
+          <p>Prompt length, decode length, cache residency, expert routing, and interconnect topology all perturb the work per request.</p>
+        </div>
+        <div class="mini-card">
+          <b>Variance</b>
+          <p>The tail is dominated not by the mean alone, but by how uneven arrivals and service times become under contention.</p>
+        </div>
+      </div>
+      <p>
+        This is one reason “more batching” is not a universal answer. Batching can improve arithmetic efficiency,
+        but it also increases admission delay and couples short jobs to long jobs. If the fleet is operating near
+        saturation, even small batch-formation delays can push p95 and p99 into uncomfortable territory.
+      </p>
+    </section>
+
+    <section id="prefill-decode">
+      <h2>3. Prefill and decode are different service centers</h2>
+      <p>
+        One of the clearest mistakes in inference thinking is to treat prefill and decode as one homogeneous stream
+        of work. They are not. Prefill is a larger, denser pass over the prompt. Decode is an iterative, token-by-token
+        control loop whose performance depends heavily on memory movement and residency behavior.
+      </p>
+      <div class="callout alt">
+        Prefill tends to reward dense batching and high arithmetic throughput. Decode rewards predictable memory
+        access, low queue jitter, and careful admission control.
+      </div>
+      <p>
+        Once those two phases are separated conceptually, a lot of architecture choices become more legible. It
+        becomes obvious why prefill/decode disaggregation exists, why cache transfer becomes a network problem,
+        why scheduler policy matters so much, and why “GPU underutilization” can mean very different things in
+        each phase. A half-idle prefill pool and a decode pool with unstable queue growth are not interchangeable
+        pathologies.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th>Prefill</th>
+            <th>Decode</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Primary bottleneck</td>
+            <td>Compute throughput and prompt ingestion</td>
+            <td>Memory bandwidth, cache locality, scheduler stability</td>
+          </tr>
+          <tr>
+            <td>Best-case behavior</td>
+            <td>Large dense batches</td>
+            <td>Stable small-step iteration with low queue jitter</td>
+          </tr>
+          <tr>
+            <td>Typical failure mode</td>
+            <td>Prompt spikes overwhelm admission</td>
+            <td>Tail latency stretches as batches, misses, and waits compound</td>
+          </tr>
+          <tr>
+            <td>Control priority</td>
+            <td>Shape ingress and isolate heavy prompts</td>
+            <td>Protect hot state and minimize service-time variance</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="batching">
+      <h2>4. Batching helps until it quietly hurts</h2>
+      <p>
+        Batching is one of the most misunderstood levers in AI serving. In the happy-path story, more requests per
+        batch means better GPU efficiency. In reality, batching is a trade: you gain device efficiency by accepting
+        some waiting and by coupling multiple requests into one service decision.
+      </p>
+      <p>
+        That trade becomes dangerous when the request mix is heterogeneous. Short queries can get pinned behind
+        long prompts. Decode iterations for one group can delay dispatch of another. Admission windows that look
+        harmless in aggregate can create visible jitter for interactive users.
+      </p>
+      <div class="diagram">
+        <svg viewBox="0 0 920 260" aria-label="Batching tradeoff diagram">
+          <line x1="90" y1="210" x2="860" y2="210" stroke="#94a3b8" stroke-width="2"/>
+          <line x1="90" y1="210" x2="90" y2="40" stroke="#94a3b8" stroke-width="2"/>
+          <text x="870" y="214" font-size="14" fill="#475569">Batch size</text>
+          <text x="36" y="48" font-size="14" fill="#475569" transform="rotate(-90 36 48)">Effect</text>
+          <path d="M110 170 C240 110, 350 82, 510 68 C620 58, 720 60, 840 64" fill="none" stroke="#0f766e" stroke-width="5"/>
+          <path d="M110 198 C250 188, 330 172, 440 148 C560 122, 690 88, 840 54" fill="none" stroke="#b45309" stroke-width="5"/>
+          <text x="640" y="90" font-size="16" font-weight="700" fill="#0f766e">Device efficiency</text>
+          <text x="610" y="132" font-size="16" font-weight="700" fill="#b45309">Waiting + tail risk</text>
+          <circle cx="560" cy="104" r="7" fill="#1d4ed8"/>
+          <text x="575" y="108" font-size="15" fill="#1e293b">healthy operating zone</text>
+        </svg>
+      </div>
+      <p class="caption">Batching is not a one-direction optimization. It is a balance between arithmetic gain and latency amplification.</p>
+      <div class="callout warn">
+        The right question is not “How large can I make the batch?” The right question is “How much waiting am I
+        willing to buy for the next unit of efficiency?”
+      </div>
+      <p>
+        Mature systems therefore segment traffic. They isolate prompt classes, separate latency-sensitive and
+        throughput-oriented tenants, and treat batch formation as a policy problem rather than a hard-coded kernel
+        preference. The scheduler needs to know when to refuse batch growth because the tail is more expensive than
+        the extra throughput.
+      </p>
+    </section>
+
+    <section id="memory">
+      <h2>5. Memory pressure changes the service-time distribution</h2>
+      <p>
+        Queueing discussions often assume service time is mostly compute. In modern inference, that assumption fails
+        precisely where real systems hurt. KV residency, weight streaming, interconnect congestion, and remote fetch
+        all widen the service-time distribution. That widening matters because tails react more violently to variance
+        than to mean alone.
+      </p>
+      <p>
+        A decode step that is usually fast but occasionally incurs a miss to HBM, host memory, or a remote shard is
+        not just “a little slower.” It is injecting randomness into the system. Randomness inflates queue depth,
+        queue depth increases waiting, waiting worsens batching dynamics, and the user experiences an apparently
+        mysterious latency cliff.
+      </p>
+      <div class="grid-2">
+        <div class="mini-card">
+          <b>Residency failure</b>
+          <p>Hot KV or repeated weights leave the fastest tier, so each decode step pays extra movement cost.</p>
+        </div>
+        <div class="mini-card">
+          <b>Topology failure</b>
+          <p>Requests land on nodes whose fabric path to state is longer or more congested than the average case.</p>
+        </div>
+        <div class="mini-card">
+          <b>Scheduler failure</b>
+          <p>Work classes with incompatible service profiles are mixed into the same queues and batches.</p>
+        </div>
+        <div class="mini-card">
+          <b>Retry failure</b>
+          <p>Timeouts and cancellations feed back into the system as new arrivals, which raises load during degradation.</p>
+        </div>
+      </div>
+      <p>
+        Once you see memory as a source of service-time variance, the correct control priorities change. Protecting
+        residency, reducing remote fetch probability, and making scheduling more topology-aware are queue-stability
+        measures, not just micro-optimizations.
+      </p>
+    </section>
+
+    <section id="design">
+      <h2>6. What a sane inference control plane should optimize</h2>
+      <p>
+        A good inference control plane does not merely maximize average throughput. It manages a queueing network with
+        asymmetric phases, memory-sensitive service times, and human-visible tail constraints. That means the control
+        plane needs policy over arrival shaping, class isolation, queue admission, batch windows, topology placement,
+        and state protection.
+      </p>
+      <div class="callout">
+        The job of inference infrastructure is not “keep GPUs busy.” It is “turn bursty demand into stable useful
+        throughput while preserving latency where the product actually cares.”
+      </div>
+      <h3>What this means in practice</h3>
+      <div class="grid-3">
+        <div class="mini-card">
+          <b>Shape demand</b>
+          <p>Separate tenants and request classes early. Admission control should begin before the accelerator boundary.</p>
+        </div>
+        <div class="mini-card">
+          <b>Protect hot state</b>
+          <p>Residency policy is queue policy. Stable memory behavior keeps decode service times from widening.</p>
+        </div>
+        <div class="mini-card">
+          <b>Optimize tails explicitly</b>
+          <p>p95 and p99 need first-class SLO handling. Averages are not a sufficient steering signal.</p>
+        </div>
+      </div>
+      <p>
+        This also explains why the most interesting serving companies and internal infrastructure teams are becoming
+        scheduling companies. Once the math path is “good enough,” operational excellence shifts to controlling the
+        geometry of work as it enters, waits, batches, moves, and exits.
+      </p>
+      <p>
+        Large-model inference will keep looking like a compute story from a distance. Up close, it is a queueing story
+        shaped by memory, transport, and policy. The winning systems will not simply own faster chips. They will own
+        more stable queues.
+      </p>
+    </section>
+
+    <section id="references">
+      <h2>References and further reading</h2>
+      <ul class="refs">
+        <li>John D. C. Little, “A Proof for the Queueing Formula: L = λW.”</li>
+        <li>Mor Harchol-Balter, <em>Performance Modeling and Design of Computer Systems</em>.</li>
+        <li>Leonard Kleinrock, foundational queueing systems texts.</li>
+        <li>vLLM and PagedAttention papers and engineering materials for LLM serving behavior.</li>
+        <li>NVIDIA TensorRT-LLM, Triton Inference Server, and CUDA performance guidance for batching and serving.</li>
+        <li>Public engineering writing on prefill/decode disaggregation, KV transfer, and long-context inference serving.</li>
+        <li>Classical work on tail latency, datacenter queueing, and service-time variability in distributed systems.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell">
+      <div class="small">MANISH AI · Essays · April 2026 · <a href="/writings.html">← All writings</a></div>
+      <div class="small">© 2026 <a href="https://github.com/manishklach">MANISH AI</a>. All rights reserved.</div>
+    </div>
+  </footer>
+</body>
+</html>

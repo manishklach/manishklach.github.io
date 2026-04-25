@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="A technical essay on why AI infrastructure moats are moving into schedulers, policy engines, placement decisions, and orchestration logic rather than raw silicon alone." />
+  <title>The Scheduler Is the Product: Why AI Infrastructure Moats Are Becoming Policy Engines | MANISH AI</title>
+  <style>
+    :root {
+      --bg: #f7f5f1;
+      --card: #fffdf9;
+      --ink: #181713;
+      --muted: #646056;
+      --line: #ddd6c7;
+      --accent: #1d4ed8;
+      --accent-soft: #eef4ff;
+      --teal: #0f766e;
+      --teal-soft: #e8f7f5;
+      --amber: #a16207;
+      --amber-soft: #fdf3dc;
+      --shadow: 0 20px 56px rgba(39, 32, 18, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(29, 78, 216, 0.09), transparent 26rem),
+        radial-gradient(circle at top right, rgba(15, 118, 110, 0.09), transparent 24rem),
+        var(--bg);
+      line-height: 1.7;
+    }
+    a { color: var(--accent); }
+    .page { max-width: 1120px; margin: 0 auto; padding: 32px 18px 72px; }
+    .site-top {
+      position: sticky;
+      top: 0;
+      z-index: 120;
+      backdrop-filter: blur(16px);
+      background: rgba(247, 245, 241, 0.86);
+      border-bottom: 1px solid rgba(221, 214, 199, 0.9);
+    }
+    .shell { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+    .site-top .shell {
+      min-height: 66px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    .site-brand {
+      text-decoration: none;
+      color: #111827;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-size: 1rem;
+    }
+    .site-links { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .site-link {
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(15, 23, 42, 0.1);
+      background: rgba(255, 255, 255, 0.75);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.82rem;
+      text-decoration: none;
+      transition: opacity 0.2s ease;
+    }
+    .site-brand:hover, .site-link:hover, .site-footer a:hover { opacity: 0.82; }
+    .hero {
+      background: linear-gradient(135deg, #111827 0%, #1d4ed8 52%, #0f766e 100%);
+      color: white;
+      border-radius: 28px;
+      padding: 54px 44px;
+      box-shadow: 0 30px 90px rgba(17, 24, 39, 0.22);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px);
+      background-size: 52px 52px;
+      mask-image: radial-gradient(circle at center, black 38%, transparent 92%);
+      pointer-events: none;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 13px;
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.1);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: clamp(38px, 5.8vw, 68px);
+      line-height: 0.98;
+      letter-spacing: -0.05em;
+      margin: 0 0 22px;
+      max-width: 920px;
+    }
+    .subtitle {
+      font-size: clamp(18px, 2vw, 23px);
+      max-width: 860px;
+      color: #dbeafe;
+      margin: 0;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 32px;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-card {
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.11);
+      border-radius: 18px;
+      padding: 18px;
+      backdrop-filter: blur(10px);
+    }
+    .hero-card b {
+      display: block;
+      margin-bottom: 6px;
+      color: #bfdbfe;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .hero-card span { font-size: 18px; font-weight: 700; }
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin: 28px 0;
+    }
+    .toc a {
+      text-decoration: none;
+      color: var(--ink);
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 14px 16px;
+      border-radius: 16px;
+      box-shadow: 0 10px 28px rgba(39, 32, 18, 0.05);
+      font-weight: 700;
+    }
+    section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 34px;
+      margin-top: 24px;
+      box-shadow: var(--shadow);
+    }
+    h2 {
+      font-size: clamp(26px, 3.2vw, 40px);
+      line-height: 1.12;
+      letter-spacing: -0.035em;
+      margin: 0 0 18px;
+    }
+    h3 {
+      font-size: 22px;
+      margin: 28px 0 10px;
+      letter-spacing: -0.02em;
+    }
+    p { margin: 14px 0; }
+    .lead { font-size: 19px; color: #2f3a48; }
+    .callout {
+      border-left: 5px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 20px 22px;
+      border-radius: 18px;
+      margin: 22px 0;
+      font-size: 18px;
+      font-weight: 650;
+    }
+    .callout.alt { border-left-color: var(--teal); background: var(--teal-soft); }
+    .callout.warn { border-left-color: var(--amber); background: var(--amber-soft); }
+    .grid-2, .grid-3 { display: grid; gap: 18px; margin: 22px 0; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .mini-card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+    }
+    .mini-card b { display: block; margin-bottom: 8px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 22px 0;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      font-size: 15px;
+    }
+    th, td {
+      padding: 14px 15px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #f3f0e8;
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #534f46;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .diagram {
+      background: #fbfaf7;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 22px;
+      margin: 28px 0;
+      overflow-x: auto;
+    }
+    svg { width: 100%; height: auto; display: block; }
+    .caption {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: -12px;
+      margin-bottom: 22px;
+      text-align: center;
+    }
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      background: #eef2fa;
+      border-radius: 8px;
+      padding: 2px 7px;
+      font-size: 0.92em;
+    }
+    .refs li { margin: 10px 0; }
+    .site-footer {
+      padding: 10px 0 64px;
+      color: var(--muted);
+    }
+    .site-footer .shell {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+    }
+    .site-footer .small { font-size: 0.9rem; }
+    @media (max-width: 860px) {
+      .hero { padding: 38px 24px; }
+      .hero-grid, .toc, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      section { padding: 24px; }
+      .site-top .shell { min-height: 58px; padding: 0 18px; }
+      .site-links { gap: 8px; }
+      .site-link { font-size: 0.76rem; padding: 6px 10px; }
+    }
+  </style>
+  <meta name="keywords" content="AI scheduler, scheduler is the product, AI infrastructure orchestration, placement policy AI systems, inference scheduler, runtime policy engine, MANISH AI" />
+  <meta name="author" content="MANISH AI" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <meta name="color-scheme" content="light" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/scheduler-is-the-product-ai-infrastructure.html" />
+  <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml" />
+  <link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json" />
+  <link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention" />
+  <link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="The Scheduler Is the Product: Why AI Infrastructure Moats Are Becoming Policy Engines | MANISH AI" />
+  <meta property="og:description" content="A technical essay on why AI infrastructure moats are moving into schedulers, policy engines, placement decisions, and orchestration logic rather than raw silicon alone." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/scheduler-is-the-product-ai-infrastructure.html" />
+  <meta property="og:site_name" content="MANISH AI" />
+  <meta property="og:image" content="https://manishklach.github.io/og/scheduler-is-the-product-ai-infrastructure.png" />
+  <meta property="og:image:alt" content="MANISH AI technical essay preview" />
+  <meta property="article:published_time" content="2026-04-25T00:00:00-07:00" />
+  <meta property="article:modified_time" content="2026-04-25T00:00:00-07:00" />
+  <meta property="article:section" content="Runtime Systems" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="The Scheduler Is the Product: Why AI Infrastructure Moats Are Becoming Policy Engines | MANISH AI" />
+  <meta name="twitter:description" content="A technical essay on why AI infrastructure moats are moving into schedulers, policy engines, placement decisions, and orchestration logic rather than raw silicon alone." />
+  <meta name="twitter:image" content="https://manishklach.github.io/og/scheduler-is-the-product-ai-infrastructure.png" />
+  <script type="application/ld+json">{
+    "@context":"https://schema.org",
+    "@type":"TechArticle",
+    "headline":"The Scheduler Is the Product: Why AI Infrastructure Moats Are Becoming Policy Engines",
+    "description":"A technical essay on why AI infrastructure moats are moving into schedulers, policy engines, placement decisions, and orchestration logic rather than raw silicon alone.",
+    "url":"https://manishklach.github.io/writings/scheduler-is-the-product-ai-infrastructure.html",
+    "image":"https://manishklach.github.io/og/scheduler-is-the-product-ai-infrastructure.png",
+    "datePublished":"2026-04-25",
+    "dateModified":"2026-04-25",
+    "inLanguage":"en-US",
+    "author":{"@type":"Person","name":"MANISH AI","url":"https://github.com/manishklach"},
+    "publisher":{"@type":"Organization","name":"MANISH AI","url":"https://manishklach.github.io/"},
+    "mainEntityOfPage":{"@type":"WebPage","@id":"https://manishklach.github.io/writings/scheduler-is-the-product-ai-infrastructure.html"},
+    "keywords":["AI scheduler","scheduler is the product","AI infrastructure orchestration","placement policy AI systems","inference scheduler","runtime policy engine"]
+  }</script>
+</head>
+<body>
+  <nav class="site-top" aria-label="Site navigation">
+    <div class="shell">
+      <a class="site-brand" href="/">MAN\SH AI</a>
+      <div class="site-links">
+        <a class="site-link" href="/writings.html">← All writings</a>
+        <a class="site-link" href="/">Home</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="page" data-pagefind-body>
+    <header class="hero">
+      <div class="eyebrow">Runtime systems · placement policy · orchestration</div>
+      <h1>The Scheduler Is the Product</h1>
+      <p class="subtitle">
+        In AI infrastructure, raw silicon still matters. But more and more of the durable advantage is moving into
+        the policy engine that decides what runs where, when, with which memory state, and under what risk budget.
+      </p>
+      <div class="hero-grid">
+        <div class="hero-card"><b>Shift</b><span>From component performance to system policy</span></div>
+        <div class="hero-card"><b>Real moat</b><span>Placement, admission, routing, and state management</span></div>
+        <div class="hero-card"><b>Implication</b><span>Orchestration quality becomes product quality</span></div>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="Contents">
+      <a href="#why">1. Why hardware alone no longer decides outcomes</a>
+      <a href="#what">2. What a modern AI scheduler actually controls</a>
+      <a href="#layers">3. The scheduler now spans multiple layers</a>
+      <a href="#economics">4. Policy quality changes unit economics</a>
+      <a href="#failure">5. Scheduling is also reliability engineering</a>
+      <a href="#moat">6. Why this is where durable moat accumulates</a>
+    </nav>
+
+    <section id="why">
+      <h2>1. Why hardware alone no longer decides outcomes</h2>
+      <p class="lead">
+        There was a long period when buying better boxes solved most performance problems. Faster CPUs, more GPUs,
+        more DRAM, better links, and a solid software stack were enough to get meaningful gains. AI systems have
+        moved beyond that simplification. The hard part now is often not what hardware exists, but how intelligently
+        the platform maps work onto that hardware over time.
+      </p>
+      <p>
+        Consider what modern infrastructure has to juggle: prompt ingestion, decode loops, mixture-of-experts routing,
+        multi-tenant fairness, topology-aware placement, checkpointing, storage staging, thermal headroom, and power
+        constraints. Each of those dimensions creates choices. Once a system is choice-rich, the scheduler stops being
+        a utility. It becomes the primary mechanism that converts resources into useful throughput.
+      </p>
+      <div class="callout">
+        Hardware defines the menu. The scheduler decides whether dinner is efficient, stable, and profitable.
+      </div>
+      <p>
+        This is why two fleets built from similar accelerators can behave very differently. One fleet burns time on
+        poor placement, cold-state fetches, unstable batching, and needless contention. Another appears “faster”
+        because its control plane prevents expensive mistakes before they happen.
+      </p>
+    </section>
+
+    <section id="what">
+      <h2>2. What a modern AI scheduler actually controls</h2>
+      <p>
+        Calling it a “scheduler” almost understates the job. In classical systems language, scheduling evokes CPU time
+        slices or container placement. In AI infrastructure, the scheduler is closer to a policy engine spanning
+        admission, data placement, execution geometry, and operational risk.
+      </p>
+      <div class="grid-3">
+        <div class="mini-card">
+          <b>Admission</b>
+          <p>Which requests enter now, which wait, which are shaped, and which are redirected to protect latency and fairness.</p>
+        </div>
+        <div class="mini-card">
+          <b>Placement</b>
+          <p>Which accelerator, node, rack, or fabric path sees the work, based on topology, state locality, and thermal or power condition.</p>
+        </div>
+        <div class="mini-card">
+          <b>State policy</b>
+          <p>Which weights, KV blocks, activations, and checkpoints should stay hot, move early, spill, or replicate.</p>
+        </div>
+      </div>
+      <p>
+        Once you add these together, it becomes obvious why scheduling quality now dominates the practical outcome.
+        The scheduler is deciding not only whether work runs, but whether work runs with the right state, over the
+        right path, inside the right thermal and memory envelope.
+      </p>
+
+      <div class="diagram">
+        <svg viewBox="0 0 920 320" aria-label="Scheduler control plane diagram">
+          <rect x="335" y="28" width="250" height="80" rx="20" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2.5"/>
+          <text x="460" y="62" text-anchor="middle" font-size="20" font-weight="700" fill="#1e3a8a">Policy Engine</text>
+          <text x="460" y="88" text-anchor="middle" font-size="14" fill="#1e3a8a">admission · placement · state · routing</text>
+
+          <rect x="60" y="160" width="180" height="78" rx="18" fill="#eef4ff" stroke="#1d4ed8" stroke-width="2"/>
+          <text x="150" y="193" text-anchor="middle" font-size="18" font-weight="700" fill="#1e3a8a">Ingress</text>
+          <text x="150" y="217" text-anchor="middle" font-size="14" fill="#1e3a8a">traffic + tenant mix</text>
+
+          <rect x="275" y="160" width="180" height="78" rx="18" fill="#ecfeff" stroke="#0f766e" stroke-width="2"/>
+          <text x="365" y="193" text-anchor="middle" font-size="18" font-weight="700" fill="#115e59">Memory State</text>
+          <text x="365" y="217" text-anchor="middle" font-size="14" fill="#115e59">hot weights + KV locality</text>
+
+          <rect x="490" y="160" width="180" height="78" rx="18" fill="#fdf3dc" stroke="#a16207" stroke-width="2"/>
+          <text x="580" y="193" text-anchor="middle" font-size="18" font-weight="700" fill="#92400e">Fabric Paths</text>
+          <text x="580" y="217" text-anchor="middle" font-size="14" fill="#92400e">rack + path + pool choice</text>
+
+          <rect x="705" y="160" width="160" height="78" rx="18" fill="#f3f4f6" stroke="#475569" stroke-width="2"/>
+          <text x="785" y="193" text-anchor="middle" font-size="18" font-weight="700" fill="#334155">Fleet Risk</text>
+          <text x="785" y="217" text-anchor="middle" font-size="14" fill="#334155">thermal + power + health</text>
+
+          <path d="M460 108 C460 130, 150 128, 150 160" stroke="#1d4ed8" stroke-width="4" fill="none"/>
+          <path d="M460 108 C460 132, 365 130, 365 160" stroke="#0f766e" stroke-width="4" fill="none"/>
+          <path d="M460 108 C460 132, 580 130, 580 160" stroke="#a16207" stroke-width="4" fill="none"/>
+          <path d="M460 108 C460 132, 785 130, 785 160" stroke="#475569" stroke-width="4" fill="none"/>
+
+          <path d="M240 199 C260 199, 255 266, 365 266" stroke="#1d4ed8" stroke-dasharray="8 6" stroke-width="3" fill="none"/>
+          <path d="M455 199 C475 199, 470 266, 580 266" stroke="#0f766e" stroke-dasharray="8 6" stroke-width="3" fill="none"/>
+          <path d="M670 199 C690 199, 684 266, 785 266" stroke="#a16207" stroke-dasharray="8 6" stroke-width="3" fill="none"/>
+          <text x="560" y="294" text-anchor="middle" font-size="15" fill="#475569">Feedback loops refine future placement and admission decisions</text>
+        </svg>
+      </div>
+      <p class="caption">The AI scheduler has become a cross-layer control plane, not merely an execution queue.</p>
+    </section>
+
+    <section id="layers">
+      <h2>3. The scheduler now spans multiple layers</h2>
+      <p>
+        Older infrastructure could often treat layers independently. The cluster scheduler handled machines. The
+        runtime handled operators. Storage handled data. Fabric handled paths. That decomposition breaks under AI
+        workloads because these decisions are tightly coupled. A model shard placed on the wrong node becomes a
+        fabric problem. A fabric problem becomes a latency problem. A latency problem becomes a batching problem. A
+        batching problem becomes a GPU efficiency problem.
+      </p>
+      <p>
+        In other words, the scheduler must think across the seams:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>Old view</th>
+            <th>What the scheduler must know now</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Cluster</td>
+            <td>Which node is free?</td>
+            <td>Which node is free <em>and</em> topologically appropriate for the current state and workload phase?</td>
+          </tr>
+          <tr>
+            <td>Runtime</td>
+            <td>Which kernel launches next?</td>
+            <td>Which execution path minimizes waiting, misses, and inter-phase interference?</td>
+          </tr>
+          <tr>
+            <td>Memory</td>
+            <td>What fits?</td>
+            <td>What should remain resident, replicate, prefetch, or spill based on future value?</td>
+          </tr>
+          <tr>
+            <td>Operations</td>
+            <td>Is the node alive?</td>
+            <td>Is the node healthy enough for this class of work under current thermal, power, and reliability conditions?</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout alt">
+        Once layers couple this tightly, static rules lose value. Policy engines and feedback-aware schedulers gain it.
+      </div>
+    </section>
+
+    <section id="economics">
+      <h2>4. Policy quality changes unit economics</h2>
+      <p>
+        One reason this shift matters commercially is that scheduler quality changes gross margins. Better policy
+        reduces overprovisioning, improves useful throughput, lowers tail-induced cancellation and retry costs, and
+        keeps more work on the fastest or cheapest viable path.
+      </p>
+      <div class="grid-2">
+        <div class="mini-card">
+          <b>Without strong scheduling</b>
+          <p>You buy capacity to absorb policy mistakes: idle accelerators, excessive replicas, defensive headroom, and noisy multi-tenant jitter.</p>
+        </div>
+        <div class="mini-card">
+          <b>With strong scheduling</b>
+          <p>You buy less panic capacity because the system avoids cold-state placement, unstable batching, and pathologically bad routing decisions.</p>
+        </div>
+      </div>
+      <p>
+        This is why the best AI platforms increasingly look differentiated even when they rent similar hardware. Their
+        scheduler is effectively compressing waste out of the system. Better control means fewer expensive mistakes per
+        unit of traffic, and that compounds quickly at scale.
+      </p>
+    </section>
+
+    <section id="failure">
+      <h2>5. Scheduling is also reliability engineering</h2>
+      <p>
+        In AI clusters, failures are often not binary. Clocks dip, cooling degrades, links inflate in latency, storage
+        paths stall, and some nodes remain technically alive while becoming operationally harmful. The scheduler is
+        the first layer that can convert those gray states into bounded local slowdown instead of global pain.
+      </p>
+      <div class="callout warn">
+        A modern scheduler is not just an efficiency engine. It is a containment engine for partial degradation.
+      </div>
+      <p>
+        That means it needs to reason about admissibility, not just availability. A node can be available but not
+        appropriate for synchronization-sensitive work. A path can be up but not appropriate for decode traffic with
+        tight tail constraints. This is another reason policy quality becomes product quality: the control plane
+        decides whether bad local conditions remain local.
+      </p>
+    </section>
+
+    <section id="moat">
+      <h2>6. Why this is where durable moat accumulates</h2>
+      <p>
+        Hardware advantages compress. Interfaces standardize. Many software abstractions become table stakes. But a
+        scheduler improves with every observed workload, every incident, every topology lesson, and every policy loop
+        that gets translated into code. That creates compounding advantage because the system learns where waste and
+        fragility really come from.
+      </p>
+      <div class="callout">
+        In AI infrastructure, the scheduler is where product judgment becomes executable systems behavior.
+      </div>
+      <p>
+        That is why the deepest infrastructure companies are becoming policy companies. They are not just exposing
+        hardware. They are encoding decisions about where to place, what to protect, when to defer, when to reroute,
+        and how to convert complex state into useful work. The silicon still matters. But the scheduler increasingly
+        decides who captures its value.
+      </p>
+      <p>
+        The long arc here is clear: the next major moats in AI infrastructure will belong to teams that treat
+        orchestration as a first-class systems discipline. Not a sidecar. Not a set of heuristics. The product.
+      </p>
+    </section>
+
+    <section id="references">
+      <h2>References and further reading</h2>
+      <ul class="refs">
+        <li>Classical operating-systems scheduling literature and multiprocessor placement work.</li>
+        <li>Kubernetes scheduling and cluster orchestration design materials.</li>
+        <li>NCCL, CUDA, and topology-aware collective communication engineering references.</li>
+        <li>vLLM, TensorRT-LLM, and large-model serving systems papers discussing batching, placement, and KV management.</li>
+        <li>Research and production writing on cluster gray failures, partial degradation, and tail-latency containment.</li>
+        <li>CXL, GPUDirect, and memory-tier orchestration materials relevant to placement and data movement policy.</li>
+        <li>Distributed-systems work on useful throughput, tail tolerance, and cross-layer feedback control.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell">
+      <div class="small">MANISH AI · Essays · April 2026 · <a href="/writings.html">← All writings</a></div>
+      <div class="small">© 2026 <a href="https://github.com/manishklach">MANISH AI</a>. All rights reserved.</div>
+    </div>
+  </footer>
+</body>
+</html>
