@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="A technical essay on why power is becoming a first-class scheduling constraint in AI infrastructure, from rack envelopes and thermal state to runtime admission and placement." />
+  <title>Power Is Becoming a Scheduling Constraint | MANISH AI</title>
+  <style>
+    :root {
+      --bg: #f6f6f8;
+      --card: #ffffff;
+      --ink: #16181d;
+      --muted: #5b6370;
+      --line: #d6dce8;
+      --accent: #2563eb;
+      --accent-soft: #edf4ff;
+      --accent-2: #b45309;
+      --accent-2-soft: #fff5e8;
+      --teal: #0f766e;
+      --teal-soft: #e8f7f5;
+      --shadow: 0 22px 60px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(180, 83, 9, 0.08), transparent 28rem),
+        radial-gradient(circle at top right, rgba(37, 99, 235, 0.09), transparent 25rem),
+        var(--bg);
+      line-height: 1.7;
+    }
+    a { color: var(--accent); }
+    .page { max-width: 1120px; margin: 0 auto; padding: 32px 18px 72px; }
+    .site-top { position: sticky; top: 0; z-index: 120; backdrop-filter: blur(16px); background: rgba(246,246,248,0.86); border-bottom: 1px solid rgba(214,220,232,0.9); }
+    .shell { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+    .site-top .shell { min-height: 66px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+    .site-brand { text-decoration: none; color: #0f172a; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; font-size: 1rem; }
+    .site-links { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .site-link { padding: 7px 12px; border-radius: 999px; border: 1px solid rgba(15,23,42,0.1); background: rgba(255,255,255,0.8); color: var(--muted); font-weight: 600; font-size: 0.82rem; text-decoration: none; transition: opacity 0.2s ease; }
+    .site-brand:hover, .site-link:hover, .site-footer a:hover { opacity: 0.82; }
+    .hero {
+      background: linear-gradient(140deg, #111827 0%, #1d4ed8 52%, #b45309 100%);
+      color: white;
+      border-radius: 28px;
+      padding: 54px 44px;
+      box-shadow: 0 28px 80px rgba(17, 24, 39, 0.22);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -140px;
+      top: -120px;
+      width: 380px;
+      height: 380px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 8px 13px; border: 1px solid rgba(255,255,255,0.18); border-radius: 999px; background: rgba(255,255,255,0.1); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; margin-bottom: 20px; }
+    h1 { font-size: clamp(38px, 5.8vw, 66px); line-height: 0.98; letter-spacing: -0.05em; margin: 0 0 22px; max-width: 920px; }
+    .subtitle { font-size: clamp(18px, 2vw, 23px); max-width: 850px; color: #dbeafe; margin: 0; }
+    .hero-grid, .toc, .grid-2, .grid-3 { display: grid; gap: 16px; margin-top: 28px; }
+    .hero-grid, .grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .toc, .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .hero-card { border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.11); border-radius: 18px; padding: 18px; backdrop-filter: blur(10px); }
+    .hero-card b { display: block; margin-bottom: 6px; color: #bfdbfe; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .hero-card span { font-size: 18px; font-weight: 700; }
+    .toc { margin: 28px 0; }
+    .toc a { text-decoration: none; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px; box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05); font-weight: 700; }
+    section { background: var(--card); border: 1px solid var(--line); border-radius: 24px; padding: 34px; margin-top: 24px; box-shadow: var(--shadow); }
+    h2 { font-size: clamp(26px, 3.2vw, 40px); line-height: 1.12; letter-spacing: -0.035em; margin: 0 0 18px; }
+    h3 { font-size: 22px; margin: 28px 0 10px; letter-spacing: -0.02em; }
+    p { margin: 14px 0; }
+    .lead { font-size: 19px; color: #273447; }
+    .callout { border-left: 5px solid var(--accent); background: var(--accent-soft); padding: 20px 22px; border-radius: 18px; margin: 22px 0; font-size: 18px; font-weight: 650; }
+    .callout.alt { border-left-color: var(--teal); background: var(--teal-soft); }
+    .callout.warn { border-left-color: var(--accent-2); background: var(--accent-2-soft); }
+    .mini-card { background: #fbfdff; border: 1px solid var(--line); border-radius: 18px; padding: 18px; }
+    .mini-card b { display: block; margin-bottom: 8px; }
+    table { width: 100%; border-collapse: collapse; margin: 22px 0; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; font-size: 15px; }
+    th, td { padding: 14px 15px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+    th { background: #edf4ff; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #334155; }
+    tr:last-child td { border-bottom: 0; }
+    .diagram { background: #fafbfd; border: 1px solid var(--line); border-radius: 22px; padding: 22px; margin: 28px 0; overflow-x: auto; }
+    svg { width: 100%; height: auto; display: block; }
+    .caption { font-size: 13px; color: var(--muted); margin-top: -12px; margin-bottom: 22px; text-align: center; }
+    .refs li { margin: 10px 0; }
+    .site-footer { padding: 10px 0 64px; color: var(--muted); }
+    .site-footer .shell { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid var(--line); padding-top: 18px; }
+    .site-footer .small { font-size: 0.9rem; }
+    @media (max-width: 860px) { .hero { padding: 38px 24px; } .hero-grid, .toc, .grid-2, .grid-3 { grid-template-columns: 1fr; } section { padding: 24px; } .site-top .shell { min-height: 58px; padding: 0 18px; } }
+  </style>
+  <meta name="keywords" content="power scheduling AI, rack power constraint AI, thermal scheduling inference, power-aware scheduling AI infrastructure, useful throughput power budget, MANISH AI" />
+  <meta name="author" content="MANISH AI" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <meta name="color-scheme" content="light" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/power-is-becoming-a-scheduling-constraint.html" />
+  <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml" />
+  <link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json" />
+  <link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention" />
+  <link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Power Is Becoming a Scheduling Constraint | MANISH AI" />
+  <meta property="og:description" content="A technical essay on why power is becoming a first-class scheduling constraint in AI infrastructure, from rack envelopes and thermal state to runtime admission and placement." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/power-is-becoming-a-scheduling-constraint.html" />
+  <meta property="og:site_name" content="MANISH AI" />
+  <meta property="og:image" content="https://manishklach.github.io/og/power-is-becoming-a-scheduling-constraint.png" />
+  <meta property="og:image:alt" content="MANISH AI technical essay preview" />
+  <meta property="article:published_time" content="2026-04-25T00:00:00-07:00" />
+  <meta property="article:modified_time" content="2026-04-25T00:00:00-07:00" />
+  <meta property="article:section" content="Power and Runtime Systems" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Power Is Becoming a Scheduling Constraint | MANISH AI" />
+  <meta name="twitter:description" content="A technical essay on why power is becoming a first-class scheduling constraint in AI infrastructure, from rack envelopes and thermal state to runtime admission and placement." />
+  <meta name="twitter:image" content="https://manishklach.github.io/og/power-is-becoming-a-scheduling-constraint.png" />
+  <script type="application/ld+json">{
+    "@context":"https://schema.org",
+    "@type":"TechArticle",
+    "headline":"Power Is Becoming a Scheduling Constraint",
+    "description":"A technical essay on why power is becoming a first-class scheduling constraint in AI infrastructure, from rack envelopes and thermal state to runtime admission and placement.",
+    "url":"https://manishklach.github.io/writings/power-is-becoming-a-scheduling-constraint.html",
+    "image":"https://manishklach.github.io/og/power-is-becoming-a-scheduling-constraint.png",
+    "datePublished":"2026-04-25",
+    "dateModified":"2026-04-25",
+    "inLanguage":"en-US",
+    "author":{"@type":"Person","name":"MANISH AI","url":"https://github.com/manishklach"},
+    "publisher":{"@type":"Organization","name":"MANISH AI","url":"https://manishklach.github.io/"},
+    "mainEntityOfPage":{"@type":"WebPage","@id":"https://manishklach.github.io/writings/power-is-becoming-a-scheduling-constraint.html"},
+    "keywords":["power scheduling AI","rack power constraint AI","thermal scheduling inference","power-aware scheduling AI infrastructure"]
+  }</script>
+</head>
+<body>
+  <nav class="site-top" aria-label="Site navigation">
+    <div class="shell">
+      <a class="site-brand" href="/">MAN\SH AI</a>
+      <div class="site-links">
+        <a class="site-link" href="/writings.html">← All writings</a>
+        <a class="site-link" href="/">Home</a>
+      </div>
+    </div>
+  </nav>
+  <main class="page" data-pagefind-body>
+    <header class="hero">
+      <div class="eyebrow">Power · Thermals · Scheduling</div>
+      <h1>Power Is Becoming a Scheduling Constraint</h1>
+      <p class="subtitle">
+        AI infrastructure used to treat power as a provisioning problem handled before runtime. That separation is breaking.
+        As accelerators get denser and workloads more bursty, power and thermal headroom are becoming live inputs into admission,
+        placement, and orchestration decisions.
+      </p>
+      <div class="hero-grid">
+        <div class="hero-card"><b>Old view</b><span>Provision enough power, then schedule work</span></div>
+        <div class="hero-card"><b>New view</b><span>Power state changes what work is safe right now</span></div>
+        <div class="hero-card"><b>Implication</b><span>Runtime policy must understand electrical reality</span></div>
+      </div>
+    </header>
+    <nav class="toc" aria-label="Contents">
+      <a href="#why">1. Why power moved into the critical path</a>
+      <a href="#runtime">2. What runtime feels when power gets tight</a>
+      <a href="#gray">3. Power stress often arrives as a gray failure</a>
+      <a href="#policy">4. The scheduler now needs power policy</a>
+      <a href="#economics">5. Useful throughput beats nameplate throughput</a>
+      <a href="#future">6. The control plane is getting electrical</a>
+    </nav>
+
+    <section id="why">
+      <h2>1. Why power moved into the critical path</h2>
+      <p class="lead">
+        Older server fleets could often treat power as static infrastructure. If the rack had enough budget and cooling was
+        broadly adequate, software mostly ignored the electrical layer. Modern AI systems break that assumption because the
+        compute density, transient load behavior, and thermal sensitivity are all too high for runtime to remain blind.
+      </p>
+      <p>
+        Large accelerators do not consume power like calm, uniform appliances. Their demand moves with batch geometry,
+        communication windows, prefill/decode asymmetry, collective synchronization, and the interaction between memory-bound
+        and compute-bound phases. That means the electrical and thermal system is no longer just “capacity.” It is a live
+        operating surface with states the scheduler should care about.
+      </p>
+      <div class="callout">
+        A rack can be technically powered and still be in the wrong state for certain work. That is the same conceptual shift
+        we already made for networking and cooling. Power is joining that category.
+      </div>
+    </section>
+
+    <section id="runtime">
+      <h2>2. What runtime feels when power gets tight</h2>
+      <p>
+        The runtime almost never receives a simple message saying “power budget exceeded.” Instead it sees indirect consequences:
+        clocks dip, memory frequency behavior changes, thermal throttling becomes more likely, fan and pump responses lag load
+        transitions, or a node that was safe for one class of work becomes toxic for another.
+      </p>
+      <div class="diagram">
+        <svg viewBox="0 0 920 320" aria-label="Power to runtime consequences diagram">
+          <rect x="60" y="120" width="180" height="84" rx="18" fill="#fff5e8" stroke="#b45309" stroke-width="2"/>
+          <text x="150" y="154" text-anchor="middle" font-size="20" font-weight="700" fill="#92400e">Power State</text>
+          <text x="150" y="180" text-anchor="middle" font-size="14" fill="#92400e">rack budget · transient spikes</text>
+
+          <rect x="320" y="120" width="180" height="84" rx="18" fill="#e8f7f5" stroke="#0f766e" stroke-width="2"/>
+          <text x="410" y="154" text-anchor="middle" font-size="20" font-weight="700" fill="#115e59">Thermal / Clock Response</text>
+          <text x="410" y="180" text-anchor="middle" font-size="14" fill="#115e59">throttle risk · frequency sag</text>
+
+          <rect x="590" y="120" width="260" height="84" rx="18" fill="#eef4ff" stroke="#2563eb" stroke-width="2"/>
+          <text x="720" y="154" text-anchor="middle" font-size="20" font-weight="700" fill="#1d4ed8">Runtime Consequence</text>
+          <text x="720" y="180" text-anchor="middle" font-size="14" fill="#1d4ed8">slower collectives · unstable tails · bad placement decisions</text>
+
+          <path d="M240 162 L320 162" stroke="#b45309" stroke-width="4" fill="none"/>
+          <path d="M500 162 L590 162" stroke="#0f766e" stroke-width="4" fill="none"/>
+          <text x="455" y="282" text-anchor="middle" font-size="15" fill="#475569">Electrical headroom changes runtime quality before it produces a visible outage.</text>
+        </svg>
+      </div>
+      <p class="caption">The scheduler experiences power as changing admissibility and timing, not as an abstract facilities number.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>What changes electrically</th>
+            <th>What software sees</th>
+            <th>Why that matters</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Transient rack spikes</td>
+            <td>Short windows of reduced safe operating margin</td>
+            <td>Synchronization-heavy or latency-critical work becomes riskier</td>
+          </tr>
+          <tr>
+            <td>Thermal saturation after burst</td>
+            <td>Clock variability and slower sustained phases</td>
+            <td>Tails widen and collectives skew</td>
+          </tr>
+          <tr>
+            <td>Budget compression at cluster scale</td>
+            <td>Some nodes become worse candidates despite nominal availability</td>
+            <td>Placement quality depends on live power state</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="gray">
+      <h2>3. Power stress often arrives as a gray failure</h2>
+      <p>
+        One reason this matters is that power-related degradation is usually gray rather than binary. Nodes remain online.
+        GPUs still answer health checks. Links still pass traffic. But useful throughput begins to leak away because the system
+        is running inside a narrower electrical and thermal envelope than the workload assumes.
+      </p>
+      <div class="grid-2">
+        <div class="mini-card">
+          <b>Hard-failure mindset</b>
+          <p>Only react when a node dies, a breaker trips, or a component goes offline.</p>
+        </div>
+        <div class="mini-card">
+          <b>Gray-failure mindset</b>
+          <p>React when a resource is still alive but no longer trustworthy for this workload class under current power and thermal conditions.</p>
+        </div>
+      </div>
+      <p>
+        The crucial insight is that power-aware scheduling is partly a reliability discipline. It keeps local electrical
+        stress from becoming distributed performance collapse.
+      </p>
+      <div class="callout warn">
+        A node that is merely “alive” is not necessarily safe for the exact communication pattern, latency target, or batch profile you are about to send it.
+      </div>
+    </section>
+
+    <section id="policy">
+      <h2>4. The scheduler now needs power policy</h2>
+      <p>
+        Once power becomes a live constraint, several familiar scheduling questions change shape. Admission can no longer ask
+        only whether enough compute is free. Placement can no longer ask only which GPU is least busy. The runtime should also
+        ask whether the candidate resource has enough electrical and thermal headroom to complete the next phase without turning
+        into a variance amplifier.
+      </p>
+      <div class="grid-3">
+        <div class="mini-card">
+          <b>Admission</b>
+          <p>Throttle or defer work classes that would destabilize the current power envelope.</p>
+        </div>
+        <div class="mini-card">
+          <b>Placement</b>
+          <p>Prefer nodes whose live power and cooling state match the workload’s sensitivity to tail risk.</p>
+        </div>
+        <div class="mini-card">
+          <b>Shaping</b>
+          <p>Alter batch geometry, decode concurrency, or synchronization timing to avoid avoidable spikes.</p>
+        </div>
+      </div>
+      <p>
+        This is especially important in mixed fleets where some jobs are power-dense but latency-tolerant and others are
+        highly sensitive to jitter. Treating all tasks as interchangeable consumers of “GPU time” misses the fact that they
+        stress the electrical system very differently.
+      </p>
+    </section>
+
+    <section id="economics">
+      <h2>5. Useful throughput beats nameplate throughput</h2>
+      <p>
+        Power-aware scheduling matters economically because it changes the relationship between nameplate capacity and useful
+        output. A fleet may have enough theoretical FLOPs and enough theoretical rack power on paper, yet still lose money on
+        retries, cancellations, unstable tail behavior, or defensive overprovisioning because no one is coordinating the work
+        to respect the real envelope.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Without power-aware policy</th>
+            <th>Immediate effect</th>
+            <th>Economic consequence</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Run purely by occupancy</td>
+            <td>Send work into electrically fragile states</td>
+            <td>More throttling, retries, and wasted time-to-token</td>
+          </tr>
+          <tr>
+            <td>Ignore thermal recovery windows</td>
+            <td>Tail behavior worsens during repeated bursts</td>
+            <td>Need more idle headroom to preserve quality</td>
+          </tr>
+          <tr>
+            <td>Hide facilities data from runtime</td>
+            <td>Scheduler makes blindly optimistic choices</td>
+            <td>Nameplate capacity fails to convert into stable throughput</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout alt">
+        The goal is not to maximize instantaneous load at any cost. It is to maximize useful throughput per watt, per rack, and per unit of thermal headroom.
+      </div>
+    </section>
+
+    <section id="future">
+      <h2>6. The control plane is getting electrical</h2>
+      <p>
+        The broader pattern is clear: AI infrastructure keeps pulling previously “lower-level” realities into the control
+        plane. Memory locality became a scheduler problem. Topology became a scheduler problem. Cooling became a reliability
+        problem. Power is following the same path.
+      </p>
+      <p>
+        That does not mean every runtime needs to become a facilities dashboard. It means the orchestration layer needs the
+        right abstractions: admissibility states, power-pressure signals, thermal recovery hints, and policy loops that know
+        when brute-force utilization is the wrong objective.
+      </p>
+      <div class="callout">
+        The next generation of serious AI platforms will not treat electrical reality as background context. They will encode it into scheduling policy.
+      </div>
+      <p>
+        Once that happens, power stops being just an infrastructure bill and becomes what it really is in modern AI systems:
+        a first-class runtime constraint that decides whether the fleet delivers stable tokens or expensive noise.
+      </p>
+    </section>
+
+    <section id="references">
+      <h2>References and further reading</h2>
+      <ul class="refs">
+        <li>Public materials on AI rack power, transient load behavior, and 400V/800V DC data-center power evolution.</li>
+        <li>NVIDIA, AMD, and hyperscaler engineering writing on accelerator power delivery, thermals, and sustained performance behavior.</li>
+        <li>Research and production writing on gray failures and useful throughput in large AI clusters.</li>
+        <li>Work on power-aware scheduling, thermal-aware scheduling, and cluster-level control loops from classical HPC and modern AI infrastructure.</li>
+        <li>Vendor and facilities references on liquid cooling, thermal headroom, and the coupling between electrical and thermal constraints.</li>
+      </ul>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="shell">
+      <div class="small">MANISH AI · Essays · April 2026 · <a href="/writings.html">← All writings</a></div>
+      <div class="small">© 2026 <a href="https://github.com/manishklach">MANISH AI</a>. All rights reserved.</div>
+    </div>
+  </footer>
+</body>
+</html>

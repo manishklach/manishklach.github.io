@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="A technical essay on why Mixture-of-Experts inference is as much a networking and topology problem as it is a model problem, especially at serving scale." />
+  <title>MoE Is a Networking Problem Wearing a Model Costume | MANISH AI</title>
+  <style>
+    :root {
+      --bg: #f7f7f4;
+      --card: #fffdfa;
+      --ink: #171717;
+      --muted: #5f5b53;
+      --line: #ddd7c9;
+      --accent: #1d4ed8;
+      --accent-soft: #eef4ff;
+      --accent-2: #0f766e;
+      --accent-2-soft: #e8f7f5;
+      --warn: #a16207;
+      --warn-soft: #fdf3dc;
+      --shadow: 0 22px 60px rgba(39, 32, 18, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(29, 78, 216, 0.09), transparent 28rem),
+        radial-gradient(circle at top right, rgba(15, 118, 110, 0.09), transparent 24rem),
+        var(--bg);
+      line-height: 1.7;
+    }
+    a { color: var(--accent); }
+    .page { max-width: 1120px; margin: 0 auto; padding: 32px 18px 72px; }
+    .site-top { position: sticky; top: 0; z-index: 120; backdrop-filter: blur(16px); background: rgba(247,247,244,0.86); border-bottom: 1px solid rgba(221,215,201,0.9); }
+    .shell { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+    .site-top .shell { min-height: 66px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+    .site-brand { text-decoration: none; color: #111827; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; font-size: 1rem; }
+    .site-links { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .site-link { padding: 7px 12px; border-radius: 999px; border: 1px solid rgba(15,23,42,0.1); background: rgba(255,255,255,0.78); color: var(--muted); font-weight: 600; font-size: 0.82rem; text-decoration: none; transition: opacity 0.2s ease; }
+    .site-brand:hover, .site-link:hover, .site-footer a:hover { opacity: 0.82; }
+    .hero {
+      background: linear-gradient(140deg, #111827 0%, #1d4ed8 58%, #0f766e 100%);
+      color: white;
+      border-radius: 28px;
+      padding: 54px 44px;
+      box-shadow: 0 28px 80px rgba(17, 24, 39, 0.22);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+      background-size: 52px 52px;
+      mask-image: radial-gradient(circle at center, black 38%, transparent 92%);
+    }
+    .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 8px 13px; border: 1px solid rgba(255,255,255,0.18); border-radius: 999px; background: rgba(255,255,255,0.1); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; margin-bottom: 20px; }
+    h1 { font-size: clamp(38px, 5.8vw, 66px); line-height: 0.98; letter-spacing: -0.05em; margin: 0 0 22px; max-width: 930px; }
+    .subtitle { font-size: clamp(18px, 2vw, 23px); max-width: 860px; color: #dbeafe; margin: 0; }
+    .hero-grid, .toc, .grid-2, .grid-3 { display: grid; gap: 16px; margin-top: 28px; }
+    .hero-grid, .grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .toc, .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .hero-card, .mini-card, .toc a { border-radius: 18px; padding: 18px; }
+    .hero-card { border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.11); backdrop-filter: blur(10px); }
+    .hero-card b { display: block; margin-bottom: 6px; color: #bfdbfe; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .hero-card span { font-size: 18px; font-weight: 700; }
+    .toc { margin: 28px 0; }
+    .toc a { text-decoration: none; color: var(--ink); background: var(--card); border: 1px solid var(--line); box-shadow: 0 10px 28px rgba(39, 32, 18, 0.05); font-weight: 700; }
+    section { background: var(--card); border: 1px solid var(--line); border-radius: 24px; padding: 34px; margin-top: 24px; box-shadow: var(--shadow); }
+    h2 { font-size: clamp(26px, 3.2vw, 40px); line-height: 1.12; letter-spacing: -0.035em; margin: 0 0 18px; }
+    h3 { font-size: 22px; margin: 28px 0 10px; letter-spacing: -0.02em; }
+    p { margin: 14px 0; }
+    .lead { font-size: 19px; color: #2f3a48; }
+    .callout { border-left: 5px solid var(--accent); background: var(--accent-soft); padding: 20px 22px; border-radius: 18px; margin: 22px 0; font-size: 18px; font-weight: 650; }
+    .callout.alt { border-left-color: var(--accent-2); background: var(--accent-2-soft); }
+    .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+    .mini-card { background: #fff; border: 1px solid var(--line); }
+    .mini-card b { display: block; margin-bottom: 8px; }
+    table { width: 100%; border-collapse: collapse; margin: 22px 0; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; font-size: 15px; }
+    th, td { padding: 14px 15px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+    th { background: #f3f0e8; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #534f46; }
+    tr:last-child td { border-bottom: 0; }
+    .diagram { background: #fbfaf7; border: 1px solid var(--line); border-radius: 22px; padding: 22px; margin: 28px 0; overflow-x: auto; }
+    svg { width: 100%; height: auto; display: block; }
+    .caption { font-size: 13px; color: var(--muted); margin-top: -12px; margin-bottom: 22px; text-align: center; }
+    .refs li { margin: 10px 0; }
+    .site-footer { padding: 10px 0 64px; color: var(--muted); }
+    .site-footer .shell { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid var(--line); padding-top: 18px; }
+    .site-footer .small { font-size: 0.9rem; }
+    @media (max-width: 860px) { .hero { padding: 38px 24px; } .hero-grid, .toc, .grid-2, .grid-3 { grid-template-columns: 1fr; } section { padding: 24px; } .site-top .shell { min-height: 58px; padding: 0 18px; } }
+  </style>
+  <meta name="keywords" content="MoE networking problem, mixture of experts networking, expert routing network bottleneck, MoE topology, MoE inference transport, expert parallelism networking, MANISH AI" />
+  <meta name="author" content="MANISH AI" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <meta name="color-scheme" content="light" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/moe-is-a-networking-problem.html" />
+  <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml" />
+  <link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json" />
+  <link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention" />
+  <link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="MoE Is a Networking Problem Wearing a Model Costume | MANISH AI" />
+  <meta property="og:description" content="A technical essay on why Mixture-of-Experts inference is as much a networking and topology problem as it is a model problem, especially at serving scale." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/moe-is-a-networking-problem.html" />
+  <meta property="og:site_name" content="MANISH AI" />
+  <meta property="og:image" content="https://manishklach.github.io/og/moe-is-a-networking-problem.png" />
+  <meta property="og:image:alt" content="MANISH AI technical essay preview" />
+  <meta property="article:published_time" content="2026-04-25T00:00:00-07:00" />
+  <meta property="article:modified_time" content="2026-04-25T00:00:00-07:00" />
+  <meta property="article:section" content="AI Networking" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="MoE Is a Networking Problem Wearing a Model Costume | MANISH AI" />
+  <meta name="twitter:description" content="A technical essay on why Mixture-of-Experts inference is as much a networking and topology problem as it is a model problem, especially at serving scale." />
+  <meta name="twitter:image" content="https://manishklach.github.io/og/moe-is-a-networking-problem.png" />
+  <script type="application/ld+json">{
+    "@context":"https://schema.org",
+    "@type":"TechArticle",
+    "headline":"MoE Is a Networking Problem Wearing a Model Costume",
+    "description":"A technical essay on why Mixture-of-Experts inference is as much a networking and topology problem as it is a model problem, especially at serving scale.",
+    "url":"https://manishklach.github.io/writings/moe-is-a-networking-problem.html",
+    "image":"https://manishklach.github.io/og/moe-is-a-networking-problem.png",
+    "datePublished":"2026-04-25",
+    "dateModified":"2026-04-25",
+    "inLanguage":"en-US",
+    "author":{"@type":"Person","name":"MANISH AI","url":"https://github.com/manishklach"},
+    "publisher":{"@type":"Organization","name":"MANISH AI","url":"https://manishklach.github.io/"},
+    "mainEntityOfPage":{"@type":"WebPage","@id":"https://manishklach.github.io/writings/moe-is-a-networking-problem.html"},
+    "keywords":["MoE networking problem","mixture of experts networking","expert routing network bottleneck","MoE topology","expert parallelism networking"]
+  }</script>
+</head>
+<body>
+  <nav class="site-top" aria-label="Site navigation">
+    <div class="shell">
+      <a class="site-brand" href="/">MAN\SH AI</a>
+      <div class="site-links">
+        <a class="site-link" href="/writings.html">← All writings</a>
+        <a class="site-link" href="/">Home</a>
+      </div>
+    </div>
+  </nav>
+  <main class="page" data-pagefind-body>
+    <header class="hero">
+      <div class="eyebrow">MoE · Networking · Topology</div>
+      <h1>MoE Is a Networking Problem Wearing a Model Costume</h1>
+      <p class="subtitle">
+        Mixture-of-Experts models are often sold as a compute-efficiency story: sparse activation, more parameters,
+        lower FLOPs per token. That story is not wrong. It is just incomplete. At serving scale, the real fight is
+        often about where experts live, how routing fans out, and how much transport chaos the system can afford per token.
+      </p>
+      <div class="hero-grid">
+        <div class="hero-card"><b>Model view</b><span>Experts reduce active compute</span></div>
+        <div class="hero-card"><b>Systems view</b><span>Routing explodes transport choices</span></div>
+        <div class="hero-card"><b>Real bottleneck</b><span>Fabric locality and queue stability</span></div>
+      </div>
+    </header>
+    <nav class="toc" aria-label="Contents">
+      <a href="#thesis">1. Why the model story is incomplete</a>
+      <a href="#path">2. What a token really does in MoE</a>
+      <a href="#topology">3. Topology becomes model quality infrastructure</a>
+      <a href="#failure">4. How MoE systems fail in practice</a>
+      <a href="#scheduler">5. Why scheduling and placement dominate</a>
+      <a href="#future">6. The next MoE moat is systems</a>
+    </nav>
+
+    <section id="thesis">
+      <h2>1. Why the model story is incomplete</h2>
+      <p class="lead">
+        The clean model narrative says a router picks a few experts, so only a fraction of the parameters execute for
+        each token. That is the mathematical sparsity win. But after routing decides which experts are needed, the system
+        still has to find those experts, move the activations, absorb burstiness, and return the results in time for the
+        next layer. That is no longer a pure model problem. It is a transport problem.
+      </p>
+      <p>
+        Dense transformers largely keep the token on one relatively predictable path through a stack of layers. MoE
+        turns each layer into a potential traffic shaper. A token can suddenly need compute on different devices or
+        nodes depending on the router’s output. Even when expert parallelism is engineered carefully, the serving path
+        is still far more topology-sensitive than the usual benchmark framing suggests.
+      </p>
+      <div class="callout">
+        Sparse compute does not mean sparse systems cost. In many MoE deployments, the compute savings show up only
+        after the network, queues, and memory paths stop eating them.
+      </div>
+    </section>
+
+    <section id="path">
+      <h2>2. What a token really does in MoE</h2>
+      <p>
+        A token in an MoE layer does not simply “pick two experts.” It usually triggers a sequence: router logits are
+        computed, top-k experts are selected, activations are bucketed, those buckets are dispatched to where experts live,
+        the experts process them, partial outputs are gathered back, and then the next layer begins. Each stage has its
+        own queueing, batching, and locality implications.
+      </p>
+      <div class="diagram">
+        <svg viewBox="0 0 920 320" aria-label="MoE token flow diagram">
+          <rect x="42" y="120" width="120" height="76" rx="18" fill="#eef4ff" stroke="#1d4ed8" stroke-width="2"/>
+          <text x="102" y="154" text-anchor="middle" font-size="18" font-weight="700" fill="#1d4ed8">Token</text>
+          <text x="102" y="178" text-anchor="middle" font-size="14" fill="#1d4ed8">arrives</text>
+
+          <rect x="208" y="110" width="150" height="96" rx="20" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2"/>
+          <text x="283" y="146" text-anchor="middle" font-size="18" font-weight="700" fill="#1e3a8a">Router</text>
+          <text x="283" y="170" text-anchor="middle" font-size="14" fill="#1e3a8a">scores experts</text>
+          <text x="283" y="190" text-anchor="middle" font-size="14" fill="#1e3a8a">creates traffic pattern</text>
+
+          <rect x="408" y="110" width="160" height="96" rx="20" fill="#e8f7f5" stroke="#0f766e" stroke-width="2"/>
+          <text x="488" y="146" text-anchor="middle" font-size="18" font-weight="700" fill="#115e59">Dispatch</text>
+          <text x="488" y="170" text-anchor="middle" font-size="14" fill="#115e59">bucket + shuffle activations</text>
+          <text x="488" y="190" text-anchor="middle" font-size="14" fill="#115e59">across local or remote paths</text>
+
+          <rect x="618" y="92" width="240" height="132" rx="22" fill="#fff5e8" stroke="#a16207" stroke-width="2"/>
+          <text x="738" y="126" text-anchor="middle" font-size="20" font-weight="700" fill="#92400e">Experts</text>
+          <text x="738" y="152" text-anchor="middle" font-size="14" fill="#92400e">different devices · racks · pools</text>
+          <text x="738" y="174" text-anchor="middle" font-size="14" fill="#92400e">process uneven routed demand</text>
+          <text x="738" y="196" text-anchor="middle" font-size="14" fill="#92400e">send outputs back for combine</text>
+
+          <path d="M162 158 L208 158" stroke="#1d4ed8" stroke-width="4" fill="none"/>
+          <path d="M358 158 L408 158" stroke="#0f766e" stroke-width="4" fill="none"/>
+          <path d="M568 158 L618 158" stroke="#a16207" stroke-width="4" fill="none"/>
+          <text x="460" y="282" text-anchor="middle" font-size="15" fill="#5f5b53">MoE changes each layer into a routing event with real network consequences.</text>
+        </svg>
+      </div>
+      <p class="caption">The router’s mathematical decision becomes a physical movement problem almost immediately.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Stage</th>
+            <th>Model framing</th>
+            <th>Systems framing</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Routing</td>
+            <td>Pick top-k experts</td>
+            <td>Create a live traffic matrix</td>
+          </tr>
+          <tr>
+            <td>Dispatch</td>
+            <td>Send activations</td>
+            <td>Exercise fabric, buffers, and queueing policy</td>
+          </tr>
+          <tr>
+            <td>Expert execution</td>
+            <td>Run sparse MLPs</td>
+            <td>Absorb highly uneven arrivals on shared hardware</td>
+          </tr>
+          <tr>
+            <td>Combine</td>
+            <td>Gather outputs</td>
+            <td>Pay synchronization cost before forward progress continues</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="topology">
+      <h2>3. Topology becomes model quality infrastructure</h2>
+      <p>
+        Once expert selection becomes a traffic pattern, the placement of experts starts determining whether the model
+        feels elegant or expensive. If frequently co-selected experts live on the same node or at least behind clean local
+        links, the system may keep much of the MoE gain. If the hot expert pairs span racks or force repeated cross-pool
+        exchange, the model becomes a fabric tax generator.
+      </p>
+      <div class="grid-2">
+        <div class="mini-card">
+          <b>Good topology</b>
+          <p>Popular expert pairs are physically close, routing buckets stay local more often, and the tail cost of dispatch stays bounded.</p>
+        </div>
+        <div class="mini-card">
+          <b>Bad topology</b>
+          <p>Routers keep creating remote fan-out, link contention grows, and each layer injects another transport bubble into the token path.</p>
+        </div>
+      </div>
+      <p>
+        That is why MoE evaluation needs a systems lens. “Quality per FLOP” is not enough. The model may be extremely
+        efficient in abstract compute terms while still being operationally awkward because routing locality does not map
+        well to real hardware partitions.
+      </p>
+      <div class="callout alt">
+        In dense models, topology is often a second-order deployment choice. In MoE, topology is part of the effective architecture.
+      </div>
+    </section>
+
+    <section id="failure">
+      <h2>4. How MoE systems fail in practice</h2>
+      <p>
+        MoE failures rarely present as a clean “network outage.” They often show up as subtle underdelivery: GPUs look
+        moderately busy but useful throughput is disappointing, tails inflate during routing bursts, expert hot spots form,
+        and background synchronization seems to become mysteriously expensive.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Failure pattern</th>
+            <th>Surface symptom</th>
+            <th>Underlying cause</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Expert hot spots</td>
+            <td>Some experts saturate while others sit idle</td>
+            <td>Router skew plus uneven placement</td>
+          </tr>
+          <tr>
+            <td>Tail spikes on dispatch</td>
+            <td>p99 grows even though average compute is fine</td>
+            <td>Remote fan-out and queueing on the fabric</td>
+          </tr>
+          <tr>
+            <td>Poor scale-up efficiency</td>
+            <td>Adding devices helps less than expected</td>
+            <td>More experts create more traffic seams rather than more usable local capacity</td>
+          </tr>
+          <tr>
+            <td>Batch instability</td>
+            <td>Throughput swings from one interval to the next</td>
+            <td>Routing bursts interact badly with network and expert queue state</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        The common theme is that the router creates work the network must absorb immediately. If the transport side is not
+        designed to handle that burstiness, the model’s theoretical sparsity win gets converted into an operational variance problem.
+      </p>
+      <div class="callout warn">
+        Many MoE systems do not die because expert math is too expensive. They underperform because the network cannot turn the router’s decisions into low-variance physical movement.
+      </div>
+    </section>
+
+    <section id="scheduler">
+      <h2>5. Why scheduling and placement dominate</h2>
+      <p>
+        Once MoE is seen as a networking problem, the natural control surfaces shift. The key questions become:
+        where experts are placed, which requests are co-batched, how routing skew is absorbed, when to replicate or pin
+        certain experts, and which traffic classes should be isolated rather than allowed to poison each other’s tails.
+      </p>
+      <div class="grid-3">
+        <div class="mini-card">
+          <b>Placement policy</b>
+          <p>Group commonly co-selected experts behind cleaner paths and avoid remote seams for hot expert pairs.</p>
+        </div>
+        <div class="mini-card">
+          <b>Admission policy</b>
+          <p>Do not let high-skew or long-context traffic classes destabilize latency-sensitive routes.</p>
+        </div>
+        <div class="mini-card">
+          <b>Replication policy</b>
+          <p>Strategically duplicate experts where doing so reduces network tax more than it increases memory cost.</p>
+        </div>
+      </div>
+      <p>
+        This is also where dense and MoE infrastructure start to diverge strategically. Dense systems are mostly trying
+        to keep a predictable forward pass fed. MoE systems are trying to turn a live routing graph into something that
+        still looks stable enough to schedule. That requires policy over topology, not just more bandwidth.
+      </p>
+    </section>
+
+    <section id="future">
+      <h2>6. The next MoE moat is systems</h2>
+      <p>
+        The long-term implication is that MoE advantage will increasingly belong to teams that can make routing legible
+        to the system. Better router regularization helps, but so do topology-aware training decisions, expert placement
+        heuristics, locality-preserving schedulers, and runtime feedback loops that know when the model is generating more
+        transport pain than the current fleet can safely absorb.
+      </p>
+      <p>
+        That is why the future of MoE is not just a better router or a better expert architecture. It is better systems
+        for keeping expert traffic bounded, local when possible, and operationally predictable when not.
+      </p>
+      <div class="callout">
+        MoE is still a model innovation. But the next durable advantage will come from the teams that treat expert routing
+        as a first-class network, topology, and queueing problem rather than a side effect of sparse compute.
+      </div>
+      <p>
+        Put differently: the model may wear the costume, but the fabric is doing much of the hard labor underneath.
+      </p>
+    </section>
+
+    <section id="references">
+      <h2>References and further reading</h2>
+      <ul class="refs">
+        <li>Foundational Mixture-of-Experts papers including Switch Transformer and later sparse expert-routing systems.</li>
+        <li>Public engineering work on expert parallelism, all-to-all communication, and serving-time routing efficiency.</li>
+        <li>NCCL and collective communication references for understanding shuffle and synchronization behavior.</li>
+        <li>Topology-aware scheduling and AI cluster networking literature relevant to expert placement and burst control.</li>
+        <li>Serving-system work on queueing, tail latency, and multi-tenant interference in modern inference platforms.</li>
+      </ul>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="shell">
+      <div class="small">MANISH AI · Essays · April 2026 · <a href="/writings.html">← All writings</a></div>
+      <div class="small">© 2026 <a href="https://github.com/manishklach">MANISH AI</a>. All rights reserved.</div>
+    </div>
+  </footer>
+</body>
+</html>
