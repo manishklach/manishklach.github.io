@@ -408,6 +408,23 @@
         naive scheduler may send it to the “freest” accelerator, only to pay for cross-node state movement, extra
         queueing, and a worse tail. The right decision is a systems decision, not a scalar utilization decision.
       </p>
+      <p>
+        The same pattern appears in training, just with different nouns. The “least busy” node may be attached to a
+        congested storage path, may sit behind a noisier fabric segment for collective communication, or may be in a
+        thermal state that causes clocks to sag precisely when the next synchronization window hits. A scheduler that
+        sees only occupancy numbers will miss the fact that the next few seconds of work are about to run through a
+        far more expensive path than the dashboard suggests.
+      </p>
+      <div class="grid-2">
+        <div class="mini-card">
+          <b>What a shallow scheduler sees</b>
+          <p>GPU utilization, free memory, queue depth, and a coarse notion of node liveness.</p>
+        </div>
+        <div class="mini-card">
+          <b>What a serious scheduler must see</b>
+          <p>State locality, retry pressure, path cleanliness, tenant mix, thermal headroom, and the likely next phase of the workload.</p>
+        </div>
+      </div>
 
       <div class="diagram">
         <svg viewBox="0 0 920 320" aria-label="Scheduler control plane diagram">
@@ -498,6 +515,14 @@
         the placement layer quietly worsens another. That is why mature AI systems increasingly consolidate decisions
         into a more explicit policy model with shared objectives instead of isolated if-else islands.
       </p>
+      <p>
+        A common failure pattern is that every local rule looks individually sensible. Admission says “protect p95.”
+        Placement says “fill the least loaded node.” Residency says “evict the coldest object.” Retry logic says
+        “fail open if possible.” None of those are obviously wrong in isolation. Together they can produce a system
+        that repeatedly chooses low-load but cold-state nodes, amplifies misses, then retries into even noisier
+        conditions. The scheduler becomes powerful when it stops optimizing isolated micro-metrics and starts
+        minimizing cross-layer damage.
+      </p>
     </section>
 
     <section id="economics">
@@ -543,6 +568,24 @@
           </tr>
         </tbody>
       </table>
+      <h3>Where the money actually goes</h3>
+      <p>
+        This is worth making concrete. Weak scheduling shows up as hidden infrastructure tax in at least four places:
+        you keep excess hot replicas because placement is unreliable, you leave idle headroom because tails are too
+        volatile to run close to the line, you absorb retries and cancellations because latency classes interfere, and
+        you buy extra fabric or memory bandwidth to survive avoidable movement. None of those costs appear on a slide
+        labeled “scheduler,” but they are often scheduler costs in disguise.
+      </p>
+      <div class="grid-2">
+        <div class="mini-card">
+          <b>Waste source</b>
+          <p>Cold-state placement, noisy retries, poor path choice, panic replicas, and conservative fleet headroom.</p>
+        </div>
+        <div class="mini-card">
+          <b>What strong policy changes</b>
+          <p>More requests complete on the first useful path, with fewer duplicate bytes moved and fewer expensive fallback decisions.</p>
+        </div>
+      </div>
       <p>
         This is why the best AI platforms increasingly look differentiated even when they rent similar hardware. Their
         scheduler is effectively compressing waste out of the system. Better control means fewer expensive mistakes per
@@ -572,6 +615,13 @@
         increasingly has to ask, “Is this resource useful for this exact workload right now?” Those are not the same
         question, and the scheduler is where the distinction becomes operational.
       </p>
+      <p>
+        That distinction matters because many of the worst incidents are not outright outages. They are half-failures:
+        a rack that is technically up but now injects extra collective latency, a storage backend that still accepts
+        writes but stretches checkpoint completion, or a GPU that remains online while clock variability makes it toxic
+        to synchronization-heavy work. A good scheduler turns those gray states into degraded admissibility classes
+        before they become cluster-wide waste multipliers.
+      </p>
     </section>
 
     <section id="moat">
@@ -591,6 +641,13 @@
         which request classes are incompatible, which topologies are fragile, which objects deserve protection, and
         which control loops should trigger earlier. That knowledge tends to be local, empirical, and difficult to copy
         cleanly from outside.
+      </p>
+      <p>
+        This is also why infrastructure companies that look similar from the outside often feel very different in
+        practice. One platform has encoded years of “never route this class through that path under these thermal
+        conditions” or “never split these tenants across that fabric seam during decode peaks.” The other platform may
+        have the same accelerators but fewer of those scars translated into software. What users perceive as platform
+        maturity is frequently accumulated scheduler judgment.
       </p>
       <p>
         That is why the deepest infrastructure companies are becoming policy companies. They are not just exposing

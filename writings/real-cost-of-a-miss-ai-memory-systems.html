@@ -502,6 +502,12 @@
         be more revealing than the object itself. A moderately important object fetched locally from HBM is one kind of
         event. The same object fetched across a busy fabric or from a spilled tier is a very different event.
       </p>
+      <p>
+        That framing is useful operationally because it turns diagnosis away from generic “cache pressure” language
+        and toward path accounting. Which links lit up? Which queues extended? Which retry loops appeared after the
+        first miss? Once teams instrument the path, they usually discover that the miss itself is only the opening
+        event; the real damage comes from how many other requests are forced to share the refill path afterward.
+      </p>
     </section>
 
     <section id="economics">
@@ -536,6 +542,16 @@
         This is why “bytes moved per token” is such a useful mental model. It captures something FLOPs alone cannot:
         how much logistical work the machine must do to sustain each output token. Misses inflate that logistics tax.
       </p>
+      <div class="grid-2">
+        <div class="mini-card">
+          <b>Healthy path</b>
+          <p>Load hot state once, reuse it across many decode steps, and keep the amortized transport cost close to zero.</p>
+        </div>
+        <div class="mini-card">
+          <b>Miss-heavy path</b>
+          <p>Keep repurchasing the same bytes through HBM, host, or fabric paths until the request behaves like a transport workload with a little compute attached.</p>
+        </div>
+      </div>
       <div class="callout warn">
         If a system keeps paying to move the same hot state repeatedly, it is not suffering a compute problem. It is
         suffering a residency and orchestration problem.
@@ -561,6 +577,13 @@
         latency-critical, and some has shared value across many requests. Systems that treat all objects as generic
         lines or pages end up paying preventable misses. Systems that distinguish object classes can make better
         protection and demotion choices before pain appears.
+      </p>
+      <p>
+        That is especially true in long-context serving and expert-routed systems. A shared-prefix KV block may look
+        cold if one request just paused, yet it may be seconds away from being reused by many decode continuations. An
+        expert weight subset may appear niche in the aggregate, while being the exact object the next routing burst is
+        likely to demand. Generic recency logic has no natural way to see those futures. Residency policy has to be
+        informed by workload semantics, not just by the last touch timestamp.
       </p>
       <div class="diagram">
         <svg viewBox="0 0 920 280" aria-label="Miss prevention policy diagram">
@@ -612,6 +635,44 @@
           <p>Queue isolation and class-aware policy stop one miss-heavy stream from poisoning latency for everything else.</p>
         </div>
       </div>
+      <h3>The amplification loop to watch</h3>
+      <p>
+        The most expensive misses usually do not stay local. One refill stretches a step, the stretched step extends a
+        batch or queue residency window, the longer queue creates interference for neighboring requests, and that
+        interference increases the chance that more state goes cold before it is needed again. This is why tail
+        latency and miss rate often rise together during bad serving periods: each is feeding the other.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Stage</th>
+            <th>Immediate effect</th>
+            <th>System effect</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Miss occurs</td>
+            <td>Needed bytes are not local</td>
+            <td>Refill path activates</td>
+          </tr>
+          <tr>
+            <td>Refill extends step time</td>
+            <td>Request holds compute and queue position longer</td>
+            <td>Neighbors wait behind slower progress</td>
+          </tr>
+          <tr>
+            <td>Queue grows</td>
+            <td>Tail latency and batching instability rise</td>
+            <td>More objects risk going cold before reuse</td>
+          </tr>
+          <tr>
+            <td>More objects go cold</td>
+            <td>Additional misses become more likely</td>
+            <td>System enters a miss-amplification regime</td>
+          </tr>
+        </tbody>
+      </table>
       <h3>What a better miss budget looks like</h3>
       <p>
         Great systems implicitly maintain a miss budget. They decide which misses are tolerable, which are acceptable

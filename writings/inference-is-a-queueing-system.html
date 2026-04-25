@@ -391,6 +391,11 @@
         recovery because the system is not draining from a clean state. It is draining from an inflated queue whose
         requests now carry more waiting time, more cancellation risk, and often more retries.
       </p>
+      <p>
+        This is also why “autoscaling saved us” is often a post-hoc illusion. New capacity can help, but capacity that
+        comes online after the queue has already inflated is arriving late to a system that is now spending part of its
+        effort servicing stale requests, retries, or traffic that is no longer evenly shaped. The queue carries memory.
+      </p>
 
       <div class="diagram">
         <svg viewBox="0 0 920 300" aria-label="Inference queueing diagram">
@@ -489,6 +494,11 @@
           </tr>
         </tbody>
       </table>
+      <p>
+        The deeper lesson is that you cannot reason about serving quality from tokens-per-second alone. You need a
+        mental model of how waiting time changes as traffic class, prompt mix, and memory behavior distort service time.
+        Otherwise the system always looks “fine” until it very much is not.
+      </p>
     </section>
 
     <section id="prefill-decode">
@@ -509,6 +519,16 @@
         each phase. A half-idle prefill pool and a decode pool with unstable queue growth are not interchangeable
         pathologies.
       </p>
+      <div class="grid-2">
+        <div class="mini-card">
+          <b>Prefill queues look lumpy</b>
+          <p>Large prompts create chunky work units. Admission and segmentation matter because a small number of long prompts can dominate a dispatch interval.</p>
+        </div>
+        <div class="mini-card">
+          <b>Decode queues look persistent</b>
+          <p>Each stream contributes many small iterations, so instability shows up as accumulated jitter rather than one giant stall event.</p>
+        </div>
+      </div>
       <h3>Why this breaks naive fleet planning</h3>
       <p>
         If prefill and decode are combined into one resource pool, the scheduler tends to trade one kind of pain for
@@ -594,6 +614,32 @@
         throughput-oriented generations, and make no sense at all for short interactive turns. Strong serving systems
         therefore let the window vary by traffic class instead of pretending one global batching rule is intelligent.
       </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Traffic class</th>
+            <th>What batching should optimize</th>
+            <th>What it should avoid</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Interactive chat</td>
+            <td>Predictable latency and bounded jitter</td>
+            <td>Long waiting windows for marginal device gain</td>
+          </tr>
+          <tr>
+            <td>Background summarization</td>
+            <td>Dense device efficiency</td>
+            <td>Overprotecting p99 at the cost of large idle gaps</td>
+          </tr>
+          <tr>
+            <td>Long-context analytics</td>
+            <td>Memory-aware grouping and stable decode pacing</td>
+            <td>Mixing wildly different prompt and output geometries blindly</td>
+          </tr>
+        </tbody>
+      </table>
     </section>
 
     <section id="memory">
@@ -640,6 +686,25 @@
         other requests. Under enough concurrency, the queue turns a local memory event into a fleet-level latency
         event. This is why long-context decode often feels stable until it suddenly does not.
       </p>
+      <div class="diagram">
+        <svg viewBox="0 0 920 260" aria-label="Tail explosion path diagram">
+          <rect x="30" y="96" width="135" height="60" rx="16" fill="#eef4ff" stroke="#2563eb" stroke-width="2"/>
+          <text x="97" y="131" text-anchor="middle" font-size="16" font-weight="700" fill="#1e3a8a">Local Miss</text>
+          <rect x="205" y="96" width="145" height="60" rx="16" fill="#ecfeff" stroke="#0f766e" stroke-width="2"/>
+          <text x="278" y="131" text-anchor="middle" font-size="16" font-weight="700" fill="#115e59">Longer Step</text>
+          <rect x="390" y="96" width="155" height="60" rx="16" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+          <text x="468" y="131" text-anchor="middle" font-size="16" font-weight="700" fill="#1e3a8a">Batch Extends</text>
+          <rect x="585" y="96" width="145" height="60" rx="16" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+          <text x="657" y="131" text-anchor="middle" font-size="16" font-weight="700" fill="#9a3412">Queue Wait Rises</text>
+          <rect x="770" y="96" width="120" height="60" rx="16" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+          <text x="830" y="131" text-anchor="middle" font-size="16" font-weight="700" fill="#b91c1c">p99 Jumps</text>
+          <path d="M165 126 L205 126" stroke="#2563eb" stroke-width="4"/>
+          <path d="M350 126 L390 126" stroke="#0f766e" stroke-width="4"/>
+          <path d="M545 126 L585 126" stroke="#2563eb" stroke-width="4"/>
+          <path d="M730 126 L770 126" stroke="#b45309" stroke-width="4"/>
+        </svg>
+      </div>
+      <p class="caption">The system-level damage comes from amplification, not just the first miss event.</p>
     </section>
 
     <section id="design">
@@ -676,6 +741,25 @@
         amplification tell you far more about serving quality than a single fleetwide utilization number. The point is
         not to collect more graphs. It is to measure where the queue is being distorted.
       </p>
+      <h3>A practical control-loop checklist</h3>
+      <div class="grid-2">
+        <div class="mini-card">
+          <b>Before admission</b>
+          <p>Classify the request, estimate prompt geometry, and decide whether it belongs in an interactive lane, a throughput lane, or a specialized long-context lane.</p>
+        </div>
+        <div class="mini-card">
+          <b>Before dispatch</b>
+          <p>Check queue age, batch window, and state locality together. Do not let a numerically attractive batch hide a bad waiting-time decision.</p>
+        </div>
+        <div class="mini-card">
+          <b>During execution</b>
+          <p>Watch for widening decode variance, transfer spikes, and repeated state misses. Those are leading indicators of queue instability.</p>
+        </div>
+        <div class="mini-card">
+          <b>After degradation starts</b>
+          <p>Shed, isolate, or reshape work early. Waiting too long often means retries and stale queue contents make the recovery problem larger.</p>
+        </div>
+      </div>
       <p>
         This also explains why the most interesting serving companies and internal infrastructure teams are becoming
         scheduling companies. Once the math path is “good enough,” operational excellence shifts to controlling the
