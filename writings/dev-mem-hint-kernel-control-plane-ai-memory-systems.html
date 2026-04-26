@@ -1,0 +1,1732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>/dev/mem_hint: A Kernel Control Plane for AI Memory Systems | MANISH AI</title>
+<meta name="description" content="A deep technical primer on /dev/mem_hint: the kernel-mediated hint interface connecting AI runtimes, PMU classifiers, MSR/MMIO/CXL paths, and memory PHY policy engines. Patent Pending IN 202641053160.">
+<meta name="keywords" content="AI memory systems, kernel control plane, dev mem hint, memory signaling, PMU classifiers, CXL sideband, memory PHY policy, AI runtimes, inference systems">
+<meta name="author" content="MANISH AI">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://manishklach.github.io/writings/dev-mem-hint-kernel-control-plane-ai-memory-systems.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="/dev/mem_hint: A Kernel Control Plane for AI Memory Systems | MANISH AI">
+<meta property="og:description" content="A deep technical primer on /dev/mem_hint: the kernel-mediated hint interface connecting AI runtimes, PMU classifiers, MSR/MMIO/CXL paths, and memory PHY policy engines. Patent Pending IN 202641053160.">
+<meta property="og:url" content="https://manishklach.github.io/writings/dev-mem-hint-kernel-control-plane-ai-memory-systems.html">
+<meta property="og:image" content="https://manishklach.github.io/og/dev-mem-hint-kernel-control-plane-ai-memory-systems.png">
+<meta property="og:image:alt" content="Preview card for /dev/mem_hint: A Kernel Control Plane for AI Memory Systems">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="/dev/mem_hint: A Kernel Control Plane for AI Memory Systems | MANISH AI">
+<meta name="twitter:description" content="A deep technical primer on /dev/mem_hint: the kernel-mediated hint interface connecting AI runtimes, PMU classifiers, MSR/MMIO/CXL paths, and memory PHY policy engines. Patent Pending IN 202641053160.">
+<meta name="twitter:image" content="https://manishklach.github.io/og/dev-mem-hint-kernel-control-plane-ai-memory-systems.png">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"/dev/mem_hint: A Kernel Control Plane for AI Memory Systems","description":"A deep technical primer on /dev/mem_hint: the kernel-mediated hint interface connecting AI runtimes, PMU classifiers, MSR/MMIO/CXL paths, and memory PHY policy engines. Patent Pending IN 202641053160.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/dev-mem-hint-kernel-control-plane-ai-memory-systems.html","mainEntityOfPage":"https://manishklach.github.io/writings/dev-mem-hint-kernel-control-plane-ai-memory-systems.html","datePublished":"2026-04-26","dateModified":"2026-04-26","inLanguage":"en"}</script>
+<style>
+/* ── TOKENS ─────────────────────────────────────────── */
+:root {
+  --bg:        #05080f;
+  --bg2:       #080d17;
+  --bg3:       #0c1220;
+  --panel:     #0f1828;
+  --panel2:    #121f33;
+  --border:    rgba(80,140,220,.18);
+  --border2:   rgba(80,140,220,.32);
+  --text:      #d8e8f8;
+  --muted:     #6e8aaa;
+  --muted2:    #4a6080;
+  --amber:     #e8a830;
+  --amber2:    #ffd060;
+  --green:     #3ddc84;
+  --green2:    #7fffb0;
+  --cyan:      #38c8e8;
+  --blue:      #4a9eff;
+  --red:       #ff6858;
+  --white:     #f0f6ff;
+  --code-bg:   #030610;
+  --max:       1160px;
+  --mono:      'IBM Plex Mono', 'Courier New', monospace;
+  --sans:      'IBM Plex Sans', sans-serif;
+}
+
+/* ── RESET ──────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  font-family: var(--sans);
+  font-weight: 300;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.75;
+  overflow-x: hidden;
+}
+
+/* ── SCANLINE OVERLAY ───────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,.06) 2px,
+    rgba(0,0,0,.06) 4px
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── LAYOUT ─────────────────────────────────────────── */
+.wrap    { max-width: var(--max); margin: 0 auto; padding: 0 28px; position: relative; }
+section  { padding: 80px 0; border-bottom: 1px solid var(--border); }
+section:last-of-type { border-bottom: none; }
+
+/* ── NAV ────────────────────────────────────────────── */
+nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(18px) saturate(1.4);
+  background: rgba(5,8,15,.82);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 56px;
+  gap: 20px;
+}
+.nav-brand {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--amber);
+  letter-spacing: .02em;
+}
+.nav-brand span { color: var(--muted); font-weight: 400; }
+.nav-links {
+  display: flex;
+  gap: 24px;
+  list-style: none;
+}
+.nav-links a {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .06em;
+  color: var(--muted);
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: color .2s;
+}
+.nav-links a:hover { color: var(--amber); }
+.patent-pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  background: rgba(232,168,48,.12);
+  border: 1px solid rgba(232,168,48,.4);
+  color: var(--amber);
+  padding: 4px 12px;
+  border-radius: 2px;
+}
+@media (max-width: 860px) {
+  .nav-links, .patent-pill { display: none; }
+}
+
+/* ── HERO ───────────────────────────────────────────── */
+.hero {
+  padding: 80px 0 60px;
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -200px; left: -200px;
+  width: 700px; height: 700px;
+  background: radial-gradient(circle, rgba(232,168,48,.07) 0%, transparent 65%);
+  pointer-events: none;
+}
+.hero::after {
+  content: '';
+  position: absolute;
+  top: -100px; right: -100px;
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(56,200,232,.06) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+.hero-eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.hero-eyebrow::before {
+  content: '>';
+  color: var(--amber2);
+  font-size: 14px;
+  animation: blink 1.2s step-end infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+.hero-title {
+  font-family: var(--mono);
+  font-size: clamp(32px, 6vw, 72px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -.02em;
+  color: var(--white);
+  margin-bottom: 28px;
+}
+.hero-title .accent { color: var(--amber); }
+.hero-title .dim    { color: var(--muted); font-weight: 400; }
+
+.hero-deck {
+  font-size: 18px;
+  font-weight: 300;
+  color: var(--muted);
+  max-width: 680px;
+  line-height: 1.75;
+  margin-bottom: 48px;
+}
+.hero-deck strong { color: var(--text); font-weight: 500; }
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  align-items: start;
+  margin-top: 60px;
+}
+@media (max-width: 860px) { .hero-grid { grid-template-columns: 1fr; } }
+
+/* ── SECTION LABELS ─────────────────────────────────── */
+.s-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 40px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.s-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--border2), transparent);
+  max-width: 120px;
+}
+
+/* ── HEADINGS ───────────────────────────────────────── */
+h2 {
+  font-family: var(--mono);
+  font-size: clamp(22px, 3.5vw, 40px);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -.02em;
+  color: var(--white);
+  margin-bottom: 28px;
+}
+h3 {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--amber);
+  margin: 44px 0 16px;
+  letter-spacing: -.01em;
+}
+h3::before { content: '// '; color: var(--muted2); }
+
+/* ── PROSE ──────────────────────────────────────────── */
+.prose p {
+  font-size: 16px;
+  line-height: 1.85;
+  color: #b8ccdf;
+  margin-bottom: 20px;
+}
+.prose p strong { color: var(--text); font-weight: 500; }
+.prose a { color: var(--cyan); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ── CODE ───────────────────────────────────────────── */
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--amber);
+  border-radius: 4px;
+  padding: 24px 26px;
+  overflow-x: auto;
+  margin: 24px 0 32px;
+  position: relative;
+}
+pre::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 10px; right: 16px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted2);
+}
+code {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.65;
+  color: #c8ddf0;
+}
+.kw  { color: #ff9ac1; }
+.ty  { color: var(--green); }
+.fn  { color: var(--blue); }
+.cm  { color: var(--muted2); font-style: italic; }
+.str { color: #ffd080; }
+.num { color: var(--amber2); }
+.pp  { color: var(--cyan); }
+.op  { color: #88aacc; }
+
+/* ── PANELS / CARDS ─────────────────────────────────── */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 28px;
+}
+.panel-amber {
+  background: rgba(232,168,48,.06);
+  border: 1px solid rgba(232,168,48,.25);
+  border-left: 3px solid var(--amber);
+  border-radius: 4px;
+  padding: 20px 24px;
+  margin: 24px 0;
+}
+.panel-amber .pa-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 10px;
+}
+.panel-green {
+  background: rgba(61,220,132,.05);
+  border: 1px solid rgba(61,220,132,.22);
+  border-left: 3px solid var(--green);
+  border-radius: 4px;
+  padding: 20px 24px;
+  margin: 24px 0;
+}
+.panel-red {
+  background: rgba(255,104,88,.06);
+  border: 1px solid rgba(255,104,88,.22);
+  border-left: 3px solid var(--red);
+  border-radius: 4px;
+  padding: 20px 24px;
+  margin: 24px 0;
+}
+
+/* ── GRIDS ──────────────────────────────────────────── */
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.g3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; }
+.g2wide { display: grid; grid-template-columns: 3fr 2fr; gap: 48px; align-items: start; }
+@media (max-width:860px) { .g2,.g3,.g2wide { grid-template-columns:1fr; } }
+
+/* ── STAT ROW ───────────────────────────────────────── */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 2px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 40px 0;
+}
+.stat-cell {
+  background: var(--bg2);
+  padding: 28px 22px;
+}
+.stat-num {
+  font-family: var(--mono);
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--amber);
+  margin-bottom: 6px;
+}
+.stat-unit { font-size: 20px; }
+.stat-lbl {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.stat-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+@media (max-width:860px) { .stat-row { grid-template-columns: 1fr 1fr; } }
+
+/* ── TABLE ──────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 24px 0 32px;
+  font-size: 14px;
+}
+th {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--amber);
+  background: rgba(232,168,48,.07);
+  padding: 14px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border2);
+}
+td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  color: #b8ccdf;
+  vertical-align: top;
+  line-height: 1.55;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,.02); }
+td code { font-size: 12px; color: var(--green); background: rgba(61,220,132,.08); padding: 2px 6px; border-radius: 2px; }
+
+/* ── PHASE RAIL ─────────────────────────────────────── */
+.phase-rail {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 32px 0;
+}
+.phase-col {
+  padding: 24px 20px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.phase-col:last-child { border-right: none; }
+.pc-prefill { background: rgba(74,158,255,.06); }
+.pc-decode  { background: rgba(61,220,132,.06); }
+.pc-agentic { background: rgba(232,168,48,.06); }
+.pc-idle    { background: rgba(255,104,88,.05); }
+.phase-id {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  padding: 3px 8px;
+  border-radius: 2px;
+  display: inline-block;
+  width: fit-content;
+}
+.pc-prefill .phase-id { background: rgba(74,158,255,.15); color: var(--blue); }
+.pc-decode  .phase-id { background: rgba(61,220,132,.15); color: var(--green); }
+.pc-agentic .phase-id { background: rgba(232,168,48,.15); color: var(--amber); }
+.pc-idle    .phase-id { background: rgba(255,104,88,.15); color: var(--red); }
+.phase-name {
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--white);
+}
+.phase-entry { font-size: 12px; color: var(--muted); line-height: 1.55; }
+.phase-entry strong { color: var(--text); display: block; font-size: 11px; font-family: var(--mono); letter-spacing: .04em; margin-top: 8px; }
+@media (max-width:860px) { .phase-rail { grid-template-columns: 1fr 1fr; } }
+
+/* ── SVG CONTAINER ──────────────────────────────────── */
+.diag {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 20px;
+  margin: 32px 0;
+  overflow: hidden;
+}
+.diag-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted2);
+  margin-bottom: 16px;
+}
+.diag svg { width: 100%; height: auto; display: block; }
+.diag-cap {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 12px;
+  font-style: italic;
+}
+
+/* ── FLOW BAR ───────────────────────────────────────── */
+.flow-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 32px 0;
+  flex-wrap: wrap;
+}
+.flow-step {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 1;
+  min-width: 100px;
+}
+.flow-box {
+  flex: 1;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 14px 12px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.flow-box small { display: block; color: var(--muted); font-size: 10px; margin-top: 4px; }
+.flow-arrow {
+  font-family: var(--mono);
+  color: var(--amber);
+  font-size: 18px;
+  padding: 0 6px;
+  flex-shrink: 0;
+}
+
+/* ── SYSFS TREE ─────────────────────────────────────── */
+.sysfs-tree {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--green);
+  border-radius: 4px;
+  padding: 24px 26px;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+  color: #c8ddf0;
+  margin: 24px 0;
+}
+.st-dir   { color: var(--blue); font-weight: 600; }
+.st-file  { color: var(--green); }
+.st-rw    { color: var(--amber); }
+.st-val   { color: var(--muted); font-size: 11px; }
+
+/* ── DEPLOYMENT MODE TABLE ──────────────────────────── */
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 2px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 32px 0;
+}
+.mode-cell {
+  background: var(--bg2);
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mode-num {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .14em;
+  color: var(--muted2);
+}
+.mode-title {
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--amber);
+}
+.mode-desc { font-size: 14px; color: var(--muted); line-height: 1.6; }
+.mode-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 2px;
+  display: inline-block;
+  width: fit-content;
+}
+.tag-green { background: rgba(61,220,132,.12); color: var(--green); }
+.tag-amber { background: rgba(232,168,48,.12); color: var(--amber); }
+.tag-blue  { background: rgba(74,158,255,.12); color: var(--blue); }
+@media (max-width:860px) { .mode-grid { grid-template-columns: 1fr; } }
+
+/* ── CONDUIT GRID ───────────────────────────────────── */
+.conduit-grid {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 2px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 32px 0;
+}
+.conduit-cell {
+  background: var(--bg2);
+  padding: 28px 24px;
+}
+.conduit-name {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cyan);
+  margin-bottom: 10px;
+}
+.conduit-detail { font-size: 13px; color: var(--muted); line-height: 1.65; }
+@media (max-width:860px) { .conduit-grid { grid-template-columns: 1fr; } }
+
+/* ── COMPARE TABLE ──────────────────────────────────── */
+.compare-table table { font-size: 14px; }
+.compare-table .old { color: var(--red); }
+.compare-table .new { color: var(--green); }
+
+/* ── INLINE CODE ────────────────────────────────────── */
+.ic {
+  font-family: var(--mono);
+  font-size: 13px;
+  background: rgba(61,220,132,.08);
+  color: var(--green);
+  padding: 2px 7px;
+  border-radius: 2px;
+}
+
+/* ── FOOTER ─────────────────────────────────────────── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 40px 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted2);
+}
+.footer-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.footer-inner a { color: var(--muted); text-decoration: none; }
+.footer-inner a:hover { color: var(--amber); }
+
+/* ── ANIMATIONS ─────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity:0; transform: translateY(20px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+.hero-eyebrow { animation: fadeUp .5s ease both; }
+.hero-title   { animation: fadeUp .6s .08s ease both; }
+.hero-deck    { animation: fadeUp .6s .16s ease both; }
+</style>
+</head>
+<body>
+
+<!-- ── NAV ─────────────────────────────────────────── -->
+<nav>
+  <div class="wrap">
+    <div class="nav-inner">
+      <div class="nav-brand"><a href="/writings.html" style="color:inherit;text-decoration:none;">&larr; Writings</a> <span style="color:var(--muted2);">/</span> <a href="/" style="color:inherit;text-decoration:none;">MANISH AI</a> <span>/dev/<span style="color:var(--muted);font-weight:400;">mem_hint</span></span></div>
+      <ul class="nav-links">
+        <li><a href="#problem">Problem</a></li>
+        <li><a href="#hint">Hint struct</a></li>
+        <li><a href="#driver">Kernel driver</a></li>
+        <li><a href="#pmu">PMU path</a></li>
+        <li><a href="#sysfs">sysfs</a></li>
+        <li><a href="#hardware">Hardware</a></li>
+        <li><a href="#safety">Safety</a></li>
+      </ul>
+      <div class="patent-pill">Patent Pending · IN 202641053160</div>
+    </div>
+  </div>
+</nav>
+
+<main data-pagefind-body>
+<!-- ── HERO ─────────────────────────────────────────── -->
+<div class="hero">
+  <div class="wrap">
+    <div class="hero-eyebrow">Deep Technical Primer &nbsp;·&nbsp; MANISH AI &nbsp;·&nbsp; <time datetime="2026-04-26">26 April 2026</time> &nbsp;·&nbsp; 21 min read</div>
+    <h1 class="hero-title">
+      <span class="accent">/dev/mem_hint</span><br>
+      <span class="dim">A kernel control plane</span><br>
+      for AI memory systems.
+    </h1>
+    <p class="hero-deck">
+      AI runtimes know exactly what phase they're executing. Memory controllers do not. <strong>/dev/mem_hint</strong> is the kernel-mediated path for sending that intent down into the memory policy layer — before the hardware is forced to guess, retrain, and pay the latency penalty.
+    </p>
+
+    <!-- hero stat row -->
+    <div class="stat-row">
+      <div class="stat-cell">
+        <div class="stat-lbl">Hint size</div>
+        <div class="stat-num">8<span class="stat-unit">B</span></div>
+        <div class="stat-desc">64-bit packed struct. One register write.</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-lbl">Deployment paths</div>
+        <div class="stat-num">3</div>
+        <div class="stat-desc">Explicit, PMU auto-classify, sysfs tuning</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-lbl">Hardware conduits</div>
+        <div class="stat-num">3</div>
+        <div class="stat-desc">MSR · MMIO · CXL DVSEC sideband</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-lbl">Decode latency</div>
+        <div class="stat-num">−20<span class="stat-unit">%</span></div>
+        <div class="stat-desc">P99 LLaMA-3 70B vs. JEDEC nominal baseline</div>
+      </div>
+    </div>
+
+    <!-- hero architecture diagram -->
+    <div class="diag">
+      <div class="diag-label">Fig. 0 — Full control-plane stack</div>
+      <svg viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg" font-family="'IBM Plex Mono',monospace">
+        <!-- Layer backgrounds -->
+        <rect x="0"   y="0"   width="900" height="100" fill="rgba(74,158,255,.06)" rx="3"/>
+        <rect x="0"   y="105" width="900" height="70"  fill="rgba(232,168,48,.06)" rx="3"/>
+        <rect x="0"   y="180" width="900" height="70"  fill="rgba(61,220,132,.06)" rx="3"/>
+        <rect x="0"   y="255" width="900" height="70"  fill="rgba(56,200,232,.06)" rx="3"/>
+        <rect x="0"   y="330" width="900" height="100" fill="rgba(255,104,88,.05)" rx="3"/>
+        <rect x="0"   y="435" width="900" height="70"  fill="rgba(74,158,255,.04)" rx="3"/>
+
+        <!-- Layer labels -->
+        <text x="8" y="58"  fill="rgba(74,158,255,.5)"  font-size="9" letter-spacing="3" transform="rotate(-90,8,58)">USER</text>
+        <text x="8" y="148" fill="rgba(232,168,48,.5)"  font-size="9" letter-spacing="3" transform="rotate(-90,8,148)">KERN</text>
+        <text x="8" y="218" fill="rgba(61,220,132,.5)"  font-size="9" letter-spacing="3" transform="rotate(-90,8,218)">KERN</text>
+        <text x="8" y="295" fill="rgba(56,200,232,.5)"  font-size="9" letter-spacing="3" transform="rotate(-90,8,295)">PRIV</text>
+        <text x="8" y="390" fill="rgba(255,104,88,.5)"  font-size="9" letter-spacing="3" transform="rotate(-90,8,390)">FW</text>
+        <text x="8" y="478" fill="rgba(74,158,255,.4)"  font-size="9" letter-spacing="3" transform="rotate(-90,8,478)">HW</text>
+
+        <!-- User layer boxes -->
+        <rect x="30" y="12" width="250" height="72" rx="3" fill="#0f1828" stroke="rgba(74,158,255,.35)" stroke-width="1"/>
+        <text x="155" y="38" fill="#d8e8f8" font-size="13" font-weight="700" text-anchor="middle">vLLM / TensorRT-LLM</text>
+        <text x="155" y="56" fill="#6e8aaa" font-size="11" text-anchor="middle">explicit write() · ioctl()</text>
+        <text x="155" y="74" fill="#4a6080" font-size="10" text-anchor="middle">phase_id + latency + priority</text>
+
+        <rect x="330" y="12" width="250" height="72" rx="3" fill="#0f1828" stroke="rgba(74,158,255,.35)" stroke-width="1"/>
+        <text x="455" y="38" fill="#d8e8f8" font-size="13" font-weight="700" text-anchor="middle">PyTorch / Megatron-LM</text>
+        <text x="455" y="56" fill="#6e8aaa" font-size="11" text-anchor="middle">training framework hints</text>
+        <text x="455" y="74" fill="#4a6080" font-size="10" text-anchor="middle">ForwardPass · BackwardPass</text>
+
+        <rect x="630" y="12" width="250" height="72" rx="3" fill="#0f1828" stroke="rgba(74,158,255,.35)" stroke-width="1"/>
+        <text x="755" y="38" fill="#d8e8f8" font-size="13" font-weight="700" text-anchor="middle">Unmodified Runtime</text>
+        <text x="755" y="56" fill="#6e8aaa" font-size="11" text-anchor="middle">no hint API integrated</text>
+        <text x="755" y="74" fill="#4a6080" font-size="10" text-anchor="middle">PMU auto-classify takes over</text>
+
+        <!-- Arrows into device -->
+        <line x1="155" y1="84" x2="380" y2="105" stroke="rgba(74,158,255,.4)" stroke-width="1.5" stroke-dasharray="none" marker-end="url(#arr)"/>
+        <line x1="455" y1="84" x2="450" y2="105" stroke="rgba(74,158,255,.4)" stroke-width="1.5" marker-end="url(#arr)"/>
+        <line x1="755" y1="84" x2="520" y2="105" stroke="rgba(74,158,255,.3)" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr)"/>
+
+        <!-- /dev/mem_hint layer -->
+        <rect x="200" y="108" width="500" height="60" rx="3" fill="#0c1220" stroke="rgba(232,168,48,.5)" stroke-width="1.5"/>
+        <text x="450" y="135" fill="#e8a830" font-size="15" font-weight="700" text-anchor="middle">/dev/mem_hint</text>
+        <text x="450" y="155" fill="#6e8aaa" font-size="11" text-anchor="middle">char device · write() handler · copy_from_user() · validation</text>
+        <line x1="450" y1="168" x2="450" y2="182" stroke="rgba(61,220,132,.5)" stroke-width="2" marker-end="url(#arrg)"/>
+
+        <!-- LKM layer -->
+        <rect x="100" y="183" width="700" height="60" rx="3" fill="#0c1220" stroke="rgba(61,220,132,.4)" stroke-width="1.5"/>
+        <text x="450" y="208" fill="#3ddc84" font-size="14" font-weight="700" text-anchor="middle">Kernel Driver (LKM) — mem_hint.ko</text>
+        <text x="450" y="228" fill="#6e8aaa" font-size="11" text-anchor="middle">phase validation · priority clamp · PMU subscriber · policy table lookup · sysfs interface</text>
+        <line x1="450" y1="243" x2="450" y2="257" stroke="rgba(56,200,232,.5)" stroke-width="2" marker-end="url(#arrc)"/>
+
+        <!-- Privilege channel -->
+        <rect x="150" y="258" width="600" height="60" rx="3" fill="#0c1220" stroke="rgba(56,200,232,.4)" stroke-width="1.5"/>
+        <text x="450" y="283" fill="#38c8e8" font-size="14" font-weight="700" text-anchor="middle">Privileged Hardware Channel</text>
+        <text x="450" y="303" fill="#6e8aaa" font-size="11" text-anchor="middle">wrmsrl(MEM_HINT_MSR, val)  ·  MMIO write  ·  CXL DVSEC register  ·  encode_hint()</text>
+        <line x1="450" y1="318" x2="450" y2="332" stroke="rgba(255,104,88,.4)" stroke-width="2" marker-end="url(#arrr)"/>
+
+        <!-- Policy Engine -->
+        <rect x="30"  y="333" width="395" height="90" rx="3" fill="#0c1220" stroke="rgba(255,104,88,.35)" stroke-width="1.2"/>
+        <text x="227" y="358" fill="#ff6858" font-size="13" font-weight="700" text-anchor="middle">Memory Policy Engine</text>
+        <text x="227" y="376" fill="#6e8aaa" font-size="11" text-anchor="middle">phase → config lookup table</text>
+        <text x="227" y="393" fill="#6e8aaa" font-size="11" text-anchor="middle">predictive scheduler · 500µs pre-adjust</text>
+        <text x="227" y="410" fill="#4a6080" font-size="10" text-anchor="middle">closed-loop ECC + latency feedback</text>
+
+        <!-- Safety Limiter -->
+        <rect x="475" y="333" width="395" height="90" rx="3" fill="#0c1220" stroke="rgba(255,104,88,.35)" stroke-width="1.2"/>
+        <text x="672" y="358" fill="#ff6858" font-size="13" font-weight="700" text-anchor="middle">Hardware Safety Limiter</text>
+        <text x="672" y="376" fill="#6e8aaa" font-size="11" text-anchor="middle">immutable ASIC logic · HW root of trust</text>
+        <text x="672" y="393" fill="#6e8aaa" font-size="11" text-anchor="middle">clamp(proposed, JEDEC_min, JEDEC_max)</text>
+        <text x="672" y="410" fill="#4a6080" font-size="10" text-anchor="middle">SPD EEPROM bounds · cannot be bypassed by SW</text>
+
+        <!-- Arrows to PHY layer -->
+        <line x1="227" y1="423" x2="227" y2="437" stroke="rgba(74,158,255,.4)" stroke-width="1.5" marker-end="url(#arr)"/>
+        <line x1="672" y1="423" x2="672" y2="437" stroke="rgba(74,158,255,.4)" stroke-width="1.5" marker-end="url(#arr)"/>
+
+        <!-- PHY / Memory devices -->
+        <rect x="30"  y="438" width="185" height="52" rx="3" fill="#0c1220" stroke="rgba(74,158,255,.3)" stroke-width="1"/>
+        <text x="122" y="460" fill="#4a9eff" font-size="12" font-weight="700" text-anchor="middle">DDR5 / MRDIMM</text>
+        <text x="122" y="478" fill="#6e8aaa" font-size="10" text-anchor="middle">MRCD · MDB · PHY</text>
+
+        <rect x="230" y="438" width="185" height="52" rx="3" fill="#0c1220" stroke="rgba(74,158,255,.3)" stroke-width="1"/>
+        <text x="322" y="460" fill="#4a9eff" font-size="12" font-weight="700" text-anchor="middle">HBM2e / HBM3</text>
+        <text x="322" y="478" fill="#6e8aaa" font-size="10" text-anchor="middle">AIB · per-lane · stack PHY</text>
+
+        <rect x="430" y="438" width="185" height="52" rx="3" fill="#0c1220" stroke="rgba(74,158,255,.3)" stroke-width="1"/>
+        <text x="522" y="460" fill="#4a9eff" font-size="12" font-weight="700" text-anchor="middle">CXL 2.0 / 3.0</text>
+        <text x="522" y="478" fill="#6e8aaa" font-size="10" text-anchor="middle">per-HDM region · DVSEC</text>
+
+        <rect x="630" y="438" width="240" height="52" rx="3" fill="#0c1220" stroke="rgba(74,158,255,.3)" stroke-width="1"/>
+        <text x="750" y="460" fill="#4a9eff" font-size="12" font-weight="700" text-anchor="middle">GPU HBM3 (NVLink/PCIe)</text>
+        <text x="750" y="478" fill="#6e8aaa" font-size="10" text-anchor="middle">GPU firmware agent · distributed training</text>
+
+        <!-- Feedback dashed -->
+        <path d="M 30 380 Q 14 380 14 280 Q 14 165 100 165" fill="none" stroke="rgba(232,168,48,.3)" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arra)"/>
+        <text x="8" y="280" fill="rgba(232,168,48,.4)" font-size="8" letter-spacing="2" transform="rotate(-90,8,280)">feedback</text>
+
+        <defs>
+          <marker id="arr"  markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="rgba(74,158,255,.7)"/></marker>
+          <marker id="arrg" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="rgba(61,220,132,.7)"/></marker>
+          <marker id="arrc" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="rgba(56,200,232,.7)"/></marker>
+          <marker id="arrr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="rgba(255,104,88,.7)"/></marker>
+          <marker id="arra" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="rgba(232,168,48,.5)"/></marker>
+        </defs>
+      </svg>
+      <div class="diag-cap">→ Complete control-plane stack from user-space runtime to DRAM PHY. Three entry points converge on the kernel driver. All paths route through the Memory Policy Engine and the immutable hardware safety limiter before touching silicon.</div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════
+     § 1  PROBLEM
+══════════════════════════════════════════════════ -->
+<section id="problem">
+  <div class="wrap">
+    <div class="s-label">01 &nbsp; The Problem</div>
+    <div class="g2wide">
+      <div class="prose">
+        <h2>AI software has intent. Memory hardware sees transactions.</h2>
+        <p>Every LLM inference runtime knows, with complete certainty, what phase it is about to enter. It knows when the prefill sweep ends and token-by-token decode begins. It knows when an agentic loop fires off a tool call with its burst-mode access pattern. It knows when the system is idle between requests.</p>
+        <p>The memory controller knows none of this. It sees a stream of read and write commands — row activations, CAS operations, precharges — and has to infer the best signaling configuration from hardware telemetry alone: measured eye closure, die temperature, ECC error rates. This inference is <strong>reactive</strong>. By the time the controller adapts, latency has already been paid.</p>
+        <p>The result is a permanent structural mismatch. A decode step that needs sub-100ns random read latency is served by the same conservative timing margins calibrated for prefill. An idle system between inference requests keeps its PHY voltage swing and PLL at full-power levels, burning watts for nothing.</p>
+        <p>The fix is simple in principle: <strong>give the software a first-class channel to express its intent</strong> before the phase transition completes. That is exactly what <span class="ic">/dev/mem_hint</span> provides — and what is claimed in Indian Patent Application 202641053160.</p>
+
+        <div class="panel-amber">
+          <div class="pa-label">Core insight from the patent</div>
+          <p style="margin:0; font-size:15px; color:#c8b878; line-height:1.7;">Memory adaptation is currently reactive: hardware detects change and catches up. The invention makes it <em>predictive</em>: software announces intent 500µs before the transition, so the hardware is already configured when the first new-phase request arrives. This eliminates &gt;95% of the phase-transition retraining penalty (2.1ms → &lt;0.1ms).</p>
+        </div>
+      </div>
+
+      <div>
+        <!-- Problem/Solution contrast -->
+        <div class="panel" style="margin-bottom:20px;">
+          <div style="font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted2); margin-bottom:18px;">What each layer knows today</div>
+          <table style="margin:0; font-size:13px;">
+            <thead><tr><th>Layer</th><th>Knows</th><th>Blind to</th></tr></thead>
+            <tbody>
+              <tr><td><code>vLLM</code></td><td>Phase, token rate, KV cache alloc rate</td><td>tRCD, V_swing, PHY config</td></tr>
+              <tr><td>Kernel</td><td>PMU events, C-state, process scheduling</td><td>Model phase semantics</td></tr>
+              <tr><td>MC firmware</td><td>Temperature, ECC, retries</td><td>Prefill vs. decode vs. agentic</td></tr>
+              <tr><td>DDR5 PHY</td><td>Signal eye, jitter, lane skew</td><td>Workload semantics entirely</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="panel-green">
+          <p style="margin:0; font-size:14px; line-height:1.7; color:#90e8b0;"><strong style="color:var(--green); font-family:var(--mono);">/dev/mem_hint bridges this gap.</strong> It creates a structured, kernel-validated channel that lets the top layer express what the bottom layer needs to know — without giving user-space unsafe direct access to hardware registers.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     § 2  HINT STRUCT
+══════════════════════════════════════════════════ -->
+<section id="hint">
+  <div class="wrap">
+    <div class="s-label">02 &nbsp; The 64-bit Workload Hint</div>
+    <h2>One register write. Full semantic intent.</h2>
+
+    <div class="g2wide">
+      <div>
+        <p class="prose" style="font-size:16px; line-height:1.85; color:#b8ccdf; margin-bottom:0;">The hint is deliberately small. A phase-transition hint should be cheap enough to emit on every state change in a high-frequency inference loop — adding zero perceptible overhead to the runtime. Eight bytes. One <span class="ic">write()</span> syscall. Kernel-side validation is a handful of comparisons. The MSR write is a single instruction.</p>
+
+<pre data-lang="C · patent §10.1 [0028]"><code><span class="cm">/* Workload Hint Interface — 64-bit packed structure
+   As defined in Indian Patent Application 202641053160 */</span>
+<span class="kw">struct</span> <span class="ty">mem_workload_hint</span> {
+    <span class="ty">uint8_t</span>  phase_id;          <span class="cm">/* 0x01=Prefill   0x02=Decode
+                                   0x03=Agentic   0x04=Idle
+                                   0x05=ForwardPass (training)
+                                   0x06=BackwardPass (training) */</span>
+    <span class="ty">uint16_t</span> latency_target_ns; <span class="cm">/* target P99 read latency, ns  */</span>
+    <span class="ty">uint16_t</span> bw_target_gbps;    <span class="cm">/* target sustained BW, GB/s    */</span>
+    <span class="ty">uint8_t</span>  security_level;    <span class="cm">/* 0=normal  1=confidential
+                                   2=TEE-isolated              */</span>
+    <span class="ty">uint8_t</span>  priority;          <span class="cm">/* 0–7: policy aggressiveness
+                                   vs thermal/ECC budget        */</span>
+    <span class="ty">uint8_t</span>  reserved[<span class="num">2</span>];       <span class="cm">/* future: fabric_id, numa_id   */</span>
+} __attribute__((<span class="fn">packed</span>));      <span class="cm">/* total: exactly 8 bytes       */</span>
+
+<span class="cm">/* Bit layout in encoded 64-bit MSR value:
+   [63:56] reserved
+   [55:48] priority
+   [47:40] security_level
+   [39:24] bw_target_gbps
+   [23: 8] latency_target_ns
+   [ 7: 0] phase_id              */</span></code></pre>
+
+        <div class="panel-amber">
+          <div class="pa-label">The priority field — new in the patent</div>
+          <p style="margin:0; font-size:14px; color:#c8b878; line-height:1.7;">The <span class="ic" style="background:rgba(232,168,48,.12); color:var(--amber);">priority</span> field (0–7) lets the runtime modulate how aggressively the Memory Policy Engine deviates from nominal margins. A priority of 7 allows the largest safe timing reduction. A priority of 0 keeps margins conservative regardless of phase — useful during model loading or when thermal headroom is tight. The policy engine multiplies margin deltas by a function of priority before applying them, subject to the safety limiter clamp.</p>
+        </div>
+      </div>
+
+      <div>
+        <!-- Phase table -->
+        <div style="font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted2); margin-bottom:16px;">Phase identifiers and memory personality</div>
+        <div class="phase-rail">
+          <div class="phase-col pc-prefill">
+            <span class="phase-id">0x01</span>
+            <div class="phase-name">Prefill</div>
+            <div class="phase-entry">Bulk input processing. Entire prompt processed in parallel. Huge sustained write bandwidth to KV cache.<strong>Memory req.</strong>Max sustained BW<strong>tRCD</strong>22 clk (nominal)<strong>V_swing</strong>300 mV<strong>DFE Tap1</strong>0x10</div>
+          </div>
+          <div class="phase-col pc-decode">
+            <span class="phase-id">0x02</span>
+            <div class="phase-name">Decode</div>
+            <div class="phase-entry">Token-by-token generation. One KV cache read per forward pass. Latency-critical, random-access dominated.<strong>Memory req.</strong>Min P99 latency<strong>tRCD</strong>18 clk (−4)<strong>V_swing</strong>280 mV<strong>DFE Tap1</strong>0x14 (boosted)</div>
+          </div>
+          <div class="phase-col pc-agentic">
+            <span class="phase-id">0x03</span>
+            <div class="phase-name">Agentic</div>
+            <div class="phase-entry">Tool calls, API integration, multi-step planning loops. Irregular burst-mode memory access pattern.<strong>Memory req.</strong>Burst tolerance<strong>tRCD</strong>20 clk (−2)<strong>V_swing</strong>290 mV<strong>DFE Tap1</strong>0x12</div>
+          </div>
+          <div class="phase-col pc-idle">
+            <span class="phase-id">0x04</span>
+            <div class="phase-name">Idle</div>
+            <div class="phase-entry">Between inference requests. CPU in C6 state. Memory controller command rate near zero.<strong>Memory req.</strong>Min power<strong>tRCD</strong>24 clk (+2)<strong>V_swing</strong>240 mV<strong>DFE Tap1</strong>0x08 (reduced)</div>
+          </div>
+        </div>
+
+        <div style="font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted2); margin:24px 0 10px;">Training phases (claims 31–33)</div>
+        <table style="margin:0; font-size:13px;">
+          <thead><tr><th>ID</th><th>Phase</th><th>Policy direction</th></tr></thead>
+          <tbody>
+            <tr><td><code>0x05</code></td><td>ForwardPass</td><td>Bandwidth-optimised — identical to Prefill config. Large batch, high sustained BW.</td></tr>
+            <tr><td><code>0x06</code></td><td>BackwardPass</td><td>Reduced tWR (write recovery time) for higher gradient write throughput. GPU firmware agent synchronised via IPC.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     § 3  KERNEL DRIVER
+══════════════════════════════════════════════════ -->
+<section id="driver">
+  <div class="wrap">
+    <div class="s-label">03 &nbsp; Kernel Driver — mem_hint.ko</div>
+    <h2>Turning a hint into a privileged hardware event.</h2>
+
+    <div class="prose" style="max-width:760px; margin-bottom:8px;">
+      <p>User-space processes cannot write MSRs, MMIO-mapped memory-controller registers, or CXL DVSEC capability registers directly. These are privileged interfaces gated by the CPU protection rings. The LKM is the broker: it exposes a safe device file, validates the hint, and dispatches the encoded value to whichever hardware channel is appropriate for the platform.</p>
+    </div>
+
+    <!-- flow bar -->
+    <div class="flow-bar">
+      <div class="flow-step">
+        <div class="flow-box">write(fd, &amp;hint, 8)<small>user space</small></div>
+        <div class="flow-arrow">→</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box">copy_from_user()<small>kernel boundary</small></div>
+        <div class="flow-arrow">→</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box">validate_hint()<small>phase · priority clamp</small></div>
+        <div class="flow-arrow">→</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box">encode_hint()<small>64-bit pack</small></div>
+        <div class="flow-arrow">→</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box">wrmsrl() / iowrite32()<small>privileged HW write</small></div>
+      </div>
+    </div>
+
+    <h3>Device registration</h3>
+<pre data-lang="C — module init"><code><span class="pp">#include</span> <span class="str">&lt;linux/module.h&gt;</span>
+<span class="pp">#include</span> <span class="str">&lt;linux/fs.h&gt;</span>
+<span class="pp">#include</span> <span class="str">&lt;linux/uaccess.h&gt;</span>
+<span class="pp">#include</span> <span class="str">&lt;linux/device.h&gt;</span>
+<span class="pp">#include</span> <span class="str">&lt;linux/perf_event.h&gt;</span>   <span class="cm">/* for PMU path */</span>
+<span class="pp">#include</span> <span class="str">&lt;asm/msr.h&gt;</span>
+
+<span class="pp">#define</span> MEM_HINT_MAJOR   <span class="num">240</span>
+<span class="pp">#define</span> MEM_HINT_NAME    <span class="str">"mem_hint"</span>
+<span class="pp">#define</span> MEM_HINT_MSR     <span class="num">0xC0010F00</span>   <span class="cm">/* illustrative vendor MSR */</span>
+
+<span class="kw">static</span> <span class="kw">struct</span> <span class="ty">class</span>  *mem_hint_class;
+<span class="kw">static</span> <span class="kw">struct</span> <span class="ty">device</span> *mem_hint_dev;
+
+<span class="kw">static</span> <span class="kw">const</span> <span class="kw">struct</span> <span class="ty">file_operations</span> mem_hint_fops = {
+    .owner   = <span class="fn">THIS_MODULE</span>,
+    .write   = <span class="fn">mem_hint_write</span>,
+    .unlocked_ioctl = <span class="fn">mem_hint_ioctl</span>,  <span class="cm">/* optional ioctl path */</span>
+    .open    = <span class="fn">mem_hint_open</span>,
+    .release = <span class="fn">mem_hint_release</span>,
+};
+
+<span class="kw">static</span> <span class="ty">int</span> __init <span class="fn">mem_hint_init</span>(<span class="ty">void</span>)
+{
+    <span class="ty">int</span> ret;
+
+    ret = <span class="fn">register_chrdev</span>(MEM_HINT_MAJOR, MEM_HINT_NAME, &amp;mem_hint_fops);
+    <span class="kw">if</span> (ret &lt; <span class="num">0</span>) {
+        <span class="fn">pr_err</span>(<span class="str">"mem_hint: chrdev registration failed: %d\n"</span>, ret);
+        <span class="kw">return</span> ret;
+    }
+
+    mem_hint_class = <span class="fn">class_create</span>(MEM_HINT_NAME);
+    mem_hint_dev   = <span class="fn">device_create</span>(mem_hint_class, NULL,
+                         <span class="fn">MKDEV</span>(MEM_HINT_MAJOR, <span class="num">0</span>), NULL, MEM_HINT_NAME);
+
+    <span class="fn">mem_hint_pmu_init</span>();    <span class="cm">/* register PMU overflow callbacks */</span>
+    <span class="fn">mem_hint_sysfs_init</span>(); <span class="cm">/* create /sys/bus/platform/... tree */</span>
+
+    <span class="fn">pr_info</span>(<span class="str">"mem_hint: /dev/mem_hint ready\n"</span>);
+    <span class="kw">return</span> <span class="num">0</span>;
+}
+<span class="fn">module_init</span>(mem_hint_init);
+<span class="fn">module_exit</span>(mem_hint_exit);
+<span class="fn">MODULE_LICENSE</span>(<span class="str">"GPL"</span>);
+<span class="fn">MODULE_AUTHOR</span>(<span class="str">"Manish KL"</span>);
+<span class="fn">MODULE_DESCRIPTION</span>(<span class="str">"AI workload hint interface — patent IN 202641053160"</span>);</code></pre>
+
+    <h3>Write path — copy, validate, dispatch</h3>
+<pre data-lang="C — write handler"><code><span class="kw">static</span> <span class="ty">bool</span> <span class="fn">valid_phase</span>(<span class="ty">uint8_t</span> p)
+{
+    <span class="cm">/* Accept inference phases 0x01–0x04 and training phases 0x05–0x06 */</span>
+    <span class="kw">return</span> (p &gt;= <span class="num">0x01</span> &amp;&amp; p &lt;= <span class="num">0x06</span>);
+}
+
+<span class="kw">static</span> <span class="ty">ssize_t</span> <span class="fn">mem_hint_write</span>(
+    <span class="kw">struct</span> <span class="ty">file</span>        *file,
+    <span class="kw">const</span> <span class="ty">char</span> __user *buf,
+    <span class="ty">size_t</span>              len,
+    <span class="ty">loff_t</span>             *off)
+{
+    <span class="kw">struct</span> <span class="ty">mem_workload_hint</span> hint;
+
+    <span class="kw">if</span> (len &lt; <span class="kw">sizeof</span>(hint))
+        <span class="kw">return</span> -<span class="num">EINVAL</span>;
+
+    <span class="kw">if</span> (<span class="fn">copy_from_user</span>(&amp;hint, buf, <span class="kw">sizeof</span>(hint)))
+        <span class="kw">return</span> -<span class="num">EFAULT</span>;
+
+    <span class="kw">if</span> (!<span class="fn">valid_phase</span>(hint.phase_id))
+        <span class="kw">return</span> -<span class="num">EINVAL</span>;
+
+    <span class="cm">/* Clamp priority to 3-bit field maximum */</span>
+    hint.priority = <span class="fn">min_t</span>(<span class="ty">uint8_t</span>, hint.priority, <span class="num">7</span>);
+
+    <span class="cm">/* Security level: validate against active TEE context (claim 18) */</span>
+    <span class="kw">if</span> (hint.security_level &gt; <span class="num">0</span> &amp;&amp; !<span class="fn">tee_context_active</span>())
+        hint.security_level = <span class="num">0</span>;   <span class="cm">/* downgrade if no TEE active */</span>
+
+    <span class="fn">mem_hint_apply</span>(&amp;hint);         <span class="cm">/* encode and write hardware channel */</span>
+
+    <span class="fn">atomic_set</span>(&amp;current_phase_id, hint.phase_id);
+    <span class="fn">sysfs_notify</span>(&amp;mem_hint_dev-&gt;kobj, <span class="str">"status"</span>, <span class="str">"current_phase"</span>);
+
+    <span class="kw">return</span> <span class="kw">sizeof</span>(hint);
+}</code></pre>
+
+    <h3>Encoding and hardware dispatch</h3>
+<pre data-lang="C — encode + dispatch"><code><span class="kw">static</span> <span class="ty">u64</span> <span class="fn">encode_hint</span>(<span class="kw">const</span> <span class="kw">struct</span> <span class="ty">mem_workload_hint</span> *h)
+{
+    <span class="ty">u64</span> v = <span class="num">0</span>;
+    v |= ((<span class="ty">u64</span>)h-&gt;phase_id)          &lt;&lt;  <span class="num">0</span>;
+    v |= ((<span class="ty">u64</span>)h-&gt;latency_target_ns) &lt;&lt;  <span class="num">8</span>;
+    v |= ((<span class="ty">u64</span>)h-&gt;bw_target_gbps)    &lt;&lt; <span class="num">24</span>;
+    v |= ((<span class="ty">u64</span>)h-&gt;security_level)    &lt;&lt; <span class="num">40</span>;
+    v |= ((<span class="ty">u64</span>)h-&gt;priority)          &lt;&lt; <span class="num">48</span>;
+    <span class="kw">return</span> v;
+}
+
+<span class="kw">static</span> <span class="ty">void</span> <span class="fn">mem_hint_apply</span>(<span class="kw">const</span> <span class="kw">struct</span> <span class="ty">mem_workload_hint</span> *h)
+{
+    <span class="ty">u64</span> val = <span class="fn">encode_hint</span>(h);
+
+    <span class="kw">switch</span> (platform_channel) {
+    <span class="kw">case</span> CH_MSR:
+        <span class="cm">/* CPU Model-Specific Register path (claim 4) */</span>
+        <span class="fn">wrmsrl</span>(MEM_HINT_MSR, val);
+        <span class="kw">break</span>;
+
+    <span class="kw">case</span> CH_MMIO:
+        <span class="cm">/* Memory-controller MMIO config space (claim 5) */</span>
+        <span class="fn">iowrite64</span>(val, mc_mmio_base + MEM_HINT_MMIO_OFFSET);
+        <span class="kw">break</span>;
+
+    <span class="kw">case</span> CH_CXL_DVSEC:
+        <span class="cm">/* CXL Designated Vendor-Specific Extended Capability (claim 6) */</span>
+        <span class="fn">cxl_dvsec_write64</span>(cxl_dev, DVSEC_HINT_REG, val);
+        <span class="kw">break</span>;
+    }
+}</code></pre>
+
+    <div class="panel-amber">
+      <div class="pa-label">Note on MSR numbering</div>
+      <p style="margin:0; font-size:14px; color:#c8b878; line-height:1.7;"><span class="ic" style="color:var(--amber); background:rgba(232,168,48,.12);">0xC0010F00</span> is illustrative — a vendor MSR in AMD's architectural space. Real deployment would use a CPU vendor's assigned MSR range coordinated with the processor firmware team. The patent claims the <em>interface contract</em> (structured hint → privileged channel → policy engine), not a specific MSR address.</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     § 4  USER-SPACE INTEGRATION
+══════════════════════════════════════════════════ -->
+<section id="userspace">
+  <div class="wrap">
+    <div class="s-label">04 &nbsp; User-Space Integration</div>
+    <h2>One phase transition. One hint. Zero DRAM internals required.</h2>
+
+    <div class="g2">
+      <div>
+        <h3>Python — vLLM integration</h3>
+<pre data-lang="Python"><code><span class="kw">import</span> os, struct
+
+<span class="cm"># Phase constants matching the kernel driver</span>
+PHASE_PREFILL     = <span class="num">0x01</span>
+PHASE_DECODE      = <span class="num">0x02</span>
+PHASE_AGENTIC     = <span class="num">0x03</span>
+PHASE_IDLE        = <span class="num">0x04</span>
+PHASE_FORWARD     = <span class="num">0x05</span>
+PHASE_BACKWARD    = <span class="num">0x06</span>
+
+_hint_fd = <span class="kw">None</span>
+
+<span class="kw">def</span> <span class="fn">_open_hint</span>():
+    <span class="kw">global</span> _hint_fd
+    <span class="kw">if</span> _hint_fd <span class="kw">is</span> <span class="kw">None</span>:
+        _hint_fd = os.<span class="fn">open</span>(<span class="str">"/dev/mem_hint"</span>, os.O_WRONLY)
+
+<span class="kw">def</span> <span class="fn">send_mem_hint</span>(phase_id, latency_ns=<span class="num">0</span>,
+                   bw_gbps=<span class="num">0</span>, security=<span class="num">0</span>, priority=<span class="num">7</span>):
+    <span class="cm"># B H H B B 2s = exactly 8 bytes</span>
+    payload = struct.<span class="fn">pack</span>(<span class="str">"&lt;BHHBB2s"</span>,
+                           phase_id, latency_ns,
+                           bw_gbps, security,
+                           priority, <span class="str">b"\x00\x00"</span>)
+    <span class="fn">_open_hint</span>()
+    os.<span class="fn">write</span>(_hint_fd, payload)
+
+<span class="cm"># ── vLLM hook — called at phase boundary ──────────────</span>
+<span class="kw">class</span> <span class="ty">MemHintScheduler</span>:
+
+    <span class="kw">def</span> <span class="fn">on_prefill_start</span>(<span class="kw">self</span>, batch_size: <span class="ty">int</span>):
+        <span class="fn">send_mem_hint</span>(PHASE_PREFILL,
+                      latency_ns=<span class="num">200</span>,    <span class="cm"># relaxed latency</span>
+                      bw_gbps=<span class="num">400</span>,       <span class="cm"># maximum BW target</span>
+                      priority=<span class="num">7</span>)
+
+    <span class="kw">def</span> <span class="fn">on_decode_start</span>(<span class="kw">self</span>, request_id: <span class="ty">str</span>):
+        <span class="fn">send_mem_hint</span>(PHASE_DECODE,
+                      latency_ns=<span class="num">90</span>,     <span class="cm"># tight P99 target</span>
+                      bw_gbps=<span class="num">150</span>,
+                      priority=<span class="num">7</span>)
+
+    <span class="kw">def</span> <span class="fn">on_tool_call</span>(<span class="kw">self</span>):
+        <span class="fn">send_mem_hint</span>(PHASE_AGENTIC,
+                      latency_ns=<span class="num">120</span>,
+                      bw_gbps=<span class="num">200</span>,
+                      priority=<span class="num">5</span>)
+
+    <span class="kw">def</span> <span class="fn">on_idle</span>(<span class="kw">self</span>):
+        <span class="fn">send_mem_hint</span>(PHASE_IDLE, priority=<span class="num">3</span>)</code></pre>
+      </div>
+
+      <div>
+        <h3>C — low-latency integration</h3>
+<pre data-lang="C"><code><span class="pp">#include</span> <span class="str">&lt;fcntl.h&gt;</span>
+<span class="pp">#include</span> <span class="str">&lt;stdint.h&gt;</span>
+<span class="pp">#include</span> <span class="str">&lt;unistd.h&gt;</span>
+
+<span class="kw">typedef</span> <span class="kw">struct</span> __attribute__((<span class="fn">packed</span>)) {
+    <span class="ty">uint8_t</span>  phase_id;
+    <span class="ty">uint16_t</span> latency_target_ns;
+    <span class="ty">uint16_t</span> bw_target_gbps;
+    <span class="ty">uint8_t</span>  security_level;
+    <span class="ty">uint8_t</span>  priority;
+    <span class="ty">uint8_t</span>  reserved[<span class="num">2</span>];
+} <span class="ty">mem_hint_t</span>;
+
+<span class="kw">static</span> <span class="ty">int</span> hint_fd = -<span class="num">1</span>;
+
+<span class="kw">static</span> <span class="kw">inline</span> <span class="ty">void</span> <span class="fn">mem_hint_send</span>(
+    <span class="ty">uint8_t</span> phase, <span class="ty">uint16_t</span> lat_ns,
+    <span class="ty">uint16_t</span> bw, <span class="ty">uint8_t</span> prio)
+{
+    <span class="kw">const</span> <span class="ty">mem_hint_t</span> h = {
+        .phase_id          = phase,
+        .latency_target_ns = lat_ns,
+        .bw_target_gbps    = bw,
+        .security_level    = <span class="num">0</span>,
+        .priority          = prio,
+    };
+    <span class="kw">if</span> (hint_fd &lt; <span class="num">0</span>)
+        hint_fd = <span class="fn">open</span>(<span class="str">"/dev/mem_hint"</span>, O_WRONLY);
+    <span class="fn">write</span>(hint_fd, &amp;h, <span class="kw">sizeof</span>(h));
+}
+
+<span class="cm">/* Emit at phase boundary — zero DRAM internals needed */</span>
+<span class="fn">mem_hint_send</span>(<span class="num">0x02</span>, <span class="num">90</span>, <span class="num">150</span>, <span class="num">7</span>); <span class="cm">/* → decode */</span></code></pre>
+
+        <div class="panel-green">
+          <p style="margin:0; font-size:14px; color:#90e8b0; line-height:1.7;"><strong style="font-family:var(--mono); color:var(--green);">Key design principle:</strong> the runtime never needs to know what tRCD is, what DFE tap coefficients mean, or what JEDEC says about voltage swing. It only needs to express <em>what it is about to do</em>. The kernel driver and Memory Policy Engine handle the translation.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     § 5  PMU AUTO-CLASSIFY
+══════════════════════════════════════════════════ -->
+<section id="pmu">
+  <div class="wrap">
+    <div class="s-label">05 &nbsp; Automatic Path — PMU Classification</div>
+    <h2>Works on unmodified runtimes. Zero application changes.</h2>
+
+    <div class="g2wide">
+      <div class="prose">
+        <p>Most runtimes won't integrate a new kernel API immediately. The PMU path makes the invention useful on day one — before any runtime modifications — by watching hardware performance counters and inferring the workload phase autonomously at 100-microsecond polling intervals.</p>
+        <p>Every modern CPU exposes uncore PMU events for memory traffic: read/write bandwidth, DRAM command rates, LLC miss rates. The kernel driver registers overflow callbacks on these counters. When a counter crosses its threshold, the PMU fires an interrupt into the kernel, which samples all counters together and applies the classification logic from the patent (§10.1 [0031]).</p>
+
+        <div class="panel-amber">
+          <div class="pa-label">PMU events used for classification</div>
+          <table style="margin:0; font-size:13px;">
+            <thead><tr><th>Event</th><th>Source</th><th>Phase signal</th></tr></thead>
+            <tbody>
+              <tr><td><code>UNC_M_CAS_COUNT.WR</code></td><td>IMC uncore</td><td>High → Prefill (KV cache fill)</td></tr>
+              <tr><td><code>UNC_M_CAS_COUNT.RD</code></td><td>IMC uncore</td><td>High, WR low → Decode (KV reads)</td></tr>
+              <tr><td><code>MEM_LOAD_RETIRED.L3_MISS</code></td><td>Core PMU</td><td>Scattered misses → Decode / Agentic</td></tr>
+              <tr><td><code>OFFCORE_REQUESTS.ALL_DATA_RD</code></td><td>Core PMU</td><td>BW variance &gt;50% → Agentic</td></tr>
+              <tr><td><code>UNC_M_CMD_RATE</code></td><td>IMC uncore</td><td>&lt;1000/s → Idle</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+<pre data-lang="C — PMU classifier"><code><span class="kw">struct</span> <span class="ty">pmu_sample</span> {
+    <span class="ty">u64</span> write_bw_gbps;     <span class="cm">/* UNC_M_CAS_COUNT.WR */</span>
+    <span class="ty">u64</span> read_bw_gbps;      <span class="cm">/* UNC_M_CAS_COUNT.RD */</span>
+    <span class="ty">u64</span> llc_miss_rate;     <span class="cm">/* L3_MISS / 100µs    */</span>
+    <span class="ty">u64</span> bw_variance_pct;   <span class="cm">/* sliding window σ   */</span>
+    <span class="ty">u64</span> dram_cmd_rate;     <span class="cm">/* commands / second  */</span>
+};
+
+<span class="kw">static</span> <span class="ty">uint8_t</span> <span class="fn">classify_phase</span>(
+    <span class="kw">const</span> <span class="kw">struct</span> <span class="ty">pmu_sample</span> *s,
+    <span class="ty">uint8_t</span> prev_phase)
+{
+    <span class="cm">/* 1. Prefill: write-dominant, high sustained BW */</span>
+    <span class="kw">if</span> (s-&gt;write_bw_gbps &gt; prefill_wr_thresh &amp;&amp;
+        s-&gt;write_bw_gbps &gt; s-&gt;read_bw_gbps)
+        <span class="kw">return</span> PHASE_PREFILL;
+
+    <span class="cm">/* 2. Decode: read-dominant, LLC-miss heavy */</span>
+    <span class="kw">if</span> (s-&gt;read_bw_gbps  &gt; s-&gt;write_bw_gbps * <span class="num">2</span> &amp;&amp;
+        s-&gt;write_bw_gbps &lt; decode_wr_ceil &amp;&amp;
+        s-&gt;llc_miss_rate &gt; decode_llc_floor)
+        <span class="kw">return</span> PHASE_DECODE;
+
+    <span class="cm">/* 3. Agentic: high BW variance (burst/quiet pattern) */</span>
+    <span class="kw">if</span> (s-&gt;bw_variance_pct &gt; agentic_variance_thresh)
+        <span class="kw">return</span> PHASE_AGENTIC;
+
+    <span class="cm">/* 4. Idle: near-zero command rate */</span>
+    <span class="kw">if</span> (s-&gt;dram_cmd_rate &lt; idle_cmd_thresh)
+        <span class="kw">return</span> PHASE_IDLE;
+
+    <span class="kw">return</span> prev_phase;  <span class="cm">/* hysteresis: hold current */</span>
+}
+
+<span class="cm">/* PMU overflow NMI handler — fires every 100µs */</span>
+<span class="kw">static</span> <span class="ty">void</span> <span class="fn">pmu_overflow_handler</span>(
+    <span class="kw">struct</span> <span class="ty">perf_event</span> *event,
+    <span class="kw">struct</span> <span class="ty">perf_sample_data</span> *data,
+    <span class="kw">struct</span> <span class="ty">pt_regs</span> *regs)
+{
+    <span class="kw">struct</span> <span class="ty">pmu_sample</span> s = <span class="fn">collect_pmu_sample</span>();
+    <span class="ty">uint8_t</span> phase = <span class="fn">classify_phase</span>(&amp;s, current_phase);
+
+    <span class="kw">if</span> (phase != current_phase) {
+        <span class="kw">struct</span> <span class="ty">mem_workload_hint</span> h = <span class="fn">phase_to_hint</span>(phase);
+        <span class="fn">mem_hint_apply</span>(&amp;h);
+        current_phase = phase;
+    }
+}</code></pre>
+      </div>
+    </div>
+
+    <!-- Deployment mode grid -->
+    <div class="mode-grid">
+      <div class="mode-cell">
+        <div class="mode-num">Mode 01</div>
+        <div class="mode-title">Explicit hint</div>
+        <span class="mode-tag tag-green">Best accuracy</span>
+        <div class="mode-desc">Runtime calls <span class="ic" style="font-size:11px;">/dev/mem_hint</span> directly at phase boundaries. Highest semantic precision — the runtime knows exactly what it's entering. Latency of hint path: one <span class="ic" style="font-size:11px;">write()</span> syscall (~200ns).</div>
+        <div style="font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:8px;">Who: vLLM, TRT-LLM with patch</div>
+      </div>
+      <div class="mode-cell">
+        <div class="mode-num">Mode 02</div>
+        <div class="mode-title">PMU auto-classify</div>
+        <span class="mode-tag tag-amber">Zero app changes</span>
+        <div class="mode-desc">Kernel driver watches hardware performance counters autonomously. Works on <em>any</em> runtime without modification. Classification accuracy slightly lower than explicit hints — relies on hardware-observable proxies rather than application semantics.</div>
+        <div style="font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:8px;">Who: unmodified runtimes, legacy code</div>
+      </div>
+      <div class="mode-cell">
+        <div class="mode-num">Mode 03</div>
+        <div class="mode-title">sysfs policy tuning</div>
+        <span class="mode-tag tag-blue">Operator control</span>
+        <div class="mode-desc">MLOps and system administrators adjust classification thresholds, per-phase memory policy parameters, and PMU trigger sensitivities at runtime via the sysfs interface. Live effect — no reboot, no recompile, no runtime restart.</div>
+        <div style="font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:8px;">Who: infra teams, MLOps, benchmarkers</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     § 6  SYSFS
+══════════════════════════════════════════════════ -->
+<section id="sysfs">
+  <div class="wrap">
+    <div class="s-label">06 &nbsp; sysfs — Live Policy Control</div>
+    <h2>Tune without recompiling the runtime.</h2>
+
+    <div class="g2wide">
+      <div>
+        <p class="prose" style="font-size:16px; line-height:1.85; color:#b8ccdf; margin-bottom:0;">The <span class="ic">/dev/mem_hint</span> device path is optimised for fast per-transition hints. The <span class="ic">sysfs</span> interface is the operational control plane: policy thresholds, per-phase parameter overrides, live observability of the classifier's current state, and ECC/latency telemetry from the feedback loop.</p>
+
+        <div class="sysfs-tree">
+<span class="st-dir">/sys/bus/platform/drivers/mem_hint/</span>
+├── <span class="st-dir">policy/</span>                        <span class="st-val">← per-phase PHY config overrides</span>
+│   ├── <span class="st-rw">decode_trcd</span>                <span class="st-val">rw  default: 18  (clocks)</span>
+│   ├── <span class="st-rw">decode_vswing_mv</span>           <span class="st-val">rw  default: 280 (mV)</span>
+│   ├── <span class="st-rw">decode_dfe_tap1</span>            <span class="st-val">rw  default: 0x14</span>
+│   ├── <span class="st-rw">prefill_vswing_mv</span>          <span class="st-val">rw  default: 300 (mV)</span>
+│   ├── <span class="st-rw">prefill_ctle_gain_db</span>       <span class="st-val">rw  default: 2</span>
+│   ├── <span class="st-rw">agentic_priority</span>           <span class="st-val">rw  default: 5</span>
+│   ├── <span class="st-rw">idle_pll_reduction</span>         <span class="st-val">rw  default: 1  (enable)</span>
+│   └── <span class="st-rw">idle_vswing_mv</span>             <span class="st-val">rw  default: 240 (mV)</span>
+│
+├── <span class="st-dir">thresholds/</span>                    <span class="st-val">← PMU classifier knobs</span>
+│   ├── <span class="st-rw">prefill_write_bw_gbps</span>      <span class="st-val">rw  default: 10</span>
+│   ├── <span class="st-rw">decode_write_bw_ceiling</span>    <span class="st-val">rw  default: 1</span>
+│   ├── <span class="st-rw">decode_llc_miss_floor</span>      <span class="st-val">rw  default: 5000</span>
+│   ├── <span class="st-rw">agentic_bw_variance_pct</span>    <span class="st-val">rw  default: 50</span>
+│   └── <span class="st-rw">idle_cmd_rate_floor</span>        <span class="st-val">rw  default: 1000 (cmds/s)</span>
+│
+└── <span class="st-dir">status/</span>                        <span class="st-val">← read-only observability</span>
+    ├── <span class="st-file">current_phase</span>              <span class="st-val">ro  current phase_id (0x01–0x06)</span>
+    ├── <span class="st-file">ecc_correctable_rate</span>       <span class="st-val">ro  errors per 10^8 accesses</span>
+    ├── <span class="st-file">ecc_uncorrectable_count</span>    <span class="st-val">ro  total since load</span>
+    ├── <span class="st-file">read_retry_count</span>           <span class="st-val">ro  retries since load</span>
+    ├── <span class="st-file">last_transition_ms</span>         <span class="st-val">ro  ms since last phase change</span>
+    ├── <span class="st-file">p99_latency_ns</span>             <span class="st-val">ro  measured P99 read latency</span>
+    └── <span class="st-file">active_channel</span>             <span class="st-val">ro  MSR | MMIO | CXL_DVSEC</span>
+        </div>
+      </div>
+
+      <div>
+        <h3>Operator workflows</h3>
+<pre data-lang="bash — tuning examples"><code><span class="cm"># Tighten decode margins further
+# (valid if ecc_correctable_rate is near zero)</span>
+<span class="fn">cat</span> /sys/.../status/ecc_correctable_rate
+<span class="cm"># → 0</span>
+<span class="fn">echo</span> <span class="num">16</span> | sudo tee /sys/.../policy/decode_trcd
+
+<span class="cm"># Monitor live phase transitions</span>
+<span class="fn">watch</span> -n 0.1 <span class="fn">cat</span> /sys/.../status/current_phase
+
+<span class="cm"># Lower prefill BW trigger for smaller models</span>
+<span class="fn">echo</span> <span class="num">6</span> | sudo tee /sys/.../thresholds/prefill_write_bw_gbps
+
+<span class="cm"># Disable idle PLL reduction during benchmarking</span>
+<span class="fn">echo</span> <span class="num">0</span> | sudo tee /sys/.../policy/idle_pll_reduction
+
+<span class="cm"># Check measured P99 during decode run</span>
+<span class="fn">cat</span> /sys/.../status/p99_latency_ns
+<span class="cm"># → 87  (target was 90ns — within budget)</span>
+
+<span class="cm"># Security hardening for TEE workload:
+# force nominal timing regardless of phase</span>
+<span class="fn">echo</span> <span class="num">22</span> | sudo tee /sys/.../policy/decode_trcd</code></pre>
+
+        <div class="panel-green">
+          <p style="margin:0; font-size:14px; color:#90e8b0; line-height:1.7;">The sysfs interface connects directly to the patent's closed-loop feedback loop (§10.4 [0037]): an operator can observe ECC correctable error rate and measured P99 latency from <span class="ic" style="font-size:11px;">status/</span>, then tighten or relax the <span class="ic" style="font-size:11px;">policy/decode_trcd</span> knob accordingly — all while inference is running.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     § 7  HARDWARE PATH
+══════════════════════════════════════════════════ -->
+<section id="hardware">
+  <div class="wrap">
+    <div class="s-label">07 &nbsp; Hardware Path</div>
+    <h2>Three conduits. One policy engine. Full PHY coverage.</h2>
+
+    <div class="conduit-grid">
+      <div class="conduit-cell">
+        <div class="conduit-name">MSR path</div>
+        <div class="conduit-detail">
+          <strong style="color:var(--text);">Claim 4 · §10.1</strong><br>
+          Fast CPU-local write. The kernel executes <span class="ic" style="font-size:11px;">wrmsrl(MEM_HINT_MSR, val)</span> — a single ring-transition-free privileged instruction. The CPU firmware or an embedded microcontroller on the memory controller die reads the MSR on the next command dispatch interval and routes the encoded hint to the policy engine.
+          <br><br>
+          Best for: integrated CPU+MC platforms (server SoCs, ARM Neoverse V-series) where the memory controller is on-die.
+        </div>
+      </div>
+      <div class="conduit-cell">
+        <div class="conduit-name">MMIO path</div>
+        <div class="conduit-detail">
+          <strong style="color:var(--text);">Claim 5 · §10.1</strong><br>
+          The kernel writes to a physical address in the memory-controller configuration space, mapped via <span class="ic" style="font-size:11px;">ioremap()</span> at driver init. The MMIO write crosses the PCIe or system fabric to the MC ASIC. Suited for discrete memory-controller ASICs where no shared MSR architecture exists.
+          <br><br>
+          Best for: HEDT platforms, multi-chip-module designs, and memory controller ASICs from Rambus or Synopsys IP customers.
+        </div>
+      </div>
+      <div class="conduit-cell">
+        <div class="conduit-name">CXL DVSEC path</div>
+        <div class="conduit-detail">
+          <strong style="color:var(--text);">Claim 6 · §10.5</strong><br>
+          Hints are written to a Designated Vendor-Specific Extended Capability register in the CXL device configuration space. The CXL device firmware reads the hint and applies PHY configuration independently per HDM (Host-managed Device Memory) region — enabling different signaling for local DDR5 vs. CXL-attached expansion memory simultaneously.
+          <br><br>
+          Best for: CXL memory expansion pods, disaggregated memory fabric, heterogeneous memory topologies (claim 15–16).
+        </div>
+      </div>
+    </div>
+
+    <!-- Policy Engine → PHY diagram -->
+    <div class="diag">
+      <div class="diag-label">Fig. 1 — Memory Policy Engine: hint-to-configuration translation</div>
+      <svg viewBox="0 0 900 320" xmlns="http://www.w3.org/2000/svg" font-family="'IBM Plex Mono',monospace">
+        <!-- Hint box -->
+        <rect x="20" y="60" width="170" height="200" rx="3" fill="#0c1220" stroke="rgba(56,200,232,.4)" stroke-width="1.5"/>
+        <text x="105" y="90" fill="#38c8e8" font-size="12" font-weight="700" text-anchor="middle">Hint</text>
+        <text x="105" y="112" fill="#6e8aaa" font-size="11" text-anchor="middle">phase_id=0x02</text>
+        <text x="105" y="130" fill="#6e8aaa" font-size="11" text-anchor="middle">latency=90ns</text>
+        <text x="105" y="148" fill="#6e8aaa" font-size="11" text-anchor="middle">priority=7</text>
+        <text x="105" y="170" fill="#4a6080" font-size="10" text-anchor="middle">security=0</text>
+        <text x="105" y="188" fill="#4a6080" font-size="10" text-anchor="middle">bw=150 GB/s</text>
+
+        <!-- Arrow -->
+        <path d="M 190 160 C 220 160, 240 160, 265 160" fill="none" stroke="rgba(232,168,48,.5)" stroke-width="2" marker-end="url(#d1a)"/>
+
+        <!-- Policy Engine box -->
+        <rect x="265" y="30" width="240" height="260" rx="3" fill="#0c1220" stroke="rgba(232,168,48,.5)" stroke-width="1.5"/>
+        <text x="385" y="58" fill="#e8a830" font-size="12" font-weight="700" text-anchor="middle">Memory Policy Engine</text>
+        <line x1="275" y1="66" x2="495" y2="66" stroke="rgba(232,168,48,.2)" stroke-width="1"/>
+        <text x="385" y="86" fill="#6e8aaa" font-size="11" text-anchor="middle">phase → config lookup table</text>
+        <rect x="280" y="96" width="210" height="70" rx="2" fill="rgba(232,168,48,.05)" stroke="rgba(232,168,48,.2)" stroke-width="1"/>
+        <text x="385" y="118" fill="#c8b878" font-size="11" text-anchor="middle">decode → {tRCD=18, tCL=18,</text>
+        <text x="385" y="134" fill="#c8b878" font-size="11" text-anchor="middle">tRP=18, Vswing=280mV,</text>
+        <text x="385" y="150" fill="#c8b878" font-size="11" text-anchor="middle">DFE_T1=0x14, CTLE=+3dB}</text>
+        <line x1="275" y1="176" x2="495" y2="176" stroke="rgba(232,168,48,.2)" stroke-width="1"/>
+        <text x="385" y="196" fill="#6e8aaa" font-size="11" text-anchor="middle">predictive scheduler</text>
+        <text x="385" y="212" fill="#4a6080" font-size="10" text-anchor="middle">pre-adjust 500µs before transition</text>
+        <line x1="275" y1="222" x2="495" y2="222" stroke="rgba(232,168,48,.2)" stroke-width="1"/>
+        <text x="385" y="242" fill="#6e8aaa" font-size="11" text-anchor="middle">ECC / latency feedback</text>
+        <text x="385" y="258" fill="#4a6080" font-size="10" text-anchor="middle">±1 clk based on error rate</text>
+
+        <!-- Arrow to safety limiter -->
+        <path d="M 505 160 C 535 160, 550 160, 570 160" fill="none" stroke="rgba(255,104,88,.5)" stroke-width="2" marker-end="url(#d1r)"/>
+
+        <!-- Safety limiter -->
+        <rect x="570" y="80" width="150" height="160" rx="3" fill="#0c1220" stroke="rgba(255,104,88,.45)" stroke-width="1.5"/>
+        <text x="645" y="108" fill="#ff6858" font-size="12" font-weight="700" text-anchor="middle">HW Safety</text>
+        <text x="645" y="124" fill="#ff6858" font-size="12" font-weight="700" text-anchor="middle">Limiter</text>
+        <line x1="580" y1="132" x2="710" y2="132" stroke="rgba(255,104,88,.2)" stroke-width="1"/>
+        <text x="645" y="152" fill="#6e8aaa" font-size="10" text-anchor="middle">clamp(v,</text>
+        <text x="645" y="167" fill="#6e8aaa" font-size="10" text-anchor="middle">JEDEC_min,</text>
+        <text x="645" y="182" fill="#6e8aaa" font-size="10" text-anchor="middle">JEDEC_max)</text>
+        <text x="645" y="200" fill="#4a6080" font-size="9" text-anchor="middle">SPD EEPROM</text>
+        <text x="645" y="214" fill="#4a6080" font-size="9" text-anchor="middle">bounds at boot</text>
+        <text x="645" y="228" fill="#4a6080" font-size="9" text-anchor="middle">immutable RoT</text>
+
+        <!-- Arrow to PHY outputs -->
+        <path d="M 720 160 C 750 160, 760 100, 780 100" fill="none" stroke="rgba(74,158,255,.4)" stroke-width="1.5" marker-end="url(#d1b)"/>
+        <path d="M 720 160 C 750 160, 760 160, 780 160" fill="none" stroke="rgba(74,158,255,.4)" stroke-width="1.5" marker-end="url(#d1b)"/>
+        <path d="M 720 160 C 750 160, 760 220, 780 220" fill="none" stroke="rgba(74,158,255,.4)" stroke-width="1.5" marker-end="url(#d1b)"/>
+
+        <!-- PHY outputs -->
+        <rect x="780" y="62" width="108" height="72" rx="2" fill="#0c1220" stroke="rgba(74,158,255,.3)" stroke-width="1"/>
+        <text x="834" y="88" fill="#4a9eff" font-size="11" font-weight="700" text-anchor="middle">Timing</text>
+        <text x="834" y="104" fill="#6e8aaa" font-size="10" text-anchor="middle">tRCD=18</text>
+        <text x="834" y="119" fill="#6e8aaa" font-size="10" text-anchor="middle">tCL, tRP, tRAS</text>
+
+        <rect x="780" y="142" width="108" height="52" rx="2" fill="#0c1220" stroke="rgba(74,158,255,.3)" stroke-width="1"/>
+        <text x="834" y="165" fill="#4a9eff" font-size="11" font-weight="700" text-anchor="middle">Electrical</text>
+        <text x="834" y="181" fill="#6e8aaa" font-size="10" text-anchor="middle">V_swing=280mV</text>
+
+        <rect x="780" y="202" width="108" height="72" rx="2" fill="#0c1220" stroke="rgba(74,158,255,.3)" stroke-width="1"/>
+        <text x="834" y="222" fill="#4a9eff" font-size="11" font-weight="700" text-anchor="middle">Equalization</text>
+        <text x="834" y="238" fill="#6e8aaa" font-size="10" text-anchor="middle">DFE Tap1=0x14</text>
+        <text x="834" y="254" fill="#6e8aaa" font-size="10" text-anchor="middle">CTLE=+3dB</text>
+
+        <!-- Feedback path -->
+        <path d="M 834 62 Q 834 30 385 30 Q 265 30 265 50" fill="none" stroke="rgba(232,168,48,.2)" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#d1a)"/>
+        <text x="600" y="24" fill="rgba(232,168,48,.4)" font-size="9" text-anchor="middle">ECC + latency feedback → policy refinement</text>
+
+        <defs>
+          <marker id="d1a" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="rgba(232,168,48,.7)"/></marker>
+          <marker id="d1r" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="rgba(255,104,88,.7)"/></marker>
+          <marker id="d1b" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="rgba(74,158,255,.7)"/></marker>
+        </defs>
+      </svg>
+      <div class="diag-cap">→ phase_id=0x02 (Decode) + priority=7 translates through the policy lookup table to a complete PHY configuration. The safety limiter clamps every field to JEDEC bounds before any hardware write occurs. ECC and latency telemetry feed back to refine the lookup table margins continuously.</div>
+    </div>
+
+    <table>
+      <thead><tr><th>Phase</th><th>tRCD</th><th>V_swing</th><th>DFE Tap1</th><th>CTLE</th><th>Refresh</th><th>Objective</th></tr></thead>
+      <tbody>
+        <tr><td>Prefill (0x01)</td><td>22 (nom.)</td><td>300 mV</td><td>0x10</td><td>+2 dB</td><td>Nominal</td><td>Max sustained BW, link stability</td></tr>
+        <tr><td>Decode (0x02)</td><td>18 (−4)</td><td>280 mV</td><td>0x14 ↑</td><td>+3 dB</td><td>Nominal</td><td>Min P99 latency, tight margins</td></tr>
+        <tr><td>Agentic (0x03)</td><td>20 (−2)</td><td>290 mV</td><td>0x12</td><td>+2 dB</td><td>Nominal</td><td>Burst tolerance, balanced</td></tr>
+        <tr><td>Idle (0x04)</td><td>24 (+2)</td><td>240 mV</td><td>0x08 ↓</td><td>0 dB</td><td>Reduced + self-refresh</td><td>Min power, PLL quiesce</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     § 8  SAFETY LIMITER
+══════════════════════════════════════════════════ -->
+<section id="safety">
+  <div class="wrap">
+    <div class="s-label">08 &nbsp; Safety — Hardware Root of Trust</div>
+    <h2>Software expresses intent. Hardware enforces the law.</h2>
+
+    <div class="g2wide">
+      <div class="prose">
+        <p>A software-visible memory timing interface is only credible if it cannot be weaponised. If user-space code — or even kernel code — could arbitrarily reduce tRCD or raise V_swing, the interface would be a fault-injection attack surface: a software-controlled analogue of Rowhammer, capable of inducing bit-flips in adjacent DRAM rows, or a thermal throttling vector for an unprivileged process to degrade a co-tenant's memory performance in a cloud environment.</p>
+        <p>The hardware safety limiter (claims 9–10, §10.4 [0038]) addresses this at the architecture level. It is <strong>not firmware</strong> — it is immutable combinational logic within the memory controller ASIC, anchored to the platform hardware root of trust. It receives proposed PHY configurations from the Memory Policy Engine and passes them through a clamp function before they reach any hardware write path.</p>
+
+        <div class="panel-red">
+          <p style="margin:0; font-size:14px; color:#ffb0a8; line-height:1.7;"><strong style="color:var(--red); font-family:var(--mono);">What the safety limiter prevents:</strong> A <span class="ic" style="font-size:11px;">security_level=0</span> hint with <span class="ic" style="font-size:11px;">priority=7</span> requesting tRCD=8 (far below JEDEC minimum) — silently clamped to the SPD EEPROM floor. An idle hint requesting V_swing=180mV (below spec) — clamped to 200mV minimum. Software at any privilege level cannot bypass this path.</p>
+        </div>
+      </div>
+
+      <div>
+<pre data-lang="C — safety clamp (pseudocode)"><code><span class="kw">struct</span> <span class="ty">phy_config</span> {
+    <span class="ty">u8</span>  tRCD, tCL, tRP, tRAS;
+    <span class="ty">u16</span> vswing_mv;
+    <span class="ty">u8</span>  dfe_tap[<span class="num">4</span>];
+    <span class="ty">s8</span>  ctle_gain_db;
+};
+
+<span class="kw">struct</span> <span class="ty">jedec_limits</span> {
+    <span class="ty">u8</span>  min_tRCD, max_tRCD;  <span class="cm">/* from SPD EEPROM   */</span>
+    <span class="ty">u16</span> min_vswing, max_vswing;
+    <span class="cm">/* ... read-only after boot ... */</span>
+};
+
+<span class="kw">static</span> <span class="kw">struct</span> <span class="ty">phy_config</span> <span class="fn">safety_clamp</span>(
+    <span class="kw">struct</span> <span class="ty">phy_config</span>   proposed,
+    <span class="kw">struct</span> <span class="ty">jedec_limits</span>  limits,
+    <span class="kw">struct</span> <span class="ty">ecc_telemetry</span> ecc)
+{
+    <span class="cm">/* Hard clamp to JEDEC bounds — hardware enforced */</span>
+    proposed.tRCD = <span class="fn">clamp</span>(proposed.tRCD,
+                          limits.min_tRCD,
+                          limits.max_tRCD);
+    proposed.tCL  = <span class="fn">clamp</span>(proposed.tCL,
+                          limits.min_tCL,  limits.max_tCL);
+    proposed.vswing_mv = <span class="fn">clamp</span>(proposed.vswing_mv,
+                          limits.min_vswing, limits.max_vswing);
+
+    <span class="cm">/* Feedback: relax 1 clk if ECC rate above threshold */</span>
+    <span class="kw">if</span> (ecc.correctable_rate &gt; ECC_WARN_THRESHOLD) {
+        proposed.tRCD = <span class="fn">min</span>(proposed.tRCD + <span class="num">1</span>, limits.max_tRCD);
+        proposed.tCL  = <span class="fn">min</span>(proposed.tCL  + <span class="num">1</span>, limits.max_tCL);
+    }
+
+    <span class="cm">/* Security hardening: hold nominal if TEE active (claim 17) */</span>
+    <span class="kw">if</span> (current_security_level &gt; <span class="num">0</span>) {
+        proposed.tRCD = <span class="fn">max</span>(proposed.tRCD, JEDEC_NOMINAL_tRCD);
+        proposed.tCL  = <span class="fn">max</span>(proposed.tCL,  JEDEC_NOMINAL_tCL);
+    }
+
+    <span class="kw">return</span> proposed;   <span class="cm">/* safe to apply to hardware */</span>
+}</code></pre>
+
+        <div class="panel-amber">
+          <div class="pa-label">Claim 10 — the key property</div>
+          <p style="margin:0; font-size:14px; color:#c8b878; line-height:1.7;">"The hardware safety limiter <strong>cannot be overridden, bypassed, or reprogrammed by software executing at any privilege level.</strong>" — This includes ring-0 kernel code, SMM firmware, and hypervisor code. The limiter sits below all software layers, anchored in silicon.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     § 9  WHY IT MATTERS
+══════════════════════════════════════════════════ -->
+<section>
+  <div class="wrap">
+    <div class="s-label">09 &nbsp; Why This Abstraction Matters</div>
+    <h2>A new contract between AI software and memory hardware.</h2>
+
+    <div class="compare-table">
+      <table>
+        <thead><tr><th>Current systems</th><th>/dev/mem_hint style systems</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="old">Memory tuning is static (boot-time SPD profiles) or reactive (post-degradation retraining).</td>
+            <td class="new">Memory tuning is predictive: the PHY is reconfigured 500µs <em>before</em> the phase transition completes.</td>
+          </tr>
+          <tr>
+            <td class="old">Application phase is invisible to the memory controller. Prefill and decode look similar at the PHY level.</td>
+            <td class="new">Application phase is a structured hardware input, expressed as a 64-bit hint with latency target and priority.</td>
+          </tr>
+          <tr>
+            <td class="old">Linux hints like <code>madvise</code> / <code>mlock</code> affect page placement, not PHY signaling.</td>
+            <td class="new">Hints target actual memory signaling: tRCD, V_swing, DFE taps, CTLE — the parameters that determine real latency.</td>
+          </tr>
+          <tr>
+            <td class="old">2.1ms phase-transition retraining penalty every time decode follows prefill.</td>
+            <td class="new">&lt;0.1ms transition overhead. &gt;95% of the penalty eliminated by predictive pre-adjustment.</td>
+          </tr>
+          <tr>
+            <td class="old">Memory subsystem idles at full power between inference requests.</td>
+            <td class="new">Idle phase reduces V_swing, triggers DRAM self-refresh, reduces PHY PLL frequency: −39% idle power.</td>
+          </tr>
+          <tr>
+            <td class="old">Runtimes, OS, firmware, and PHY evolve in completely separate silos.</td>
+            <td class="new">A shared hint contract creates a coordinated stack: runtime → kernel → firmware → PHY.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel-amber" style="margin-top:40px;">
+      <div class="pa-label">The larger idea — from the patent filing</div>
+      <p style="margin:0; font-size:16px; color:#e0c878; line-height:1.8; font-style:italic;">"The present invention introduces, for the first time, a structured cross-layer coordination architecture wherein an AI software runtime directly communicates workload phase semantics to the memory subsystem via a privileged hint interface. Adaptation is predictive, occurring before a phase transition is completed, not reactive to measured degradation."</p>
+      <p style="margin:8px 0 0; font-family:var(--mono); font-size:11px; color:var(--muted);">— Indian Patent Application 202641053160, §6.2 Novelty Summary</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     § 10  CLOSING
+══════════════════════════════════════════════════ -->
+<section style="border-bottom:none;">
+  <div class="wrap">
+    <div class="s-label">10 &nbsp; Closing</div>
+    <h2>Memory needs an intent interface. Now it has one.</h2>
+
+    <div class="g2wide">
+      <div class="prose">
+        <p>The memory wall is real. As models grow and inference systems scale, the constraint is not arithmetic — it is movement. Where data lives, when it moves, how memory links are trained, and whether the hardware can anticipate a phase change instead of discovering it after latency has already been paid.</p>
+        <p><span class="ic">/dev/mem_hint</span> is a concrete, implementable answer to this problem. It is small enough that a vLLM patch could integrate it in an afternoon. It is low-level enough to connect to real memory policy engines. It is safe enough — through the hardware root-of-trust safety limiter — to deploy in multi-tenant cloud environments without creating a new attack surface.</p>
+        <p>Three deployment modes mean it works everywhere: on runtimes that have been patched, on runtimes that haven't, and with operator-controlled policy tuning for every environment in between.</p>
+        <p>The invention is on file. The complete specification is due by April 26, 2027. The ideas are in the open.</p>
+
+        <div class="panel-green" style="margin-top:32px;">
+          <p style="margin:0; font-family:var(--mono); font-size:13px; line-height:1.9; color:#90e8b0;">
+            <strong>Patent Pending Notice</strong><br>
+            This technology is the subject of Indian Patent Application No. <strong>202641053160</strong>, filed as a provisional specification under the Patents Act, 1970 at the Indian Patent Office, Chennai, on 26 April 2026. All rights reserved. <strong>Patent Pending.</strong>
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <div style="font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted2); margin-bottom:20px;">Filing reference</div>
+          <div style="display:flex; flex-direction:column; gap:14px; font-family:var(--mono); font-size:13px;">
+            <div>
+              <div style="color:var(--muted2); font-size:10px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:3px;">Application No.</div>
+              <div style="color:var(--amber); font-size:16px; font-weight:700;">202641053160</div>
+            </div>
+            <div>
+              <div style="color:var(--muted2); font-size:10px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:3px;">Reference</div>
+              <div style="color:var(--text);">TEMP/E1/58075/2026-CHE</div>
+            </div>
+            <div>
+              <div style="color:var(--muted2); font-size:10px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:3px;">Filed</div>
+              <div style="color:var(--text);">26 April 2026 · IPO Chennai</div>
+            </div>
+            <div>
+              <div style="color:var(--muted2); font-size:10px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:3px;">Claims</div>
+              <div style="color:var(--text);">40 · including claims 4, 5, 6, 34, 35</div>
+            </div>
+            <div>
+              <div style="color:var(--muted2); font-size:10px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:3px;">Complete spec deadline</div>
+              <div style="color:var(--red);">26 April 2027</div>
+            </div>
+            <div>
+              <div style="color:var(--muted2); font-size:10px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:3px;">Inventor</div>
+              <div style="color:var(--text);">Manish KL<br>Bengaluru, Karnataka, India</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+<footer>
+  <div class="wrap">
+    <div class="footer-inner">
+      <div>
+        <div style="color:var(--amber); font-weight:700; margin-bottom:8px;">/dev/mem_hint</div>
+        <div><a href="/" style="color:var(--text); text-decoration:none;">© 2026 MANISH AI.</a> All rights reserved.</div>
+        <div style="margin-top:4px;"><a href="/writings.html" style="color:var(--muted); text-decoration:none;">&larr; All writings</a> · <a href="https://github.com/manishklach" style="color:var(--muted); text-decoration:none;">GitHub</a> · Patent Pending · IN 202641053160</div>
+      </div>
+      
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
