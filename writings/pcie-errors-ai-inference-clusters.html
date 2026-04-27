@@ -209,18 +209,18 @@
 <div class="wrap">
 <header class="hero">
 <div class="eyebrow">Observability &amp; Reliability</div>
-<h1>PCIe Errors: The Hidden Tax<br/>on AI Inference Clusters</h1><div class="meta reading-meta">Published <time datetime="2026-04-27">Apr 27, 2026</time> · 9 min read</div>
+<h1>PCIe Errors: The Hidden Tax<br/>on AI Inference Clusters</h1><div class="meta reading-meta">Published <time datetime="2026-04-27">Apr 27, 2026</time> · 11 min read</div>
 <p class="sub">Correctable PCIe errors rarely crash a node. That is exactly why they are dangerous: they quietly degrade data movement, reduce effective GPU capacity, and hide under "mysterious inference slowdown."</p>
 <div class="chips">
 <span class="chip">PCIe AER</span>
-<span class="chip">Linux Kernel</span>
-<span class="chip">GPU Inference</span>
-<span class="chip">Cluster Health</span>
+<span class="chip">Gen5 Reliability</span>
+<span class="chip">Inference Economics</span>
+<span class="chip">Kernel Tracepoints</span>
 </div>
 </header>
 
 <section>
-<nav class="toc"><strong>Contents</strong><ul><li><a href="#pcie-not-just-io">PCIe Is Not Just "I/O" Anymore</a></li><li><a href="#correctable">Correctable Errors Are the Dangerous Ones</a></li><li><a href="#linux">What Linux Already Gives You</a></li><li><a href="#debug">Debug Mode: Verbose Logging</a></li><li><a href="#collector">A Simple Userspace Collector</a></li><li><a href="#kernel-patch">Kernel Patch: Tracepoint-Based AER</a></li><li><a href="#health-score">From Counters to a Health Score</a></li><li><a href="#economics">The Economic Framing</a></li></ul></nav>
+<nav class="toc"><strong>Contents</strong><ul><li><a href="#pcie-not-just-io">PCIe is data movement</a></li><li><a href="#correctable">Correctable errors</a></li><li><a href="#real-world">Gen5 reality</a></li><li><a href="#linux">Linux visibility</a></li><li><a href="#debug">Debug mode</a></li><li><a href="#collector">Userspace collector</a></li><li><a href="#kernel-patch">Kernel logging patch</a></li><li><a href="#tracepoint">Tracepoint patch</a></li><li><a href="#health-score">Health score</a></li><li><a href="#economics">Economics</a></li></ul></nav>
 
 <p class="lead">In modern inference systems, the expensive thing is not only compute. It is <strong>reliable movement of data</strong>: CPU↔GPU transfers, GPU↔NIC DMA, GPU↔NVMe paths, and sometimes PCIe switch fabrics sitting under multiple accelerators. When that layer becomes noisy, a node can remain alive while becoming economically inefficient.</p>
 
@@ -265,6 +265,10 @@
 <div class="callout warn">
 <strong>The trap:</strong> high-level monitoring may show "GPU underutilized" or "network fine," while the real cause is below both layers: the PCIe path is no longer clean.
 </div>
+
+<h2 id="real-world">Why Gen5 Makes This More Real</h2>
+<p>This matters even more in PCIe Gen5-era systems common around H100-class and newer accelerator platforms. Higher signaling rates reduce margin: signal integrity issues that were tolerable at Gen4 can become visible as retries, link instability, or negotiated-speed compromises at Gen5.</p>
+<p>The causes are often boring but expensive: marginal risers, cable seating, thermal expansion after long sustained load, vibration in dense racks, airflow-induced mechanical stress, aging connectors, or a switch/root-port path that is only barely within margin. The workload may be "AI inference," but the failure mode can be physical.</p>
 </section>
 
 <section>
@@ -288,6 +292,12 @@ cat aer_dev_fatal</code></pre>
 <pre><code>lspci -vvv -s 65:00.0
 # Quick scan for negotiated link speed/width
 lspci -vv | grep -i "LnkSta"</code></pre>
+
+<p>Watch for <strong>downtraining</strong>: a device that should be Gen5 x16 but is running Gen4 x8 is not a minor issue. That directly changes the data movement envelope of the node.</p>
+
+<div class="callout warn">
+<strong>Important:</strong> some BIOS/firmware stacks may silently train a marginal link at a lower width or generation to preserve stability. A standard monitor may still report the link as "up" or "healthy," while effective bandwidth has been cut dramatically. In a GPU node, Gen5 x16 becoming x8 is not a log curiosity; it is a capacity event.
+</div>
 </section>
 
 <section>
@@ -325,6 +335,10 @@ done</code></pre>
 <section>
 <h2 id="kernel-patch">Kernel Patch: Tracepoint-Based AER</h2>
 <p>For a production-grade path, a tracepoint is better than printk. It is structured, filterable, and easier to consume with trace-cmd, perf, or eBPF.</p>
+
+<div class="note">
+<strong>Why tracepoints?</strong> Even ratelimited logging can be dropped or missed by standard aggregation during bursts. It also pays the cost of formatting strings in kernel context. Tracepoints avoid making observability depend on kernel string logs.
+</div>
 
 <h3>Add a trace event header</h3>
 <pre><code>TRACE_EVENT(pci_aer_correctable_extra,
@@ -368,6 +382,8 @@ scheduler avoids degraded nodes</code></pre>
 <h2 id="economics">The Economic Framing</h2>
 <p>The point is not that every PCIe error matters. The point is that <strong>sustained PCIe error activity changes effective GPU inventory</strong>.</p>
 <p>A fleet may nominally have 10,000 GPUs. But if a subset of nodes is silently degraded, the usable capacity is lower. That means higher queueing, worse latency, and lower return on deployed accelerators.</p>
+
+<p>The most painful version is <strong>tail latency</strong>. In multi-GPU inference, one weak PCIe path can behave like a straggler. If a request depends on a collective operation, a GPU↔NIC DMA path, or a shared switch path, the slow participant can hold back the whole batch. The average may look acceptable while P99 gets ugly.</p>
 
 <div class="callout">
 <strong>Better mental model:</strong> capacity is not "number of GPUs." Capacity is "number of healthy, schedulable, data-movement-clean GPUs."
