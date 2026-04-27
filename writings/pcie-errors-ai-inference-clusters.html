@@ -1,67 +1,76 @@
-<!DOCTYPE html>
-
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1" name="viewport"/>
-<title>PCIe Errors: The Hidden Tax on AI Inference Clusters | MANISH AI</title>
-<meta content="Correctable PCIe errors rarely crash a node, but they quietly degrade data movement and reduce effective GPU capacity in AI clusters. An architectural look at PCIe AER and observability." name="description"/>
-<meta content="PCIe AER, AI infrastructure, Linux kernel, GPU inference, data movement, correctable errors, MANISH AI" name="keywords"/>
-<meta content="MANISH AI" name="author"/>
-<style>
-    :root{
-      --bg:#0b1020;
-      --panel:#111831;
-      --panel-2:#0f1730;
-      --text:#e9eefb;
-      --muted:#a7b3d1;
-      --line:#243154;
-      --accent:#79a8ff;
-      --accent-2:#8ef0d0;
-      --warn:#ffd580;
-      --code:#0a0f1f;
-      --max:1120px;
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PCIe Errors: The Hidden Tax on AI Inference Clusters</title>
+  <meta name="description" content="A systems-level blog post on PCIe AER, Linux observability, GPU inference slowdowns, and kernel-level instrumentation for AI infrastructure." />
+  <link rel="stylesheet" href="/assets/site.css" />
+  <script defer src="/assets/site.js"></script>
+  <style>
+    :root {
+      --bg: #071018;
+      --panel: #0d1b2a;
+      --panel2: #10243a;
+      --ink: #eef6ff;
+      --muted: #a8bed4;
+      --accent: #69d2ff;
+      --accent2: #7cffc4;
+      --warn: #ffd166;
+      --danger: #ff6b6b;
+      --code: #07131f;
+      --border: rgba(255,255,255,.12);
+      --shadow: 0 24px 80px rgba(0,0,0,.35);
     }
-    *{box-sizing:border-box}
-    html{scroll-behavior:smooth}
-    body{
-      margin:0;
-      background:linear-gradient(180deg,#0a1022 0%, #0b1020 35%, #0d1428 100%);
-      color:var(--text);
-      font:18px/1.65 Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(105,210,255,.20), transparent 28%),
+        radial-gradient(circle at 80% 0%, rgba(124,255,196,.16), transparent 24%),
+        linear-gradient(180deg, #06101a 0%, #071018 45%, #050b12 100%);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
     }
-    .wrap{max-width:var(--max); margin:0 auto; padding:42px 22px 96px}
-    .hero{
-      position:relative;
-      overflow:hidden;
-      padding:56px;
-      border:1px solid var(--line);
-      border-radius:32px;
-      background:linear-gradient(135deg, rgba(17,24,49,.94), rgba(15,23,48,.72));
-      box-shadow:0 24px 80px rgba(0,0,0,.35);
+    a { color: var(--accent); }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 42px 22px 96px; }
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 56px;
+      border: 1px solid var(--border);
+      border-radius: 32px;
+      background: linear-gradient(135deg, rgba(13,27,42,.94), rgba(16,36,58,.72));
+      box-shadow: var(--shadow);
     }
     .hero:before {
       content: "";
       position: absolute;
       inset: -2px;
       background-image:
-        linear-gradient(rgba(121,168,255,.08) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(121,168,255,.08) 1px, transparent 1px);
+        linear-gradient(rgba(105,210,255,.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(105,210,255,.08) 1px, transparent 1px);
       background-size: 34px 34px;
       mask-image: radial-gradient(circle at 70% 30%, black, transparent 70%);
       pointer-events: none;
     }
     .hero > * { position: relative; }
-    .eyebrow{
-      display:inline-flex; gap:10px; align-items:center;
+    .eyebrow {
+      display: inline-flex;
+      gap: 10px;
+      align-items: center;
       padding: 8px 12px;
-      border: 1px solid rgba(121,168,255,.35);
+      border: 1px solid rgba(105,210,255,.35);
       border-radius: 999px;
-      font-size:13px; letter-spacing:.04em; text-transform:uppercase;
-      color:var(--accent-2); margin-bottom:14px; font-weight:700;
-      background: rgba(121,168,255,.08);
+      color: var(--accent2);
+      background: rgba(105,210,255,.08);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
     }
-    h1{
+    h1 {
       max-width: 900px;
       margin: 22px 0 18px;
       font-size: clamp(40px, 7vw, 82px);
@@ -74,21 +83,20 @@
       font-size: 21px;
       line-height: 1.45;
     }
-    .metric-grid {
+    .hero-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 16px;
       margin-top: 34px;
     }
     .metric {
-      border: 1px solid var(--line);
+      border: 1px solid var(--border);
       border-radius: 22px;
       padding: 18px;
-      background: rgba(10,15,31,.65);
+      background: rgba(7,19,31,.65);
     }
     .metric b { display: block; font-size: 28px; color: var(--accent); line-height: 1.1; }
     .metric span { color: var(--muted); font-size: 14px; }
-
     main {
       display: grid;
       grid-template-columns: minmax(0, 1fr) 260px;
@@ -97,137 +105,109 @@
       align-items: start;
     }
     article {
-      border: 1px solid var(--line);
+      border: 1px solid var(--border);
       border-radius: 28px;
-      background: rgba(17,24,49,.72);
-      box-shadow: 0 24px 80px rgba(0,0,0,.35);
+      background: rgba(13,27,42,.72);
+      box-shadow: var(--shadow);
       padding: 34px;
     }
     aside {
       position: sticky;
       top: 24px;
-      border: 1px solid var(--line);
+      border: 1px solid var(--border);
       border-radius: 24px;
       padding: 20px;
-      background: rgba(17,24,49,.72);
+      background: rgba(13,27,42,.72);
     }
-    aside strong { display: block; margin-bottom: 12px; font-size: 16px; }
     aside a { display: block; color: var(--muted); text-decoration: none; font-size: 14px; margin: 10px 0; }
-    aside a:hover { color: white; }
-
-    h2{
+    aside a:hover { color: var(--ink); }
+    h2 {
       margin: 48px 0 14px;
       font-size: 32px;
       line-height: 1.1;
       letter-spacing: -.03em;
     }
-    h3{
-      margin: 34px 0 10px; font-size: 22px;
-      color:#f2f6ff;
-    }
-    p{margin:12px 0; color: #d9e8f6;}
-    .lead{font-size: 19px; color: #eaf5ff;}
-    .pillrow { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0; }
-    .pill { padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: rgba(255,255,255,.04); font-size: 13px; }
-
+    h3 { margin: 34px 0 10px; font-size: 22px; }
+    p { color: #d9e8f6; }
+    .lead { font-size: 19px; color: #eaf5ff; }
     .callout {
       margin: 24px 0;
       padding: 20px 22px;
-      border: 1px solid rgba(142,240,208,.28);
+      border: 1px solid rgba(124,255,196,.28);
       border-radius: 22px;
-      background: linear-gradient(135deg, rgba(142,240,208,.10), rgba(121,168,255,.06));
+      background: linear-gradient(135deg, rgba(124,255,196,.10), rgba(105,210,255,.06));
     }
-    .callout.warn {
-      border-color: rgba(255,213,128,.32);
-      background: linear-gradient(135deg, rgba(255,213,128,.12), rgba(121,168,255,.05));
+    .warn {
+      border-color: rgba(255,209,102,.32);
+      background: linear-gradient(135deg, rgba(255,209,102,.12), rgba(105,210,255,.05));
     }
-    .callout.danger {
+    .danger {
       border-color: rgba(255,107,107,.35);
-      background: linear-gradient(135deg, rgba(255,107,107,.12), rgba(121,168,255,.05));
+      background: linear-gradient(135deg, rgba(255,107,107,.12), rgba(105,210,255,.05));
     }
-    
-    table{
-      width: 100%; border-collapse: collapse; margin: 22px 0; overflow: hidden; border-radius: 18px;
+    .diagram {
+      margin: 30px 0;
+      padding: 22px;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: rgba(7,19,31,.78);
     }
-    th, td{
-      border-bottom: 1px solid var(--line); padding: 13px 12px; text-align: left; vertical-align: top;
-    }
-    th{
-      color: var(--accent-2); background: rgba(255,255,255,.04);
-    }
-    code{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    }
-    pre{
+    svg { width: 100%; height: auto; display: block; }
+    pre {
       overflow-x: auto;
       padding: 18px 20px;
       border-radius: 18px;
       background: var(--code);
-      border: 1px solid rgba(121,168,255,.18);
+      border: 1px solid rgba(105,210,255,.18);
       color: #d6f2ff;
       font-size: 13px;
       line-height: 1.55;
     }
-    .diagram{
-      margin: 30px 0;
-      padding: 22px;
-      border: 1px solid var(--line);
-      border-radius: 24px;
-      background: rgba(10,15,31,.78);
-    }
-    .diagram svg{width:100%; height:auto; display:block}
-    .footer{
-      color: var(--muted); margin-top: 38px; font-size: 14px;
-    }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .pillrow { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0; }
+    .pill { padding: 7px 11px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); background: rgba(255,255,255,.04); font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; margin: 22px 0; overflow: hidden; border-radius: 18px; }
+    th, td { border-bottom: 1px solid var(--border); padding: 13px 12px; text-align: left; vertical-align: top; }
+    th { color: var(--accent2); background: rgba(255,255,255,.04); }
+    td { color: #d9e8f6; }
+    .v2-footer { color: var(--muted); margin-top: 38px; font-size: 14px; }
     @media (max-width: 900px) {
       .hero { padding: 34px 24px; }
-      .metric-grid { grid-template-columns: 1fr; }
+      .hero-grid { grid-template-columns: 1fr; }
       main { grid-template-columns: 1fr; }
       aside { position: static; }
       article { padding: 24px; }
     }
   </style>
-<meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots">
-<meta content="light dark" name="color-scheme"/>
-<link href="https://manishklach.github.io/writings/pcie-errors-ai-inference-clusters.html" rel="canonical"/>
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BlogPosting",
-  "headline": "PCIe Errors: The Hidden Tax on AI Inference Clusters",
-  "description": "Correctable PCIe errors rarely crash a node, but they quietly degrade data movement and reduce effective GPU capacity in AI clusters.",
-  "url": "https://manishklach.github.io/writings/pcie-errors-ai-inference-clusters.html",
-  "author": { "@type": "Person", "name": "MANISH AI" }
-}
-</script>
-<link href="/assets/site.css" rel="stylesheet"/><script defer="" src="/assets/site.js"></script></head>
-<body data-pagefind-body=""><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
-<div class="wrap">
-<header class="hero">
-<div class="eyebrow">AI infra · PCIe AER · Linux kernel observability</div>
-<h1>PCIe Errors: The Hidden Tax on AI Inference Clusters</h1>
-<p class="subtitle">Correctable PCIe errors rarely crash a node. That is exactly why they are dangerous: they quietly degrade data movement, reduce effective GPU capacity, and hide under “mysterious inference slowdown.”</p>
-<div class="metric-grid">
-<div class="metric"><b>10–30%</b><span>Potential effective throughput loss on degraded nodes under sustained load</span></div>
-<div class="metric"><b>3–5×</b><span>Higher hard-failure likelihood after sustained correctable-error activity</span></div>
-<div class="metric"><b>1st-class</b><span>PCIe telemetry should feed scheduling, health scoring, and capacity models</span></div>
-</div>
-</header>
+</head>
+<body data-pagefind-body>
+  <div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
+  <div class="wrap">
+    <section class="hero">
+      <div class="eyebrow">AI infra · PCIe AER · Linux kernel observability</div>
+      <h1>PCIe Errors: The Hidden Tax on AI Inference Clusters</h1>
+      <p class="subtitle">Correctable PCIe errors rarely crash a node. That is exactly why they are dangerous: they quietly degrade data movement, reduce effective GPU capacity, and hide under “mysterious inference slowdown.”</p>
+      <div class="hero-grid">
+        <div class="metric"><b>10–30%</b><span>Potential effective throughput loss on degraded nodes under sustained load</span></div>
+        <div class="metric"><b>3–5×</b><span>Higher hard-failure likelihood after sustained correctable-error activity</span></div>
+        <div class="metric"><b>1st-class</b><span>PCIe telemetry should feed scheduling, health scoring, and capacity models</span></div>
+      </div>
+    </section>
 
-<main>
-<article>
-<p class="lead">In modern inference systems, the expensive thing is not only compute. It is <strong>reliable movement of data</strong>: CPU↔GPU transfers, GPU↔NIC DMA, GPU↔NVMe paths, and sometimes PCIe switch fabrics sitting under multiple accelerators. When that layer becomes noisy, a node can remain alive while becoming economically inefficient.</p>
+    <main>
+      <article>
+        <p class="lead">In modern inference systems, the expensive thing is not only compute. It is <strong>reliable movement of data</strong>: CPU↔GPU transfers, GPU↔NIC DMA, GPU↔NVMe paths, and sometimes PCIe switch fabrics sitting under multiple accelerators. When that layer becomes noisy, a node can remain alive while becoming economically inefficient.</p>
 
-<div class="pillrow">
-<span class="pill">PCIe AER</span><span class="pill">GPU inference</span><span class="pill">Correctable errors</span><span class="pill">Kernel tracepoints</span><span class="pill">Prometheus-ready</span>
-</div>
+        <div class="pillrow">
+          <span class="pill">PCIe AER</span><span class="pill">GPU inference</span><span class="pill">Correctable errors</span><span class="pill">Kernel tracepoints</span><span class="pill">Prometheus-ready</span>
+        </div>
 
-<h2 id="pcie-not-just-io">PCIe Is Not Just “I/O” Anymore</h2>
-<p>At a superficial level, PCI Express connects I/O devices: GPUs, NICs, NVMe drives, accelerator cards, and chipset devices. In an AI server, however, PCIe is better understood as part of the <strong>data movement fabric</strong>.</p>
-<p>That distinction matters. If inference is memory- and movement-bound, then a degraded PCIe path is not a peripheral issue. It directly reduces the useful capacity of the node.</p>
+        <h2 id="pcie-not-just-io">PCIe Is Not Just “I/O” Anymore</h2>
+        <p>At a superficial level, PCI Express connects I/O devices: GPUs, NICs, NVMe drives, accelerator cards, and chipset devices. In an AI server, however, PCIe is better understood as part of the <strong>data movement fabric</strong>.</p>
+        <p>That distinction matters. If inference is memory- and movement-bound, then a degraded PCIe path is not a peripheral issue. It directly reduces the useful capacity of the node.</p>
 
-<div class="diagram" aria-label="PCIe topology diagram">
-<svg viewBox="0 0 980 420" role="img">
+        <div class="diagram" aria-label="PCIe topology diagram">
+          <svg viewBox="0 0 980 420" role="img">
             <defs>
               <linearGradient id="g1" x1="0" x2="1"><stop offset="0" stop-color="#69d2ff"/><stop offset="1" stop-color="#7cffc4"/></linearGradient>
               <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -252,28 +232,28 @@
             </g>
             <text x="490" y="278" text-anchor="middle" fill="#a8bed4" font-size="15">A noisy link can create retries, backpressure, and shared-fabric jitter.</text>
           </svg>
-</div>
+        </div>
 
-<h2 id="correctable">Correctable Errors Are the Dangerous Ones</h2>
-<p>The most interesting PCIe errors are often <strong>correctable</strong>. They are handled by hardware and firmware. They do not panic the kernel. They do not necessarily kill a device. The box stays up.</p>
-<p>But “corrected” does not mean “free.” Correctable errors can cause replay, retransmission, flow-control stalls, link retraining, and short bursts of backpressure. That becomes visible as lower effective throughput, higher queue depth, and wider latency tails.</p>
+        <h2 id="correctable">Correctable Errors Are the Dangerous Ones</h2>
+        <p>The most interesting PCIe errors are often <strong>correctable</strong>. They are handled by hardware and firmware. They do not panic the kernel. They do not necessarily kill a device. The box stays up.</p>
+        <p>But “corrected” does not mean “free.” Correctable errors can cause replay, retransmission, flow-control stalls, link retraining, and short bursts of backpressure. That becomes visible as lower effective throughput, higher queue depth, and wider latency tails.</p>
 
-<div class="callout warn"><strong>The trap:</strong> high-level monitoring may show “GPU underutilized” or “network fine,” while the real cause is below both layers: the PCIe path is no longer clean.</div>
+        <div class="callout warn"><strong>The trap:</strong> high-level monitoring may show “GPU underutilized” or “network fine,” while the real cause is below both layers: the PCIe path is no longer clean.</div>
 
-<h2 id="real-world">Why Gen5 Makes This More Real</h2>
-<p>This matters even more in PCIe Gen5-era systems common around H100-class and newer accelerator platforms. Higher signaling rates reduce margin: signal integrity issues that were tolerable at Gen4 can become visible as retries, link instability, or negotiated-speed compromises at Gen5.</p>
-<p>The causes are often boring but expensive: marginal risers, cable seating, thermal expansion after long sustained load, vibration in dense racks, airflow-induced mechanical stress, aging connectors, or a switch/root-port path that is only barely within margin. The workload may be “AI inference,” but the failure mode can be physical.</p>
+        <h2 id="real-world">Why Gen5 Makes This More Real</h2>
+        <p>This matters even more in PCIe Gen5-era systems common around H100-class and newer accelerator platforms. Higher signaling rates reduce margin: signal integrity issues that were tolerable at Gen4 can become visible as retries, link instability, or negotiated-speed compromises at Gen5.</p>
+        <p>The causes are often boring but expensive: marginal risers, cable seating, thermal expansion after long sustained load, vibration in dense racks, airflow-induced mechanical stress, aging connectors, or a switch/root-port path that is only barely within margin. The workload may be “AI inference,” but the failure mode can be physical.</p>
 
-<h2 id="linux">What Linux Already Gives You</h2>
-<p>Linux already exposes useful PCIe error information through AER, sysfs, kernel logs, and PCI config-space tooling. The problem is not absence of signal. The problem is that the signal is scattered, noisy, and rarely correlated with inference performance.</p>
+        <h2 id="linux">What Linux Already Gives You</h2>
+        <p>Linux already exposes useful PCIe error information through AER, sysfs, kernel logs, and PCI config-space tooling. The problem is not absence of signal. The problem is that the signal is scattered, noisy, and rarely correlated with inference performance.</p>
 
-<h3>1. Kernel logs</h3>
-<pre><code>dmesg -T | grep -i aer
+        <h3>1. Kernel logs</h3>
+        <pre><code>dmesg -T | grep -i aer
 dmesg -T | grep -i pcie
 dmesg -T | grep -Ei 'aer|pcie|corrected|uncorrected'</code></pre>
 
-<h3>2. Per-device sysfs counters</h3>
-<pre><code>cd /sys/bus/pci/devices/
+        <h3>2. Per-device sysfs counters</h3>
+        <pre><code>cd /sys/bus/pci/devices/
 ls
 
 # Example BDF
@@ -285,17 +265,17 @@ cat aer_dev_correctable
 cat aer_dev_nonfatal
 cat aer_dev_fatal</code></pre>
 
-<h3>3. PCIe link inspection</h3>
-<pre><code>lspci -vvv -s 65:00.0
+        <h3>3. PCIe link inspection</h3>
+        <pre><code>lspci -vvv -s 65:00.0
 
 # Quick scan for negotiated link speed/width
 lspci -vv | grep -i "LnkSta"</code></pre>
 
-<p>Watch for <strong>downtraining</strong>: a device that should be Gen5 x16 but is running Gen4 x8 is not a minor issue. That directly changes the data movement envelope of the node.</p>
-<div class="callout warn"><strong>Important:</strong> some BIOS/firmware stacks may silently train a marginal link at a lower width or generation to preserve stability. A standard monitor may still report the link as “up” or “healthy,” while effective bandwidth has been cut dramatically. In a GPU node, Gen5 x16 becoming x8 is not a log curiosity; it is a capacity event.</div>
+        <p>Watch for <strong>downtraining</strong>: a device that should be Gen5 x16 but is running Gen4 x8 is not a minor issue. That directly changes the data movement envelope of the node.</p>
+        <div class="callout warn"><strong>Important:</strong> some BIOS/firmware stacks may silently train a marginal link at a lower width or generation to preserve stability. A standard monitor may still report the link as “up” or “healthy,” while effective bandwidth has been cut dramatically. In a GPU node, Gen5 x16 becoming x8 is not a log curiosity; it is a capacity event.</div>
 
-<h3>4. Topology mapping</h3>
-<pre><code>lspci -t
+        <h3>4. Topology mapping</h3>
+        <pre><code>lspci -t
 
 # Map device IDs to vendors/classes
 lspci -nn
@@ -303,16 +283,16 @@ lspci -nn
 # Show kernel driver bound to each device
 lspci -k -s 65:00.0</code></pre>
 
-<h3>5. NVIDIA-specific checks</h3>
-<pre><code>nvidia-smi -q | grep -i pcie -A 20
+        <h3>5. NVIDIA-specific checks</h3>
+        <pre><code>nvidia-smi -q | grep -i pcie -A 20
 nvidia-smi dmon -s u</code></pre>
 
-<p>If GPU utilization is low during heavy inference load, do not assume scheduler inefficiency first. Check whether PCIe replay/link behavior is degrading the data path.</p>
+        <p>If GPU utilization is low during heavy inference load, do not assume scheduler inefficiency first. Check whether PCIe replay/link behavior is degrading the data path.</p>
 
-<h2 id="debug">Temporary Debug Mode: More Verbose PCIe/AER Logging</h2>
-<p>For a lab node, you can temporarily increase logging and enable dynamic debug for PCIe/AER paths. Do this carefully; correctable errors can be high volume.</p>
+        <h2 id="debug">Temporary Debug Mode: More Verbose PCIe/AER Logging</h2>
+        <p>For a lab node, you can temporarily increase logging and enable dynamic debug for PCIe/AER paths. Do this carefully; correctable errors can be high volume.</p>
 
-<pre><code># Increase kernel console verbosity
+        <pre><code># Increase kernel console verbosity
 sudo sh -c 'echo 8 > /proc/sys/kernel/printk'
 
 # Check whether dynamic debug exists
@@ -325,12 +305,12 @@ sudo sh -c "echo 'module aer +p' > /sys/kernel/debug/dynamic_debug/control"
 # Watch logs
 sudo dmesg -wT | grep -Ei 'aer|pcie|corrected|uncorrected'</code></pre>
 
-<div class="callout danger"><strong>Production caution:</strong> do not leave noisy printk-style debug enabled across a fleet. Prefer tracepoints or counters for continuous observability.</div>
+        <div class="callout danger"><strong>Production caution:</strong> do not leave noisy printk-style debug enabled across a fleet. Prefer tracepoints or counters for continuous observability.</div>
 
-<h2 id="collector">A Simple Userspace Collector</h2>
-<p>A fast first step is to sample AER counters and emit a per-BDF rate. Rate matters more than raw cumulative counters.</p>
+        <h2 id="collector">A Simple Userspace Collector</h2>
+        <p>A fast first step is to sample AER counters and emit a per-BDF rate. Rate matters more than raw cumulative counters.</p>
 
-<pre><code>#!/usr/bin/env bash
+        <pre><code>#!/usr/bin/env bash
 # pcie_aer_sample.sh
 # Sample PCIe AER counters from sysfs.
 
@@ -348,12 +328,12 @@ while true; do
   sleep 5
 done</code></pre>
 
-<p>From there, join BDFs to GPUs/NICs/NVMe devices using <code>lspci -nn</code>, <code>nvidia-smi topo -m</code>, and driver bindings.</p>
+        <p>From there, join BDFs to GPUs/NICs/NVMe devices using <code>lspci -nn</code>, <code>nvidia-smi topo -m</code>, and driver bindings.</p>
 
-<h2 id="kernel-patch">Kernel Patch 1: Ratelimited AER Logging</h2>
-<p>The easiest kernel change is to add richer ratelimited logging in the AER error print path. This is useful for development and lab validation.</p>
+        <h2 id="kernel-patch">Kernel Patch 1: Ratelimited AER Logging</h2>
+        <p>The easiest kernel change is to add richer ratelimited logging in the AER error print path. This is useful for development and lab validation.</p>
 
-<pre><code>diff --git a/drivers/pci/pcie/aer.c b/drivers/pci/pcie/aer.c
+        <pre><code>diff --git a/drivers/pci/pcie/aer.c b/drivers/pci/pcie/aer.c
 index XXXXXXX..YYYYYYY 100644
 --- a/drivers/pci/pcie/aer.c
 +++ b/drivers/pci/pcie/aer.c
@@ -382,14 +362,14 @@ index XXXXXXX..YYYYYYY 100644
         if (info-&gt;severity == AER_CORRECTABLE)
                 pci_warn(dev, "PCIe Bus Error: severity=Corrected, ...");</code></pre>
 
-<p>This is intentionally simple. It prints enough context to correlate a device BDF against GPU/NIC/NVMe topology and workload-level degradation.</p>
-<div class="callout warn"><strong>Patch 1 is for lab validation.</strong> Even ratelimited logging can be dropped, sampled away, or missed by standard log aggregation during bursts. It also pays the cost of formatting strings in kernel context. For anything beyond a handful of nodes, Patch 2 is the preferred direction.</div>
+        <p>This is intentionally simple. It prints enough context to correlate a device BDF against GPU/NIC/NVMe topology and workload-level degradation.</p>
+        <div class="callout warn"><strong>Patch 1 is for lab validation.</strong> Even ratelimited logging can be dropped, sampled away, or missed by standard log aggregation during bursts. It also pays the cost of formatting strings in kernel context. For anything beyond a handful of nodes, Patch 2 is the preferred direction.</div>
 
-<h2 id="tracepoint">Kernel Patch 2: Tracepoint-Based AER Telemetry</h2>
-<p>For a production-grade path, a tracepoint is better than printk. It is structured, filterable, and easier to consume with trace-cmd, perf, eBPF, or a small collector. It avoids making observability depend on kernel string logs, which is exactly what you do not want when thousands of correctable events may arrive during a degraded interval.</p>
+        <h2 id="tracepoint">Kernel Patch 2: Tracepoint-Based AER Telemetry</h2>
+        <p>For a production-grade path, a tracepoint is better than printk. It is structured, filterable, and easier to consume with trace-cmd, perf, eBPF, or a small collector. It avoids making observability depend on kernel string logs, which is exactly what you do not want when thousands of correctable events may arrive during a degraded interval.</p>
 
-<h3>Add a trace event header</h3>
-<pre><code>diff --git a/include/trace/events/pci_aer_extra.h b/include/trace/events/pci_aer_extra.h
+        <h3>Add a trace event header</h3>
+        <pre><code>diff --git a/include/trace/events/pci_aer_extra.h b/include/trace/events/pci_aer_extra.h
 new file mode 100644
 index 0000000..1111111
 --- /dev/null
@@ -442,8 +422,8 @@ index 0000000..1111111
 +
 +#include &lt;trace/define_trace.h&gt;</code></pre>
 
-<h3>Call the tracepoint from AER</h3>
-<pre><code>diff --git a/drivers/pci/pcie/aer.c b/drivers/pci/pcie/aer.c
+        <h3>Call the tracepoint from AER</h3>
+        <pre><code>diff --git a/drivers/pci/pcie/aer.c b/drivers/pci/pcie/aer.c
 index XXXXXXX..YYYYYYY 100644
 --- a/drivers/pci/pcie/aer.c
 +++ b/drivers/pci/pcie/aer.c
@@ -464,8 +444,8 @@ index XXXXXXX..YYYYYYY 100644
         /* existing AER print/recovery logic continues here */
  }</code></pre>
 
-<h3>Consume the tracepoint</h3>
-<pre><code># List events
+        <h3>Consume the tracepoint</h3>
+        <pre><code># List events
 sudo ls /sys/kernel/debug/tracing/events/pci_aer_extra/
 
 # Enable event live
@@ -476,10 +456,10 @@ sudo cat /sys/kernel/debug/tracing/trace_pipe
 sudo trace-cmd record -e pci_aer_extra:pci_aer_correctable_extra
 sudo trace-cmd report</code></pre>
 
-<h2 id="health-score">From Counters to a PCIe Health Score</h2>
-<p>The real product is not the kernel patch. The product is the control loop.</p>
+        <h2 id="health-score">From Counters to a PCIe Health Score</h2>
+        <p>The real product is not the kernel patch. The product is the control loop.</p>
 
-<pre><code>PCIe AER counters / tracepoints
+        <pre><code>PCIe AER counters / tracepoints
         ↓
 per-BDF error rate
         ↓
@@ -489,19 +469,19 @@ node-level PCIe health score
         ↓
 scheduler avoids degraded nodes or lowers their effective capacity</code></pre>
 
-<table>
-  <thead><tr><th>Signal</th><th>Interpretation</th><th>Action</th></tr></thead>
-  <tbody>
-    <tr><td>Correctable error rate rising</td><td>Early degradation / noisy link</td><td>Watch, correlate with tokens/sec</td></tr>
-    <tr><td>Nonfatal errors increasing</td><td>Potential recovery events</td><td>Drain or quarantine node</td></tr>
-    <tr><td>Link downtraining</td><td>Reduced effective PCIe capacity</td><td>Mark degraded immediately</td></tr>
-    <tr><td>Root-port errors</td><td>Shared fabric instability</td><td>Prefer node-level quarantine</td></tr>
-    <tr><td>Endpoint-only burst</td><td>Device-specific issue</td><td>Map to GPU/NIC/NVMe and route around</td></tr>
-  </tbody>
-</table>
+        <table>
+          <thead><tr><th>Signal</th><th>Interpretation</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td>Correctable error rate rising</td><td>Early degradation / noisy link</td><td>Watch, correlate with tokens/sec</td></tr>
+            <tr><td>Nonfatal errors increasing</td><td>Potential recovery events</td><td>Drain or quarantine node</td></tr>
+            <tr><td>Link downtraining</td><td>Reduced effective PCIe capacity</td><td>Mark degraded immediately</td></tr>
+            <tr><td>Root-port errors</td><td>Shared fabric instability</td><td>Prefer node-level quarantine</td></tr>
+            <tr><td>Endpoint-only burst</td><td>Device-specific issue</td><td>Map to GPU/NIC/NVMe and route around</td></tr>
+          </tbody>
+        </table>
 
-<h3>Example scoring sketch</h3>
-<pre><code>health_score = 100
+        <h3>Example scoring sketch</h3>
+        <pre><code>health_score = 100
 health_score -= min(40, correctable_errors_per_minute * 0.5)
 health_score -= min(25, replay_or_retrain_events_per_minute * 5)
 health_score -= 30 if link_downtrained else 0
@@ -513,20 +493,20 @@ if health_score &lt; 60:
 if health_score &lt; 40:
     drain_node()</code></pre>
 
-<h2 id="economics">The Economic Framing</h2>
-<p>The point is not that every PCIe error matters. The point is that <strong>sustained PCIe error activity changes effective GPU inventory</strong>.</p>
-<p>A fleet may nominally have 10,000 GPUs. But if a subset of nodes is silently degraded, the usable capacity is lower. That means higher queueing, worse latency, more overprovisioning, and lower return on deployed accelerators.</p>
-<p>The most painful version is <strong>tail latency</strong>. In multi-GPU inference, one weak PCIe path can behave like a straggler. If a request depends on a collective operation, a GPU↔NIC DMA path, or a shared switch path, the slow participant can hold back the whole batch. The average may look acceptable while P99 gets ugly, tenants see inconsistent service, and the scheduler keeps feeding work to a node that is technically alive but economically impaired.</p>
+        <h2 id="economics">The Economic Framing</h2>
+        <p>The point is not that every PCIe error matters. The point is that <strong>sustained PCIe error activity changes effective GPU inventory</strong>.</p>
+        <p>A fleet may nominally have 10,000 GPUs. But if a subset of nodes is silently degraded, the usable capacity is lower. That means higher queueing, worse latency, more overprovisioning, and lower return on deployed accelerators.</p>
+        <p>The most painful version is <strong>tail latency</strong>. In multi-GPU inference, one weak PCIe path can behave like a straggler. If a request depends on a collective operation, a GPU↔NIC DMA path, or a shared switch path, the slow participant can hold back the whole batch. The average may look acceptable while P99 gets ugly, tenants see inconsistent service, and the scheduler keeps feeding work to a node that is technically alive but economically impaired.</p>
 
-<div class="callout"><strong>Better mental model:</strong> capacity is not “number of GPUs.” Capacity is “number of healthy, schedulable, data-movement-clean GPUs.”</div>
+        <div class="callout"><strong>Better mental model:</strong> capacity is not “number of GPUs.” Capacity is “number of healthy, schedulable, data-movement-clean GPUs.”</div>
 
-<h2 id="closing">Closing: Is the Node Alive, or Is It Efficient?</h2>
-<p>Infrastructure teams already ask whether a node is alive. AI inference economics requires a stricter question:</p>
-<div class="callout"><strong>Is the node still efficient?</strong></div>
-<p>PCIe errors are one of the cleanest low-level signals for answering that question. Treating them as mere hardware noise misses the bigger systems story: degraded data movement is degraded compute.</p>
+        <h2 id="closing">Closing: Is the Node Alive, or Is It Efficient?</h2>
+        <p>Infrastructure teams already ask whether a node is alive. AI inference economics requires a stricter question:</p>
+        <div class="callout"><strong>Is the node still efficient?</strong></div>
+        <p>PCIe errors are one of the cleanest low-level signals for answering that question. Treating them as mere hardware noise misses the bigger systems story: degraded data movement is degraded compute.</p>
 
-<h2 id="appendix">Appendix: Command Cheat Sheet</h2>
-<pre><code># Logs
+        <h2 id="appendix">Appendix: Command Cheat Sheet</h2>
+        <pre><code># Logs
 dmesg -T | grep -Ei 'aer|pcie|corrected|uncorrected'
 
 # PCI topology
@@ -559,23 +539,25 @@ nvidia-smi dmon -s u
 sudo trace-cmd record -e pci_aer_extra:pci_aer_correctable_extra
 sudo trace-cmd report</code></pre>
 
-<p class="footer">Note: Kernel function names and file locations can vary slightly by Linux version. Treat the patches as implementation templates to adapt against the exact kernel tree you are building.</p>
-</article>
+        <p class="v2-footer">Note: Kernel function names and file locations can vary slightly by Linux version. Treat the patches as implementation templates to adapt against the exact kernel tree you are building.</p>
+      </article>
 
-<aside>
-<strong>Contents</strong>
-<a href="#pcie-not-just-io">PCIe is data movement</a>
-<a href="#correctable">Correctable errors</a>
-<a href="#real-world">Gen5 reality</a>
-<a href="#linux">Linux visibility</a>
-<a href="#debug">Debug mode</a>
-<a href="#collector">Userspace collector</a>
-<a href="#kernel-patch">Kernel logging patch</a>
-<a href="#tracepoint">Tracepoint patch</a>
-<a href="#health-score">Health score</a>
-<a href="#economics">Economics</a>
-<a href="#appendix">Cheat sheet</a>
-</aside>
-</main>
-<footer class="post-footer">© 2026 <a href="/index.html">MANISH AI</a> · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer></body>
+      <aside>
+        <strong>Contents</strong>
+        <a href="#pcie-not-just-io">PCIe is data movement</a>
+        <a href="#correctable">Correctable errors</a>
+        <a href="#real-world">Gen5 reality</a>
+        <a href="#linux">Linux visibility</a>
+        <a href="#debug">Debug mode</a>
+        <a href="#collector">Userspace collector</a>
+        <a href="#kernel-patch">Kernel logging patch</a>
+        <a href="#tracepoint">Tracepoint patch</a>
+        <a href="#health-score">Health score</a>
+        <a href="#economics">Economics</a>
+        <a href="#appendix">Cheat sheet</a>
+      </aside>
+    </main>
+    <hr/><div id="webmentions"></div><form action="https://buttondown.email/api/emails/embed-subscribe/manishklach" class="subscribe" method="post" target="_blank"><label for="bd-email">Get new posts by email</label><input id="bd-email" name="email" placeholder="you@example.com" required="" type="email"/><input name="tag" type="hidden" value="blog"/><input type="submit" value="Subscribe"/></form><footer class="post-footer">© 2026 <a href="/index.html">MANISH AI</a> · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer>
+  </div>
+</body>
 </html>
