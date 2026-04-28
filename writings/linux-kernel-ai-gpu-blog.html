@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Linux Kernel Internals for AI/GPU Servers — A Deep Dive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --bg2: #0f1218;
+    --bg3: #151923;
+    --card: #131720;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --text: #e8eaf0;
+    --muted: #8892a4;
+    --dim: #545e72;
+    --amber: #f5a623;
+    --amber-dim: rgba(245,166,35,0.12);
+    --amber-glow: rgba(245,166,35,0.25);
+    --teal: #2dd4bf;
+    --teal-dim: rgba(45,212,191,0.10);
+    --coral: #f87171;
+    --coral-dim: rgba(248,113,113,0.10);
+    --purple: #a78bfa;
+    --purple-dim: rgba(167,139,250,0.10);
+    --green: #4ade80;
+    --green-dim: rgba(74,222,128,0.10);
+    --blue: #60a5fa;
+    --blue-dim: rgba(96,165,250,0.10);
+    --accent: #f5a623;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    line-height: 1.75;
+    overflow-x: hidden;
+  }
+
+  /* Noise overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+    opacity: 0.025;
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  /* Hero */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 80px 80px 60px;
+    position: relative;
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -200px; right: -200px;
+    width: 700px; height: 700px;
+    background: radial-gradient(circle, rgba(245,166,35,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero::after {
+    content: '';
+    position: absolute;
+    bottom: -100px; left: 40%;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(45,212,191,0.05) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .hero-eyebrow::before {
+    content: '';
+    display: inline-block;
+    width: 32px; height: 1px;
+    background: var(--amber);
+  }
+
+  .hero h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(42px, 6vw, 82px);
+    line-height: 1.05;
+    max-width: 900px;
+    color: var(--text);
+    margin-bottom: 32px;
+    letter-spacing: -0.02em;
+  }
+
+  .hero h1 em {
+    font-style: italic;
+    color: var(--amber);
+  }
+
+  .hero-sub {
+    font-size: 18px;
+    color: var(--muted);
+    max-width: 640px;
+    line-height: 1.7;
+    margin-bottom: 48px;
+    font-weight: 400;
+  }
+
+  .hero-meta {
+    display: flex;
+    gap: 32px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--dim);
+  }
+
+  .hero-meta span { display: flex; align-items: center; gap: 8px; }
+
+  .hero-grid-bg {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px),
+                      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 100%);
+  }
+
+  /* TOC */
+  .toc-bar {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 80px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .toc-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 14px 24px 14px 0;
+    border-right: 1px solid var(--border);
+    margin-right: 8px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .toc-bar a {
+    color: var(--dim);
+    text-decoration: none;
+    font-size: 12px;
+    padding: 14px 16px;
+    white-space: nowrap;
+    transition: color 0.2s;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
+  }
+
+  .toc-bar a:hover { color: var(--amber); }
+
+  /* Main content */
+  .content {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 80px 40px;
+  }
+
+  /* Section */
+  .section { margin-bottom: 80px; }
+
+  .section-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 32px;
+  }
+
+  .section-number {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--dim);
+    margin-top: 6px;
+    flex-shrink: 0;
+  }
+
+  .section h2 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(28px, 4vw, 42px);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  .impact-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--amber-dim);
+    border: 1px solid rgba(245,166,35,0.3);
+    color: var(--amber);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    letter-spacing: 0.05em;
+  }
+
+  .impact-badge.high { background: var(--teal-dim); border-color: rgba(45,212,191,0.3); color: var(--teal); }
+  .impact-badge.significant { background: var(--purple-dim); border-color: rgba(167,139,250,0.3); color: var(--purple); }
+  .impact-badge.important { background: var(--coral-dim); border-color: rgba(248,113,113,0.3); color: var(--coral); }
+
+  p {
+    color: #b0b8c8;
+    margin-bottom: 20px;
+    font-size: 16px;
+    line-height: 1.85;
+    font-weight: 400;
+  }
+
+  strong { color: var(--text); font-weight: 700; }
+
+  /* Code inline */
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border2);
+    padding: 2px 7px;
+    border-radius: 4px;
+    color: var(--teal);
+  }
+
+  /* Callout boxes */
+  .callout {
+    border-left: 3px solid var(--amber);
+    background: var(--amber-dim);
+    padding: 20px 24px;
+    border-radius: 0 8px 8px 0;
+    margin: 28px 0;
+  }
+
+  .callout.teal { border-color: var(--teal); background: var(--teal-dim); }
+  .callout.purple { border-color: var(--purple); background: var(--purple-dim); }
+  .callout.coral { border-color: var(--coral); background: var(--coral-dim); }
+
+  .callout-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 8px;
+  }
+
+  .callout.teal .callout-label { color: var(--teal); }
+  .callout.purple .callout-label { color: var(--purple); }
+  .callout.coral .callout-label { color: var(--coral); }
+
+  .callout p { margin: 0; font-size: 15px; }
+
+  /* Diagram container */
+  .diagram-wrap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 24px;
+    margin: 36px 0;
+    overflow-x: auto;
+    position: relative;
+  }
+
+  .diagram-wrap::before {
+    content: attr(data-label);
+    position: absolute;
+    top: 14px; right: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .diagram-wrap svg { width: 100%; height: auto; display: block; }
+
+  /* SVG text classes matching the design system */
+  .diagram-wrap .t  { font-family: 'Syne', sans-serif; font-size: 14px; fill: #b0b8c8; }
+  .diagram-wrap .ts { font-family: 'Syne', sans-serif; font-size: 12px; fill: #6b7a94; }
+  .diagram-wrap .th { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 600; fill: #e8eaf0; }
+
+  /* Metric grid */
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin: 28px 0;
+  }
+
+  .metric-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+
+  .metric-value {
+    font-family: 'DM Serif Display', serif;
+    font-size: 36px;
+    color: var(--amber);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .metric-value.teal { color: var(--teal); }
+  .metric-value.purple { color: var(--purple); }
+
+  .metric-label {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+
+  /* Step list */
+  .step-list { list-style: none; margin: 24px 0; }
+
+  .step-list li {
+    display: flex;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+    color: #b0b8c8;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .step-list li:last-child { border-bottom: none; }
+
+  .step-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--dim);
+    padding-top: 3px;
+    flex-shrink: 0;
+    width: 28px;
+  }
+
+  /* Divider */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border2) 30%, var(--border2) 70%, transparent);
+    margin: 60px 0;
+  }
+
+  /* Pull quote */
+  .pull-quote {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(22px, 3vw, 32px);
+    font-style: italic;
+    color: var(--text);
+    line-height: 1.4;
+    border-left: 4px solid var(--amber);
+    padding-left: 28px;
+    margin: 40px 0;
+    letter-spacing: -0.01em;
+  }
+
+  /* Summary table */
+  .summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 28px 0;
+    font-size: 14px;
+  }
+
+  .summary-table th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--dim);
+    text-align: left;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border2);
+    font-weight: 500;
+  }
+
+  .summary-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    color: #b0b8c8;
+    vertical-align: top;
+  }
+
+  .summary-table tr:last-child td { border-bottom: none; }
+  .summary-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .pill {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    letter-spacing: 0.05em;
+  }
+
+  .pill-amber { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(245,166,35,0.25); }
+  .pill-teal  { background: var(--teal-dim);  color: var(--teal);  border: 1px solid rgba(45,212,191,0.25); }
+  .pill-purple{ background: var(--purple-dim);color: var(--purple);border: 1px solid rgba(167,139,250,0.25); }
+  .pill-coral { background: var(--coral-dim); color: var(--coral); border: 1px solid rgba(248,113,113,0.25); }
+
+  /* Footer */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 48px 80px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+
+  footer p { color: var(--dim); font-size: 13px; margin: 0; }
+
+  .footer-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--amber);
+    letter-spacing: 0.1em;
+  }
+
+  /* Responsive */
+  @media (max-width: 700px) {
+    .hero { padding: 60px 24px 48px; }
+    .toc-bar { padding: 0 24px; }
+    .content { padding: 48px 24px; }
+    .metric-grid { grid-template-columns: 1fr 1fr; }
+    footer { padding: 32px 24px; }
+  }
+
+  /* Animations */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .hero h1, .hero-sub, .hero-eyebrow, .hero-meta {
+    animation: fadeUp 0.6s ease both;
+  }
+  .hero-eyebrow { animation-delay: 0.05s; }
+  .hero h1      { animation-delay: 0.15s; }
+  .hero-sub     { animation-delay: 0.25s; }
+  .hero-meta    { animation-delay: 0.35s; }
+</style>
+</head>
+<body>
+  <div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-grid-bg"></div>
+  <div class="hero-eyebrow">Kernel Architecture Deep Dive</div>
+  <h1>Tuning the Linux Kernel for <em>AI &amp; GPU</em> Servers</h1>
+  <p class="hero-sub">
+    A kernel engineer's guide to the subsystems that silently throttle your training clusters —
+    and the low-level changes that can unlock real performance.
+  </p>
+  <div class="hero-meta">
+    <span>⬡ AI Infrastructure</span>
+    <span>⬡ Linux Kernel Internals</span>
+    <span>⬡ GPU Systems</span>
+    <span>⬡ Deep Dive</span>
+  </div>
+</section>
+
+<!-- TOC -->
+<nav class="toc-bar">
+  <span class="toc-label">Contents</span>
+  <a href="#overview">Overview</a>
+  <a href="#hmm">HMM / SVM</a>
+  <a href="#drm">DRM Scheduler</a>
+  <a href="#iommu">IOMMU / DMA</a>
+  <a href="#scheduler">CPU Scheduler</a>
+  <a href="#network">Network / RDMA</a>
+  <a href="#vfs">VFS / io_uring</a>
+  <a href="#tlb">TLB Shootdowns</a>
+  <a href="#summary">Summary</a>
+</nav>
+
+<!-- Main content -->
+<main class="content">
+
+  <!-- Intro -->
+  <section class="section" id="overview">
+    <div class="section-header">
+      <span class="section-number">00</span>
+      <h2>The invisible bottleneck</h2>
+    </div>
+
+    <p>
+      When an AI training run underperforms, the instinct is to blame the model architecture, the
+      optimizer, or the GPU count. But the real culprit is often the operating system sitting between
+      your code and the hardware. The Linux kernel — specifically six subsystems — can silently consume
+      10–40% of your theoretical compute budget. This post walks through each one, from a kernel
+      architect's perspective, explaining exactly what breaks and what to fix.
+    </p>
+
+    <div class="callout">
+      <div class="callout-label">Scope</div>
+      <p>This analysis targets dense GPU clusters (8–512 GPUs) running PyTorch / JAX training or
+      high-throughput inference. The kernel version baseline is Linux 6.6+ (EEVDF era).
+      Hardware assumed: AMD EPYC or Intel Xeon, NVIDIA A100/H100 or AMD MI300X, InfiniBand / RoCE fabric.</p>
+    </div>
+
+    <!-- Architecture diagram -->
+    <div class="diagram-wrap" data-label="Fig. 1 — Kernel subsystem map">
+      <svg viewBox="0 0 780 780" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#545e72" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <!-- Hardware bar -->
+        <rect x="30" y="720" width="720" height="44" rx="8" fill="#1a2030" stroke="#2a3348" stroke-width="0.5"/>
+        <text x="390" y="747" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="600" fill="#6b7a94">Hardware — PCIe · NVLink · DRAM · NUMA · NICs · NVMe</text>
+
+        <!-- Layer 1: low-level -->
+        <rect x="30" y="610" width="218" height="88" rx="8" fill="#1a1428" stroke="#5b21b6" stroke-width="0.8"/>
+        <text x="139" y="638" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#a78bfa">IOMMU / DMA</text>
+        <text x="139" y="658" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">P2PDMA, IOVA cache</text>
+        <text x="139" y="676" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">ATS, PASID</text>
+
+        <rect x="281" y="610" width="218" height="88" rx="8" fill="#1a1428" stroke="#5b21b6" stroke-width="0.8"/>
+        <text x="390" y="638" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#a78bfa">Memory subsystem</text>
+        <text x="390" y="658" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">Huge pages · NUMA</text>
+        <text x="390" y="676" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">madvise · compaction</text>
+
+        <rect x="532" y="610" width="218" height="88" rx="8" fill="#1a1428" stroke="#5b21b6" stroke-width="0.8"/>
+        <text x="641" y="638" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#a78bfa">IRQ / Interrupt</text>
+        <text x="641" y="658" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">MSI-X · IRQ affinity</text>
+        <text x="641" y="676" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">NAPI · threaded IRQs</text>
+
+        <!-- Arrows up from hardware -->
+        <line x1="139" y1="720" x2="139" y2="700" stroke="#545e72" stroke-width="0.8" marker-end="url(#arr1)"/>
+        <line x1="390" y1="720" x2="390" y2="700" stroke="#545e72" stroke-width="0.8" marker-end="url(#arr1)"/>
+        <line x1="641" y1="720" x2="641" y2="700" stroke="#545e72" stroke-width="0.8" marker-end="url(#arr1)"/>
+
+        <!-- Layer 2: mid -->
+        <rect x="30" y="490" width="218" height="88" rx="8" fill="#121c28" stroke="#0d6e5a" stroke-width="0.8"/>
+        <text x="139" y="518" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#2dd4bf">PCIe / CXL layer</text>
+        <text x="139" y="538" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">MPS · ASPM · BAR</text>
+        <text x="139" y="556" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">CXL memory tiering</text>
+
+        <rect x="281" y="490" width="218" height="88" rx="8" fill="#121c28" stroke="#0d6e5a" stroke-width="0.8"/>
+        <text x="390" y="518" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#2dd4bf">Network / RDMA</text>
+        <text x="390" y="538" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">RoCE · InfiniBand</text>
+        <text x="390" y="556" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">XDP · AF_XDP · io_uring</text>
+
+        <rect x="532" y="490" width="218" height="88" rx="8" fill="#121c28" stroke="#0d6e5a" stroke-width="0.8"/>
+        <text x="641" y="518" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#2dd4bf">CPU scheduler</text>
+        <text x="641" y="538" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">EEVDF · isolcpus</text>
+        <text x="641" y="556" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">SCHED_DEADLINE</text>
+
+        <line x1="139" y1="610" x2="139" y2="580" stroke="#545e72" stroke-width="0.8" marker-end="url(#arr1)"/>
+        <line x1="390" y1="610" x2="390" y2="580" stroke="#545e72" stroke-width="0.8" marker-end="url(#arr1)"/>
+        <line x1="641" y1="610" x2="641" y2="580" stroke="#545e72" stroke-width="0.8" marker-end="url(#arr1)"/>
+
+        <!-- Layer 3: high -->
+        <rect x="30" y="360" width="345" height="100" rx="8" fill="#121a18" stroke="#0f6e56" stroke-width="1"/>
+        <text x="202" y="388" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#2dd4bf">DRM / GPU driver  ★</text>
+        <text x="202" y="408" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">GEM/TTM memory · fence/timeline</text>
+        <text x="202" y="426" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">drm_sched · preemption · PASID ctx</text>
+        <text x="202" y="444" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">compute context · gang scheduling</text>
+
+        <rect x="405" y="360" width="345" height="100" rx="8" fill="#121a18" stroke="#0f6e56" stroke-width="1"/>
+        <text x="577" y="388" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#2dd4bf">VFS / Block / io_uring  ★</text>
+        <text x="577" y="408" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">io_uring fixed buffers · NVMe-mq</text>
+        <text x="577" y="426" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">mq-deadline · DAX mmap</text>
+        <text x="577" y="444" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#6b7a94">huge page backing · blk-wbt off</text>
+
+        <line x1="139" y1="490" x2="155" y2="462" stroke="#545e72" stroke-width="0.8" marker-end="url(#arr1)"/>
+        <line x1="390" y1="490" x2="550" y2="462" stroke="#545e72" stroke-width="0.8" marker-end="url(#arr1)"/>
+        <line x1="641" y1="490" x2="610" y2="462" stroke="#545e72" stroke-width="0.8" marker-end="url(#arr1)"/>
+
+        <!-- TOP: HMM / SVM -->
+        <rect x="30" y="220" width="720" height="112" rx="10" fill="#1e1600" stroke="#b37d1a" stroke-width="1.5"/>
+        <text x="390" y="250" text-anchor="middle" font-family="'Syne',sans-serif" font-size="15" font-weight="700" fill="#f5a623">★★  Memory Management — HMM / SVM / ATS / PASID  ★★</text>
+        <text x="390" y="274" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" fill="#a07820">Heterogeneous Memory Management · Shared Virtual Memory</text>
+        <text x="390" y="296" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" fill="#a07820">Address Translation Services · GPU-CPU unified VA space</text>
+        <text x="390" y="318" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" fill="#f5a623">Zero-copy host↔device · eliminates PCIe bounce buffers</text>
+
+        <line x1="202" y1="360" x2="300" y2="334" stroke="#b37d1a" stroke-width="0.8" marker-end="url(#arr1)"/>
+        <line x1="577" y1="360" x2="480" y2="334" stroke="#b37d1a" stroke-width="0.8" marker-end="url(#arr1)"/>
+
+        <!-- Userspace -->
+        <rect x="30" y="100" width="720" height="86" rx="8" fill="#161616" stroke="#2a2a2a" stroke-width="0.5"/>
+        <text x="390" y="130" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="600" fill="#545e72">Userspace / frameworks</text>
+        <text x="390" y="154" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#404858">CUDA · ROCm · PyTorch · JAX · NCCL · UCX · libfabric · RDMA verbs</text>
+        <text x="390" y="174" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#404858">vLLM · Triton · TensorRT-LLM · Megatron-LM</text>
+
+        <line x1="390" y1="220" x2="390" y2="188" stroke="#545e72" stroke-width="0.8" marker-end="url(#arr1)"/>
+
+        <!-- Legend -->
+        <rect x="30" y="35" width="14" height="14" rx="2" fill="#1e1600" stroke="#b37d1a" stroke-width="1.2"/>
+        <text x="50" y="47" font-family="'Syne',sans-serif" font-size="11" fill="#8892a4">Highest impact</text>
+        <rect x="160" y="35" width="14" height="14" rx="2" fill="#121a18" stroke="#0f6e56" stroke-width="1"/>
+        <text x="180" y="47" font-family="'Syne',sans-serif" font-size="11" fill="#8892a4">High impact</text>
+        <rect x="270" y="35" width="14" height="14" rx="2" fill="#121c28" stroke="#0d6e5a" stroke-width="0.8"/>
+        <text x="290" y="47" font-family="'Syne',sans-serif" font-size="11" fill="#8892a4">Significant</text>
+        <rect x="370" y="35" width="14" height="14" rx="2" fill="#1a1428" stroke="#5b21b6" stroke-width="0.8"/>
+        <text x="390" y="47" font-family="'Syne',sans-serif" font-size="11" fill="#8892a4">Important</text>
+      </svg>
+    </div>
+
+    <div class="metric-grid">
+      <div class="metric-card">
+        <div class="metric-value">40%</div>
+        <div class="metric-label">Compute lost to kernel overhead (worst case)</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value teal">6</div>
+        <div class="metric-label">Kernel subsystems with significant tuning leverage</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value purple">1</div>
+        <div class="metric-label">Single biggest fix: HMM + ATS + PASID unified memory</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Section 1: HMM -->
+  <section class="section" id="hmm">
+    <div class="section-header">
+      <span class="section-number">01</span>
+      <h2>Memory Management: HMM, SVM &amp; ATS</h2>
+    </div>
+
+    <div class="impact-badge">★★ Highest Impact</div>
+
+    <p>
+      This is where a kernel architect would start. The root cause of most GPU performance waste is
+      <strong>address space fragmentation between the CPU and GPU</strong>. Every time PyTorch calls
+      <code>tensor.cuda()</code>, data is physically copied through the PCIe bus using bounce buffers
+      managed by the kernel's DMA layer. On an A100 with 80GB of HBM, filling that memory from the
+      host requires traversing 16 lanes of PCIe Gen4 — at roughly 32 GB/s bidirectional. For a 70B
+      parameter model, that's over 4 seconds just for the initial load, before a single FLOP is computed.
+    </p>
+
+    <div class="pull-quote">
+      The bounce buffer is not an implementation detail. It is a fundamental architectural flaw that
+      HMM was designed to eliminate.
+    </div>
+
+    <p>
+      The kernel's answer is <strong>HMM (Heterogeneous Memory Management)</strong>, found in
+      <code>mm/hmm.c</code>. HMM allows a device's MMU to mirror the CPU's page tables, so that the
+      GPU can take page faults on CPU memory and vice versa — the kernel's <code>migrate_to_ram()</code>
+      callback handles migration transparently. Combined with three additional primitives, HMM becomes
+      transformative:
+    </p>
+
+    <ul class="step-list">
+      <li>
+        <span class="step-num">SVM</span>
+        <span><strong>Shared Virtual Memory</strong> — GPU and CPU share a single virtual address space.
+        A pointer valid on the CPU is valid on the GPU. No explicit copies, no pinning, no staging buffers.
+        The kernel's MMU notifier infrastructure (<code>include/linux/mmu_notifier.h</code>) propagates
+        page invalidations to the GPU driver in real time.</span>
+      </li>
+      <li>
+        <span class="step-num">ATS</span>
+        <span><strong>Address Translation Services</strong> — the GPU uses the CPU's IOMMU page tables
+        directly, over PCIe. This eliminates the shadow page table the GPU driver maintains in VRAM.
+        On EPYC systems with AMD GPUs, ATS over PCIe Gen5 can eliminate 80%+ of IOMMU translation
+        overhead for large contiguous mappings.</span>
+      </li>
+      <li>
+        <span class="step-num">PASID</span>
+        <span><strong>Process Address Space IDs</strong> — each GPU compute context gets its own
+        address space tag, allowing multiple processes to share GPU hardware without TLB flushes
+        on context switches. Critical for multi-tenant inference serving (vLLM, TGI).</span>
+      </li>
+    </ul>
+
+    <!-- HMM diagram -->
+    <div class="diagram-wrap" data-label="Fig. 2 — HMM / ATS data path">
+      <svg viewBox="0 0 780 320" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#545e72" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+          <marker id="arr2r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#f87171" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+          <marker id="arr2g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#4ade80" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <!-- Old path label -->
+        <text x="30" y="44" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#f87171">WITHOUT HMM (bounce buffer path)</text>
+        <!-- CPU -->
+        <rect x="30" y="58" width="130" height="48" rx="6" fill="#1c1010" stroke="#f87171" stroke-width="0.8"/>
+        <text x="95" y="87" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" fill="#f87171">CPU / DRAM</text>
+        <!-- bounce -->
+        <rect x="220" y="58" width="140" height="48" rx="6" fill="#1c1210" stroke="#b45309" stroke-width="0.8"/>
+        <text x="290" y="79" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#f5a623">Bounce buffer</text>
+        <text x="290" y="97" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#6b7a94">DMA-coherent alloc</text>
+        <!-- PCIe -->
+        <rect x="420" y="58" width="120" height="48" rx="6" fill="#161616" stroke="#2a3348" stroke-width="0.8"/>
+        <text x="480" y="87" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" fill="#545e72">PCIe DMA</text>
+        <!-- GPU -->
+        <rect x="600" y="58" width="150" height="48" rx="6" fill="#101c10" stroke="#f87171" stroke-width="0.8"/>
+        <text x="675" y="87" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" fill="#f87171">GPU VRAM</text>
+
+        <line x1="160" y1="82" x2="218" y2="82" stroke="#f87171" stroke-width="1" marker-end="url(#arr2r)"/>
+        <line x1="360" y1="82" x2="418" y2="82" stroke="#f87171" stroke-width="1" marker-end="url(#arr2r)"/>
+        <line x1="540" y1="82" x2="598" y2="82" stroke="#f87171" stroke-width="1" marker-end="url(#arr2r)"/>
+        <text x="290" y="130" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#f87171">memcpy → pin → DMA → copy = 3 passes</text>
+
+        <!-- New path label -->
+        <text x="30" y="194" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#4ade80">WITH HMM + ATS (zero-copy path)</text>
+        <!-- CPU -->
+        <rect x="30" y="208" width="130" height="48" rx="6" fill="#101c10" stroke="#4ade80" stroke-width="0.8"/>
+        <text x="95" y="237" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" fill="#4ade80">CPU / DRAM</text>
+        <!-- IOMMU -->
+        <rect x="220" y="208" width="160" height="48" rx="6" fill="#101818" stroke="#2dd4bf" stroke-width="0.8"/>
+        <text x="300" y="229" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" fill="#2dd4bf">IOMMU + ATS</text>
+        <text x="300" y="247" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#6b7a94">shared page tables</text>
+        <!-- GPU direct -->
+        <rect x="580" y="208" width="170" height="48" rx="6" fill="#101c10" stroke="#4ade80" stroke-width="0.8"/>
+        <text x="665" y="237" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" fill="#4ade80">GPU VA (= CPU VA)</text>
+
+        <line x1="160" y1="232" x2="218" y2="232" stroke="#4ade80" stroke-width="1" marker-end="url(#arr2g)"/>
+        <line x1="380" y1="232" x2="578" y2="232" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arr2g)"/>
+        <text x="480" y="224" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#6b7a94">direct PCIe read (ATS lookup)</text>
+        <text x="390" y="280" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#4ade80">GPU faults → IOMMU translates → reads CPU DRAM directly. 0 copies.</text>
+      </svg>
+    </div>
+
+    <div class="callout teal">
+      <div class="callout-label">Key files to study</div>
+      <p><code>mm/hmm.c</code> · <code>drivers/iommu/iommu-sva.c</code> · <code>include/linux/hmm.h</code> ·
+      <code>drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c</code> (SVM implementation reference)</p>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Section 2: DRM Scheduler -->
+  <section class="section" id="drm">
+    <div class="section-header">
+      <span class="section-number">02</span>
+      <h2>DRM GPU Scheduler — <code>drm_sched</code></h2>
+    </div>
+
+    <div class="impact-badge high">★★ High Impact</div>
+
+    <p>
+      The GPU driver's internal scheduler lives in <code>drivers/gpu/drm/scheduler/</code> and is
+      one of the most underappreciated bottlenecks in AI workloads. It has three fundamental problems
+      in the context of LLM training and inference.
+    </p>
+
+    <p>
+      <strong>Preemption granularity.</strong> Most GPU schedulers can only preempt at kernel
+      (shader dispatch) boundaries — not mid-wavefront. For LLM inference serving, a long prefill
+      job (processing a 128k-token prompt) holds the GPU for hundreds of milliseconds, blocking all
+      decode jobs behind it. This destroys P99 latency. The fix requires implementing
+      <em>mid-wavefront preemption</em> at the hardware level (available on H100 and MI300X) and
+      surfacing it through <code>drm_sched</code> priority classes.
+    </p>
+
+    <p>
+      <strong>Fence / timeline ordering.</strong> When NCCL launches an AllReduce across 8 GPUs,
+      the kernel's <code>dma_fence</code> / syncobj mechanism serializes what should be a parallel
+      DAG of operations. The current timeline fence model is inherently linear: fence B waits on
+      fence A. Replacing this with proper <em>DAG dependency tracking</em> in the fence layer allows
+      AllReduce ring steps to overlap with compute, recovering 15–20% of collective communication time.
+    </p>
+
+    <p>
+      <strong>Gang scheduling.</strong> In distributed training, all ranks of a job must progress
+      together. If rank 3's GPU context gets preempted while ranks 0–7 are in the middle of an
+      AllReduce, the barrier stall propagates across the entire job. A <code>drm_sched</code> policy
+      that understands gang membership — scheduling all members of a gang together or not at all —
+      eliminates these stalls entirely.
+    </p>
+
+    <!-- drm_sched diagram -->
+    <div class="diagram-wrap" data-label="Fig. 3 — drm_sched gang scheduling">
+      <svg viewBox="0 0 780 300" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#545e72" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <!-- Gang job bar -->
+        <text x="30" y="30" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#8892a4">8-GPU training gang — AllReduce barrier alignment</text>
+
+        <!-- GPU rows -->
+        <text x="30" y="65" font-family="'JetBrains Mono',monospace" font-size="11" fill="#545e72">GPU 0</text>
+        <text x="30" y="105" font-family="'JetBrains Mono',monospace" font-size="11" fill="#545e72">GPU 1</text>
+        <text x="30" y="145" font-family="'JetBrains Mono',monospace" font-size="11" fill="#545e72">GPU 2</text>
+        <text x="30" y="185" font-family="'JetBrains Mono',monospace" font-size="11" fill="#545e72">GPU 3</text>
+        <text x="30" y="225" font-family="'JetBrains Mono',monospace" font-size="11" fill="#545e72">GPU 4–7</text>
+
+        <!-- Compute bars -->
+        <rect x="80" y="50" width="200" height="22" rx="3" fill="#1a2e1a" stroke="#4ade80" stroke-width="0.7"/>
+        <text x="180" y="65" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#4ade80">compute kernel</text>
+
+        <rect x="80" y="90" width="220" height="22" rx="3" fill="#1a2e1a" stroke="#4ade80" stroke-width="0.7"/>
+        <text x="190" y="105" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#4ade80">compute kernel</text>
+
+        <rect x="80" y="130" width="180" height="22" rx="3" fill="#1a2e1a" stroke="#4ade80" stroke-width="0.7"/>
+        <text x="170" y="145" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#4ade80">compute kernel</text>
+
+        <!-- GPU3: preempted scenario -->
+        <rect x="80" y="170" width="100" height="22" rx="3" fill="#1a2e1a" stroke="#4ade80" stroke-width="0.7"/>
+        <rect x="185" y="170" width="80" height="22" rx="3" fill="#2a1010" stroke="#f87171" stroke-width="0.8"/>
+        <text x="225" y="185" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#f87171">preempted!</text>
+        <rect x="270" y="170" width="60" height="22" rx="3" fill="#1a2e1a" stroke="#4ade80" stroke-width="0.7"/>
+
+        <rect x="80" y="210" width="200" height="22" rx="3" fill="#1a2e1a" stroke="#4ade80" stroke-width="0.7"/>
+
+        <!-- AllReduce zone (correct) -->
+        <rect x="305" y="44" width="130" height="200" rx="4" fill="rgba(245,166,35,0.05)" stroke="#f5a623" stroke-width="0.8" stroke-dasharray="4 3"/>
+        <text x="370" y="256" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#f5a623">barrier / AllReduce</text>
+
+        <!-- Stall lines from GPU3 -->
+        <line x1="335" y1="50" x2="335" y2="232" stroke="#f87171" stroke-width="0.8" stroke-dasharray="3 3"/>
+        <text x="430" y="100" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#f87171">all ranks stall</text>
+        <text x="430" y="114" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#f87171">waiting for GPU 3</text>
+
+        <!-- After gang sched -->
+        <rect x="530" y="44" width="220" height="218" rx="6" fill="rgba(45,212,191,0.04)" stroke="#2dd4bf" stroke-width="0.8" stroke-dasharray="4 3"/>
+        <text x="640" y="64" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" font-weight="700" fill="#2dd4bf">with gang scheduling</text>
+        <text x="640" y="82" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#6b7a94">all 8 GPUs scheduled</text>
+        <text x="640" y="97" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#6b7a94">atomically — no rank</text>
+        <text x="640" y="112" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#6b7a94">preempted mid-gang</text>
+        <rect x="550" y="126" width="160" height="16" rx="3" fill="#1a2e1a" stroke="#4ade80" stroke-width="0.6"/>
+        <rect x="550" y="148" width="160" height="16" rx="3" fill="#1a2e1a" stroke="#4ade80" stroke-width="0.6"/>
+        <rect x="550" y="170" width="160" height="16" rx="3" fill="#1a2e1a" stroke="#4ade80" stroke-width="0.6"/>
+        <rect x="550" y="192" width="160" height="16" rx="3" fill="#1a2e1a" stroke="#4ade80" stroke-width="0.6"/>
+        <rect x="550" y="214" width="160" height="16" rx="3" fill="#1a2e1a" stroke="#4ade80" stroke-width="0.6"/>
+        <text x="630" y="256" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#4ade80">all ranks in sync</text>
+      </svg>
+    </div>
+
+    <div class="callout purple">
+      <div class="callout-label">Key files</div>
+      <p><code>drivers/gpu/drm/scheduler/sched_main.c</code> · <code>drivers/gpu/drm/scheduler/sched_fence.c</code> ·
+      <code>include/drm/gpu_scheduler.h</code> — look for <code>drm_gpu_scheduler</code> struct and
+      <code>drm_sched_entity</code> priority fields.</p>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Section 3: IOMMU / DMA -->
+  <section class="section" id="iommu">
+    <div class="section-header">
+      <span class="section-number">03</span>
+      <h2>IOMMU / DMA — P2PDMA &amp; IOVA Caching</h2>
+    </div>
+
+    <div class="impact-badge high">★★ High Impact</div>
+
+    <p>
+      In NVLink or InfiniBand + GPU clusters, the bottleneck is <strong>PCIe peer-to-peer DMA</strong>.
+      When GPU 0 wants to write to GPU 1's memory, the kernel currently routes it through the CPU's
+      memory controller on many platforms — because the IOMMU's IOVA allocator doesn't understand
+      P2P mappings between devices that aren't memory controllers.
+    </p>
+
+    <p>
+      The second, less obvious problem is IOVA allocator scalability. The per-CPU IOVA magazine
+      allocator in <code>drivers/iommu/iova.c</code> was designed for 4K-page workloads (web servers,
+      databases). AI workloads map 2MB to 1GB regions — hundreds of times larger. At 256 CPU cores
+      and 8 GPUs, the magazine allocator becomes a spinlock contention point that adds microseconds
+      of setup overhead to every DMA operation.
+    </p>
+
+    <ul class="step-list">
+      <li>
+        <span class="step-num">P2P</span>
+        <span><strong>P2PDMA (<code>drivers/pci/p2pdma.c</code>)</strong> — extend to support multi-hop
+        P2P across PCIe switches without bouncing through host memory. AMD's XGMI fabric and NVIDIA's
+        NVLink already bypass the CPU; P2PDMA needs to express this topology to the kernel's DMA layer.</span>
+      </li>
+      <li>
+        <span class="step-num">IOVA</span>
+        <span><strong>IOVA cache rework</strong> — replace the magazine allocator with per-NUMA radix
+        trees sized for large-region mappings. Benchmark target: DMA setup overhead for a 512MB region
+        should be under 1µs on a 256-core system (currently 8–40µs with lock contention).</span>
+      </li>
+      <li>
+        <span class="step-num">VFIO</span>
+        <span><strong>VFIO mediated devices</strong> — for bare-metal inference servers, bypassing the
+        kernel DRM layer entirely via VFIO with mediated device assignment reduces CUDA kernel launch
+        latency from ~8µs to ~2µs by eliminating the <code>ioctl</code> dispatch chain.</span>
+      </li>
+    </ul>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Section 4: CPU Scheduler -->
+  <section class="section" id="scheduler">
+    <div class="section-header">
+      <span class="section-number">04</span>
+      <h2>CPU Scheduler — EEVDF, isolcpus &amp; SCHED_DEADLINE</h2>
+    </div>
+
+    <div class="impact-badge significant">★ Significant</div>
+
+    <p>
+      PyTorch DataLoader workers, NCCL communication threads, and CUDA stream callbacks all compete
+      for CPU time. The standard CFS scheduler has millisecond-scale wakeup latency — catastrophic
+      when a GPU kernel is sitting idle, waiting for a CPU-side fence signal to launch the next wave.
+    </p>
+
+    <!-- Scheduler latency diagram -->
+    <div class="diagram-wrap" data-label="Fig. 4 — CPU scheduler wakeup latency impact">
+      <svg viewBox="0 0 780 220" xmlns="http://www.w3.org/2000/svg">
+        <text x="30" y="28" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#8892a4">GPU idle time caused by CPU scheduling jitter — timeline view</text>
+
+        <text x="30" y="66" font-family="'JetBrains Mono',monospace" font-size="11" fill="#545e72">GPU stream</text>
+        <text x="30" y="120" font-family="'JetBrains Mono',monospace" font-size="11" fill="#545e72">CPU (CFS)</text>
+        <text x="30" y="172" font-family="'JetBrains Mono',monospace" font-size="11" fill="#545e72">CPU (isolated)</text>
+
+        <!-- GPU timeline -->
+        <rect x="130" y="50" width="160" height="24" rx="3" fill="#1a2e1a" stroke="#4ade80" stroke-width="0.7"/>
+        <text x="210" y="66" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#4ade80">kernel A</text>
+        <rect x="330" y="50" width="20" height="24" rx="2" fill="#2a1010" stroke="#f87171" stroke-width="0.7"/>
+        <rect x="350" y="50" width="20" height="24" rx="2" fill="#2a1010" stroke="#f87171" stroke-width="0.7"/>
+        <rect x="370" y="50" width="20" height="24" rx="2" fill="#2a1010" stroke="#f87171" stroke-width="0.7"/>
+        <text x="360" y="44" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#f87171">GPU idle (jitter)</text>
+        <rect x="390" y="50" width="180" height="24" rx="3" fill="#1a2e1a" stroke="#4ade80" stroke-width="0.7"/>
+        <text x="480" y="66" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#4ade80">kernel B</text>
+
+        <!-- CPU CFS timeline -->
+        <rect x="130" y="106" width="80" height="24" rx="3" fill="#1e1628" stroke="#a78bfa" stroke-width="0.7"/>
+        <text x="170" y="122" text-anchor="middle" font-family="'Syne',sans-serif" font-size="9" fill="#a78bfa">other tasks</text>
+        <rect x="215" y="106" width="40" height="24" rx="3" fill="#161c28" stroke="#60a5fa" stroke-width="0.7"/>
+        <text x="235" y="122" text-anchor="middle" font-family="'Syne',sans-serif" font-size="9" fill="#60a5fa">fence</text>
+        <rect x="260" y="106" width="60" height="24" rx="3" fill="#1e1628" stroke="#a78bfa" stroke-width="0.7"/>
+        <text x="290" y="122" text-anchor="middle" font-family="'Syne',sans-serif" font-size="9" fill="#a78bfa">other</text>
+        <!-- delay to GPU -->
+        <line x1="330" y1="74" x2="330" y2="106" stroke="#f87171" stroke-width="0.8" stroke-dasharray="3 3"/>
+        <text x="340" y="96" font-family="'Syne',sans-serif" font-size="9" fill="#f87171">1–3ms delay</text>
+
+        <!-- CPU isolated timeline -->
+        <rect x="130" y="158" width="190" height="24" rx="3" fill="#161c28" stroke="#60a5fa" stroke-width="0.7"/>
+        <text x="225" y="174" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#60a5fa">NCCL proxy thread (dedicated core)</text>
+        <rect x="325" y="158" width="8" height="24" rx="2" fill="#2a1010" stroke="#f87171" stroke-width="0.5"/>
+        <text x="350" y="152" text-anchor="middle" font-family="'Syne',sans-serif" font-size="9" fill="#4ade80">&lt;200µs</text>
+        <rect x="333" y="158" width="237" height="24" rx="3" fill="#161c28" stroke="#60a5fa" stroke-width="0.7"/>
+
+        <text x="390" y="212" text-anchor="middle" font-family="'Syne',sans-serif" font-size="10" fill="#4ade80">isolcpus + nohz_full reduces GPU idle gap by ~15× on fence-heavy workloads</text>
+      </svg>
+    </div>
+
+    <ul class="step-list">
+      <li>
+        <span class="step-num">isol</span>
+        <span><strong><code>isolcpus=</code> + <code>nohz_full=</code></strong> — dedicate a set of
+        CPU cores entirely to GPU communication threads. With no OS tick and no competing tasks,
+        wakeup latency drops from 1–3ms to under 200µs. NCCL proxy threads benefit most, since they
+        sit in a tight polling loop waiting for DMA completion events.</span>
+      </li>
+      <li>
+        <span class="step-num">EEVDF</span>
+        <span><strong>EEVDF (Earliest Eligible Virtual Deadline First)</strong> — merged in Linux 6.6,
+        EEVDF is strictly better than CFS for mixed I/O + compute workloads. Its <code>latency-nice</code>
+        tuning knob, exposed via <code>sched_attr</code>, allows marking GPU callback threads as
+        latency-sensitive without full real-time priority.</span>
+      </li>
+      <li>
+        <span class="step-num">DL</span>
+        <span><strong>SCHED_DEADLINE for NCCL proxy threads</strong> — using the deadline scheduler
+        class with <code>runtime=500µs</code>, <code>period=1ms</code> gives the collective communication
+        thread the determinism it needs without requiring <code>CAP_SYS_NICE</code> escalation in
+        production containers.</span>
+      </li>
+    </ul>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Section 5: Network / RDMA -->
+  <section class="section" id="network">
+    <div class="section-header">
+      <span class="section-number">05</span>
+      <h2>Network Stack — XDP, RDMA &amp; Kernel Bypass</h2>
+    </div>
+
+    <div class="impact-badge significant">★ Significant</div>
+
+    <p>
+      For multi-node training (anything beyond a single machine), the network subsystem becomes the
+      bottleneck. NCCL over TCP is wasteful; even RDMA verbs carry unnecessary kernel overhead.
+      The network path has three layers of optimization available.
+    </p>
+
+    <p>
+      <strong>XDP (eXpress Data Path)</strong> keeps the data path entirely in the NIC driver,
+      bypassing the socket layer completely. Combined with AF_XDP sockets, you get performance
+      within 10–15% of DPDK — but with full kernel integration, no separate process, and compatibility
+      with standard networking tools. Moving NCCL's transport to XDP-based packet processing on
+      InfiniBand or RoCE eliminates every <code>sk_buff</code> allocation in the hot path.
+    </p>
+
+    <p>
+      <strong><code>io_uring</code> + fixed buffers for RDMA</strong> — using io_uring's registered
+      buffers (pinned and mapped once at setup time) for gradient exchange eliminates the per-operation
+      <code>get_user_pages()</code> overhead that dominates small-message RDMA latency. For NCCL's
+      ring-AllReduce, where millions of small <code>ibv_post_send</code> calls are made per training
+      step, this is measurable.
+    </p>
+
+    <p>
+      <strong>GRO (Generic Receive Offload) tuning</strong> — large receive coalescing is tuned for
+      web traffic (small, irregular packets). AI gradient traffic is large, bursty, and periodic —
+      the GRO engine needs <code>gro_flush_timeout</code> tuning and per-flow coalescing hints to
+      handle the predictable burst pattern efficiently.
+    </p>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Section 6: VFS / io_uring -->
+  <section class="section" id="vfs">
+    <div class="section-header">
+      <span class="section-number">06</span>
+      <h2>VFS / Block Layer — <code>io_uring</code> &amp; Dataset I/O</h2>
+    </div>
+
+    <div class="impact-badge important">★ Important</div>
+
+    <p>
+      During training, the data pipeline (reading tokenized sequences, TFRecords, Parquet files)
+      runs on the same machine as the GPU workload. The kernel's block layer and VFS matter more
+      than they appear: a stalled DataLoader can drop GPU utilization from 95% to 60% in seconds.
+    </p>
+
+    <ul class="step-list">
+      <li>
+        <span class="step-num">io_uring</span>
+        <span><strong><code>io_uring</code> with fixed files + registered buffers</strong> — eliminates
+        every <code>copy_to_user()</code>, every <code>get_user_pages()</code>, and every context
+        switch in the hot path. A well-tuned <code>io_uring</code> reader with a submission queue
+        of 4096 entries can saturate 4× NVMe drives at 25 GB/s using a single thread.</span>
+      </li>
+      <li>
+        <span class="step-num">sched</span>
+        <span><strong><code>mq-deadline</code> vs <code>none</code> I/O scheduler</strong> — for
+        NVMe, the <code>none</code> scheduler (pass-through to multiqueue) with <code>blk-wbt</code>
+        writeback throttling disabled gives the lowest tail latency for random-access reads.
+        <code>mq-deadline</code> makes sense only when mixing checkpoint writes (sequential) with
+        sample reads (random).</span>
+      </li>
+      <li>
+        <span class="step-num">DAX</span>
+        <span><strong>DAX (Direct Access) for persistent memory</strong> — for CXL-attached DRAM
+        or Optane, DAX bypasses the page cache entirely. The kernel maps PMEM directly into the
+        process VA space, making checkpoint saves to PMEM as fast as <code>memcpy()</code> —
+        transformative for frequent checkpoint intervals in large training runs.</span>
+      </li>
+    </ul>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Section 7: TLB -->
+  <section class="section" id="tlb">
+    <div class="section-header">
+      <span class="section-number">07</span>
+      <h2>Deep cut: TLB Shootdown Storms</h2>
+    </div>
+
+    <div class="impact-badge important">★ Important (often overlooked)</div>
+
+    <p>
+      This is the issue that rarely appears in tuning guides but absolutely destroys performance on
+      large-core systems. <strong>TLB shootdown storms</strong>: when the GPU driver calls
+      <code>munmap()</code> on a large pinned buffer — say, model weights being swapped between two
+      training jobs — the kernel must send inter-processor interrupts (IPIs) to all other CPUs to
+      invalidate their TLB entries for that address range.
+    </p>
+
+    <div class="pull-quote">
+      On a 256-core EPYC system, a single <code>munmap()</code> on a 40GB buffer triggers 255 TLB
+      invalidation IPIs simultaneously. Every CPU stalls for 2–5µs. Multiply by thousands of
+      mappings per training step.
+    </div>
+
+    <p>
+      The fix is architectural and lives in <code>arch/x86/mm/tlb.c</code>. Three mechanisms work
+      together:
+    </p>
+
+    <ul class="step-list">
+      <li>
+        <span class="step-num">PCID</span>
+        <span><strong>PCID (Process Context IDs) with lazy TLB flushing</strong> — instead of
+        flushing the entire TLB on context switch, PCID tags each entry with a process ID. CPUs
+        that don't hold stale entries for a given PCID can skip the IPI entirely. Already partially
+        implemented but not fully exploited by GPU drivers.</span>
+      </li>
+      <li>
+        <span class="step-num">batch</span>
+        <span><strong>MMU notifier batching</strong> — <code>mmu_notifier</code> callbacks in the
+        GPU driver currently trigger an immediate IPI broadcast on every page invalidation. Batching
+        invalidations at the GPU side — collecting them over a 50–100µs window and sending a single
+        broadcast — reduces IPI frequency by 100–1000× without visible impact on correctness.</span>
+      </li>
+      <li>
+        <span class="step-num">huge</span>
+        <span><strong>Huge page pinning</strong> — pinning model weights as 2MB huge pages instead
+        of 4K pages reduces TLB entry count by 512× for the same buffer. Fewer entries means fewer
+        invalidations and a smaller shootdown blast radius. Achievable via
+        <code>madvise(ptr, size, MADV_HUGEPAGE)</code> before the first GPU mapping.</span>
+      </li>
+    </ul>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Summary -->
+  <section class="section" id="summary">
+    <div class="section-header">
+      <span class="section-number">08</span>
+      <h2>Summary &amp; prioritization</h2>
+    </div>
+
+    <p>
+      If you can only change one thing: complete <strong>HMM + ATS + PASID</strong> support across
+      the IOMMU layer and your GPU driver. Everything else is incremental. After that, the
+      <code>drm_sched</code> gang scheduling policy and IOVA allocator scalability are the next
+      highest-leverage changes.
+    </p>
+
+    <table class="summary-table">
+      <thead>
+        <tr>
+          <th>Subsystem</th>
+          <th>Key change</th>
+          <th>Source location</th>
+          <th>Impact</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>HMM / SVM / ATS</strong></td>
+          <td>Unified VA space, zero-copy GPU↔CPU</td>
+          <td><code>mm/hmm.c</code> · <code>drivers/iommu/</code></td>
+          <td><span class="pill pill-amber">★★ Highest</span></td>
+        </tr>
+        <tr>
+          <td><strong>drm_sched</strong></td>
+          <td>Gang scheduling, DAG fences, preemption</td>
+          <td><code>drivers/gpu/drm/scheduler/</code></td>
+          <td><span class="pill pill-amber">★★ Highest</span></td>
+        </tr>
+        <tr>
+          <td><strong>IOMMU / P2PDMA</strong></td>
+          <td>Multi-hop P2P, IOVA large-region allocator</td>
+          <td><code>drivers/pci/p2pdma.c</code> · <code>drivers/iommu/iova.c</code></td>
+          <td><span class="pill pill-teal">★★ High</span></td>
+        </tr>
+        <tr>
+          <td><strong>CPU scheduler</strong></td>
+          <td>isolcpus, EEVDF latency-nice, SCHED_DEADLINE</td>
+          <td><code>kernel/sched/fair.c</code> · <code>kernel/sched/deadline.c</code></td>
+          <td><span class="pill pill-purple">★ Significant</span></td>
+        </tr>
+        <tr>
+          <td><strong>Network / RDMA</strong></td>
+          <td>XDP transport, io_uring fixed buffers, GRO tuning</td>
+          <td><code>net/core/dev.c</code> · <code>drivers/infiniband/</code></td>
+          <td><span class="pill pill-purple">★ Significant</span></td>
+        </tr>
+        <tr>
+          <td><strong>VFS / Block</strong></td>
+          <td>io_uring fixed files, NVMe-mq none, DAX</td>
+          <td><code>fs/io_uring.c</code> · <code>block/blk-mq.c</code></td>
+          <td><span class="pill pill-coral">★ Important</span></td>
+        </tr>
+        <tr>
+          <td><strong>TLB / MMU notifier</strong></td>
+          <td>PCID lazy flush, IPI batching, huge page pinning</td>
+          <td><code>arch/x86/mm/tlb.c</code> · <code>mm/mmu_notifier.c</code></td>
+          <td><span class="pill pill-coral">★ Important</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">Bottom line</div>
+      <p>The Linux kernel is not passively neutral in AI/GPU performance — it actively participates
+      in every tensor operation, every gradient exchange, every checkpoint write. Understanding these
+      seven subsystems is the difference between a cluster running at 40% MFU and one running at 70%.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="post-footer">© 2026 <a href="/index.html">MANISH AI</a> · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer>
+
+</body>
+</html>
