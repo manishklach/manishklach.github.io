@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TLB Invalidation: The Hidden CPU Tax in AI Inference Systems</title>
+  <meta name="description" content="A systems-level deep dive into TLB invalidation, MMU notifier activity, tail latency, and hidden CPU-side disruption in AI inference infrastructure." />
+  <meta property="og:title" content="TLB Invalidation: The Hidden CPU Tax in AI Inference Systems" />
+  <meta property="og:description" content="How TLB invalidation activity becomes a hidden latency and throughput variable in AI inference systems — with kernel patches, tools, architecture probes, and observability workflows." />
+  <meta property="og:type" content="article" />
+  <link rel="stylesheet" href="../assets/site.css">
+  <script src="../assets/site.js" defer></script>
+  <style>
+    :root {
+      --bg: #071019;
+      --panel: #0d1724;
+      --panel2: #101d2c;
+      --text: #eef6ff;
+      --muted: #9fb2c7;
+      --line: rgba(255,255,255,.12);
+      --accent: #6ee7f9;
+      --accent2: #a78bfa;
+      --accent3: #34d399;
+      --warn: #fbbf24;
+      --bad: #fb7185;
+      --code: #08111c;
+      --shadow: 0 20px 70px rgba(0,0,0,.35);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(103,232,249,.18), transparent 32rem),
+        radial-gradient(circle at 80% 10%, rgba(167,139,250,.18), transparent 30rem),
+        linear-gradient(180deg, #071019 0%, #08111d 44%, #060b12 100%);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+    .hero { padding: 72px 0 42px; }
+    .badge {
+      display: inline-flex; gap: 9px; align-items: center;
+      padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px;
+      color: #d8f7ff; background: rgba(255,255,255,.06); backdrop-filter: blur(14px);
+      font-size: 13px; letter-spacing: .2px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent3); box-shadow: 0 0 24px var(--accent3); }
+    h1 {
+      margin: 22px 0 18px;
+      font-size: clamp(44px, 7vw, 82px);
+      line-height: .96;
+      letter-spacing: -3.5px;
+      max-width: 1000px;
+    }
+    .lead {
+      color: #c7d8ea;
+      font-size: clamp(18px, 2vw, 23px);
+      max-width: 850px;
+      margin: 0 0 28px;
+    }
+    .hero-actions { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 28px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 12px 17px; border-radius: 14px; border: 1px solid var(--line);
+      background: rgba(255,255,255,.07); color: var(--text); font-weight: 650;
+      box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    }
+    .btn.primary { background: linear-gradient(135deg, rgba(110,231,249,.24), rgba(167,139,250,.24)); border-color: rgba(110,231,249,.35); }
+    .grid { display: grid; gap: 18px; }
+    .cards { grid-template-columns: repeat(3, minmax(0,1fr)); margin: 34px 0 0; }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.035));
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 22px;
+      box-shadow: var(--shadow);
+    }
+    .card .k { color: var(--accent); font-weight: 800; letter-spacing: -.5px; font-size: 22px; }
+    .card p { margin: 8px 0 0; color: var(--muted); }
+    main { padding: 28px 0 80px; }
+    section { margin: 38px 0; }
+    .section-card {
+      background: rgba(13,23,36,.74);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: clamp(24px, 4vw, 44px);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    h2 { margin: 0 0 16px; font-size: clamp(28px, 4vw, 44px); line-height: 1.05; letter-spacing: -1.8px; }
+    h3 { margin: 28px 0 10px; font-size: 24px; line-height: 1.2; letter-spacing: -.8px; }
+    p { color: #c9d7e6; margin: 12px 0; }
+    ul { color: #c9d7e6; padding-left: 22px; }
+    li { margin: 7px 0; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: rgba(110,231,249,.08);
+      padding: 18px 20px;
+      border-radius: 18px;
+      margin: 22px 0;
+      color: #dff9ff;
+    }
+    .warning { border-left-color: var(--warn); background: rgba(251,191,36,.08); }
+    .danger { border-left-color: var(--bad); background: rgba(251,113,133,.08); }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    pre {
+      background: var(--code);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 20px;
+      padding: 18px;
+      overflow: auto;
+      color: #e6f1ff;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.02);
+      font-size: 13.5px;
+      line-height: 1.55;
+    }
+    code { color: #bdefff; }
+    .diagram {
+      margin: 24px 0;
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      overflow: hidden;
+      background: #07111d;
+    }
+    .diagram svg { width: 100%; height: auto; display: block; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; overflow: hidden; border-radius: 18px; }
+    th, td { padding: 13px 14px; border-bottom: 1px solid var(--line); text-align: left; color: #cbd9e8; }
+    th { color: #f2f8ff; background: rgba(255,255,255,.07); }
+    tr:last-child td { border-bottom: none; }
+    .two { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .pillrow { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0 4px; }
+    .pill { padding: 7px 11px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.05); color: #cce1f7; font-size: 13px; }
+    .small { font-size: 14px; color: var(--muted); }
+    .footer { padding: 30px 0 60px; color: var(--muted); border-top: 1px solid var(--line); }
+    @media (max-width: 820px) {
+      .cards, .two { grid-template-columns: 1fr; }
+      h1 { letter-spacing: -2px; }
+      .wrap { width: min(100% - 28px, 1120px); }
+    }
+  </style>
+</head>
+<body>
+  <div class="site-tools" style="max-width: 1120px; margin: 0 auto; padding: 20px 0; display: flex; justify-content: flex-end; gap: 20px;">
+      <a href="../index.html">home</a>
+      <a href="../writings.html">writings</a>
+      <button id="theme-toggle" style="background: none; border: none; color: var(--muted); cursor: pointer; font-family: inherit; font-size: inherit; padding: 0;">theme</button>
+  </div>
+  <header class="hero">
+    <div class="wrap">
+      <div class="badge"><span class="dot"></span> Linux MMU · AI Infrastructure · Tail Latency</div>
+      <h1>TLB Invalidation: The Hidden CPU Tax in AI Inference Systems</h1>
+      <p class="lead">Modern AI systems optimize GPUs, bandwidth, and networking. But they rarely measure how often the system invalidates its own memory translations — and that hidden coordination cost can leak directly into P99 latency.</p>
+      <div class="hero-actions">
+        <a class="btn primary" href="https://github.com/manishklach/tlb-invalidation-lab">Open the repo →</a>
+        <a class="btn" href="#workflow">See the workflow</a>
+        <a class="btn" href="#patches">Kernel patch sketches</a>
+      </div>
+      <div class="grid cards">
+        <div class="card"><div class="k">Translation disruption</div><p>Mapping changes force TLB invalidations, local flushes, remote coordination, or broadcast invalidation.</p></div>
+        <div class="card"><div class="k">P99 amplification</div><p>Invalidation bursts can introduce jitter, break batching rhythm, and create straggler behavior.</p></div>
+        <div class="card"><div class="k">Attribution gap</div><p>Most observability stacks track CPU/GPU/network, but not per-process MMU invalidation activity.</p></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="section-card">
+      <h2>A systems problem hiding below GPU utilization</h2>
+      <p>When inference slows down, the first metrics people check are usually GPU utilization, HBM bandwidth, CPU utilization, network throughput, and queue depth. Those are necessary, but not sufficient. A node can look healthy at those layers while the CPU memory-management subsystem is constantly coordinating translation changes underneath the workload.</p>
+      <div class="callout">The GPU is not always slow because the GPU is slow. Sometimes the system is disrupting address translation often enough that the accelerator pipeline loses its rhythm.</div>
+      <p>This is the motivation behind <a href="https://github.com/manishklach/tlb-invalidation-lab">tlb-invalidation-lab</a>: making TLB invalidation activity observable, attributable, and measurable in modern AI workloads.</p>
+    </section>
+
+    <section class="section-card">
+      <h2>From PCIe errors to TLB invalidation</h2>
+      <p>There is a broader pattern in AI infrastructure: second-order system-maintenance costs become first-order performance variables at scale.</p>
+      <pre>PCIe correctable errors  → data movement degradation
+TLB invalidation activity → address translation disruption
+scheduler pressure        → execution instability</pre>
+      <p>The PCIe problem is about data movement integrity. TLB invalidation is about translation stability. Both can compress effective compute capacity without looking like a clean hardware failure.</p>
+    </section>
+
+    <section class="section-card">
+      <h2>What actually happens during a TLB invalidation?</h2>
+      <p>CPUs cache virtual-to-physical translations in Translation Lookaside Buffers. When Linux changes mappings, it must make sure CPUs do not keep using stale translations. That means invalidating affected TLB entries locally and, in many cases, coordinating with other CPUs that may have run the same address space.</p>
+      <div class="diagram" aria-label="TLB invalidation flow diagram">
+        <svg viewBox="0 0 1120 330" role="img">
+          <defs>
+            <linearGradient id="g1" x1="0" x2="1"><stop offset="0" stop-color="#6ee7f9"/><stop offset="1" stop-color="#a78bfa"/></linearGradient>
+            <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity=".35"/></filter>
+          </defs>
+          <rect width="1120" height="330" fill="#07111d"/>
+          <g filter="url(#shadow)">
+            <rect x="52" y="92" width="180" height="116" rx="24" fill="#102033" stroke="rgba(255,255,255,.18)"/>
+            <rect x="286" y="92" width="180" height="116" rx="24" fill="#102033" stroke="rgba(255,255,255,.18)"/>
+            <rect x="520" y="92" width="180" height="116" rx="24" fill="#102033" stroke="rgba(255,255,255,.18)"/>
+            <rect x="754" y="92" width="180" height="116" rx="24" fill="#102033" stroke="rgba(255,255,255,.18)"/>
+            <rect x="964" y="72" width="110" height="156" rx="24" fill="#102033" stroke="rgba(255,255,255,.18)"/>
+          </g>
+          <text x="142" y="137" text-anchor="middle" fill="#eef6ff" font-size="20" font-weight="700">Mapping</text>
+          <text x="142" y="164" text-anchor="middle" fill="#9fb2c7" font-size="14">mmap / munmap</text>
+          <text x="142" y="186" text-anchor="middle" fill="#9fb2c7" font-size="14">mprotect / UVM</text>
+          <text x="376" y="137" text-anchor="middle" fill="#eef6ff" font-size="20" font-weight="700">MMU path</text>
+          <text x="376" y="164" text-anchor="middle" fill="#9fb2c7" font-size="14">range invalidation</text>
+          <text x="376" y="186" text-anchor="middle" fill="#9fb2c7" font-size="14">notifier callbacks</text>
+          <text x="610" y="137" text-anchor="middle" fill="#eef6ff" font-size="20" font-weight="700">Local flush</text>
+          <text x="610" y="164" text-anchor="middle" fill="#9fb2c7" font-size="14">invlpg / invpcid</text>
+          <text x="610" y="186" text-anchor="middle" fill="#9fb2c7" font-size="14">or CR3 behavior</text>
+          <text x="844" y="137" text-anchor="middle" fill="#eef6ff" font-size="20" font-weight="700">Remote CPUs</text>
+          <text x="844" y="164" text-anchor="middle" fill="#9fb2c7" font-size="14">IPI or broadcast</text>
+          <text x="844" y="186" text-anchor="middle" fill="#9fb2c7" font-size="14">coordination</text>
+          <text x="1019" y="132" text-anchor="middle" fill="#eef6ff" font-size="20" font-weight="700">P99</text>
+          <text x="1019" y="160" text-anchor="middle" fill="#9fb2c7" font-size="14">latency</text>
+          <text x="1019" y="182" text-anchor="middle" fill="#9fb2c7" font-size="14">jitter</text>
+          <g stroke="url(#g1)" stroke-width="4" fill="none" stroke-linecap="round">
+            <path d="M232 150 H284"/><path d="M466 150 H518"/><path d="M700 150 H752"/><path d="M934 150 H962"/>
+          </g>
+          <g fill="#6ee7f9">
+            <path d="M278 143 L292 150 L278 157"/><path d="M512 143 L526 150 L512 157"/><path d="M746 143 L760 150 L746 157"/><path d="M956 143 L970 150 L956 157"/>
+          </g>
+          <text x="560" y="278" fill="#9fb2c7" font-size="15">The cost is not just the instruction. It is the coordination: ordering, barriers, cross-core fanout, and lost scheduling rhythm.</text>
+        </svg>
+      </div>
+    </section>
+
+    <section class="section-card">
+      <h2>Why AI inference workloads can trigger this</h2>
+      <p>Inference is often presented as a GPU-dominant workload, but the host still manages memory, mappings, pinned buffers, runtime allocations, and device coordination.</p>
+      <div class="grid two">
+        <div class="card">
+          <h3>Host-side triggers</h3>
+          <ul>
+            <li><code>mmap()</code>, <code>munmap()</code>, and <code>mprotect()</code> churn</li>
+            <li>memory-mapped model files or state</li>
+            <li>allocator pressure from multi-threaded runtimes</li>
+            <li>page migration, compaction, and tiered memory behavior</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Accelerator-adjacent triggers</h3>
+          <ul>
+            <li>GPU Unified Virtual Memory activity</li>
+            <li>RDMA buffer registration and deregistration</li>
+            <li>pinned memory lifecycle changes</li>
+            <li>KV cache movement and paging strategies</li>
+          </ul>
+        </div>
+      </div>
+      <p>The central point is not that every inference system is dominated by TLB invalidations. The point is that when this path is active, most infrastructure stacks do not attribute the resulting latency to translation maintenance.</p>
+    </section>
+
+    <section class="section-card">
+      <h2>The P99 problem: invalidation bursts create stragglers</h2>
+      <p>Invalidation activity is dangerous because it is bursty. A small amount of steady overhead might be tolerable. A burst that interrupts CPU threads at the wrong time can create queue instability and amplify tail latency.</p>
+      <pre>TLB invalidation burst
+   ↓
+CPU interruption / barrier cost / remote coordination
+   ↓
+runtime threads lose scheduling rhythm
+   ↓
+batching becomes less stable
+   ↓
+queue depth rises
+   ↓
+P99 latency spikes</pre>
+      <div class="callout warning">In a multi-tenant inference node, the problem is not only the process that caused the invalidation activity. A noisy memory-management path can become a straggler source that affects shared service-level latency.</div>
+    </section>
+
+    <section id="patches" class="section-card">
+      <h2>Kernel instrumentation: tracepoints, not printk spam</h2>
+      <p>The repo uses kernel patch sketches to show where TLB invalidation and MMU notifier behavior could be surfaced. The preferred path is tracepoints: structured, filterable, and suitable for time-series collection.</p>
+      <h3>TLB invalidation tracepoint sketch</h3>
+      <pre><code>TRACE_EVENT(tlb_invalidation,
+
+    TP_PROTO(struct mm_struct *mm,
+             unsigned long start,
+             unsigned long end,
+             int target_cpus),
+
+    TP_ARGS(mm, start, end, target_cpus),
+
+    TP_STRUCT__entry(
+        __field(pid_t, pid)
+        __field(pid_t, tgid)
+        __array(char, comm, TASK_COMM_LEN)
+        __field(unsigned long, start)
+        __field(unsigned long, end)
+        __field(unsigned long, range_size)
+        __field(int, target_cpus)
+    ),
+
+    TP_fast_assign(
+        __entry-&gt;pid = current-&gt;pid;
+        __entry-&gt;tgid = current-&gt;tgid;
+        memcpy(__entry-&gt;comm, current-&gt;comm, TASK_COMM_LEN);
+        __entry-&gt;start = start;
+        __entry-&gt;end = end;
+        __entry-&gt;range_size = end &gt; start ? end - start : 0;
+        __entry-&gt;target_cpus = target_cpus;
+    ),
+
+    TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx size=%lu cpus=%d",
+              __entry-&gt;pid,
+              __entry-&gt;tgid,
+              __entry-&gt;comm,
+              __entry-&gt;start,
+              __entry-&gt;end,
+              __entry-&gt;range_size,
+              __entry-&gt;target_cpus)
+);</code></pre>
+      <h3>MMU notifier tracepoint sketch</h3>
+      <pre><code>TRACE_EVENT(mmu_notifier_invalidation,
+
+    TP_PROTO(struct mm_struct *mm,
+             unsigned long start,
+             unsigned long end,
+             int phase),
+
+    TP_ARGS(mm, start, end, phase),
+
+    TP_STRUCT__entry(
+        __field(pid_t, pid)
+        __field(pid_t, tgid)
+        __array(char, comm, TASK_COMM_LEN)
+        __field(unsigned long, start)
+        __field(unsigned long, end)
+        __field(unsigned long, range_size)
+        __field(int, phase)
+    ),
+
+    TP_fast_assign(
+        __entry-&gt;pid = current-&gt;pid;
+        __entry-&gt;tgid = current-&gt;tgid;
+        memcpy(__entry-&gt;comm, current-&gt;comm, TASK_COMM_LEN);
+        __entry-&gt;start = start;
+        __entry-&gt;end = end;
+        __entry-&gt;range_size = end &gt; start ? end - start : 0;
+        __entry-&gt;phase = phase;
+    ),
+
+    TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx size=%lu phase=%d",
+              __entry-&gt;pid,
+              __entry-&gt;tgid,
+              __entry-&gt;comm,
+              __entry-&gt;start,
+              __entry-&gt;end,
+              __entry-&gt;range_size,
+              __entry-&gt;phase)
+);</code></pre>
+      <p>The important design choice is avoiding high-volume logging in hot paths. Tracepoints can be disabled by default and enabled only when investigating a node or running a controlled benchmark.</p>
+    </section>
+
+    <section class="section-card">
+      <h2>Architecture probes: x86-64 and arm64</h2>
+      <p>The repo includes educational architecture probe modules that show the instruction-level reality behind invalidation. These are lab-only examples, not replacements for Linux MM code.</p>
+      <div class="grid two">
+        <div class="card">
+          <h3>x86-64: <code>invlpg</code></h3>
+          <pre><code>static inline void lab_invlpg(void *addr)
+{
+    asm volatile("invlpg (%0)" : : "r" (addr) : "memory");
+}</code></pre>
+          <p class="small">The instruction invalidates the TLB entry for the page containing the address. Real Linux code chooses between targeted invalidation, PCID-aware behavior, full flushes, and hardware-assisted paths depending on architecture support and workload shape.</p>
+        </div>
+        <div class="card">
+          <h3>arm64: TLBI + barriers</h3>
+          <pre><code>dsb ishst
+// tlbi vaae1is, xN
+dsb ish
+isb</code></pre>
+          <p class="small">The barriers are part of the cost. arm64 invalidation is not just a single conceptual operation; ordering and visibility matter.</p>
+        </div>
+      </div>
+      <div class="callout danger">These probes are for lab machines, VMs, and disposable test kernels. They should not be treated as production kernel modules.</div>
+    </section>
+
+    <section id="workflow" class="section-card">
+      <h2>The observability workflow</h2>
+      <p>The goal is not merely to count invalidations. The goal is to correlate invalidation bursts with latency, GPU behavior, and scheduler pressure.</p>
+      <div class="diagram" aria-label="correlation pipeline diagram">
+        <svg viewBox="0 0 1120 360" role="img">
+          <defs>
+            <linearGradient id="g2" x1="0" x2="1"><stop offset="0" stop-color="#34d399"/><stop offset=".5" stop-color="#6ee7f9"/><stop offset="1" stop-color="#a78bfa"/></linearGradient>
+          </defs>
+          <rect width="1120" height="360" fill="#07111d"/>
+          <g font-family="Inter, sans-serif">
+            <rect x="50" y="58" width="220" height="82" rx="22" fill="#102033" stroke="rgba(255,255,255,.18)"/>
+            <rect x="50" y="218" width="220" height="82" rx="22" fill="#102033" stroke="rgba(255,255,255,.18)"/>
+            <rect x="330" y="58" width="220" height="82" rx="22" fill="#102033" stroke="rgba(255,255,255,.18)"/>
+            <rect x="330" y="218" width="220" height="82" rx="22" fill="#102033" stroke="rgba(255,255,255,.18)"/>
+            <rect x="610" y="138" width="220" height="82" rx="22" fill="#102033" stroke="rgba(255,255,255,.18)"/>
+            <rect x="890" y="138" width="180" height="82" rx="22" fill="#102033" stroke="rgba(255,255,255,.18)"/>
+            <text x="160" y="94" text-anchor="middle" fill="#eef6ff" font-size="19" font-weight="700">TLB trace</text>
+            <text x="160" y="118" text-anchor="middle" fill="#9fb2c7" font-size="14">timestamps + process</text>
+            <text x="160" y="254" text-anchor="middle" fill="#eef6ff" font-size="19" font-weight="700">Latency CSV</text>
+            <text x="160" y="278" text-anchor="middle" fill="#9fb2c7" font-size="14">P50 / P95 / P99</text>
+            <text x="440" y="94" text-anchor="middle" fill="#eef6ff" font-size="19" font-weight="700">GPU sampler</text>
+            <text x="440" y="118" text-anchor="middle" fill="#9fb2c7" font-size="14">util + PCIe throughput</text>
+            <text x="440" y="254" text-anchor="middle" fill="#eef6ff" font-size="19" font-weight="700">Scheduler sampler</text>
+            <text x="440" y="278" text-anchor="middle" fill="#9fb2c7" font-size="14">pressure + ctx switches</text>
+            <text x="720" y="174" text-anchor="middle" fill="#eef6ff" font-size="19" font-weight="700">Correlation</text>
+            <text x="720" y="198" text-anchor="middle" fill="#9fb2c7" font-size="14">time-aligned metrics</text>
+            <text x="980" y="174" text-anchor="middle" fill="#eef6ff" font-size="19" font-weight="700">Plots</text>
+            <text x="980" y="198" text-anchor="middle" fill="#9fb2c7" font-size="14">debugging narrative</text>
+            <g stroke="url(#g2)" stroke-width="4" fill="none" stroke-linecap="round">
+              <path d="M270 99 C390 99 500 120 610 165"/>
+              <path d="M270 259 C400 259 500 220 610 190"/>
+              <path d="M550 99 C590 120 610 140 628 158"/>
+              <path d="M550 259 C590 235 610 216 628 200"/>
+              <path d="M830 179 H890"/>
+            </g>
+          </g>
+        </svg>
+      </div>
+      <h3>One-command experiment</h3>
+      <pre><code>./run_experiment.sh</code></pre>
+      <h3>Manual workflow</h3>
+      <pre><code># Build and run synthetic memory-management stressors
+cd benchmarks && make && ./run_bench.sh
+
+# Collect kernel trace data
+sudo ./tools/collect_trace.sh --duration 30
+
+# Parse timestamps and generate time-series
+python3 tools/parse_trace.py --input out/tlb_trace.txt --out out/tlb_timeseries.csv
+
+# Sample GPU and scheduler behavior
+python3 tools/sample_gpu.py --duration 30 --interval 1
+python3 tools/sample_sched.py --duration 30 --interval 1
+
+# Correlate invalidation activity with latency/GPU/scheduler signals
+python3 tools/correlate_latency.py \
+  --tlb out/tlb_timeseries.csv \
+  --gpu out/gpu_timeseries.csv \
+  --sched out/sched_timeseries.csv
+
+# Generate plots
+python3 tools/plot_correlation.py --input out/correlation.csv</code></pre>
+    </section>
+
+    <section class="section-card">
+      <h2>What the metrics mean</h2>
+      <table>
+        <thead><tr><th>Metric</th><th>Meaning</th><th>Why it matters</th></tr></thead>
+        <tbody>
+          <tr><td><code>invalidations/sec</code></td><td>How frequently translation entries are invalidated</td><td>Captures bursty translation churn</td></tr>
+          <tr><td><code>bytes invalidated/sec</code></td><td>Total virtual address range invalidated over time</td><td>Separates tiny churn from large range invalidation</td></tr>
+          <tr><td><code>target_cpu_count</code></td><td>Approximate cross-core fanout</td><td>Higher fanout often means more coordination cost</td></tr>
+          <tr><td><code>per-process labels</code></td><td>Process-level attribution</td><td>Useful on multi-tenant inference nodes</td></tr>
+          <tr><td><code>normalized score</code></td><td>Invalidations per second per core</td><td>Avoids falsely flagging large servers as unhealthy</td></tr>
+        </tbody>
+      </table>
+      <h3>Health score normalization</h3>
+      <pre><code>normalized_invalidations = invalidations_per_second / cpu_count
+
+if normalized_invalidations &lt; 5:
+    status = "green"
+elif normalized_invalidations &lt; 20:
+    status = "yellow"
+else:
+    status = "red"</code></pre>
+      <p>Raw thresholds are misleading. A 256-core server will naturally produce different aggregate counts than an 8-core workstation. Normalizing per core gives a more portable starting point.</p>
+    </section>
+
+    <section class="section-card">
+      <h2>Example synthetic result</h2>
+      <p>The repo includes example data to demonstrate the workflow. These numbers are synthetic and are not a claim about any particular production system.</p>
+      <table>
+        <thead><tr><th>Workload</th><th>Threads</th><th>Invalidations/sec</th><th>Per-core rate</th><th>P99 latency</th><th>Interpretation</th></tr></thead>
+        <tbody>
+          <tr><td>baseline</td><td>1</td><td>180</td><td>2.8</td><td>4.1 ms</td><td>Low translation churn</td></tr>
+          <tr><td>mmap churn</td><td>8</td><td>2,900</td><td>45.3</td><td>17.8 ms</td><td>High invalidation activity</td></tr>
+          <tr><td>mprotect churn</td><td>16</td><td>5,800</td><td>90.6</td><td>31.4 ms</td><td>Severe synthetic stress</td></tr>
+          <tr><td>mixed sampler</td><td>16</td><td>4,200</td><td>65.6</td><td>24.7 ms</td><td>Scheduler pressure also elevated</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">The point is not that invalidation activity always causes latency spikes. The point is that without timestamped attribution, you cannot even test the relationship.</div>
+    </section>
+
+    <section class="section-card">
+      <h2>Prometheus metrics with process attribution</h2>
+      <p>Aggregate-only metrics are not enough on multi-tenant nodes. The exporter should expose top processes while limiting cardinality.</p>
+      <pre><code>tlb_invalidations_total{pid="2341",comm="python"} 18420
+tlb_invalidation_rate{pid="2341",comm="python"} 612.4
+tlb_bytes_invalidated_total{pid="2341",comm="python"} 734003200
+tlb_health_score{pid="2341",comm="python"} 82
+
+tlb_invalidations_total{pid="other",comm="other"} 9012</code></pre>
+      <p>The cardinality guard matters. You do not want a debugging exporter to become the next source of production pain.</p>
+    </section>
+
+    <section class="section-card">
+      <h2>QEMU bootstrap: reducing adoption friction</h2>
+      <p>Kernel observability projects often fail because the first step is “build a custom kernel and good luck.” The repo includes QEMU scaffolding so users can test the concept in a lab environment.</p>
+      <pre><code>cd vm
+./run_qemu.sh</code></pre>
+      <p>The current VM path should be understood as a kernel boot smoke test unless a full rootfs/initramfs is provided. A future improvement is a tiny BusyBox initramfs that mounts tracefs and runs the benchmark suite inside the guest.</p>
+    </section>
+
+    <section class="section-card">
+      <h2>What this can reveal</h2>
+      <div class="grid two">
+        <div class="card">
+          <h3>Useful signals</h3>
+          <ul>
+            <li>Invalidation bursts preceding P99 spikes</li>
+            <li>GPU utilization dips during high MMU activity</li>
+            <li>Specific processes responsible for translation churn</li>
+            <li>Scheduler pressure amplifying invalidation effects</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Common confounders</h3>
+          <ul>
+            <li>CPU runqueue pressure</li>
+            <li>page cache behavior</li>
+            <li>NUMA locality changes</li>
+            <li>allocator changes unrelated to GPU execution</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-card">
+      <h2>What this is not</h2>
+      <p>This project is intentionally conservative. It does not claim to fix Linux memory management, eliminate invalidations, or prove that TLB invalidation is the bottleneck in every AI inference system.</p>
+      <div class="pillrow">
+        <span class="pill">Observability</span>
+        <span class="pill">Attribution</span>
+        <span class="pill">Correlation</span>
+        <span class="pill">Synthetic benchmarks</span>
+        <span class="pill">Kernel patch sketches</span>
+      </div>
+      <div class="callout warning">Correlation is not causation. The value is that the signal becomes visible enough to investigate with controlled experiments.</div>
+    </section>
+
+    <section class="section-card">
+      <h2>The broader thesis</h2>
+      <p>AI infrastructure is often discussed as if the stack is only compute, memory bandwidth, and networking. But at scale, the machine’s internal coordination costs become visible:</p>
+      <pre>Compute is not just FLOPs.
+Memory is not just bandwidth.
+Networking is not just throughput.
+
+The system also pays for consistency, translation, ordering, and recovery.</pre>
+      <p>PCIe errors expose data movement degradation. TLB invalidations expose address translation disruption. Scheduler pressure exposes execution instability. These are hidden variables in effective capacity.</p>
+      <h3>The better question</h3>
+      <div class="callout">Instead of asking only “Is the GPU fully utilized?”, ask: <strong>Is the system stable enough to sustain utilization?</strong></div>
+    </section>
+
+    <section class="section-card">
+      <h2>Repository</h2>
+      <p>The project is here:</p>
+      <p><a class="btn primary" href="https://github.com/manishklach/tlb-invalidation-lab">github.com/manishklach/tlb-invalidation-lab →</a></p>
+      <p class="small">Use the patch sketches and architecture probes only on lab machines, VMs, or disposable test kernels.</p>
+    </section>
+  </main>
+
+  <footer class="post-footer" style="max-width: 1120px; margin: 60px auto 0; padding: 40px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span>© 2026 Manish KL</span>
+          <div style="display: flex; gap: 20px;">
+              <a href="../index.html">home</a>
+              <a href="../writings.html">writings</a>
+              <a href="../feed.xml">rss</a>
+          </div>
+      </div>
+  </footer>
+</body>
+</html>
