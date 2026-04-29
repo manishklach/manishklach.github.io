@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Linux Kernel in AI & GPU Clusters: Where the Real Bottlenecks Hide | MANISH AI</title>
+<meta name="description" content="A systems engineer's guide to the Linux kernel subsystems that quietly shape AI and GPU cluster performance, from DRM and RDMA to memory management, PCIe, scheduling, and block I/O.">
+<meta name="keywords" content="Linux kernel, AI GPU clusters, DRM scheduler, RDMA, memory management, PCIe IOMMU, block IO, io_uring, kernel observability">
+<meta name="author" content="MANISH AI">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://manishklach.github.io/writings/linux-kernel-ai-gpu-clusters-bottlenecks.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="The Linux Kernel in AI & GPU Clusters: Where the Real Bottlenecks Hide | MANISH AI">
+<meta property="og:description" content="A systems engineer's guide to the Linux kernel subsystems that quietly shape AI and GPU cluster performance, from DRM and RDMA to memory management, PCIe, scheduling, and block I/O.">
+<meta property="og:url" content="https://manishklach.github.io/writings/linux-kernel-ai-gpu-clusters-bottlenecks.html">
+<meta property="og:image" content="https://manishklach.github.io/og/linux-kernel-ai-gpu-clusters-bottlenecks.png">
+<meta property="og:image:alt" content="Preview card for The Linux Kernel in AI and GPU Clusters">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Linux Kernel in AI & GPU Clusters: Where the Real Bottlenecks Hide | MANISH AI">
+<meta name="twitter:description" content="A systems engineer's guide to the Linux kernel subsystems that quietly shape AI and GPU cluster performance, from DRM and RDMA to memory management, PCIe, scheduling, and block I/O.">
+<meta name="twitter:image" content="https://manishklach.github.io/og/linux-kernel-ai-gpu-clusters-bottlenecks.png">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"The Linux Kernel in AI & GPU Clusters: Where the Real Bottlenecks Hide","description":"A systems engineer's guide to the Linux kernel subsystems that quietly shape AI and GPU cluster performance, from DRM and RDMA to memory management, PCIe, scheduling, and block I/O.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/linux-kernel-ai-gpu-clusters-bottlenecks.html","mainEntityOfPage":"https://manishklach.github.io/writings/linux-kernel-ai-gpu-clusters-bottlenecks.html","datePublished":"2026-04-29","dateModified":"2026-04-29","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;700;800&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;1,8..60,300;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #111;
+    --ink2: #444;
+    --ink3: #888;
+    --surface: #fff;
+    --surface2: #f5f5f3;
+    --border: #e2e0d8;
+    --accent: #1D9E75;
+    --accent-dim: #0F6E56;
+    --accent-bg: #E1F5EE;
+    --red: #E24B4A;
+    --amber: #BA7517;
+    --amber-bg: #FAEEDA;
+    --blue: #185FA5;
+    --blue-bg: #E6F1FB;
+    --mono: 'JetBrains Mono', monospace;
+    --serif: 'Source Serif 4', Georgia, serif;
+    --sans: 'Syne', sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #f0ede8;
+      --ink2: #b8b4ac;
+      --ink3: #6e6b64;
+      --surface: #141412;
+      --surface2: #1e1d1a;
+      --border: #2e2c28;
+      --accent: #5DCAA5;
+      --accent-dim: #9FE1CB;
+      --accent-bg: #04342C;
+      --red: #F09595;
+      --amber: #EF9F27;
+      --amber-bg: #412402;
+      --blue: #85B7EB;
+      --blue-bg: #042C53;
+    }
+  }
+
+  html { scroll-behavior: smooth; }
+  body { background: var(--surface); color: var(--ink); font-family: var(--serif); line-height: 1.8; font-size: 17px; }
+
+  .site-top { border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 30; }
+  .site-nav { max-width: 1024px; margin: 0 auto; padding: 0.95rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .site-mark { font-family: var(--sans); font-size: 0.92rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); text-decoration: none; }
+  .site-links { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .site-links a { color: var(--ink3); text-decoration: none; }
+  .site-links a:hover { color: var(--accent); }
+  .wrapper { max-width: 820px; margin: 0 auto; padding: 4rem 2rem 7rem; }
+
+  /* HERO */
+  .hero { margin-bottom: 5rem; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 10px; }
+  .eyebrow::before { content: ''; display: block; width: 28px; height: 1px; background: var(--accent); }
+
+  h1 { font-family: var(--sans); font-size: clamp(2.2rem, 5vw, 3.5rem); font-weight: 800; line-height: 1.05; letter-spacing: -0.03em; color: var(--ink); margin-bottom: 1.8rem; }
+  h1 em { font-style: italic; color: var(--accent); }
+
+  .subtitle { font-size: 1.15rem; font-weight: 300; color: var(--ink2); line-height: 1.75; max-width: 660px; }
+
+  .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: 2.5rem; padding-top: 2rem; border-top: 1px solid var(--border); font-family: var(--mono); font-size: 11px; color: var(--ink3); }
+  .tag { background: var(--surface2); border: 1px solid var(--border); padding: 4px 12px; border-radius: 20px; color: var(--ink2); font-size: 11px; font-family: var(--mono); }
+
+  /* TOC */
+  .toc { background: var(--surface2); border-left: 3px solid var(--accent); padding: 2rem 2.5rem; margin: 4rem 0; border-radius: 0 10px 10px 0; }
+  .toc-title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 1.2rem; }
+  .toc ol { padding-left: 1.4rem; }
+  .toc li { font-family: var(--sans); font-size: 0.88rem; font-weight: 500; line-height: 2.2; color: var(--ink2); }
+  .toc li .path { color: var(--ink3); font-size: 0.75rem; font-weight: 400; margin-left: 10px; font-family: var(--mono); }
+
+  /* SECTIONS */
+  .section { margin: 5rem 0; }
+  .section-label { display: flex; align-items: center; gap: 14px; margin-bottom: 2rem; }
+  .section-num { font-family: var(--mono); font-size: 11px; color: var(--accent); background: var(--accent-bg); padding: 4px 12px; border-radius: 20px; flex-shrink: 0; }
+
+  h2 { font-family: var(--sans); font-size: 1.85rem; font-weight: 700; letter-spacing: -0.025em; color: var(--ink); line-height: 1.15; }
+  h3 { font-family: var(--sans); font-size: 1.1rem; font-weight: 600; color: var(--ink); margin: 2.5rem 0 0.8rem; }
+
+  p { color: var(--ink2); font-size: 1rem; margin-bottom: 1.3rem; line-height: 1.9; }
+  p strong { color: var(--ink); font-weight: 500; font-family: var(--sans); font-size: 0.95rem; }
+
+  ul { padding-left: 1.4rem; margin-bottom: 1.3rem; }
+  li { color: var(--ink2); margin-bottom: 0.6rem; font-size: 0.97rem; line-height: 1.85; }
+  li strong { color: var(--ink); font-weight: 500; font-family: var(--sans); font-size: 0.93rem; }
+
+  /* CALLOUTS */
+  .callout { border: 1px solid var(--border); border-left: 3px solid var(--accent); padding: 1.3rem 1.7rem; margin: 2.2rem 0; border-radius: 0 10px 10px 0; background: var(--accent-bg); }
+  .callout.warn { border-left-color: var(--amber); background: var(--amber-bg); }
+  .callout.info { border-left-color: var(--blue); background: var(--blue-bg); }
+  .callout-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px; color: var(--accent); font-weight: 500; }
+  .callout.warn .callout-label { color: var(--amber); }
+  .callout.info .callout-label { color: var(--blue); }
+  .callout p { margin: 0; font-size: 0.95rem; color: var(--ink2); }
+
+  /* CODE */
+  pre { background: #0d1117; color: #c9d1d9; padding: 1.5rem 1.8rem; border-radius: 10px; overflow-x: auto; margin: 2rem 0; border: 1px solid #30363d; line-height: 1.65; }
+  code { font-family: var(--mono); font-size: 0.82rem; }
+  p code, li code { background: var(--surface2); border: 1px solid var(--border); padding: 2px 7px; border-radius: 5px; font-size: 0.85em; color: var(--ink); font-family: var(--mono); }
+  .kw { color: #ff7b72; }
+  .fn { color: #d2a8ff; }
+  .str { color: #a5d6ff; }
+  .cm { color: #8b949e; font-style: italic; }
+  .num { color: #79c0ff; }
+  .var { color: #ffa657; }
+
+  /* SUBSYSTEM CARDS */
+  .subsystem-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.6rem 1.8rem; margin: 2rem 0; position: relative; overflow: hidden; }
+  .subsystem-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
+  .subsystem-card.amber::before { background: var(--amber); }
+  .subsystem-card.blue::before { background: var(--blue); }
+  .subsystem-card.red::before { background: var(--red); }
+
+  .sc-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap; }
+  .sc-title { font-family: var(--sans); font-weight: 700; font-size: 1rem; color: var(--ink); }
+  .sc-path { font-family: var(--mono); font-size: 10px; color: var(--ink3); background: var(--surface2); padding: 4px 10px; border-radius: 5px; white-space: nowrap; border: 1px solid var(--border); }
+  .sc-body { font-size: 0.93rem; color: var(--ink2); line-height: 1.8; margin-bottom: 1rem; }
+  .sc-tags { display: flex; flex-wrap: wrap; gap: 7px; }
+  .sc-tag { font-family: var(--mono); font-size: 10px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); color: var(--ink3); background: var(--surface2); }
+
+  /* DATA FLOW */
+  .flow { display: flex; flex-wrap: wrap; margin: 2.5rem 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .flow-item { flex: 1; min-width: 100px; padding: 1.3rem 1rem; text-align: center; border-right: 1px solid var(--border); position: relative; background: var(--surface); }
+  .flow-item:last-child { border-right: none; }
+  .flow-arrow { display: flex; align-items: center; justify-content: center; padding: 1rem 0; color: var(--ink3); font-size: 18px; border-right: 1px solid var(--border); background: var(--surface); }
+  .flow-icon { font-size: 1.5rem; margin-bottom: 8px; }
+  .flow-label { font-family: var(--mono); font-size: 10px; color: var(--ink3); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500; }
+  .flow-sub { font-size: 0.75rem; color: var(--ink3); margin-top: 5px; }
+
+  /* DIVIDER */
+  .divider { height: 1px; background: var(--border); margin: 5rem 0; }
+
+  /* CONCLUSION */
+  .conclusion { margin-top: 5rem; padding-top: 3rem; border-top: 1px solid var(--border); }
+  .conclusion h2 { font-family: var(--sans); font-size: 1.6rem; font-weight: 700; margin-bottom: 1.3rem; }
+
+  .footnote { color: var(--ink3); font-size: 0.85rem; font-family: var(--mono); margin-top: 2.5rem; }
+</style>
+</head>
+<body>
+<div class="site-top">
+  <div class="site-nav">
+    <a class="site-mark" href="/">MANISH AI</a>
+    <div class="site-links">
+      <a href="/writings.html">&larr; Writings</a>
+      <a href="https://github.com/manishklach">GitHub</a>
+    </div>
+  </div>
+</div>
+<div class="wrapper" data-pagefind-body>
+
+  <div class="hero">
+    <div class="eyebrow">Deep Dive · Kernel Engineering</div>
+    <h1>The Linux Kernel in <em>AI &amp; GPU Clusters</em>:<br>Where the Real Bottlenecks Hide</h1>
+    <p class="subtitle">A systems engineer's guide to understanding why the kernel is the most critical — and most overlooked — layer in modern AI infrastructure, and how to write targeted patches to expose its hidden failure modes.</p>
+    <div class="meta">
+      <span><time datetime="2026-04-29">April 29, 2026</time></span>
+      <span>25 min read</span>
+      <span class="tag">linux kernel</span>
+      <span class="tag">GPU clusters</span>
+      <span class="tag">observability</span>
+      <span class="tag">kernel patches</span>
+      <span class="tag">DRM</span>
+      <span class="tag">RDMA</span>
+    </div>
+  </div>
+
+  <div class="toc">
+    <div class="toc-title">Table of Contents</div>
+    <ol>
+      <li>Why the kernel is the silent orchestrator of AI workloads <span class="path">· foundation</span></li>
+      <li>DRM/GPU subsystem — the command submission critical path <span class="path">· drivers/gpu/drm/</span></li>
+      <li>RDMA &amp; InfiniBand — the invisible backbone of distributed training <span class="path">· drivers/infiniband/</span></li>
+      <li>Memory management — NUMA, huge pages &amp; unwanted migration <span class="path">· mm/</span></li>
+      <li>PCIe &amp; IOMMU — when the bus becomes the bottleneck <span class="path">· drivers/pci/</span></li>
+      <li>The CPU scheduler &amp; GPU worker threads <span class="path">· kernel/sched/</span></li>
+      <li>Block I/O and io_uring — the forgotten checkpoint bottleneck <span class="path">· block/ io_uring/</span></li>
+      <li>What kinds of patches actually make it upstream</li>
+    </ol>
+  </div>
+
+  <!-- ============================
+       SECTION 1
+  ============================= -->
+  <div class="section">
+    <div class="section-label">
+      <span class="section-num">01</span>
+      <h2>The kernel is the silent orchestrator</h2>
+    </div>
+
+    <p>When an AI training run stalls, the first places engineers look are the model architecture, the optimizer configuration, or the networking stack. Rarely do they look at the operating system kernel. Yet every GPU kernel launch, every tensor transferred across an NVLink fabric, every checkpoint flushed to NVMe, and every NCCL all-reduce across an InfiniBand network — all of it transits the Linux kernel at some point.</p>
+
+    <p>The kernel does not merely <strong>pass data through</strong>. It makes active decisions about memory placement, interrupt routing, CPU affinity, DMA mapping, IOMMU translation, and process scheduling. These decisions can silently shave 40% off effective GPU utilization or produce intermittent gradient corruption under specific error conditions that go unreported for hours.</p>
+
+    <div class="callout">
+      <div class="callout-label">Why this matters at scale</div>
+      <p>A 1ms scheduling jitter in a single GPU worker thread, multiplied across 1,024 GPUs performing a synchronized all-reduce, produces a collective stall that looks exactly like a slow network. It isn't. The network is fine. The kernel scheduler is the culprit — and without kernel-level instrumentation, you will spend days chasing the wrong thing.</p>
+    </div>
+
+    <p>The data path for a single forward pass on a distributed model touches an extraordinary number of kernel subsystems in sequence:</p>
+
+    <div class="flow">
+      <div class="flow-item">
+        <div class="flow-icon">🖥</div>
+        <div class="flow-label">Userspace</div>
+        <div class="flow-sub">PyTorch / JAX</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-item">
+        <div class="flow-icon">⚙️</div>
+        <div class="flow-label">DRM sched</div>
+        <div class="flow-sub">GPU job queue</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-item">
+        <div class="flow-icon">🔁</div>
+        <div class="flow-label">IOMMU</div>
+        <div class="flow-sub">DMA mapping</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-item">
+        <div class="flow-icon">🌐</div>
+        <div class="flow-label">RDMA/IB</div>
+        <div class="flow-sub">Cross-node comms</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-item">
+        <div class="flow-icon">💾</div>
+        <div class="flow-label">Block I/O</div>
+        <div class="flow-sub">Checkpoints</div>
+      </div>
+    </div>
+
+    <p>Each stage has its own queue depth, its own error reporting path, and its own latency budget. When any one degrades silently — no crash, no log entry, just slower throughput — the only path to diagnosis is instrumentation. That instrumentation begins with kernel tracepoints, and tracepoints are written by people who contribute to the kernel. That is why this work matters at a fundamental level.</p>
+
+    <p>Let's walk through each subsystem in detail, explain the specific failure modes, and describe the patches that would expose them.</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============================
+       SECTION 2
+  ============================= -->
+  <div class="section">
+    <div class="section-label">
+      <span class="section-num">02</span>
+      <h2>The DRM/GPU subsystem: command submission latency</h2>
+    </div>
+
+    <p>The Direct Rendering Manager subsystem is where GPU commands are born. Every tensor operation, matrix multiplication, and attention kernel begins life as a job submitted to the DRM scheduler — <code>drm_sched</code>. This scheduler manages per-ring, per-priority run queues of GPU jobs, feeds them to the GPU hardware, and handles completion signaling. Understanding this path is the foundation for any GPU observability work.</p>
+
+    <div class="subsystem-card">
+      <div class="sc-head">
+        <div class="sc-title">DRM GPU Scheduler</div>
+        <div class="sc-path">drivers/gpu/drm/scheduler/</div>
+      </div>
+      <div class="sc-body">
+        Jobs are submitted from userspace via <code>ioctl</code>, placed into the scheduler's priority-ordered ring queue, and dispatched when the GPU signals readiness via a DMA fence. The critical measurement is the gap between job enqueue and actual GPU dispatch — the <em>submission latency</em>. Currently, this gap is invisible without explicit tracepoints.
+      </div>
+      <div class="sc-tags">
+        <span class="sc-tag">drm_sched_job_arm</span>
+        <span class="sc-tag">drm_sched_process_job</span>
+        <span class="sc-tag">ttm_bo_evict</span>
+        <span class="sc-tag">amdgpu_vm_bo_map</span>
+        <span class="sc-tag">drm_sched_entity_select_rq</span>
+      </div>
+    </div>
+
+    <h3>The core problem: silent command queue stalls</h3>
+    <p>When a GPU is saturated, the DRM scheduler does not immediately signal userspace. The <code>drm_sched_job_arm()</code> call can block waiting for an available scheduler slot. The training framework above sees only that its CUDA or ROCm stream hasn't completed yet. There is no counter, no log line, and no histogram of how long jobs waited in the scheduler's ring buffer. This is the gap observability patches close.</p>
+
+    <p>The current tracepoints in <code>drm_sched</code> cover job submission and completion, but they do not record the timestamp at which a job was enqueued versus when it was actually dispatched. A patch adding an <code>enqueue_ts</code> field to the job structure and emitting it in a new tracepoint would allow exact measurement of scheduler wait time under load — a metric that no existing tool can provide.</p>
+
+    <div class="callout warn">
+      <div class="callout-label">Critical failure mode: TTM eviction</div>
+      <p>Memory pressure causes TTM (Translation Table Manager) buffer object eviction — <code>ttm_bo_evict</code> — in the middle of active training. The GPU stalls while tensors are paged back in from system memory. This event fires no userspace signal. It appears only as a dropped GPU utilization spike with no associated CPU event in standard profilers. Without a tracepoint in the eviction path that includes the affected job context, it is invisible.</p>
+    </div>
+
+    <h3>Adding a scheduler wait-time tracepoint</h3>
+    <p>A kernel tracepoint is a lightweight, statically-compiled hook that fires at zero overhead when not enabled, and emits structured events to the <code>tracefs</code> ring buffer when activated via <code>echo 1 &gt; /sys/kernel/debug/tracing/events/drm_sched/enable</code>. Here is what a scheduler wait-time tracepoint looks like:</p>
+
+<pre><code><span class="cm">/* In include/trace/events/drm_sched.h */</span>
+<span class="kw">TRACE_EVENT</span>(<span class="fn">drm_sched_job_dispatch</span>,
+    <span class="kw">TP_PROTO</span>(<span class="kw">struct</span> drm_sched_job *job),
+    <span class="kw">TP_ARGS</span>(job),
+    <span class="kw">TP_STRUCT__entry</span>(
+        __field(<span class="fn">uint64_t</span>,  id)
+        __field(<span class="fn">ktime_t</span>,   submit_ts)
+        __field(<span class="fn">ktime_t</span>,   dispatch_ts)
+        __string(sched_name, job->sched->name)
+    ),
+    <span class="kw">TP_fast_assign</span>(
+        __entry->id          = job->id;
+        __entry->submit_ts   = job->submit_ts;  <span class="cm">/* set at arm() */</span>
+        __entry->dispatch_ts = ktime_get();
+        __assign_str(sched_name, job->sched->name);
+    ),
+    <span class="kw">TP_printk</span>(<span class="str">"sched=%s job=%llu wait_us=%lld"</span>,
+        __get_str(sched_name),
+        __entry->id,
+        ktime_us_delta(__entry->dispatch_ts, __entry->submit_ts))
+);</code></pre>
+
+    <p>With this tracepoint, a <code>bpftrace</code> one-liner can build a real-time latency histogram with no reboot required:</p>
+
+<pre><code>$ bpftrace -e <span class="str">'
+tracepoint:drm_sched:drm_sched_job_dispatch {
+    @wait_us = hist(args->wait_us);
+}'</span></code></pre>
+
+    <p>That histogram is the missing telemetry that distinguishes "GPU is compute-bound" from "GPU is scheduler-bound" — two situations that look identical from userspace.</p>
+
+    <h3>The DMA fence dependency chain</h3>
+    <p>Jobs in the DRM scheduler can declare dependencies on other jobs via DMA fences — in-kernel synchronization primitives. A job will not be dispatched until all its fence dependencies have signaled. In complex training graphs with many concurrent streams, long dependency chains can form, causing later jobs to wait for earlier ones even when the GPU is nominally idle. Tracing the depth and wait time of these chains requires instrumentation at <code>dma_fence_wait()</code> call sites in the DRM layer — another high-value patch that doesn't yet exist in mainline.</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============================
+       SECTION 3
+  ============================= -->
+  <div class="section">
+    <div class="section-label">
+      <span class="section-num">03</span>
+      <h2>RDMA &amp; InfiniBand: the invisible distributed training backbone</h2>
+    </div>
+
+    <p>Distributed training is, at its core, a synchronization problem. Every GPU in a cluster must exchange gradients at the end of each backward pass. For a 70B parameter model trained on 512 GPUs, this all-reduce operation moves roughly 140GB of data across the network in every step. This happens via RDMA — Remote Direct Memory Access — implemented through InfiniBand hardware and the Linux kernel's <code>ib_core</code> stack. NCCL, the primary collective communications library, runs directly on top of this kernel infrastructure.</p>
+
+    <div class="subsystem-card blue">
+      <div class="sc-head">
+        <div class="sc-title">InfiniBand Core Stack</div>
+        <div class="sc-path">drivers/infiniband/core/</div>
+      </div>
+      <div class="sc-body">
+        The IB stack manages Queue Pairs (QPs) — the fundamental bidirectional communication channels for RDMA. Each NCCL rank maintains dozens of QPs, each representing a direct memory-access channel to a peer GPU on another node. The kernel manages QP state transitions, Completion Queue (CQ) polling, and error recovery. Failures in this stack are among the hardest to diagnose without kernel-level tracing because they are often silent from userspace's perspective.
+      </div>
+      <div class="sc-tags">
+        <span class="sc-tag">ib_post_send</span>
+        <span class="sc-tag">ib_poll_cq</span>
+        <span class="sc-tag">IB_WC_RETRY_EXC_ERR</span>
+        <span class="sc-tag">IB_WC_REM_INV_REQ_ERR</span>
+        <span class="sc-tag">rdma_resolve_route</span>
+      </div>
+    </div>
+
+    <h3>Queue Pair errors: the silent training killers</h3>
+    <p>RDMA errors come in two flavors: <strong>fatal</strong> (the QP transitions to an error state and training crashes) and <strong>recoverable</strong> (completions with non-success work completion status codes, transparently retried by NCCL). The recoverable ones are often more dangerous in practice, because they inflate the tail latency of all-reduce operations without producing any signal that makes it into training logs.</p>
+
+    <p>A single QP experiencing frequent <code>IB_WC_RETRY_EXC_ERR</code> completions can delay an entire 1,024-GPU all-reduce because the collective barrier is synchronous — every rank must complete before any rank can proceed. The slowest QP in the cluster sets the floor for the entire training throughput.</p>
+
+    <div class="callout warn">
+      <div class="callout-label">Pathological real-world case</div>
+      <p>A single intermittently-flapping InfiniBand port on one switch causes <code>IB_WC_REM_INV_REQ_ERR</code> completions on 64 QPs across 8 nodes. NCCL retries internally and eventually succeeds. The all-reduce for affected steps takes 3× longer than normal. The training log shows nothing unusual. GPU utilization shows a periodic dip every ~90 steps. Without a tracepoint on non-success CQ completions — one that captures the QP GID, error type, and associated training process — this failure mode takes days to localize to a specific switch port.</p>
+    </div>
+
+    <h3>The Completion Queue overflow problem</h3>
+    <p>A Completion Queue has a fixed depth, set at creation time by the application. If the application doesn't poll the CQ fast enough — for example, because a GPU worker thread was descheduled at a critical moment, or because a cgroup CPU quota was hit — the CQ fills to capacity. When new completions arrive for a full CQ, InfiniBand hardware handles this by <strong>transitioning the associated QP to an error state and dropping subsequent completions silently</strong>.</p>
+
+    <p>This is not a crash. The operation simply never completes from the application's perspective. The QP must be destroyed and re-established, which in NCCL triggers a full communicator teardown and restart — an extremely expensive operation that appears as a multi-minute training pause.</p>
+
+    <p>Currently, there is no mainline tracepoint for CQ overflow events. Adding one to <code>drivers/infiniband/core/cq.c</code> would be immediately valuable to every team running GPU clusters on InfiniBand fabric. The patch would be modest in size and scope:</p>
+
+<pre><code><span class="cm">/* drivers/infiniband/core/cq.c — proposed tracepoint */</span>
+<span class="kw">static void</span> <span class="fn">ib_cq_notify_overflow</span>(<span class="kw">struct</span> ib_cq *cq)
+{
+    <span class="cm">/*
+     * CQ has reached capacity. The QP will transition to error
+     * state. Emit a tracepoint before this happens so operators
+     * can correlate with application-level timeouts.
+     */</span>
+    <span class="fn">trace_ib_cq_overflow</span>(
+        cq->device->name,   <span class="cm">/* which RDMA device */</span>
+        cq->cqe,            <span class="cm">/* configured CQ depth */</span>
+        cq->cqe_used,       <span class="cm">/* entries at overflow */</span>
+        current->comm       <span class="cm">/* process name */</span>
+    );
+}
+</code></pre>
+
+    <h3>Per-QP latency measurement</h3>
+    <p>Beyond error events, there is a need for normal-path latency measurement at the QP level. The <code>ib_post_send</code> call places a work request on the send queue, and completion arrives later via <code>ib_poll_cq</code>. The round-trip time between these two calls — the RDMA operation latency — is the metric NCCL tuning ultimately depends on. Currently, measuring this requires userspace instrumentation or hardware-level Infiniband diagnostics tools that are not always available. A tracepoint pair at <code>ib_post_send</code> and <code>ib_poll_cq</code> that share a work request identifier would allow exact per-operation latency measurement from <code>bpftrace</code> without any application-level changes.</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============================
+       SECTION 4
+  ============================= -->
+  <div class="section">
+    <div class="section-label">
+      <span class="section-num">04</span>
+      <h2>Memory management: NUMA, huge pages, and unwanted migration</h2>
+    </div>
+
+    <p>Modern GPU servers are NUMA (Non-Uniform Memory Access) machines. A typical 8-GPU server has 2 CPU sockets, 2 NUMA nodes, and each group of 4 GPUs is physically closer — lower latency PCIe path — to one NUMA node than the other. The kernel's memory allocator and NUMA balancer make continuous decisions about where tensors, driver buffers, and kernel data structures live in physical memory. These decisions have direct, measurable effects on H2D/D2H bandwidth and GPU driver latency.</p>
+
+    <div class="subsystem-card amber">
+      <div class="sc-head">
+        <div class="sc-title">Memory Management / NUMA Balancer</div>
+        <div class="sc-path">mm/ · mm/numa_balancing.c</div>
+      </div>
+      <div class="sc-body">
+        The NUMA balancer periodically scans process address spaces, temporarily marks pages inaccessible to force access faults, then migrates pages toward the NUMA node that accesses them most frequently. For GPU workloads, this heuristic is actively harmful: GPU driver buffers need to remain pinned on the correct NUMA node, and NUMA migration of these buffers introduces DMA latency and can destabilize IOMMU mappings.
+      </div>
+      <div class="sc-tags">
+        <span class="sc-tag">migrate_pages</span>
+        <span class="sc-tag">task_numa_fault</span>
+        <span class="sc-tag">mm_compaction_begin</span>
+        <span class="sc-tag">mm_page_alloc_zone_locked</span>
+        <span class="sc-tag">oom_score_adj</span>
+      </div>
+    </div>
+
+    <h3>The huge page allocation cliff</h3>
+    <p>GPU drivers — particularly <code>amdgpu</code>, <code>xe</code>, and the open NVIDIA kernel modules — aggressively request 2MB transparent huge pages (THP) for GPU memory mappings. Huge pages reduce TLB pressure during DMA and meaningfully improve H2D/D2H throughput by reducing the number of IOMMU page table entries that must be walked per DMA operation.</p>
+
+    <p>The problem is that huge page allocation can fail silently when physical memory is fragmented. When a huge page allocation fails, the driver falls back to composing the mapping from base 4KB pages. This fallback is not logged anywhere. There is no counter in <code>/proc/meminfo</code> that tracks driver-specific huge page allocation failures separately from general allocation failures. GPU memory bandwidth for subsequent operations may drop 15–30% due to increased TLB miss rates, and the engineer watching GPU utilization sees only a slight, unexplained throughput decrease.</p>
+
+    <div class="callout warn">
+      <div class="callout-label">The compaction stall problem</div>
+      <p>Memory compaction — the kernel mechanism that defragments physical memory to satisfy huge page requests — runs synchronously at allocation time and can hold the zone lock for tens of milliseconds. If this happens while a GPU driver thread is trying to map memory for an in-flight DMA operation, the DMA stalls waiting for the lock. The <code>mm_compaction_begin</code> and <code>mm_compaction_end</code> tracepoints already exist, but they carry no caller context. Adding the requesting process name and allocation flags to these tracepoints is a minimal, high-value patch.</p>
+    </div>
+
+    <h3>Page migration racing with active DMA</h3>
+    <p>The most dangerous interaction in this subsystem involves the NUMA balancer's page migration and active DMA operations. When the balancer decides to migrate a page that the GPU driver has registered for DMA, the IOMMU mapping pointing to that page's physical address becomes stale the moment migration completes. Modern kernels handle this through <code>mmu_notifiers</code> — callbacks that drivers register to be informed of page table changes before they happen.</p>
+
+    <p>The sequence is: balancer selects page for migration → calls <code>mmu_notifier_invalidate_range_start()</code> → GPU driver receives callback → driver must quiesce any in-flight DMA to that page → migration proceeds. If the driver's notifier handler is slow, if it races with an interrupt, or if there is any window between notification delivery and DMA quiescence, a GPU read or write can target the old physical address after the page has moved. The result is silent data corruption — wrong gradient values with no error signal from either hardware or software.</p>
+
+    <p>Adding a tracepoint to <code>mm/migrate.c</code> that fires when page migration is attempted on a page with active <code>mmu_notifiers</code> — and records the time spent blocking in <code>mmu_notifier_invalidate_range_start()</code> — would expose the frequency and duration of this race in production environments.</p>
+
+<pre><code><span class="cm">/* mm/migrate.c — proposed mmu_notifier wait tracepoint */</span>
+<span class="kw">static int</span> <span class="fn">migrate_page_move_mapping</span>(<span class="kw">struct</span> address_space *mapping,
+                                       <span class="kw">struct</span> page *newpage,
+                                       <span class="kw">struct</span> page *page, ...)
+{
+    <span class="kw">ktime_t</span> t0 = ktime_get();
+    <span class="fn">mmu_notifier_invalidate_range_start</span>(&range);
+    <span class="fn">trace_mm_migrate_mmu_notifier_wait</span>(
+        page_to_pfn(page),
+        ktime_us_delta(ktime_get(), t0)
+    );
+    <span class="cm">/* ... rest of migration ... */</span>
+}</code></pre>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============================
+       SECTION 5
+  ============================= -->
+  <div class="section">
+    <div class="section-label">
+      <span class="section-num">05</span>
+      <h2>PCIe &amp; IOMMU: when the bus becomes the bottleneck</h2>
+    </div>
+
+    <p>Every H2D (host-to-device) and D2H (device-to-host) memory transfer traverses the PCIe bus. For large language model training, this includes loading mini-batches from CPU pinned memory, moving optimizer state during gradient accumulation, and transferring activations during pipeline-parallel training across nodes. The IOMMU sits between the GPU and system memory, translating GPU virtual addresses to physical addresses for every DMA transaction. Neither PCIe errors nor IOMMU performance are adequately exposed by current mainline tracepoints.</p>
+
+    <div class="subsystem-card red">
+      <div class="sc-head">
+        <div class="sc-title">PCIe AER &amp; IOMMU</div>
+        <div class="sc-path">drivers/pci/ · drivers/iommu/</div>
+      </div>
+      <div class="sc-body">
+        PCIe Advanced Error Reporting (AER) captures hardware-level errors on the PCIe fabric: correctable errors (bit flips fixed by ECC hardware), uncorrectable non-fatal errors, and fatal errors. IOMMU TLB invalidations serialize DMA — the more frequently they occur, the more DMA throughput degrades. Both are chronic issues in GPU clusters running at scale, 24 hours a day.
+      </div>
+      <div class="sc-tags">
+        <span class="sc-tag">pci_aer_correctable</span>
+        <span class="sc-tag">pci_aer_uncorrectable</span>
+        <span class="sc-tag">iommu_tlb_flush</span>
+        <span class="sc-tag">dma_map_sg</span>
+        <span class="sc-tag">iommu_iotlb_gather</span>
+      </div>
+    </div>
+
+    <h3>Correctable PCIe errors — the slow-burn failure mode</h3>
+    <p>A PCIe link generating correctable errors is not failing today — it is demonstrating that it <em>will</em> fail. Correctable errors (typically ECRC — End-to-End Cyclic Redundancy Check — or receiver errors) are automatically retried by PCIe hardware and produce no data corruption. They do, however, add latency to every affected DMA operation, because the PCIe transaction must be retransmitted.</p>
+
+    <p>A GPU slot generating 10,000 correctable errors per hour will appear to work perfectly in all application-level metrics while silently throttling H2D bandwidth by 5–15%. In a 1,000-GPU cluster, statistically several GPUs will be in exactly this state at any given time, degrading overall training throughput in a way that is impossible to attribute without hardware-level error counters correlated with DMA performance metrics.</p>
+
+    <p>The <code>pci_aer_stats</code> counters exist in sysfs, but they are polled — not pushed as events. There is no tracepoint for AER correctable error events. This means no automatic correlation with DMA latency spikes, no alert capability without a polling daemon, and no way to build histograms of error rate over time with low overhead. A tracepoint in <code>drivers/pci/pcie/aer.c</code> firing on each correctable error, carrying device BDF (Bus:Device.Function), error type, and timestamp, would be an immediately impactful addition to mainline.</p>
+
+    <div class="callout info">
+      <div class="callout-label">Why this matters for predictive maintenance</div>
+      <p>PCIe correctable error rates follow a characteristic pattern before a GPU or link failure: rates gradually increase over days or weeks before a non-correctable error causes an outage. With kernel tracepoints, that escalation is automatically visible in any tracing system. Without them, operators only find out when the training job crashes.</p>
+    </div>
+
+    <h3>IOMMU TLB thrashing under dynamic tensor allocation</h3>
+    <p>The IOMMU translates GPU virtual addresses to physical addresses using a multi-level page table, with a hardware TLB cache to speed up repeated translations. When GPU memory mappings are created and destroyed rapidly — as happens during dynamic computation graph execution in frameworks like PyTorch eager mode — the IOMMU TLB is frequently invalidated. Each invalidation is a serializing operation that briefly pauses all DMA from the affected device.</p>
+
+    <p>The <code>iommu_iotlb_gather</code> mechanism batches TLB invalidations to amortize this cost, but the batching parameters — batch size limits, flush triggering thresholds — are opaque. There are currently no tracepoints that record batch sizes, the number of TLB entries flushed per batch, or the duration of individual flush operations. Adding this instrumentation to <code>drivers/iommu/iommu.c</code> would allow workload-specific tuning of IOMMU parameters and direct attribution of DMA throughput losses to IOMMU contention.</p>
+
+<pre><code><span class="cm">/* drivers/iommu/iommu.c — proposed iotlb gather tracepoint */</span>
+<span class="kw">void</span> <span class="fn">iommu_iotlb_sync</span>(<span class="kw">struct</span> iommu_domain *domain,
+                      <span class="kw">struct</span> iommu_iotlb_gather *iotlb_gather)
+{
+    <span class="kw">ktime_t</span> t0 = ktime_get();
+
+    domain->ops->flush_iotlb_all(domain);
+
+    <span class="fn">trace_iommu_iotlb_sync</span>(
+        domain->type,
+        iotlb_gather->pgsize,        <span class="cm">/* page granularity flushed */</span>
+        iotlb_gather->start,         <span class="cm">/* VA range start */</span>
+        iotlb_gather->end,           <span class="cm">/* VA range end   */</span>
+        ktime_us_delta(ktime_get(), t0)
+    );
+}</code></pre>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============================
+       SECTION 6
+  ============================= -->
+  <div class="section">
+    <div class="section-label">
+      <span class="section-num">06</span>
+      <h2>The CPU scheduler and GPU worker threads</h2>
+    </div>
+
+    <p>GPU driver code runs in a mix of kernel threads and userspace threads that the Linux CPU scheduler manages identically to any other workload. The problem is that these threads have very specific latency requirements: they must respond to GPU interrupts, poll completion queues, and submit new work within tight timing budgets to keep the GPU pipeline full. The Completely Fair Scheduler has no knowledge of these constraints, and its generic decisions — load balancing, NUMA placement, preemption — can devastate GPU utilization in ways that are extremely difficult to diagnose.</p>
+
+    <div class="subsystem-card">
+      <div class="sc-head">
+        <div class="sc-title">CFS Scheduler / NUMA Placement</div>
+        <div class="sc-path">kernel/sched/ · kernel/sched/fair.c</div>
+      </div>
+      <div class="sc-body">
+        The CFS scheduler makes placement decisions based on CPU load, cgroup quotas, and NUMA topology. GPU driver interrupt threads and userspace polling threads can be migrated to a distant NUMA node, preempted at critical moments, or throttled by CPU cgroup limits — each producing identical symptoms: a mysterious pipeline bubble in the GPU utilization trace that has no corresponding CPU event in standard profiling tools.
+      </div>
+      <div class="sc-tags">
+        <span class="sc-tag">sched_migrate_task</span>
+        <span class="sc-tag">sched_stat_wait</span>
+        <span class="sc-tag">sched_process_throttle</span>
+        <span class="sc-tag">irq_handler_entry</span>
+        <span class="sc-tag">softirq_entry</span>
+      </div>
+    </div>
+
+    <h3>The cross-NUMA scheduler migration problem</h3>
+    <p>When the CFS load balancer decides to migrate a GPU driver kernel thread from NUMA node 0 to NUMA node 1, that thread now executes on CPUs physically farther from the GPU it is servicing. GPU MSI interrupts are typically pinned to a specific CPU affinity set at driver initialization — they do not follow the thread. The result is that interrupt delivery and interrupt processing happen on different NUMA nodes, adding inter-socket latency (typically 50–150ns on modern Intel and AMD platforms) to every single GPU command completion event.</p>
+
+    <p>At the scale of a busy GPU processing hundreds of thousands of small operations per second, this latency accumulation is significant. The <code>sched_migrate_task</code> tracepoint fires when migration occurs, but it carries no information about whether the migrated task is a GPU driver thread. A patch enriching this tracepoint with the task's CPU affinity mask and whether it is an interrupt-driven thread — or a complementary <code>drm_sched_entity_migrate</code> tracepoint in the DRM layer — would allow direct correlation of scheduler migrations with GPU performance regressions.</p>
+
+    <h3>cgroup CPU quota throttling of NCCL communicators</h3>
+    <p>In Kubernetes-managed GPU clusters, GPU training pods run inside cgroups with CPU quota limits set by the resource scheduler. These limits are reasonable from a cluster utilization perspective, but they interact catastrophically with distributed training synchronization. If a NCCL communication thread hits its CPU quota mid-all-reduce, it is suspended until the next quota period begins (typically 100ms later).</p>
+
+    <p>Every other GPU in the synchronized collective is now waiting at the all-reduce barrier for that throttled thread to resume. A 100ms CPU quota suspension becomes a 100ms all-reduce stall across potentially hundreds of GPUs. The affected training job's step time is dominated by this stall rather than by GPU compute, but the operator sees only "slow training" with no obvious cause in the application logs.</p>
+
+<pre><code><span class="cm">/* Detecting NCCL thread throttling with bpftrace */</span>
+$ bpftrace -e <span class="str">'
+tracepoint:cgroup:cgroup_throttle_cpu {
+    $comm = str(comm);
+    if ($comm == "nccl" || $comm == "pt_data_worker"
+        || strncmp($comm, "python", 6) == 0) {
+        @throttled_ms[pid, $comm] =
+            hist(args->throttled_time / 1000000);
+        printf("[%llu] throttled: pid=%d comm=%s\n",
+               nsecs, pid, $comm);
+    }
+}'</span></code></pre>
+
+    <div class="callout">
+      <div class="callout-label">Patch direction</div>
+      <p>A kernel patch adding a tracepoint to <code>kernel/sched/fair.c</code> at the cgroup throttling decision point — one that carries the thread's NUMA node, CPU affinity, and whether it holds any DRM or RDMA mutex — would allow automated detection of this failure mode in production monitoring systems. This is a self-contained, clearly-motivated patch with an obvious userspace use case, and is the kind of change the sched maintainers respond well to.</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============================
+       SECTION 7
+  ============================= -->
+  <div class="section">
+    <div class="section-label">
+      <span class="section-num">07</span>
+      <h2>Block I/O and io_uring: the forgotten checkpoint bottleneck</h2>
+    </div>
+
+    <p>Model checkpointing is the process of periodically saving model weights and optimizer state to persistent storage so that training can resume from a known point after failure. For a 70B parameter model in BF16 precision, a single checkpoint is approximately 140GB. In a large training cluster performing checkpoints every 30 minutes across 64 nodes simultaneously, this is a 9TB synchronous write burst that competes with ongoing data loading, validation, and — if checkpoints write to shared NFS — other clusters on the same storage network.</p>
+
+    <div class="subsystem-card">
+      <div class="sc-head">
+        <div class="sc-title">Block Layer &amp; io_uring</div>
+        <div class="sc-path">block/ · io_uring/</div>
+      </div>
+      <div class="sc-body">
+        <code>io_uring</code> is the modern Linux asynchronous I/O interface used by high-performance ML frameworks for checkpoint I/O. It uses submission and completion ring buffers to batch I/O operations with minimal syscall overhead. When the submission ring overflows — because I/O bandwidth is saturated — operations fail with <code>-EBUSY</code> and must be retried. These retries introduce stochastic latency that stalls the checkpoint writer thread and can delay training resumption after a failure by minutes.
+      </div>
+      <div class="sc-tags">
+        <span class="sc-tag">io_uring_submit_sqe</span>
+        <span class="sc-tag">block_rq_complete</span>
+        <span class="sc-tag">blk_mq_dispatch_rq</span>
+        <span class="sc-tag">writeback_dirty_inode</span>
+        <span class="sc-tag">balance_dirty_pages</span>
+      </div>
+    </div>
+
+    <h3>Writeback interference with active training I/O</h3>
+    <p>Linux's page cache writeback mechanism — the <code>kworker/flush</code> kernel thread — periodically writes dirty pages to disk according to a set of heuristics based on dirty page ratio, elapsed time since last flush, and per-device I/O queue depth. When a large checkpoint write begins, it marks tens of gigabytes of pages dirty simultaneously. The writeback mechanism responds by aggressively flushing, competing with the checkpoint writer for block device queue slots.</p>
+
+    <p>Simultaneously, the balance_dirty_pages mechanism throttles the process dirtying pages if the dirty page ratio exceeds a threshold. For a checkpoint writer running inside a training process, this throttling appears as a stall in the checkpoint write loop — the process is suspended in the kernel waiting for dirty pages to be flushed before it can dirty more. From the training engineer's perspective, the GPU sits idle waiting for the checkpoint to complete.</p>
+
+    <p>The <code>writeback_dirty_inode</code> tracepoint fires when an inode is marked dirty but does not record the triggering process, cgroup, or allocation context. For GPU training jobs, knowing that a checkpoint write from a specific process caused a cascade of writeback pressure across a shared NFS mount would allow the distributed training framework to stagger checkpoint timing across nodes. A patch adding process and cgroup context to key writeback tracepoints would enable this analysis.</p>
+
+    <h3>io_uring submission ring overflow: silent backpressure</h3>
+    <p>The io_uring submission queue ring has a fixed size, typically 128 or 256 entries, configured at ring creation. When a checkpoint writer submits more I/O operations than the ring can hold, operations fail with <code>-EBUSY</code>. The framework must retry, introducing latency. More critically, this overflow event is currently not exposed as a tracepoint — it is only detectable by polling the io_uring statistics file in <code>/proc/&lt;pid&gt;/fdinfo/</code>, which almost no monitoring system does.</p>
+
+    <p>The implication is that a training cluster could be experiencing thousands of io_uring overflows per checkpoint — each adding milliseconds of retry delay — with no signal in any standard monitoring dashboard. Adding a tracepoint at the overflow site in <code>io_uring/io_uring.c</code> would surface this failure mode in any tracing infrastructure:</p>
+
+<pre><code><span class="cm">/* io_uring/io_uring.c — proposed SQ overflow tracepoint */</span>
+<span class="kw">static inline int</span> <span class="fn">io_get_sqe</span>(<span class="kw">struct</span> io_ring_ctx *ctx,
+                              <span class="kw">const struct</span> io_uring_sqe **sqe)
+{
+    <span class="kw">unsigned</span> head, mask = ctx->sq_entries - <span class="num">1</span>;
+
+    <span class="kw">if</span> (unlikely(<span class="fn">io_sqring_entries</span>(ctx) == <span class="num">0</span>)) {
+        <span class="fn">trace_io_uring_sq_overflow</span>(
+            ctx,
+            ctx->sq_entries,           <span class="cm">/* ring capacity */</span>
+            <span class="fn">atomic_read</span>(&ctx->sq_queued)  <span class="cm">/* current depth */</span>
+        );
+        <span class="kw">return</span> -EBUSY;
+    }
+    <span class="cm">/* ... normal submission path ... */</span>
+}</code></pre>
+
+    <h3>blk-mq queue depth stalls</h3>
+    <p>Beneath io_uring sits the multi-queue block layer (<code>blk-mq</code>), which manages hardware dispatch queues for NVMe devices. When all hardware queue slots are occupied, new requests stall in the software staging queue. The <code>block_rq_insert</code> and <code>block_rq_issue</code> tracepoints exist and capture this, but they do not carry the io_uring context that caused the insertion. A join between io_uring tracepoints and block layer tracepoints — achievable in eBPF without any kernel patch, but requiring the io_uring tracepoints to carry a request identifier — would close this observability gap completely.</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============================
+       SECTION 8
+  ============================= -->
+  <div class="section">
+    <div class="section-label">
+      <span class="section-num">08</span>
+      <h2>What kinds of patches actually make it upstream</h2>
+    </div>
+
+    <p>The Linux kernel community is genuinely welcoming of observability patches — new tracepoints, enriched existing events, new <code>/proc</code> or <code>debugfs</code> counters — when they are well-motivated and clearly scoped. But the path from a useful idea to a merged patch has specific, non-negotiable requirements that differ significantly from application-level development. Understanding them before you write your first patch will save months of frustration.</p>
+
+    <h3>What the community accepts</h3>
+    <ul>
+      <li><strong>Tracepoints over printk.</strong> New <code>printk()</code> calls on production paths are almost always rejected. They add permanent noise to kernel logs and are non-zero cost. Tracepoints are idiomatic: zero cost when disabled, structured, type-safe, and composable with eBPF and ftrace. Every observability patch should use tracepoints.</li>
+      <li><strong>Self-contained subsystem scope.</strong> A patch that modifies only <code>drivers/gpu/drm/scheduler/</code> needs review only from DRM maintainers. A patch that touches <code>mm/</code>, <code>drivers/gpu/</code>, and <code>block/</code> simultaneously needs consensus from three separate maintainer trees and will sit in review limbo for months. Write patches that fit inside one subsystem's directory tree.</li>
+      <li><strong>Measurable, bounded overhead.</strong> Tracepoints on hot paths — like <code>ib_post_send</code> or <code>drm_sched_job_arm</code> — must have verified overhead below ~5ns when disabled. The community expects <code>perf bench</code> numbers in the cover letter for any patch touching a path that executes more than ~1M times per second.</li>
+      <li><strong>A concrete failure mode in the commit message.</strong> The best patches describe a real production scenario where the new tracepoint would have reduced debugging time from days to minutes. Reviewers are much more willing to accept a patch when they understand the failure it exposes.</li>
+    </ul>
+
+    <h3>What gets rejected immediately</h3>
+    <ul>
+      <li>Patches that add <code>printk</code> on fast paths</li>
+      <li>Patches with no corresponding Signed-off-by chain</li>
+      <li>Patches that touch multiple subsystems without clearly separating the changes into independent, bisectable commits</li>
+      <li>Tracepoints with string-formatted output rather than structured fields (use <code>__field</code> and <code>__string</code>, not <code>sprintf</code>)</li>
+      <li>Patches submitted without first reading the subsystem's existing tracepoint conventions — every subsystem does them slightly differently</li>
+    </ul>
+
+    <h3>Recommended mailing lists by subsystem</h3>
+    <ul>
+      <li><code>dri-devel@lists.freedesktop.org</code> — DRM/GPU, all open driver work</li>
+      <li><code>linux-rdma@vger.kernel.org</code> — InfiniBand, RoCE, RDMA</li>
+      <li><code>linux-mm@kvack.org</code> — all memory management changes</li>
+      <li><code>linux-pci@vger.kernel.org</code> — PCIe, AER, IOMMU</li>
+      <li><code>io-uring@vger.kernel.org</code> — io_uring</li>
+      <li><code>linux-kernel@vger.kernel.org</code> — CC for anything touching <code>kernel/sched/</code></li>
+    </ul>
+
+    <div class="callout info">
+      <div class="callout-label">The best first patch</div>
+      <p>Subscribe to <code>dri-devel</code> and read three months of review threads. Find a tracepoint in <code>drivers/gpu/drm/scheduler/</code> that is missing a field you need. Submit a patch adding that field. It will be small, obviously correct, easy to review, and directly beneficial to the GPU computing community. That is the right first contribution — small scope, clear motivation, one subsystem.</p>
+    </div>
+  </div>
+
+  <div class="conclusion">
+    <h2>What comes next</h2>
+    <p>The Linux kernel is not plumbing that can be ignored when diagnosing AI cluster performance problems. It is the terrain on which every GPU job, every gradient synchronization, and every checkpoint write executes. The bottlenecks are real, they affect training throughput at scale every day, and the tools to measure them are already built into the kernel — they just need to be extended to cover the specific failure modes that matter to AI workloads.</p>
+    <p>In the next post, we will go hands-on: writing a complete tracepoint patch for the DRM scheduler, building a kernel with the patch applied, testing it with <code>bpftrace</code>, and formatting it for submission to the <code>dri-devel</code> mailing list. If you want to follow along, you'll need a kernel build environment with GCC or Clang, and ideally access to a machine with an AMD or Intel GPU with open-source driver support.</p>
+    <p>The patches described in this post are real opportunities. If you work on AI infrastructure and have access to GPU cluster hardware, you are in a position to contribute observability improvements that will benefit the entire community. The maintainers are looking for motivated contributors who can reproduce real problems and write clean, targeted fixes. That combination is rarer than it should be.</p>
+    <p class="footnote">— Written <time datetime="2026-04-29">April 29, 2026</time> · 25 min read · Linux kernel 6.x series</p>
+  </div>
+
+  <footer style="margin-top:4rem; padding-top:2rem; border-top:1px solid var(--border); color:var(--ink3); font-family:var(--mono); font-size:0.78rem;">
+    <a href="/" style="color:inherit; text-decoration:none;">© 2026 MANISH AI.</a> All rights reserved. <a href="/writings.html" style="color:inherit;">← All writings</a> · <a href="https://github.com/manishklach" style="color:inherit;">GitHub</a>
+  </footer>
+</div>
+</body>
+</html>
