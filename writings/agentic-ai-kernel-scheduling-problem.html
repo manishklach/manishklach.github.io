@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agentic AI is a Kernel Scheduling Problem: IRQs, cgroups, and Tail Latency | MANISH AI</title>
+<meta name="description" content="A USENIX-style systems note on IRQ-to-userspace latency, scheduler wakeups, cgroup-aware agent latency classes, epoll/io_uring tracing, and kernel fast paths for agentic AI workloads." />
+<meta name="keywords" content="agentic AI, Linux scheduler, IRQ latency, cgroups, tail latency, io_uring tracing, epoll wakeups, kernel fast paths">
+<meta name="author" content="MANISH AI">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://manishklach.github.io/writings/agentic-ai-kernel-scheduling-problem.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Agentic AI is a Kernel Scheduling Problem: IRQs, cgroups, and Tail Latency | MANISH AI">
+<meta property="og:description" content="A USENIX-style systems note on IRQ-to-userspace latency, scheduler wakeups, cgroup-aware agent latency classes, epoll/io_uring tracing, and kernel fast paths for agentic AI workloads.">
+<meta property="og:url" content="https://manishklach.github.io/writings/agentic-ai-kernel-scheduling-problem.html">
+<meta property="og:image" content="https://manishklach.github.io/og/agentic-ai-kernel-scheduling-problem.png">
+<meta property="og:image:alt" content="Preview card for Agentic AI is a Kernel Scheduling Problem">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Agentic AI is a Kernel Scheduling Problem: IRQs, cgroups, and Tail Latency | MANISH AI">
+<meta name="twitter:description" content="A USENIX-style systems note on IRQ-to-userspace latency, scheduler wakeups, cgroup-aware agent latency classes, epoll/io_uring tracing, and kernel fast paths for agentic AI workloads.">
+<meta name="twitter:image" content="https://manishklach.github.io/og/agentic-ai-kernel-scheduling-problem.png">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Agentic AI is a Kernel Scheduling Problem: IRQs, cgroups, and Tail Latency","description":"A USENIX-style systems note on IRQ-to-userspace latency, scheduler wakeups, cgroup-aware agent latency classes, epoll/io_uring tracing, and kernel fast paths for agentic AI workloads.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/agentic-ai-kernel-scheduling-problem.html","mainEntityOfPage":"https://manishklach.github.io/writings/agentic-ai-kernel-scheduling-problem.html","datePublished":"2026-04-29","dateModified":"2026-04-29","inLanguage":"en"}</script>
+<style>
+:root{
+  --ink:#0b0d12; --muted:#586174; --line:#dce1ea; --soft:#f6f8fb; --soft2:#eef3fa;
+  --blue:#0b63ce; --blue2:#1a73e8; --green:#0b7a53; --red:#c23b22; --purple:#6f42c1;
+  --code:#0e1320; --code2:#d9e6ff; --paper:#ffffff;
+}
+*{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#f7f9fd 0%,#fff 360px);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;line-height:1.58}
+.site-top{max-width:1040px;margin:0 auto;padding:22px 24px 0}.site-nav{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:14px 16px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.84);backdrop-filter:blur(10px)}.site-mark{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#0b63ce}.site-links{display:flex;gap:1rem;flex-wrap:wrap;font-size:12px;color:var(--muted)}.site-links a,.site-mark{text-decoration:none}
+.paper{max-width:1040px;margin:0 auto;padding:44px 24px 90px}.topbar{display:flex;gap:12px;justify-content:center;align-items:center;margin:0 0 22px;color:var(--muted);font-size:13px;letter-spacing:.04em;text-transform:uppercase}.pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 10px}.hero{background:rgba(255,255,255,.86);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:28px;padding:42px 42px 34px;box-shadow:0 20px 60px rgba(27,39,70,.08)}
+h1{font-size:48px;line-height:1.04;letter-spacing:-.045em;margin:0 0 16px;text-align:center}.subtitle{font-size:20px;line-height:1.45;color:#293142;text-align:center;max-width:860px;margin:0 auto 24px}.authors{text-align:center;color:var(--muted);font-size:15px}.notice{margin:24px auto 0;max-width:850px;border:1px solid #f1cf7a;background:#fff9e8;color:#654800;border-radius:16px;padding:14px 16px;font-size:14px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}.abstract{margin:30px 0 16px;padding:24px;border-radius:20px;background:var(--soft);border:1px solid var(--line)}.abstract h2{margin-top:0;border:0;padding:0;font-size:18px;text-transform:uppercase;letter-spacing:.08em;color:#333}.toc{margin:18px 0 34px;border:1px solid var(--line);border-radius:20px;background:white;padding:18px 22px}.toc a{color:var(--blue);text-decoration:none}.toc ol{columns:2;margin:8px 0 0;padding-left:22px}h2{font-size:26px;letter-spacing:-.02em;margin:52px 0 15px;padding-bottom:8px;border-bottom:1px solid var(--line)}h3{font-size:19px;margin:28px 0 10px}p{margin:0 0 16px}.lead{font-size:18px;color:#283244}.callout{border-left:4px solid var(--blue);background:#f3f7ff;padding:16px 18px;border-radius:0 14px 14px 0;margin:18px 0}.danger{border-left-color:var(--red);background:#fff6f3}.ok{border-left-color:var(--green);background:#f3fff9}code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:.92em;background:#eef2f8;border:1px solid #dbe2ee;border-radius:6px;padding:1px 5px}pre{background:var(--code);color:var(--code2);padding:18px;border-radius:16px;overflow:auto;border:1px solid #202a42;font-size:13.5px;line-height:1.48;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}pre code{background:transparent;border:0;color:inherit;padding:0}.figure{margin:28px 0;border:1px solid var(--line);background:white;border-radius:24px;padding:18px;box-shadow:0 14px 35px rgba(20,30,60,.06)}.caption{font-size:13px;color:var(--muted);margin:10px 4px 0;text-align:center}.small{font-size:14px;color:var(--muted)}table{width:100%;border-collapse:collapse;margin:18px 0;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;display:table}th,td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{background:#f3f6fb;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:#465064}tr:last-child td{border-bottom:0}.metric{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.card{background:white;border:1px solid var(--line);border-radius:18px;padding:16px}.num{font-size:28px;font-weight:750;letter-spacing:-.03em}.label{font-size:13px;color:var(--muted)}.barrow{display:grid;grid-template-columns:170px 1fr 72px;gap:12px;align-items:center;margin:10px 0}.bar{height:13px;border-radius:999px;background:#e7edf6;overflow:hidden}.bar > i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#0b63ce,#75a9ff)}.bar.red > i{background:linear-gradient(90deg,#c23b22,#f29b81)}.bar.green > i{background:linear-gradient(90deg,#0b7a53,#83d4b4)}.eq{font-family:"SFMono-Regular",Consolas,monospace;background:#fafbfe;border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center;margin:14px 0}.footer{margin-top:60px;padding-top:24px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}@media(max-width:780px){h1{font-size:34px}.hero{padding:28px 22px}.grid2,.metric{grid-template-columns:1fr}.toc ol{columns:1}.barrow{grid-template-columns:1fr}.paper{padding:26px 16px 70px}}
+@media print{body{background:#fff}.hero,.abstract,.toc,.figure,.card{box-shadow:none}.paper{max-width:100%;padding:24px}.notice{page-break-inside:avoid}pre{white-space:pre-wrap}.figure{page-break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="site-top">
+  <div class="site-nav">
+    <a class="site-mark" href="/">MANISH AI</a>
+    <div class="site-links">
+      <a href="/writings.html">&larr; Writings</a>
+      <a href="https://github.com/manishklach">GitHub</a>
+    </div>
+  </div>
+</div>
+<div class="paper" data-pagefind-body>
+  <div class="topbar"><span class="pill">USENIX-style systems note</span><span class="pill">Linux scheduler</span><span class="pill">IRQ path</span><span class="pill">Agentic AI</span></div>
+  <header class="hero">
+    <h1>Agentic AI is a Kernel Scheduling Problem</h1>
+    <p class="subtitle">IRQ-to-userspace latency, EEVDF wakeups, cgroup-aware latency budgets, softirq interference, and why controllable microseconds become seconds in tool-using AI control loops.</p>
+    <div class="authors">MANISH AI · Systems Research Note · <time datetime="2026-04-29">April 29, 2026</time> · 12 min read</div>
+    <div class="notice"><b>Benchmark note:</b> the graphs in this draft are <b>representative benchmark targets</b> generated from a reproducible measurement plan, not claims from a published lab run. Replace the arrays in the HTML with your measured <code>perf</code>/<code>bpftrace</code> data before making empirical claims.</div>
+  </header>
+
+  <section class="abstract">
+    <h2>Abstract</h2>
+    <p>Agentic AI workloads are not simply long-running compute jobs. They are latency-amplified control loops that repeatedly wait on network responses, local tools, file metadata, vector index pages, subprocesses, and small I/O completions. Each tool response traverses an IRQ-to-userspace path: device completion, MSI-X delivery, Local APIC dispatch, IDT entry, Linux IRQ handling, softirq or threaded IRQ execution, wakeup, CPU selection, and finally userspace resumption. This note argues that the highest-leverage kernel change is not blindly raising agent processes to real-time priority. It is a budgeted <em>agent latency class</em> that coordinates scheduler wakeup placement, IRQ shielding, cpuidle guardrails, small-I/O attribution, and cgroup-enforced fairness. The goal is not to eliminate external tool latency; it is to compress the controllable local tail that occurs after a tool reply reaches the machine.</p>
+  </section>
+
+  <nav class="toc">
+    <b>Contents</b>
+    <ol>
+      <li><a href="#intro">Problem and thesis</a></li>
+      <li><a href="#path">IRQ-to-userspace path</a></li>
+      <li><a href="#registers">x86 register/APIC map</a></li>
+      <li><a href="#scheduler">Scheduler path</a></li>
+      <li><a href="#rt">Why chrt/renice is not enough</a></li>
+      <li><a href="#patches">Kernel patch sketches</a></li>
+      <li><a href="#ebpf">eBPF measurement plan</a></li>
+      <li><a href="#bench">Benchmark targets</a></li>
+      <li><a href="#eval">Evaluation plan</a></li>
+    </ol>
+  </nav>
+
+  <section id="intro">
+    <h2>1. Problem and Thesis</h2>
+    <p class="lead">Agentic systems expose a pathological kernel profile: they are bursty enough to trigger fairness, migration, idle-state, and interrupt effects, but frequent enough that every wakeup penalty compounds.</p>
+    <div class="eq">total_delay ≈ Σ(step_latency) = (IRQ + softirq + wakeup + page_fault + syscall + parse) × N</div>
+    <p>A classic server workload can tolerate isolated 50–200 µs delays if throughput remains high. An agent loop cannot: it serializes decisions. A planner waits for a tool, parses a result, schedules another tool, touches another index page, writes another trace, and repeats. The critical resource is not average throughput. It is p99/p999 step completion latency.</p>
+
+    <h3>Separating external tool latency from kernel latency</h3>
+    <p>Real agentic loops often wait on external systems: a search API, a database, a browser worker, a local vector store, or a code-execution sandbox. The total step time is therefore not purely a kernel quantity.</p>
+    <div class="eq">step_time = external_RTT + local_kernel_path + userspace_parse_and_plan</div>
+    <p>The kernel cannot make a remote service respond faster. But it can reduce the <em>controllable local tail</em>: the time between “a response has arrived” and “the agent control loop is running again.” That is precisely where IRQ delivery, softirq processing, scheduler placement, page faults, and syscall wakeups enter the critical path.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 1040 360" width="100%" role="img" aria-label="External and local latency decomposition">
+        <rect x="32" y="36" width="976" height="278" rx="28" fill="#fff" stroke="#dce1ea"/>
+        <text x="520" y="76" text-anchor="middle" font-size="24" font-weight="750">Agent Step Latency = External RTT + Controllable Kernel Tail</text>
+        <rect x="90" y="142" width="240" height="82" rx="18" fill="#f6f8fb" stroke="#dce1ea"/>
+        <text x="210" y="176" text-anchor="middle" font-size="16" font-weight="700">External Tool Service</text>
+        <text x="210" y="202" text-anchor="middle" font-size="13" fill="#586174">network/database/browser/vector store</text>
+        <rect x="400" y="142" width="240" height="82" rx="18" fill="#fff7f1" stroke="#f1d4bf"/>
+        <text x="520" y="176" text-anchor="middle" font-size="16" font-weight="700">Local Kernel Tail</text>
+        <text x="520" y="202" text-anchor="middle" font-size="13" fill="#586174">IRQ → softirq → wakeup → scheduling</text>
+        <rect x="710" y="142" width="240" height="82" rx="18" fill="#f4fff9" stroke="#ccebdc"/>
+        <text x="830" y="176" text-anchor="middle" font-size="16" font-weight="700">Agent Userspace</text>
+        <text x="830" y="202" text-anchor="middle" font-size="13" fill="#586174">epoll/io_uring returns; parse and plan</text>
+        <path d="M330 183H400 M640 183H710" stroke="#0b63ce" stroke-width="5" stroke-linecap="round"/>
+        <text x="520" y="272" text-anchor="middle" font-size="15" fill="#293142">The research target is the middle box: the local, measurable, controllable tail.</text>
+      </svg>
+      <div class="caption">Figure 1b: External services dominate some steps; kernel optimization targets the local tail after the reply reaches the host.</div>
+    </div>
+
+    <div class="figure">
+      <svg viewBox="0 0 980 340" width="100%" role="img" aria-label="Agent latency amplification diagram">
+        <defs><linearGradient id="g1" x1="0" x2="1"><stop offset="0" stop-color="#0b63ce"/><stop offset="1" stop-color="#72a7ff"/></linearGradient><filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#1a2a4a" flood-opacity=".12"/></filter></defs>
+        <rect x="20" y="30" width="940" height="270" rx="28" fill="#f7faff" stroke="#dce5f3"/>
+        <text x="490" y="70" text-anchor="middle" font-size="24" font-weight="700" fill="#101827">Latency Amplification in Agentic Control Loops</text>
+        <g filter="url(#sh)">
+          <rect x="70" y="125" width="145" height="76" rx="18" fill="white" stroke="#dce1ea"/><text x="142" y="158" text-anchor="middle" font-size="15" font-weight="700">Tool Reply</text><text x="142" y="181" text-anchor="middle" font-size="13" fill="#586174">IRQ arrives</text>
+          <rect x="245" y="125" width="145" height="76" rx="18" fill="white" stroke="#dce1ea"/><text x="318" y="158" text-anchor="middle" font-size="15" font-weight="700">Kernel Path</text><text x="318" y="181" text-anchor="middle" font-size="13" fill="#586174">softirq + wake</text>
+          <rect x="420" y="125" width="145" height="76" rx="18" fill="white" stroke="#dce1ea"/><text x="493" y="158" text-anchor="middle" font-size="15" font-weight="700">Scheduler</text><text x="493" y="181" text-anchor="middle" font-size="13" fill="#586174">CPU choice</text>
+          <rect x="595" y="125" width="145" height="76" rx="18" fill="white" stroke="#dce1ea"/><text x="668" y="158" text-anchor="middle" font-size="15" font-weight="700">Userspace</text><text x="668" y="181" text-anchor="middle" font-size="13" fill="#586174">parse/plan</text>
+          <rect x="770" y="125" width="145" height="76" rx="18" fill="white" stroke="#dce1ea"/><text x="843" y="158" text-anchor="middle" font-size="15" font-weight="700">Repeat × N</text><text x="843" y="181" text-anchor="middle" font-size="13" fill="#586174">seconds lost</text>
+        </g>
+        <path d="M215 163 L245 163 M390 163 L420 163 M565 163 L595 163 M740 163 L770 163" stroke="url(#g1)" stroke-width="5" stroke-linecap="round"/>
+        <text x="490" y="252" text-anchor="middle" font-size="18" fill="#263247">100–500 µs per step × 1,000+ steps = visible user delay</text>
+      </svg>
+      <div class="caption">Figure 1: The relevant unit of optimization is the serialized agent step, not sustained throughput.</div>
+    </div>
+  </section>
+
+  <section id="path">
+    <h2>2. IRQ-to-Userspace Path</h2>
+    <p>When a tool reply arrives over a NIC, or a small read completes from NVMe, the agent does not immediately run. The completion walks a layered control path.</p>
+    <pre><code>Device completion (NIC / NVMe)
+   ↓     PCIe MSI-X delivery                      ~100–500 ns
+Local APIC accepts vector                         ~100–300 ns
+   ↓
+IDTR + IDT[vector] lookup                         ~tens of ns
+   ↓
+x86 interrupt entry + state save                  ~200 ns–1 µs
+   ↓
+Linux IRQ dispatch / irq_desc                     ~1–5 µs
+   ↓
+Driver top-half                                   ~1–10 µs
+   ↓
+softirq / NAPI / threaded IRQ                     ~5–50+ µs
+   ↓
+sk_buff/block completion/accounting               ~2–30 µs
+   ↓
+wake_up_process() / try_to_wake_up()              ~1–20 µs
+   ↓
+select_task_rq_fair() + enqueue_task_fair()       ~5–100+ µs
+   ↓
+context switch + userspace resumes                ~2–20 µs</code></pre>
+    <p class="small">The ranges above are order-of-magnitude annotations for reasoning. Actual values depend on hardware, interrupt moderation, PREEMPT_RT, CPU frequency, cache state, NUMA placement, and load.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 1100 460" width="100%" role="img" aria-label="IRQ to userspace pipeline">
+        <defs><linearGradient id="pipe" x1="0" x2="1"><stop offset="0" stop-color="#0b63ce"/><stop offset="1" stop-color="#6f42c1"/></linearGradient></defs>
+        <rect x="30" y="35" width="1040" height="370" rx="28" fill="#fff" stroke="#dce1ea"/>
+        <text x="550" y="75" text-anchor="middle" font-size="24" font-weight="750">From Interrupt to Agent Wakeup</text>
+        <g font-size="14">
+          <rect x="70" y="145" width="120" height="72" rx="16" fill="#f4f8ff" stroke="#cddbf2"/><text x="130" y="174" text-anchor="middle" font-weight="700">Device</text><text x="130" y="196" text-anchor="middle" fill="#586174">NIC/NVMe</text><text x="130" y="238" text-anchor="middle" fill="#0b63ce">100ns–1µs</text>
+          <rect x="220" y="145" width="120" height="72" rx="16" fill="#f4f8ff" stroke="#cddbf2"/><text x="280" y="174" text-anchor="middle" font-weight="700">Local APIC</text><text x="280" y="196" text-anchor="middle" fill="#586174">vector</text><text x="280" y="238" text-anchor="middle" fill="#0b63ce">100–300ns</text>
+          <rect x="370" y="145" width="120" height="72" rx="16" fill="#f4f8ff" stroke="#cddbf2"/><text x="430" y="174" text-anchor="middle" font-weight="700">IDT Entry</text><text x="430" y="196" text-anchor="middle" fill="#586174">stub</text><text x="430" y="238" text-anchor="middle" fill="#0b63ce">~1µs</text>
+          <rect x="520" y="145" width="120" height="72" rx="16" fill="#fff7f1" stroke="#f1d4bf"/><text x="580" y="174" text-anchor="middle" font-weight="700">IRQ Layer</text><text x="580" y="196" text-anchor="middle" fill="#586174">irq_desc</text><text x="580" y="238" text-anchor="middle" fill="#c23b22">1–10µs</text>
+          <rect x="670" y="145" width="120" height="72" rx="16" fill="#fff7f1" stroke="#f1d4bf"/><text x="730" y="174" text-anchor="middle" font-weight="700">softirq</text><text x="730" y="196" text-anchor="middle" fill="#586174">NAPI</text><text x="730" y="238" text-anchor="middle" fill="#c23b22">5–50µs</text>
+          <rect x="820" y="145" width="120" height="72" rx="16" fill="#f4fff9" stroke="#ccebdc"/><text x="880" y="174" text-anchor="middle" font-weight="700">Scheduler</text><text x="880" y="196" text-anchor="middle" fill="#586174">wakeup</text><text x="880" y="238" text-anchor="middle" fill="#0b7a53">20–200µs</text>
+          <rect x="970" y="145" width="90" height="72" rx="16" fill="#f4fff9" stroke="#ccebdc"/><text x="1015" y="174" text-anchor="middle" font-weight="700">Agent</text><text x="1015" y="196" text-anchor="middle" fill="#586174">runs</text>
+        </g>
+        <path d="M190 181H220 M340 181H370 M490 181H520 M640 181H670 M790 181H820 M940 181H970" stroke="url(#pipe)" stroke-width="5" stroke-linecap="round"/>
+        <text x="550" y="320" text-anchor="middle" font-size="17" fill="#293142">The expensive region is usually not hardware delivery; it is kernel bottom-half + wakeup placement under load.</text>
+      </svg>
+      <div class="caption">Figure 2: Annotated IRQ-to-userspace path. The tail often appears after hardware delivery.</div>
+    </div>
+  </section>
+
+  <section id="registers">
+    <h2>3. x86 Register and APIC Map</h2>
+    <p>Intel and AMD x86-64 systems share the essential interrupt model: the CPU receives a vector, indexes the Interrupt Descriptor Table, saves interrupted state, switches stacks if needed, and enters a kernel stub.</p>
+    <div class="grid2">
+      <div class="card"><h3>Architectural CPU State</h3><pre><code>IDTR    → IDT base + limit
+Vector  → index into IDT
+IDT[n]  → gate descriptor / handler
+RIP     → interrupted instruction pointer
+CS      → code segment selector
+RFLAGS  → IF, priority, flags
+RSP/SS  → user stack state
+TSS     → RSP0 / IST kernel stack</code></pre></div>
+      <div class="card"><h3>Local APIC State</h3><pre><code>IRR → interrupt request register
+ISR → in-service register
+TPR → task priority threshold
+EOI → end-of-interrupt signal
+LVT → local vector table
+MSI/MSI-X → PCIe message interrupt</code></pre></div>
+    </div>
+    <div class="figure">
+      <svg viewBox="0 0 1000 410" width="100%" role="img" aria-label="x86 register map">
+        <rect x="35" y="28" width="930" height="340" rx="26" fill="#fff" stroke="#dce1ea"/>
+        <text x="500" y="68" text-anchor="middle" font-size="24" font-weight="750">x86 Interrupt Register Map</text>
+        <rect x="90" y="120" width="220" height="190" rx="20" fill="#f7faff" stroke="#dce5f3"/><text x="200" y="150" text-anchor="middle" font-size="18" font-weight="700">CPU Core</text><text x="115" y="185" font-size="14">IDTR → IDT base</text><text x="115" y="210" font-size="14">RIP/RSP/RFLAGS saved</text><text x="115" y="235" font-size="14">CS/SS transition</text><text x="115" y="260" font-size="14">TSS.RSP0 or IST</text>
+        <rect x="390" y="120" width="220" height="190" rx="20" fill="#fff7f1" stroke="#f1d4bf"/><text x="500" y="150" text-anchor="middle" font-size="18" font-weight="700">Local APIC</text><text x="415" y="185" font-size="14">IRR pending</text><text x="415" y="210" font-size="14">ISR in service</text><text x="415" y="235" font-size="14">TPR priority</text><text x="415" y="260" font-size="14">EOI completion</text>
+        <rect x="690" y="120" width="220" height="190" rx="20" fill="#f4fff9" stroke="#ccebdc"/><text x="800" y="150" text-anchor="middle" font-size="18" font-weight="700">Linux Entry</text><text x="715" y="185" font-size="14">entry_64.S stub</text><text x="715" y="210" font-size="14">pt_regs frame</text><text x="715" y="235" font-size="14">irq_desc dispatch</text><text x="715" y="260" font-size="14">driver handler</text>
+        <path d="M310 215H390 M610 215H690" stroke="#0b63ce" stroke-width="5" stroke-linecap="round"/>
+      </svg>
+      <div class="caption">Figure 3: Hardware interrupt state is short; Linux dispatch and wakeup policy dominate agent-visible latency.</div>
+    </div>
+  </section>
+
+  <section id="scheduler">
+    <h2>4. Scheduler Path: Where to Patch</h2>
+    <p>The scheduler path that matters starts when a completion wakes an agent task. The first useful patch target is not the final EEVDF picker; it is CPU selection and wakeup placement.</p>
+    <pre><code>IRQ / socket / io_uring completion
+   ↓
+try_to_wake_up()                 kernel/sched/core.c
+   ↓
+select_task_rq_fair()            kernel/sched/fair.c
+   ↓
+enqueue_task_fair()              kernel/sched/fair.c
+   ↓
+check_preempt_wakeup_fair()      kernel/sched/fair.c
+   ↓
+pick_next_task_fair()
+   ↓
+pick_eevdf()</code></pre>
+    <table>
+      <tr><th>Patch point</th><th>Why it matters</th><th>Agent-aware behavior</th></tr>
+      <tr><td><code>select_task_rq_fair()</code></td><td>Chooses the CPU for the woken task.</td><td>Prefer previous/warm CPU; avoid IRQ-heavy CPUs and deep-idle cores.</td></tr>
+      <tr><td><code>enqueue_task_fair()</code></td><td>Places the runnable entity into the CFS/EEVDF tree.</td><td>Use latency-sensitive placement without replacing EEVDF.</td></tr>
+      <tr><td><code>check_preempt_wakeup_fair()</code></td><td>Decides whether the wakee should preempt current task.</td><td>Allow short agent bursts to preempt throughput-heavy tasks within budget.</td></tr>
+      <tr><td><code>newidle_balance()</code></td><td>Moves tasks when CPUs go idle.</td><td>Avoid migrating hot agent control threads across NUMA/cache domains.</td></tr>
+    </table>
+  </section>
+
+  <section id="rt">
+    <h2>5. Why <code>chrt</code> and <code>renice</code> Are Useful but Insufficient</h2>
+    <p>Using <code>chrt -f -p 99</code> can prove that wakeup latency matters, but it is not a production architecture.</p>
+    <div class="grid2">
+      <div class="callout ok"><b>What RT priority helps:</b><br/>It reduces scheduler delay for a target thread and gives a quick experimental baseline.</div>
+      <div class="callout danger"><b>What RT priority does not solve:</b><br/>IRQ placement, softirq contention, mmap major faults, page cache misses, filesystem stalls, or fairness/thermal abuse.</div>
+    </div>
+    <pre><code># Good experimental ladder
+renice -n -10 -p $PID
+sudo chrt -r -p 20 $TID
+sudo taskset -cp 8 $TID
+# Then move NIC/NVMe IRQs away from CPU 8.</code></pre>
+  </section>
+
+  <section id="patches">
+    <h2>6. Kernel Patch Sketches</h2>
+    <h3>Patch A: Budgeted Agent Latency Flag</h3>
+    <pre><code>/* include/uapi/linux/sched/types.h */
+#define SCHED_FLAG_AGENT_LATENCY 0x10000000ULL
+
+/* include/linux/sched.h */
+static inline bool task_agent_latency(struct task_struct *p)
+{
+    return p->sched_flags & SCHED_FLAG_AGENT_LATENCY;
+}</code></pre>
+    <h3>Patch A.1: Relationship to SCHED_DEADLINE and cgroup v2</h3>
+    <p>The proposed agent latency class should not replace existing Linux controls. It should sit between ordinary fair scheduling and hard real-time policy. <code>SCHED_DEADLINE</code> is appropriate when a task has a known runtime and period. Agent loops are different: they are bursty, event-driven, and often blocked on tools. Likewise, cgroup v2 controls such as <code>cpu.weight</code> and <code>cpu.max</code> manage fairness and quota, but they do not express “wake this task quickly when its tool reply arrives.”</p>
+    <table>
+      <tr><th>Mechanism</th><th>What it controls</th><th>Why it is not enough alone</th><th>How agent latency class differs</th></tr>
+      <tr><td><code>nice</code>/<code>renice</code></td><td>Fair-scheduler weight</td><td>Improves share, not deterministic wakeup or IRQ avoidance.</td><td>Targets wakeup placement and local tail latency.</td></tr>
+      <tr><td><code>SCHED_FIFO/RR</code></td><td>Strict RT priority</td><td>Can starve the system and still ignores IRQ/page-fault paths.</td><td>Budgeted, bounded, and fallback-safe.</td></tr>
+      <tr><td><code>SCHED_DEADLINE</code></td><td>Runtime/deadline/period</td><td>Requires known periodic structure; agents are irregular and event-driven.</td><td>Uses short-burst hints tied to wakeups and completions.</td></tr>
+      <tr><td><code>cpu.weight</code></td><td>Proportional CPU share</td><td>Does not tell the kernel which wakeups are latency-amplified.</td><td>Adds semantic latency intent.</td></tr>
+      <tr><td><code>cpu.max</code></td><td>Quota / hard cap</td><td>Can limit abuse but does not prioritize the critical wakeup path.</td><td>Combines quota with low-latency privilege.</td></tr>
+    </table>
+    <p>A deployable design should expose the latency privilege through cgroup v2 so operators can budget it per tenant or per agent pool:</p>
+    <pre><code># conceptual cgroup v2 interface
+/sys/fs/cgroup/agents/agent.latency.enable        = 1
+/sys/fs/cgroup/agents/agent.latency.max_us        = 200
+/sys/fs/cgroup/agents/agent.latency.burst_us      = 5000
+/sys/fs/cgroup/agents/agent.latency.refill_us     = 1000
+/sys/fs/cgroup/agents/agent.latency.irq_shield    = 1</code></pre>
+    <div class="figure">
+      <svg viewBox="0 0 1040 430" width="100%" role="img" aria-label="cgroup budgeted agent latency class diagram">
+        <rect x="34" y="34" width="972" height="336" rx="28" fill="#fff" stroke="#dce1ea"/>
+        <text x="520" y="74" text-anchor="middle" font-size="24" font-weight="750">Budgeted Agent Latency Class</text>
+        <rect x="80" y="130" width="210" height="88" rx="18" fill="#f6f8fb" stroke="#dce1ea"/>
+        <text x="185" y="164" text-anchor="middle" font-size="16" font-weight="700">cgroup v2</text>
+        <text x="185" y="190" text-anchor="middle" font-size="13" fill="#586174">tenant latency budget</text>
+        <rect x="360" y="130" width="210" height="88" rx="18" fill="#fff7f1" stroke="#f1d4bf"/>
+        <text x="465" y="164" text-anchor="middle" font-size="16" font-weight="700">Token Bucket</text>
+        <text x="465" y="190" text-anchor="middle" font-size="13" fill="#586174">burst + refill + cap</text>
+        <rect x="640" y="130" width="300" height="88" rx="18" fill="#f4fff9" stroke="#ccebdc"/>
+        <text x="790" y="164" text-anchor="middle" font-size="16" font-weight="700">Scheduler + IRQ Policy</text>
+        <text x="790" y="190" text-anchor="middle" font-size="13" fill="#586174">warm CPU, IRQ shielding, preempt budget</text>
+        <path d="M290 174H360 M570 174H640" stroke="#0b63ce" stroke-width="5" stroke-linecap="round"/>
+        <rect x="168" y="270" width="704" height="48" rx="24" fill="#f7faff" stroke="#dce5f3"/>
+        <rect x="168" y="270" width="380" height="48" rx="24" fill="#0b63ce" opacity=".88"/>
+        <text x="520" y="300" text-anchor="middle" font-size="14" fill="#0b0d12" font-weight="700">Low-latency privilege is consumed, refilled, and revoked if abused.</text>
+      </svg>
+      <div class="caption">Figure 6: The agent latency class is not “RT priority for everyone”; it is a cgroup-budgeted privilege for short critical wakeups.</div>
+    </div>
+
+    <h3>Patch B: Agent-Aware CPU Selection</h3>
+    <pre><code>/* kernel/sched/fair.c: conceptual sketch */
+static int select_task_rq_fair(struct task_struct *p, int prev_cpu,
+                               int wake_flags)
+{
+    if (task_agent_latency(p)) {
+        int cpu = agent_select_warm_quiet_cpu(p, prev_cpu);
+        if (cpu >= 0)
+            return cpu;
+    }
+    return select_task_rq_fair_default(p, prev_cpu, wake_flags);
+}
+
+static int agent_select_warm_quiet_cpu(struct task_struct *p, int prev_cpu)
+{
+    if (cpu_online(prev_cpu) &&
+        !cpu_irq_hot(prev_cpu) &&
+        !cpu_deep_idle(prev_cpu) &&
+        task_fits_cpu(p, prev_cpu))
+        return prev_cpu;
+
+    return find_low_irq_idle_cpu(task_numa_node(p));
+}</code></pre>
+    <h3>Patch C: Token Bucket Guardrail</h3>
+    <pre><code>struct agent_latency_budget {
+    u64 tokens_ns;
+    u64 max_tokens_ns;
+    u64 refill_rate_ns;
+    u64 last_refill_ns;
+};
+
+static bool agent_budget_allow(struct task_struct *p, u64 cost_ns)
+{
+    refill_agent_budget(p);
+    if (p->agent_budget.tokens_ns < cost_ns)
+        return false;
+    p->agent_budget.tokens_ns -= cost_ns;
+    return true;
+}</code></pre>
+    <h3>Patch D: IRQ Load Signal to Scheduler</h3>
+    <pre><code>/* conceptual per-cpu counter updated by IRQ entry/exit */
+DEFINE_PER_CPU(u64, irq_runtime_window_ns);
+
+bool cpu_irq_hot(int cpu)
+{
+    return per_cpu(irq_runtime_window_ns, cpu) > sysctl_agent_irq_hot_ns;
+}</code></pre>
+    <h3>Patch E: Page Cache Hints for Agent Hotsets</h3>
+    <pre><code>#define MADV_AGENT_HOTSET  90  /* protect reused index/context pages */
+#define MADV_AGENT_SCAN    91  /* repo/document scan: avoid cache pollution */
+
+madvise(index_addr, index_len, MADV_AGENT_HOTSET);
+madvise(scan_addr, scan_len, MADV_AGENT_SCAN);</code></pre>
+  </section>
+
+  <section id="ebpf">
+    <h2>7. eBPF Tracing for Each Stage</h2>
+    <p>The first serious experiment should measure, not patch. The goal is to attribute each slow step to IRQ time, softirq time, scheduler wakeup, page faults, or block I/O.</p>
+    <h3>Wakeup latency</h3>
+    <pre><code>bpftrace -e '
+tracepoint:sched:sched_wakeup {
+  @wakeup[args->pid] = nsecs;
+}
+tracepoint:sched:sched_switch /@wakeup[args->next_pid]/ {
+  @lat_us = hist((nsecs - @wakeup[args->next_pid]) / 1000);
+  delete(@wakeup[args->next_pid]);
+}'</code></pre>
+    <h3>Syscall gates: epoll_wait and io_uring_enter</h3>
+    <p>For many agent runtimes, the important userspace gates are <code>epoll_wait()</code> and <code>io_uring_enter()</code>. These are where the agent blocks waiting for a tool reply, socket completion, or file I/O completion. Measuring the time spent inside these syscalls ties the kernel path directly to agent-visible latency.</p>
+    <pre><code>bpftrace -e '
+tracepoint:syscalls:sys_enter_epoll_wait,
+tracepoint:syscalls:sys_enter_epoll_pwait,
+tracepoint:syscalls:sys_enter_epoll_pwait2
+/comm == "agent"/
+{
+  @epoll_start[tid] = nsecs;
+}
+
+tracepoint:syscalls:sys_exit_epoll_wait,
+tracepoint:syscalls:sys_exit_epoll_pwait,
+tracepoint:syscalls:sys_exit_epoll_pwait2
+/@epoll_start[tid]/
+{
+  @epoll_wait_us = hist((nsecs - @epoll_start[tid]) / 1000);
+  delete(@epoll_start[tid]);
+}'</code></pre>
+    <pre><code>bpftrace -e '
+tracepoint:syscalls:sys_enter_io_uring_enter
+/comm == "agent"/
+{
+  @uring_start[tid] = nsecs;
+}
+
+tracepoint:syscalls:sys_exit_io_uring_enter
+/@uring_start[tid]/
+{
+  @uring_enter_us = hist((nsecs - @uring_start[tid]) / 1000);
+  delete(@uring_start[tid]);
+}'</code></pre>
+    <p>Useful derived metric:</p>
+    <div class="eq">agent_step_local_tail ≈ epoll/io_uring_wait_time_after_reply + scheduler_wakeup_latency + softirq_time</div>
+
+    <h3>IRQ handler duration</h3>
+    <pre><code>bpftrace -e '
+tracepoint:irq:irq_handler_entry { @irq_start[args->irq] = nsecs; }
+tracepoint:irq:irq_handler_exit /@irq_start[args->irq]/ {
+  @irq_us[args->name] = hist((nsecs - @irq_start[args->irq]) / 1000);
+  delete(@irq_start[args->irq]);
+}'</code></pre>
+    <h3>Softirq duration</h3>
+    <pre><code>bpftrace -e '
+tracepoint:irq:softirq_entry { @soft[args->vec] = nsecs; }
+tracepoint:irq:softirq_exit /@soft[args->vec]/ {
+  @softirq_us[args->vec] = hist((nsecs - @soft[args->vec]) / 1000);
+  delete(@soft[args->vec]);
+}'</code></pre>
+    <h3>Major page faults</h3>
+    <pre><code>bpftrace -e '
+tracepoint:exceptions:page_fault_user {
+  @faults[comm] = count();
+}
+tracepoint:sched:sched_switch /comm == "agent"/ {
+  @switches = count();
+}'</code></pre>
+    <h3>Block I/O latency</h3>
+    <pre><code>bpftrace -e '
+tracepoint:block:block_rq_issue { @rq[args->sector] = nsecs; }
+tracepoint:block:block_rq_complete /@rq[args->sector]/ {
+  @bio_us = hist((nsecs - @rq[args->sector]) / 1000);
+  delete(@rq[args->sector]);
+}'</code></pre>
+  </section>
+
+  <section id="bench">
+    <h2>8. Benchmark Targets and Graphs</h2>
+    <p>The following charts show representative target deltas for an experimental ladder. Replace these with measured data from your box.</p>
+    <div class="metric">
+      <div class="card"><div class="num">4.8×</div><div class="label">target p99 step-latency improvement</div></div>
+      <div class="card"><div class="num">6.2×</div><div class="label">target p999 wakeup reduction</div></div>
+      <div class="card"><div class="num">68%</div><div class="label">target IRQ-on-agent-CPU reduction</div></div>
+      <div class="card"><div class="num">2.1×</div><div class="label">target loops/core improvement</div></div>
+    </div>
+    <div class="figure">
+      <h3>p99 agent-step latency target</h3>
+      <div class="barrow"><span>Baseline</span><div class="bar red"><i style="width:100%"></i></div><b>780 µs</b></div>
+      <div class="barrow"><span>renice</span><div class="bar"><i style="width:82%"></i></div><b>640 µs</b></div>
+      <div class="barrow"><span>chrt RR 20</span><div class="bar"><i style="width:53%"></i></div><b>410 µs</b></div>
+      <div class="barrow"><span>CPU pinned</span><div class="bar"><i style="width:44%"></i></div><b>345 µs</b></div>
+      <div class="barrow"><span>IRQ moved away</span><div class="bar green"><i style="width:24%"></i></div><b>185 µs</b></div>
+      <div class="barrow"><span>Agent-aware kernel</span><div class="bar green"><i style="width:20%"></i></div><b>160 µs</b></div>
+      <div class="caption">Figure 4: Representative p99 latency target. The jump from pinning to IRQ isolation is often larger than renice alone.</div>
+    </div>
+    <div class="figure">
+      <svg viewBox="0 0 960 360" width="100%" role="img" aria-label="latency distribution graph">
+        <rect x="45" y="30" width="870" height="275" rx="18" fill="#fff" stroke="#dce1ea"/>
+        <text x="480" y="65" text-anchor="middle" font-size="22" font-weight="750">Wakeup Latency Distribution Target</text>
+        <line x1="110" y1="270" x2="840" y2="270" stroke="#aab4c4"/><line x1="110" y1="90" x2="110" y2="270" stroke="#aab4c4"/>
+        <polyline fill="none" stroke="#c23b22" stroke-width="5" points="110,250 220,230 330,205 440,170 550,125 660,90 770,86 840,84"/>
+        <polyline fill="none" stroke="#0b7a53" stroke-width="5" points="110,255 220,248 330,240 440,230 550,218 660,198 770,170 840,150"/>
+        <text x="150" y="295" font-size="13" fill="#586174">p50</text><text x="545" y="295" font-size="13" fill="#586174">p99</text><text x="800" y="295" font-size="13" fill="#586174">p999</text>
+        <circle cx="720" cy="92" r="6" fill="#c23b22"/><text x="735" y="95" font-size="13" fill="#c23b22">baseline tail</text>
+        <circle cx="720" cy="186" r="6" fill="#0b7a53"/><text x="735" y="190" font-size="13" fill="#0b7a53">agent-aware target</text>
+      </svg>
+      <div class="caption">Figure 5: The objective is not just lowering p50; it is compressing p99/p999 tails.</div>
+    </div>
+  </section>
+
+  <section id="eval">
+    <h2>9. Evaluation Plan</h2>
+    <p>A clean evaluation separates remote tool service time from local kernel overhead. For a remote API, record the server-side response timestamp or gateway timestamp. For local tools, record the completion timestamp at the server process. Then compare it with the client agent’s epoll/io_uring return timestamp. The difference is the controllable local tail.</p>
+    <table>
+      <tr><th>Experiment</th><th>Command/Mechanism</th><th>Measure</th><th>Expected signal</th></tr>
+      <tr><td>Baseline</td><td>Default scheduler, irqbalance on</td><td>p99 step latency, wakeup histogram</td><td>High tail variance</td></tr>
+      <tr><td>Renice</td><td><code>renice -10</code></td><td>Step latency</td><td>Small improvement</td></tr>
+      <tr><td>RT moderate</td><td><code>chrt -r 20</code></td><td>Wakeup histogram</td><td>Wakes improve, but IRQ tails remain</td></tr>
+      <tr><td>CPU pinning</td><td><code>taskset</code></td><td>Cache misses, migrations</td><td>Lower migration/cold-cache cost</td></tr>
+      <tr><td>IRQ shielding</td><td>Move NIC/NVMe IRQs away</td><td>softirq time on agent CPU</td><td>Large p99 improvement</td></tr>
+      <tr><td>Agent-aware kernel</td><td>Patch sketches above</td><td>p99/p999, fairness, thermals</td><td>Low latency without RT starvation</td></tr>
+    </table>
+    <div class="callout"><b>Paper-grade claim threshold:</b> do not claim the scheduler patch works until you show distributional latency improvements under at least three load patterns: idle system, concurrent background I/O, and network/tool reply storm.</div>
+  </section>
+
+  <section>
+    <h2>10. Conclusion</h2>
+    <p>The kernel subsystem modification most likely to make agentic performance “rocket” is a coordinated latency path: agent-aware scheduler wakeup placement, IRQ shielding, and budgeted latency privilege. Real-time priority is a useful proof-of-problem, but not the final mechanism.</p>
+    <p>The deeper insight is that agentic systems need an attributable kernel. Every agent step should be traceable across IRQs, softirqs, scheduler wakeups, page faults, and block I/O. Once the kernel can attribute delay to a step, it can optimize the correct path instead of treating the workload as ordinary batch compute.</p>
+  </section>
+
+  <footer class="footer">
+    <p><a href="/" style="color:inherit;text-decoration:none;">© 2026 MANISH AI.</a> All rights reserved. <a href="/writings.html" style="color:inherit;">← All writings</a> · <a href="https://github.com/manishklach" style="color:inherit;">GitHub</a></p>
+    <p>All latency numbers are order-of-magnitude guidance and should be validated on the target CPU, kernel, NIC/NVMe, and workload.</p>
+  </footer>
+</div>
+</body>
+</html>
