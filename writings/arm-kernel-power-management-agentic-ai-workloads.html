@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ARM Kernel Power Management for Agentic AI Workloads | MANISH AI</title>
+  <meta name="description" content="A USENIX-style systems essay on why agentic AI workloads stress ARM Linux power management: scheduler wakeups, DVFS ramp latency, cpuidle exits, page cache thrash, NVMe APST, and small-I/O latency amplification, with kernel patch sketches, cgroup latency budgets, memory hierarchy policy, NoC warmth hints, and eBPF tracing code." />
+  <meta name="keywords" content="ARM Linux, agentic AI, kernel power management, DVFS, cpuidle, NVMe APST, cgroup latency budgets, eBPF tracing, NoC warmth hints">
+  <meta name="author" content="MANISH AI">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="canonical" href="https://manishklach.github.io/writings/arm-kernel-power-management-agentic-ai-workloads.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="ARM Kernel Power Management for Agentic AI Workloads | MANISH AI">
+  <meta property="og:description" content="A USENIX-style systems essay on why agentic AI workloads stress ARM Linux power management: scheduler wakeups, DVFS ramp latency, cpuidle exits, page cache thrash, NVMe APST, and small-I/O latency amplification, with kernel patch sketches, cgroup latency budgets, memory hierarchy policy, NoC warmth hints, and eBPF tracing code.">
+  <meta property="og:url" content="https://manishklach.github.io/writings/arm-kernel-power-management-agentic-ai-workloads.html">
+  <meta property="og:image" content="https://manishklach.github.io/og/arm-kernel-power-management-agentic-ai-workloads.png">
+  <meta property="og:image:alt" content="Preview card for ARM Kernel Power Management for Agentic AI Workloads">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ARM Kernel Power Management for Agentic AI Workloads | MANISH AI">
+  <meta name="twitter:description" content="A USENIX-style systems essay on why agentic AI workloads stress ARM Linux power management: scheduler wakeups, DVFS ramp latency, cpuidle exits, page cache thrash, NVMe APST, and small-I/O latency amplification, with kernel patch sketches, cgroup latency budgets, memory hierarchy policy, NoC warmth hints, and eBPF tracing code.">
+  <meta name="twitter:image" content="https://manishklach.github.io/og/arm-kernel-power-management-agentic-ai-workloads.png">
+  <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+  <link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+  <link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+  <link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+  <script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"ARM Kernel Power Management for Agentic AI Workloads","description":"A USENIX-style systems essay on why agentic AI workloads stress ARM Linux power management: scheduler wakeups, DVFS ramp latency, cpuidle exits, page cache thrash, NVMe APST, and small-I/O latency amplification, with kernel patch sketches, cgroup latency budgets, memory hierarchy policy, NoC warmth hints, and eBPF tracing code.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/arm-kernel-power-management-agentic-ai-workloads.html","mainEntityOfPage":"https://manishklach.github.io/writings/arm-kernel-power-management-agentic-ai-workloads.html","datePublished":"2026-04-29","dateModified":"2026-04-29","inLanguage":"en"}</script>
+  <style>
+    :root{
+      --bg:#f7f8fb;--paper:#ffffff;--ink:#111827;--muted:#5b6472;--line:#d9dee8;
+      --accent:#2563eb;--accent2:#7c3aed;--green:#059669;--red:#dc2626;--code:#0b1020;
+      --chip:#eef2ff;--warn:#fff7ed;
+    }
+    *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#f5f7fb 0%,#fff 38%,#f8fafc 100%);color:var(--ink);font:16px/1.62 Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif}
+    a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+    .site-top{max-width:1120px;margin:0 auto;padding:18px 22px 0}
+    .site-nav{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:14px 18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.82);backdrop-filter:blur(10px)}
+    .site-mark{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#1d4ed8}
+    .site-links{display:flex;gap:1rem;flex-wrap:wrap;font-size:12px;color:#64748b}
+    .site-links a,.site-mark{text-decoration:none}
+    .page{max-width:1120px;margin:0 auto;padding:34px 22px 70px}.hero{border:1px solid var(--line);background:radial-gradient(circle at 12% 0%,#dbeafe 0,#fff 31%,#fff 100%);border-radius:28px;padding:42px;box-shadow:0 24px 70px rgba(15,23,42,.08)}
+    .eyebrow{display:inline-flex;gap:8px;align-items:center;background:var(--chip);color:#3730a3;border:1px solid #c7d2fe;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;letter-spacing:.02em}
+    h1{font-size:clamp(38px,6vw,70px);line-height:.96;margin:22px 0 18px;letter-spacing:-.055em;max-width:980px}.subtitle{font-size:21px;line-height:1.46;color:#344054;max-width:850px;margin:0 0 24px}.meta{display:flex;gap:10px;flex-wrap:wrap;color:#475467;font-size:14px}.tag{padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:#fff}
+    .grid{display:grid;grid-template-columns:1fr 330px;gap:28px;margin-top:30px}.toc{position:sticky;top:18px;align-self:start;border:1px solid var(--line);border-radius:22px;background:rgba(255,255,255,.86);backdrop-filter:blur(14px);padding:20px;box-shadow:0 12px 35px rgba(15,23,42,.06)}.toc h3{margin:0 0 10px;font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#667085}.toc a{display:block;padding:7px 0;color:#344054;font-size:14px}
+    article{min-width:0}.card, section{background:var(--paper);border:1px solid var(--line);border-radius:24px;padding:30px;margin-bottom:22px;box-shadow:0 10px 35px rgba(15,23,42,.045)}
+    h2{font-size:32px;line-height:1.12;letter-spacing:-.03em;margin:0 0 14px}h3{font-size:22px;letter-spacing:-.02em;margin:28px 0 8px}p{margin:13px 0;color:#273244}.lead{font-size:19px;color:#1f2937}.callout{border-left:4px solid var(--accent);background:#eff6ff;padding:16px 18px;border-radius:14px;margin:20px 0;color:#1e3a8a}.warn{border-left-color:#f97316;background:var(--warn);color:#7c2d12}.ok{border-left-color:var(--green);background:#ecfdf5;color:#064e3b}
+    pre{background:var(--code);color:#e5e7eb;border-radius:18px;padding:18px 20px;overflow:auto;border:1px solid #1f2937;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);font-size:13.2px;line-height:1.55}code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace}.inline{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:7px;padding:1px 6px;color:#0f172a}
+    table{width:100%;border-collapse:separate;border-spacing:0;margin:18px 0;border:1px solid var(--line);border-radius:16px;overflow:hidden}th,td{text-align:left;padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top}th{background:#f8fafc;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#475467}tr:last-child td{border-bottom:0}
+    .figure{border:1px solid var(--line);background:#fbfdff;border-radius:22px;padding:18px;margin:22px 0}.caption{font-size:13.5px;color:#667085;margin-top:10px}.refs li{margin:8px 0;color:#344054}.foot{font-size:13px;color:#667085;text-align:center;margin-top:35px}
+    svg{max-width:100%;height:auto}.pill{font-size:12px;font-weight:700;fill:#334155}.node{filter:drop-shadow(0 8px 18px rgba(15,23,42,.10))}.small{font-size:13px;color:#475467}.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}.hl{font-weight:700;color:#111827}
+    @media(max-width:940px){.grid{grid-template-columns:1fr}.toc{position:relative}.hero{padding:28px}.two{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="site-top">
+  <div class="site-nav">
+    <a class="site-mark" href="/">MANISH AI</a>
+    <div class="site-links">
+      <a href="/writings.html">&larr; Writings</a>
+      <a href="https://github.com/manishklach">GitHub</a>
+    </div>
+  </div>
+</div>
+<div class="page">
+  <header class="hero">
+    <span class="eyebrow">USENIX-style systems note · ARM Linux · Agentic workloads</span>
+    <h1>Kernel Power Management for Agentic AI Workloads on ARM CPUs</h1>
+    <p class="subtitle">Agentic systems do not just need efficient cores. They need latency-stable cores, predictable memory behavior, and storage devices that do not disappear into low-power states between tiny bursts of work.</p>
+    <div class="meta">
+      <span class="tag"><time datetime="2026-04-29">Apr 29, 2026</time></span><span class="tag">14 min read</span>
+      <span class="tag">CPU scheduling</span><span class="tag">DVFS / cpufreq</span><span class="tag">cpuidle</span><span class="tag">page cache</span><span class="tag">NVMe APST</span><span class="tag">eBPF tracing</span><span class="tag">cgroup budgets</span><span class="tag">NoC QoS</span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <article data-pagefind-body>
+      <section id="abstract">
+        <h2>Abstract</h2>
+        <p class="lead">Agentic AI workloads are a pathological case for modern operating systems: short bursts of CPU work, dense syscall activity, frequent file metadata probes, mmap-backed index loads, small random reads, and constant trace/log writes.</p>
+        <p>On ARM systems, the usual power-management strategy—aggressively saving energy through frequency scaling, big/little placement, deeper idle states, memory power-down, and NVMe low-power transitions—can turn into a latency amplifier. A 200 microsecond frequency ramp, a 500 microsecond idle exit, or a 3 millisecond NVMe wakeup looks small in isolation. Repeated hundreds or thousands of times inside a reasoning/tool loop, it becomes visible user-facing latency.</p>
+        <div class="callout"><strong>Thesis:</strong> for agentic AI, power management is not a background efficiency feature. It is part of the request latency path.</div>
+      </section>
+
+      <section id="loop">
+        <h2>1. The Agent Loop Is a Kernel Loop</h2>
+        <p>An agent step usually looks like application logic, but the hot path repeatedly crosses kernel boundaries:</p>
+        <div class="figure">
+          <svg viewBox="0 0 980 330" role="img" aria-label="Agent loop kernel path diagram">
+            <defs>
+              <linearGradient id="g1" x1="0" x2="1"><stop stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed"/></linearGradient>
+              <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L9,3 L0,6 Z" fill="#64748b"/></marker>
+            </defs>
+            <rect x="20" y="25" width="940" height="275" rx="24" fill="#fff" stroke="#d9dee8"/>
+            <text x="48" y="64" font-size="22" font-weight="800" fill="#111827">Agent step → kernel subsystems → latency returned to loop</text>
+            <g class="node">
+              <rect x="55" y="110" width="135" height="76" rx="17" fill="#eff6ff" stroke="#bfdbfe"/><text x="82" y="143" font-size="15" font-weight="800" fill="#1e3a8a">reason</text><text x="76" y="164" font-size="12" fill="#475569">plan/tool choice</text>
+              <rect x="235" y="110" width="135" height="76" rx="17" fill="#f5f3ff" stroke="#ddd6fe"/><text x="263" y="143" font-size="15" font-weight="800" fill="#4c1d95">syscalls</text><text x="255" y="164" font-size="12" fill="#475569">open/read/stat</text>
+              <rect x="415" y="110" width="135" height="76" rx="17" fill="#ecfdf5" stroke="#bbf7d0"/><text x="445" y="143" font-size="15" font-weight="800" fill="#065f46">memory</text><text x="438" y="164" font-size="12" fill="#475569">fault/cache</text>
+              <rect x="595" y="110" width="135" height="76" rx="17" fill="#fff7ed" stroke="#fed7aa"/><text x="626" y="143" font-size="15" font-weight="800" fill="#9a3412">storage</text><text x="620" y="164" font-size="12" fill="#475569">small I/O</text>
+              <rect x="775" y="110" width="135" height="76" rx="17" fill="#fef2f2" stroke="#fecaca"/><text x="810" y="143" font-size="15" font-weight="800" fill="#991b1b">parse</text><text x="795" y="164" font-size="12" fill="#475569">JSON/output</text>
+            </g>
+            <g stroke="#64748b" stroke-width="2.5" marker-end="url(#arrow)"><line x1="190" y1="148" x2="230" y2="148"/><line x1="370" y1="148" x2="410" y2="148"/><line x1="550" y1="148" x2="590" y2="148"/><line x1="730" y1="148" x2="770" y2="148"/></g>
+            <path d="M842 194 C840 255 102 254 122 194" fill="none" stroke="url(#g1)" stroke-width="4" marker-end="url(#arrow)"/>
+            <text x="305" y="275" font-size="15" font-weight="800" fill="#334155">repeat hundreds to thousands of times</text>
+          </svg>
+          <div class="caption">Figure 1. Agentic workloads repeatedly cross VFS, memory-management, scheduler, and block-layer paths. The latency of each crossing is amplified by loop count.</div>
+        </div>
+        <p>The kernel sees a workload with many short-lived bursts, frequent wakeups, small I/O, and little steady-state utilization. Traditional throughput metrics can look fine while the interactive step latency is poor.</p>
+      </section>
+
+      <section id="arm">
+        <h2>2. Why ARM Power Management Is Central</h2>
+        <p>ARM platforms are attractive for agentic infrastructure because they offer strong perf-per-watt and scalable core counts. But the same features that make ARM efficient can create latency variance:</p>
+        <table>
+          <thead><tr><th>Mechanism</th><th>What it optimizes</th><th>Agentic risk</th></tr></thead>
+          <tbody>
+            <tr><td>DVFS / cpufreq</td><td>Average energy under varying CPU utilization</td><td>Frequency ramp delay after short idle gaps</td></tr>
+            <tr><td>cpuidle</td><td>Deeper low-power idle states</td><td>Wakeup latency inside request loops</td></tr>
+            <tr><td>Energy-aware scheduling</td><td>Energy-efficient task placement</td><td>Latency-critical thread placed on a slower core or migrated at a bad time</td></tr>
+            <tr><td>Memory power states</td><td>DRAM/LPDDR power reduction</td><td>First-touch latency after idle</td></tr>
+            <tr><td>NVMe APST</td><td>Controller/flash power reduction</td><td>Millisecond-scale wakeups before small reads</td></tr>
+          </tbody>
+        </table>
+        <p>Linux Energy Aware Scheduling explicitly uses a CPU energy model to guide task placement with minimal throughput impact. That is the right general objective, but agentic loops need a second objective: <span class="hl">latency stability for the next small step</span>.</p>
+        <div class="callout warn"><strong>Design tension:</strong> low average utilization makes the system look idle; but the next agent step may be latency-critical.</div>
+      </section>
+
+      <section id="model">
+        <h2>3. Latency Amplification Model</h2>
+        <p>Agentic execution multiplies small latencies:</p>
+        <pre><code>step_latency = scheduler_wakeup
+             + cpufreq_ramp
+             + idle_exit
+             + syscall_path
+             + page_faults
+             + storage_read
+             + parse_time
+
+total_latency = Σ step_latency over N agent steps</code></pre>
+        <p>With 1,000 steps, a seemingly harmless 250 microsecond wake/ramp penalty contributes 250 milliseconds. Add occasional NVMe APST wakeups and mmap fault storms, and the tail becomes seconds.</p>
+        <div class="figure">
+          <svg viewBox="0 0 980 360" role="img" aria-label="Latency amplification bar diagram">
+            <rect x="20" y="20" width="940" height="310" rx="24" fill="#fff" stroke="#d9dee8"/>
+            <text x="50" y="62" font-size="22" font-weight="800" fill="#111827">Small penalties become visible latency after loop amplification</text>
+            <g transform="translate(75,105)">
+              <rect x="0" y="0" width="110" height="80" rx="14" fill="#eff6ff" stroke="#bfdbfe"/><text x="23" y="34" font-size="14" font-weight="800" fill="#1d4ed8">250µs</text><text x="22" y="57" font-size="12" fill="#475569">wakeup</text>
+              <text x="132" y="48" font-size="28" fill="#64748b">+</text>
+              <rect x="175" y="0" width="110" height="80" rx="14" fill="#f5f3ff" stroke="#ddd6fe"/><text x="198" y="34" font-size="14" font-weight="800" fill="#6d28d9">300µs</text><text x="198" y="57" font-size="12" fill="#475569">DVFS</text>
+              <text x="307" y="48" font-size="28" fill="#64748b">+</text>
+              <rect x="350" y="0" width="110" height="80" rx="14" fill="#ecfdf5" stroke="#bbf7d0"/><text x="373" y="34" font-size="14" font-weight="800" fill="#047857">600µs</text><text x="371" y="57" font-size="12" fill="#475569">faults</text>
+              <text x="482" y="48" font-size="28" fill="#64748b">+</text>
+              <rect x="525" y="0" width="110" height="80" rx="14" fill="#fff7ed" stroke="#fed7aa"/><text x="550" y="34" font-size="14" font-weight="800" fill="#c2410c">2ms</text><text x="550" y="57" font-size="12" fill="#475569">SSD wake</text>
+              <text x="657" y="48" font-size="28" fill="#64748b">×</text>
+              <rect x="700" y="0" width="110" height="80" rx="14" fill="#fef2f2" stroke="#fecaca"/><text x="726" y="34" font-size="14" font-weight="800" fill="#b91c1c">1000</text><text x="720" y="57" font-size="12" fill="#475569">steps</text>
+            </g>
+            <path d="M120 245 H860" stroke="#94a3b8" stroke-width="10" stroke-linecap="round"/>
+            <path d="M120 245 H720" stroke="#2563eb" stroke-width="10" stroke-linecap="round"/>
+            <text x="120" y="280" font-size="14" fill="#475569">micro-latency</text><text x="692" y="280" font-size="14" font-weight="800" fill="#1d4ed8">user-visible delay</text>
+          </svg>
+          <div class="caption">Figure 2. The agentic workload converts power-management and I/O micro-latencies into visible end-to-end delay.</div>
+        </div>
+      </section>
+
+      <section id="patches">
+        <h2>4. Kernel Patch Sketches</h2>
+        <p>These are intentionally framed as patch sketches, not drop-in upstream-ready code. The objective is to show where the kernel interface would need to change.</p>
+
+        <h3>Patch A: latency-critical agent task hint</h3>
+        <p>Add a sched attribute flag that marks a thread as latency-sensitive but not real-time. This avoids abusing <code class="inline">SCHED_FIFO</code> or <code class="inline">SCHED_DEADLINE</code> for application loops that simply need predictable wakeups.</p>
+        <pre><code>/* include/uapi/linux/sched/types.h */
+#define SCHED_FLAG_AGENT_LATENCY   0x00000100
+
+struct sched_attr {
+        __u32 size;
+        __u32 sched_policy;
+        __u64 sched_flags;
+        ...
+};</code></pre>
+        <pre><code>/* kernel/sched/core.c: sketch */
+static inline bool task_agent_latency(const struct task_struct *p)
+{
+        return p->sched_flags & SCHED_FLAG_AGENT_LATENCY;
+}
+
+/* Prefer local wakeup, avoid unnecessary migration, bias against deep idle CPUs. */
+if (task_agent_latency(p)) {
+        target = select_latency_stable_cpu(p, prev_cpu);
+        if (target &gt;= 0)
+                return target;
+}</code></pre>
+        <p>This is not a replacement for real-time scheduling. It is a hint: “this loop is harmed by wakeup variance; keep it on a warm, suitable CPU when possible.”</p>
+
+        <h3>Patch B: cpuidle governor guardrail for active agent windows</h3>
+        <p>For short bursty loops, the cpuidle governor may choose deep states because the average idle period looks long enough. The patch below introduces a per-CPU latency guardrail during an active agent window.</p>
+        <pre><code>/* drivers/cpuidle/governors/menu.c: sketch */
+static int agent_limit_idle_state(struct cpuidle_driver *drv, int idx)
+{
+        u64 max_exit_ns = this_cpu_read(agent_idle_exit_budget_ns);
+
+        if (!max_exit_ns)
+                return idx;
+
+        while (idx &gt; 0 && drv-&gt;states[idx].exit_latency_ns &gt; max_exit_ns)
+                idx--;
+
+        return idx;
+}</code></pre>
+        <p>The key is selectivity: keep the machine efficient normally, but avoid deep idle exits while the agent runtime is inside a latency-critical interaction window.</p>
+
+        <h3>Patch C: cpufreq boost-on-loop for bursty short work</h3>
+        <p>The schedutil governor already uses scheduler utilization signals. Agentic loops need an additional signal: recent repeated wakeups from the same latency-tagged control loop.</p>
+        <pre><code>/* kernel/sched/cpufreq_schedutil.c: sketch */
+if (task_agent_latency(current) && agent_loop_recent(current)) {
+        next_f = max(next_f, policy-&gt;cpuinfo.max_freq * 80 / 100);
+        sugov_update_commit(sg_policy, time, next_f);
+}</code></pre>
+        <p>The goal is not “run hot forever.” The goal is to pre-warm frequency during a loop that is known to issue another short step soon.</p>
+
+        <h3>Patch D: agent-aware page cache protection</h3>
+        <p>Agent runtimes often have a small hot set: prompt templates, tool schemas, vector index headers, embedding shards, repo metadata, and active working files. This hot set competes with logs and transient reads.</p>
+        <pre><code>/* include/uapi/asm-generic/mman-common.h */
+#define MADV_AGENT_HOTSET  104   /* protect against transient eviction */
+#define MADV_AGENT_STREAM  105   /* do not pollute hot cache */</code></pre>
+        <pre><code>/* mm/madvise.c: sketch */
+case MADV_AGENT_HOTSET:
+        mark_vma_agent_hotset(vma);
+        break;
+case MADV_AGENT_STREAM:
+        mark_vma_agent_stream(vma);
+        break;</code></pre>
+        <p>This creates a vocabulary for the kernel: some memory is loop-critical; some memory is transient and should not evict the loop-critical set.</p>
+
+        <h3>Patch E: latency-first small I/O scheduling in blk-mq</h3>
+        <p>blk-mq is designed to exploit parallelism in modern storage devices. Agent workloads often issue bursts of small reads where tail latency matters more than bulk throughput.</p>
+        <pre><code>/* block/blk-mq.c: sketch */
+static inline bool rq_agent_small_read(struct request *rq)
+{
+        return (rq-&gt;cmd_flags & REQ_AGENT_LATENCY) &&
+               rq_data_dir(rq) == READ &&
+               blk_rq_bytes(rq) &lt;= 64 * 1024;
+}
+
+if (rq_agent_small_read(rq))
+        blk_mq_insert_latency_head(rq);
+else
+        blk_mq_insert_normal(rq);</code></pre>
+        <p>This does not mean starving background work. It means the block layer should recognize bursty, request-path small reads as different from bulk scans or log writes.</p>
+
+        <h3>Patch F: NVMe APST latency budget for agent processes</h3>
+        <p>NVMe Autonomous Power State Transition is useful, but a drive waking from a low-power state can dominate a small read. A latency-tagged cgroup could temporarily request a tighter device power-state latency budget.</p>
+        <pre><code>/* drivers/nvme/host/core.c: sketch */
+static void nvme_apply_agent_latency_budget(struct nvme_ctrl *ctrl, u32 budget_us)
+{
+        /* Recompute APST table to avoid states whose exit latency exceeds budget. */
+        nvme_configure_apst(ctrl, budget_us);
+}</code></pre>
+        <p>The important point is scope. Do not globally disable power saving. Instead, bind device power behavior to active latency windows.</p>
+      </section>
+
+      <section id="ebpf">
+        <h2>5. eBPF Tooling: Measuring the Path</h2>
+        <p>Before proposing policy, measure the penalties. A minimal toolkit should answer:</p>
+        <ul>
+          <li>How often did the agent thread wake up, and what was wakeup latency?</li>
+          <li>How many major/minor page faults occurred during each step?</li>
+          <li>Which files caused mmap faults?</li>
+          <li>Were small reads delayed in blk-mq?</li>
+          <li>Did NVMe low-power transitions correlate with read latency?</li>
+        </ul>
+        <div class="figure">
+          <svg viewBox="0 0 980 340" role="img" aria-label="eBPF observability pipeline diagram">
+            <rect x="20" y="25" width="940" height="285" rx="24" fill="#fff" stroke="#d9dee8"/>
+            <text x="50" y="65" font-size="22" font-weight="800" fill="#111827">eBPF attribution pipeline</text>
+            <g class="node">
+              <rect x="60" y="120" width="155" height="82" rx="17" fill="#eff6ff" stroke="#bfdbfe"/><text x="88" y="152" font-size="15" font-weight="800" fill="#1d4ed8">sched</text><text x="78" y="174" font-size="12" fill="#475569">wakeup latency</text>
+              <rect x="250" y="120" width="155" height="82" rx="17" fill="#ecfdf5" stroke="#bbf7d0"/><text x="286" y="152" font-size="15" font-weight="800" fill="#047857">mm</text><text x="274" y="174" font-size="12" fill="#475569">fault latency</text>
+              <rect x="440" y="120" width="155" height="82" rx="17" fill="#fff7ed" stroke="#fed7aa"/><text x="479" y="152" font-size="15" font-weight="800" fill="#c2410c">block</text><text x="464" y="174" font-size="12" fill="#475569">small I/O p99</text>
+              <rect x="630" y="120" width="155" height="82" rx="17" fill="#f5f3ff" stroke="#ddd6fe"/><text x="672" y="152" font-size="15" font-weight="800" fill="#6d28d9">power</text><text x="650" y="174" font-size="12" fill="#475569">freq/idle state</text>
+              <rect x="815" y="120" width="105" height="82" rx="17" fill="#f8fafc" stroke="#cbd5e1"/><text x="844" y="152" font-size="15" font-weight="800" fill="#334155">step</text><text x="834" y="174" font-size="12" fill="#475569">timeline</text>
+            </g>
+            <g stroke="#64748b" stroke-width="2.5" marker-end="url(#arrow)"><line x1="215" y1="161" x2="245" y2="161"/><line x1="405" y1="161" x2="435" y2="161"/><line x1="595" y1="161" x2="625" y2="161"/><line x1="785" y1="161" x2="810" y2="161"/></g>
+            <text x="64" y="255" font-size="14" fill="#475569">Attach to tracepoints: sched_switch, sched_wakeup, mm_filemap_fault, block_rq_issue, block_rq_complete, power/cpu_frequency, power/cpu_idle.</text>
+          </svg>
+          <div class="caption">Figure 3. The practical first step is attribution: tie scheduler, memory, block, and power events to an agent step timeline.</div>
+        </div>
+
+        <h3>Example: bpftrace wakeup latency probe</h3>
+        <pre><code>#!/usr/bin/env bpftrace
+
+tracepoint:sched:sched_wakeup
+/comm == "agent-runtime"/
+{
+  @wake[args-&gt;pid] = nsecs;
+}
+
+tracepoint:sched:sched_switch
+/@wake[args-&gt;next_pid]/
+{
+  @wakeup_us = hist((nsecs - @wake[args-&gt;next_pid]) / 1000);
+  delete(@wake[args-&gt;next_pid]);
+}</code></pre>
+
+        <h3>Example: page fault attribution</h3>
+        <pre><code>#!/usr/bin/env bpftrace
+
+tracepoint:exceptions:page_fault_user
+/comm == "agent-runtime"/
+{
+  @faults[pid] = count();
+}
+
+interval:s:5
+{
+  print(@faults);
+  clear(@faults);
+}</code></pre>
+
+        <h3>Example: block I/O latency for small reads</h3>
+        <pre><code>#!/usr/bin/env bpftrace
+
+tracepoint:block:block_rq_issue
+/args-&gt;bytes &lt;= 65536/
+{
+  @start[args-&gt;dev, args-&gt;sector] = nsecs;
+}
+
+tracepoint:block:block_rq_complete
+/@start[args-&gt;dev, args-&gt;sector]/
+{
+  $lat_us = (nsecs - @start[args-&gt;dev, args-&gt;sector]) / 1000;
+  @small_read_us = hist($lat_us);
+  delete(@start[args-&gt;dev, args-&gt;sector]);
+}</code></pre>
+
+        <h3>Example: CPU frequency and idle-state trace</h3>
+        <pre><code>#!/usr/bin/env bpftrace
+
+tracepoint:power:cpu_frequency
+{
+  @freq[args-&gt;cpu_id] = args-&gt;state;
+}
+
+tracepoint:power:cpu_idle
+{
+  @idle_state[args-&gt;cpu_id, args-&gt;state] = count();
+}</code></pre>
+      </section>
+
+      <section id="architecture">
+        <h2>6. Proposed Architecture: Agent-Aware Power Policy</h2>
+        <p>The runtime should not micromanage every kernel subsystem. Instead, it should communicate intent: “for the next interaction window, this process is latency-critical; keep the execution path warm.”</p>
+        <div class="figure">
+          <svg viewBox="0 0 980 430" role="img" aria-label="Agent-aware power policy architecture diagram">
+            <rect x="20" y="25" width="940" height="365" rx="24" fill="#fff" stroke="#d9dee8"/>
+            <text x="50" y="65" font-size="22" font-weight="800" fill="#111827">Agent-aware power policy</text>
+            <rect x="70" y="110" width="210" height="210" rx="22" fill="#eff6ff" stroke="#bfdbfe"/>
+            <text x="105" y="145" font-size="17" font-weight="900" fill="#1d4ed8">Agent runtime</text>
+            <text x="98" y="178" font-size="13" fill="#475569">step_id</text><text x="98" y="203" font-size="13" fill="#475569">latency window</text><text x="98" y="228" font-size="13" fill="#475569">hotset hints</text><text x="98" y="253" font-size="13" fill="#475569">small-I/O hints</text>
+            <rect x="365" y="110" width="250" height="210" rx="22" fill="#f8fafc" stroke="#cbd5e1"/>
+            <text x="415" y="145" font-size="17" font-weight="900" fill="#334155">Kernel policy broker</text>
+            <text x="405" y="178" font-size="13" fill="#475569">validates hint scope</text><text x="405" y="203" font-size="13" fill="#475569">applies cgroup budget</text><text x="405" y="228" font-size="13" fill="#475569">emits trace events</text><text x="405" y="253" font-size="13" fill="#475569">expires automatically</text>
+            <rect x="700" y="90" width="180" height="58" rx="16" fill="#ecfdf5" stroke="#bbf7d0"/><text x="742" y="125" font-size="14" font-weight="900" fill="#047857">scheduler</text>
+            <rect x="700" y="165" width="180" height="58" rx="16" fill="#fff7ed" stroke="#fed7aa"/><text x="745" y="200" font-size="14" font-weight="900" fill="#c2410c">cpuidle</text>
+            <rect x="700" y="240" width="180" height="58" rx="16" fill="#f5f3ff" stroke="#ddd6fe"/><text x="746" y="275" font-size="14" font-weight="900" fill="#6d28d9">cpufreq</text>
+            <rect x="700" y="315" width="180" height="58" rx="16" fill="#fef2f2" stroke="#fecaca"/><text x="739" y="350" font-size="14" font-weight="900" fill="#b91c1c">NVMe / blk</text>
+            <g stroke="#64748b" stroke-width="2.8" marker-end="url(#arrow)"><line x1="280" y1="215" x2="360" y2="215"/><line x1="615" y1="190" x2="695" y2="119"/><line x1="615" y1="210" x2="695" y2="194"/><line x1="615" y1="230" x2="695" y2="269"/><line x1="615" y1="250" x2="695" y2="344"/></g>
+            <text x="70" y="360" font-size="13" fill="#64748b">Intent flows from runtime to kernel. Enforcement stays in kernel policy, with automatic expiration and traceability.</text>
+          </svg>
+          <div class="caption">Figure 4. A runtime-level latency window can become a bounded kernel policy that touches scheduler, frequency, idle, memory, and block behavior.</div>
+        </div>
+
+        <pre><code>/* userspace sketch */
+struct agent_latency_window w = {
+    .step_id = step_id,
+    .duration_us = 250000,
+    .max_idle_exit_us = 50,
+    .min_cpu_capacity_pct = 80,
+    .nvme_exit_latency_us = 100,
+};
+
+ioctl(agent_fd, AGENT_IOC_BEGIN_LATENCY_WINDOW, &w);
+run_agent_step();
+ioctl(agent_fd, AGENT_IOC_END_LATENCY_WINDOW, &w);</code></pre>
+        <p>The policy must be bounded and auditable. Otherwise every application will call itself latency-critical and destroy system-wide efficiency.</p>
+      </section>
+
+      <section id="budget">
+        <h2>7. Control Plane: Cgroup-Budgeted Agent Latency</h2>
+        <p>The weakest version of an agent-aware kernel is one where every process can simply declare itself latency-critical. That design fails immediately: it invites hint abuse, burns power, and creates unfairness across tenants. A deployable design needs a <span class="hl">budgeted control plane</span>.</p>
+        <p>The kernel should treat agent latency hints like a scarce resource: granted per cgroup, refilled over time, automatically expired, and visible through tracepoints.</p>
+        <div class="figure">
+          <svg viewBox="0 0 980 440" role="img" aria-label="Cgroup token bucket latency budget diagram">
+            <defs>
+              <marker id="arrowBudget" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L9,3 L0,6 Z" fill="#64748b"/></marker>
+              <linearGradient id="gbudget" x1="0" x2="1"><stop stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed"/></linearGradient>
+            </defs>
+            <rect x="20" y="25" width="940" height="370" rx="24" fill="#fff" stroke="#d9dee8"/>
+            <text x="50" y="65" font-size="22" font-weight="800" fill="#111827">Budgeted latency hints: intent is accepted, privilege is metered</text>
+            <rect x="70" y="115" width="210" height="210" rx="22" fill="#eff6ff" stroke="#bfdbfe"/>
+            <text x="110" y="150" font-size="17" font-weight="900" fill="#1d4ed8">Agent runtime</text>
+            <text x="105" y="180" font-size="13" fill="#475569">BEGIN_LATENCY_WINDOW</text>
+            <text x="105" y="205" font-size="13" fill="#475569">step_id</text>
+            <text x="105" y="230" font-size="13" fill="#475569">deadline budget</text>
+            <text x="105" y="255" font-size="13" fill="#475569">hotset + I/O hints</text>
+            <rect x="375" y="105" width="230" height="230" rx="22" fill="#f8fafc" stroke="#cbd5e1"/>
+            <text x="420" y="140" font-size="17" font-weight="900" fill="#334155">cgroup budget</text>
+            <circle cx="490" cy="220" r="68" fill="none" stroke="#cbd5e1" stroke-width="16"/>
+            <path d="M490 152 A68 68 0 1 1 431 254" fill="none" stroke="url(#gbudget)" stroke-width="16" stroke-linecap="round"/>
+            <text x="453" y="218" font-size="16" font-weight="900" fill="#111827">tokens</text>
+            <text x="441" y="242" font-size="12" fill="#475569">refill over time</text>
+            <rect x="700" y="90" width="190" height="58" rx="16" fill="#ecfdf5" stroke="#bbf7d0"/><text x="752" y="126" font-size="14" font-weight="900" fill="#047857">sched boost</text>
+            <rect x="700" y="165" width="190" height="58" rx="16" fill="#fff7ed" stroke="#fed7aa"/><text x="747" y="201" font-size="14" font-weight="900" fill="#c2410c">idle guardrail</text>
+            <rect x="700" y="240" width="190" height="58" rx="16" fill="#f5f3ff" stroke="#ddd6fe"/><text x="743" y="276" font-size="14" font-weight="900" fill="#6d28d9">APST budget</text>
+            <rect x="700" y="315" width="190" height="58" rx="16" fill="#fef2f2" stroke="#fecaca"/><text x="742" y="351" font-size="14" font-weight="900" fill="#b91c1c">fallback normal</text>
+            <g stroke="#64748b" stroke-width="2.8" marker-end="url(#arrowBudget)"><line x1="280" y1="220" x2="370" y2="220"/><line x1="605" y1="190" x2="695" y2="119"/><line x1="605" y1="210" x2="695" y2="194"/><line x1="605" y1="235" x2="695" y2="269"/><line x1="605" y1="265" x2="695" y2="344"/></g>
+            <text x="70" y="365" font-size="13" fill="#64748b">If tokens are available, low-latency policy is applied. If tokens are exhausted, hints degrade to normal policy instead of overheating the platform.</text>
+          </svg>
+          <div class="caption">Figure 5. Agent hints need kernel enforcement. A cgroup token bucket prevents every process from declaring itself latency-critical indefinitely.</div>
+        </div>
+        <pre><code>/* include/linux/agent_latency.h: sketch */
+struct agent_latency_budget {
+        u64 max_tokens_ns;      /* max low-latency privilege */
+        u64 tokens_ns;          /* current budget */
+        u64 refill_rate_ns;     /* refill per accounting period */
+        u64 last_refill_ns;
+};
+
+/* kernel/sched/core.c: sketch */
+static bool agent_latency_try_charge(struct task_struct *p, u64 runtime_ns)
+{
+        struct agent_latency_budget *b = task_agent_budget(p);
+
+        agent_latency_refill(b, ktime_get_ns());
+        if (b-&gt;tokens_ns &lt; runtime_ns)
+                return false;
+
+        b-&gt;tokens_ns -= runtime_ns;
+        trace_agent_budget_charge(task_pid_nr(p), runtime_ns, b-&gt;tokens_ns);
+        return true;
+}
+
+if (task_agent_latency(p)) {
+        if (!agent_latency_try_charge(p, predicted_window_ns))
+                clear_agent_latency_effective(p); /* hint becomes advisory only */
+}</code></pre>
+        <p>This design also creates a natural user-space contract: an agent runtime may ask for a latency window, but the kernel decides how much of that request is honored based on cgroup policy, thermal pressure, and system fairness.</p>
+      </section>
+
+      <section id="memory-hierarchy">
+        <h2>8. Memory Hierarchy: Hotsets, SLC, and Memory-Side Cache Pressure</h2>
+        <p>Agent workloads are not merely CPU-bound. They are memory-hierarchy sensitive. A small active set—tool schemas, prompt templates, vector index headers, retrieval metadata, repository maps, tokenizer tables, and active documents—may be touched repeatedly across steps. But the kernel usually sees only anonymous pages, file-backed mappings, and page-cache pressure.</p>
+        <p>On ARM systems with a shared last-level cache, System Level Cache, or memory-side cache, preserving the agent hotset can matter as much as raw CPU frequency. The wrong eviction decision converts a tight loop into mmap faults, cache refills, and storage reads.</p>
+        <div class="figure">
+          <svg viewBox="0 0 980 460" role="img" aria-label="ARM memory hierarchy hotset diagram">
+            <defs>
+              <marker id="arrowMem" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L9,3 L0,6 Z" fill="#64748b"/></marker>
+            </defs>
+            <rect x="20" y="25" width="940" height="385" rx="24" fill="#fff" stroke="#d9dee8"/>
+            <text x="50" y="65" font-size="22" font-weight="800" fill="#111827">Agent hotset pressure through the ARM memory hierarchy</text>
+            <rect x="70" y="115" width="160" height="70" rx="16" fill="#eff6ff" stroke="#bfdbfe"/><text x="105" y="145" font-size="15" font-weight="900" fill="#1d4ed8">Agent loop</text><text x="92" y="166" font-size="12" fill="#475569">repeated small touches</text>
+            <rect x="300" y="90" width="150" height="55" rx="15" fill="#ecfdf5" stroke="#bbf7d0"/><text x="340" y="123" font-size="14" font-weight="900" fill="#047857">L1/L2</text>
+            <rect x="300" y="165" width="150" height="55" rx="15" fill="#ecfdf5" stroke="#bbf7d0"/><text x="337" y="198" font-size="14" font-weight="900" fill="#047857">LLC</text>
+            <rect x="300" y="240" width="150" height="55" rx="15" fill="#f5f3ff" stroke="#ddd6fe"/><text x="336" y="273" font-size="14" font-weight="900" fill="#6d28d9">SLC / MSC</text>
+            <rect x="535" y="115" width="165" height="85" rx="18" fill="#fff7ed" stroke="#fed7aa"/><text x="576" y="150" font-size="15" font-weight="900" fill="#c2410c">DRAM</text><text x="563" y="172" font-size="12" fill="#475569">power states / latency</text>
+            <rect x="535" y="245" width="165" height="85" rx="18" fill="#fef2f2" stroke="#fecaca"/><text x="577" y="280" font-size="15" font-weight="900" fill="#b91c1c">SSD</text><text x="559" y="302" font-size="12" fill="#475569">mmap refill / small I/O</text>
+            <rect x="765" y="145" width="145" height="150" rx="20" fill="#f8fafc" stroke="#cbd5e1"/><text x="789" y="178" font-size="15" font-weight="900" fill="#334155">Kernel policy</text><text x="790" y="205" font-size="12" fill="#475569">MADV_AGENT_HOTSET</text><text x="790" y="228" font-size="12" fill="#475569">MADV_AGENT_STREAM</text><text x="790" y="251" font-size="12" fill="#475569">readahead bias</text><text x="790" y="274" font-size="12" fill="#475569">eviction resistance</text>
+            <g stroke="#64748b" stroke-width="2.7" marker-end="url(#arrowMem)"><line x1="230" y1="150" x2="295" y2="117"/><line x1="230" y1="150" x2="295" y2="192"/><line x1="450" y1="118" x2="530" y2="150"/><line x1="450" y1="268" x2="530" y2="288"/><line x1="700" y1="158" x2="760" y2="198"/><line x1="700" y1="288" x2="760" y2="244"/></g>
+            <text x="70" y="365" font-size="13" fill="#64748b">The point is not to expose hardware cache controls directly to applications. The point is to let the kernel know which pages are loop-critical and which reads are transient.</text>
+          </svg>
+          <div class="caption">Figure 6. Agent runtimes need a vocabulary for memory intent: protect the hotset, stream transient data, and avoid page-cache pollution.</div>
+        </div>
+        <pre><code>/* include/uapi/asm-generic/mman-common.h: sketch */
+#define MADV_AGENT_HOTSET        104 /* protect loop-critical data */
+#define MADV_AGENT_STREAM        105 /* transient reads; avoid cache pollution */
+#define MADV_AGENT_INDEX         106 /* mmap-backed index with sparse reuse */
+
+/* mm/vmscan.c: sketch */
+static bool folio_agent_protected(struct folio *folio)
+{
+        struct vm_area_struct *vma = folio_mapped_vma(folio);
+
+        return vma && (vma-&gt;vm_flags & VM_AGENT_HOTSET) &&
+               memcg_agent_budget_available(vma-&gt;vm_mm);
+}
+
+if (folio_agent_protected(folio))
+        scan_resistance += AGENT_HOTSET_BONUS;</code></pre>
+        <p>The policy should remain conservative. A hotset hint should not make pages unevictable; it should bias reclaim and readahead while the cgroup has latency budget remaining.</p>
+      </section>
+
+      <section id="noc">
+        <h2>9. Beyond the Core: NoC / Mesh Interconnect Warmth</h2>
+        <p>Modern ARM server and client SoCs are not just collections of cores. They include mesh fabrics, coherent interconnects, memory controllers, LLC/SLC slices, and device paths whose own power states can add latency. A core may be awake and at frequency while the path to memory or storage has downclocked.</p>
+        <p>This means the latency window should not stop at <code class="inline">cpufreq</code> and <code class="inline">cpuidle</code>. For the most latency-sensitive windows, a platform driver may need to translate the same agent signal into interconnect QoS or minimum bandwidth votes.</p>
+        <div class="figure">
+          <svg viewBox="0 0 980 470" role="img" aria-label="NoC and interconnect power state diagram">
+            <defs>
+              <marker id="arrowNoc" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L9,3 L0,6 Z" fill="#64748b"/></marker>
+            </defs>
+            <rect x="20" y="25" width="940" height="395" rx="24" fill="#fff" stroke="#d9dee8"/>
+            <text x="50" y="65" font-size="22" font-weight="800" fill="#111827">Agent latency window propagated beyond the CPU core</text>
+            <rect x="70" y="120" width="150" height="78" rx="16" fill="#eff6ff" stroke="#bfdbfe"/><text x="105" y="153" font-size="15" font-weight="900" fill="#1d4ed8">Agent step</text><text x="93" y="176" font-size="12" fill="#475569">short burst begins</text>
+            <rect x="300" y="80" width="150" height="65" rx="16" fill="#ecfdf5" stroke="#bbf7d0"/><text x="339" y="119" font-size="14" font-weight="900" fill="#047857">CPU freq</text>
+            <rect x="300" y="165" width="150" height="65" rx="16" fill="#fff7ed" stroke="#fed7aa"/><text x="338" y="204" font-size="14" font-weight="900" fill="#c2410c">cpuidle</text>
+            <rect x="300" y="250" width="150" height="65" rx="16" fill="#f5f3ff" stroke="#ddd6fe"/><text x="337" y="289" font-size="14" font-weight="900" fill="#6d28d9">NoC / CMN</text>
+            <rect x="300" y="335" width="150" height="65" rx="16" fill="#fef2f2" stroke="#fecaca"/><text x="318" y="374" font-size="14" font-weight="900" fill="#b91c1c">memory controller</text>
+            <rect x="560" y="110" width="170" height="230" rx="22" fill="#f8fafc" stroke="#cbd5e1"/><text x="600" y="145" font-size="16" font-weight="900" fill="#334155">Platform driver</text><text x="592" y="178" font-size="13" fill="#475569">QoS vote</text><text x="592" y="203" font-size="13" fill="#475569">min bandwidth</text><text x="592" y="228" font-size="13" fill="#475569">exit-latency cap</text><text x="592" y="253" font-size="13" fill="#475569">thermal override</text><text x="592" y="278" font-size="13" fill="#475569">auto-expire</text>
+            <rect x="795" y="145" width="115" height="150" rx="20" fill="#eef2ff" stroke="#c7d2fe"/><text x="824" y="178" font-size="15" font-weight="900" fill="#3730a3">Result</text><text x="819" y="206" font-size="12" fill="#475569">warm path</text><text x="819" y="229" font-size="12" fill="#475569">lower p99</text><text x="819" y="252" font-size="12" fill="#475569">bounded watts</text>
+            <g stroke="#64748b" stroke-width="2.7" marker-end="url(#arrowNoc)"><line x1="220" y1="159" x2="295" y2="112"/><line x1="220" y1="159" x2="295" y2="198"/><line x1="220" y1="159" x2="295" y2="282"/><line x1="220" y1="159" x2="295" y2="367"/><line x1="450" y1="282" x2="555" y2="225"/><line x1="730" y1="225" x2="790" y2="220"/></g>
+            <text x="70" y="445" font-size="13" fill="#64748b">The kernel API remains generic. Platform drivers decide whether the hint maps to interconnect bandwidth votes, memory-controller residency, or no-op behavior.</text>
+          </svg>
+          <div class="caption">Figure 7. A complete latency window may need to keep the interconnect and memory path warm, not only the CPU core.</div>
+        </div>
+        <pre><code>/* drivers/interconnect/agent_qos.c: sketch */
+static int agent_icc_apply_window(struct agent_latency_window *w)
+{
+        if (!w-&gt;active || thermal_pressure_high())
+                return 0;
+
+        icc_set_bw(agent_path_cpu_mem,
+                   w-&gt;min_interconnect_avg_bw,
+                   w-&gt;min_interconnect_peak_bw);
+
+        trace_agent_interconnect_vote(w-&gt;step_id,
+                                      w-&gt;min_interconnect_peak_bw);
+        return 0;
+}
+
+/* Auto-expire when the latency window ends. */
+static void agent_icc_end_window(struct agent_latency_window *w)
+{
+        icc_set_bw(agent_path_cpu_mem, 0, 0);
+}</code></pre>
+        <p>This is where an ARM-specific agentic CPU story becomes interesting: not “disable power management,” but coordinate CPU, idle, memory, storage, and interconnect policies for short, bounded windows.</p>
+      </section>
+
+
+      <section id="eval">
+        <h2>10. Evaluation Plan</h2>
+        <p>A credible benchmark should not report only average throughput. It should report distributions and attribution:</p>
+        <table>
+          <thead><tr><th>Metric</th><th>Why it matters</th><th>Expected signal</th></tr></thead>
+          <tbody>
+            <tr><td>p50/p95/p99 step latency</td><td>User-visible latency lives in the tail</td><td>Lower p99 under latency window</td></tr>
+            <tr><td>Scheduler wakeup histogram</td><td>Shows whether CPU placement improved</td><td>Fewer >500µs wakeups</td></tr>
+            <tr><td>cpuidle state residency</td><td>Verifies deep idle avoidance during active loops</td><td>Fewer deep state entries only during windows</td></tr>
+            <tr><td>cpufreq ramp events</td><td>Shows frequency stability</td><td>Reduced low-frequency first-step penalty</td></tr>
+            <tr><td>Small-read p99</td><td>Captures vector/index/document lookup stalls</td><td>Lower tail for 4KB–64KB reads</td></tr>
+            <tr><td>Energy per completed task</td><td>Prevents performance-only policy from wasting power</td><td>Small energy increase for meaningful tail reduction</td></tr>
+          </tbody>
+        </table>
+        <div class="callout ok"><strong>Success criterion:</strong> improve p99/p999 step latency without globally disabling power management.</div>
+      </section>
+
+      <section id="risks">
+        <h2>11. Risks and Upstream Reality</h2>
+        <p>There are obvious objections:</p>
+        <ul>
+          <li><strong>Hint abuse:</strong> every runtime may mark itself latency-critical.</li>
+          <li><strong>Fairness:</strong> keeping cores warm for one cgroup can hurt others.</li>
+          <li><strong>Energy regression:</strong> bad policy can destroy the reason to use efficient CPUs.</li>
+          <li><strong>Device diversity:</strong> NVMe and ARM platform behavior varies widely.</li>
+        </ul>
+        <p>The answer is to scope policies by cgroup, enforce budgets, expire hints automatically, expose tracepoints, and require benchmarks that include energy per task. The kernel should not blindly trust the application; it should accept intent and enforce policy.</p>
+      </section>
+
+      <section id="conclusion">
+        <h2>Conclusion</h2>
+        <p>Agentic AI workloads are revealing a systems problem that was easy to miss in batch-centric AI: the latency path is the operating system. On ARM CPUs, power management is a first-class part of that path.</p>
+        <p>The right goal is not to disable power saving. The right goal is <span class="hl">latency-aware efficiency</span>: keep the system efficient across the day, but keep the agent loop warm during the small windows where wakeups, page faults, and storage reads compound into visible delay.</p>
+        <div class="callout"><strong>One-line takeaway:</strong> ARM agentic CPUs need power policies that optimize not just watts per operation, but variance per agent step.</div>
+      </section>
+
+      <section id="refs">
+        <h2>References</h2>
+        <ol class="refs">
+          <li>Linux Kernel Documentation: Energy Aware Scheduling.</li>
+          <li>Linux Kernel Documentation: CPU Idle Time Management.</li>
+          <li>Linux Kernel Documentation: Multi-Queue Block IO Queueing Mechanism.</li>
+          <li>Linux manual pages: io_uring registered buffers.</li>
+          <li>NVM Express: NVMe Technology Power Management Features.</li>
+        </ol>
+      </section>
+    </article>
+
+    <aside class="toc">
+      <h3>Contents</h3>
+      <a href="#abstract">Abstract</a>
+      <a href="#loop">1. Agent loop</a>
+      <a href="#arm">2. ARM power</a>
+      <a href="#model">3. Latency model</a>
+      <a href="#patches">4. Patch sketches</a>
+      <a href="#ebpf">5. eBPF tooling</a>
+      <a href="#architecture">6. Architecture</a>
+      <a href="#budget">7. Budget model</a>
+      <a href="#memory-hierarchy">8. Memory hierarchy</a>
+      <a href="#noc">9. NoC / mesh</a>
+      <a href="#eval">10. Evaluation</a>
+      <a href="#risks">11. Risks</a>
+      <a href="#conclusion">Conclusion</a>
+    </aside>
+  </div>
+  <div class="foot"><a href="/" style="color:inherit;text-decoration:none;">© 2026 MANISH AI.</a> All rights reserved. <a href="/writings.html" style="color:inherit;">← All writings</a> · <a href="https://github.com/manishklach" style="color:inherit;">GitHub</a><br>ARM Linux · Agentic workloads · <time datetime="2026-04-29">April 29, 2026</time> · 14 min read</div>
+</div>
+</body>
+</html>
