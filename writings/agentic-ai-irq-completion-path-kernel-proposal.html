@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic AI and the IRQ Completion Path: A Kernel Proposal | MANISH AI</title>
+<meta name="description" content="A systems note proposing agent-aware kernel completion paths across IRQ, softirq, blk-mq, NAPI, wakeups, and scheduling for latency-amplified agentic AI workloads.">
+<meta name="keywords" content="agentic AI, IRQ completion path, Linux kernel, softirq, blk-mq, NAPI, scheduler wakeups, AI latency, kernel proposal">
+<meta name="author" content="MANISH AI">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://manishklach.github.io/writings/agentic-ai-irq-completion-path-kernel-proposal.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Agentic AI and the IRQ Completion Path: A Kernel Proposal | MANISH AI">
+<meta property="og:description" content="A systems note proposing agent-aware kernel completion paths across IRQ, softirq, blk-mq, NAPI, wakeups, and scheduling for latency-amplified agentic AI workloads.">
+<meta property="og:url" content="https://manishklach.github.io/writings/agentic-ai-irq-completion-path-kernel-proposal.html">
+<meta property="og:image" content="https://manishklach.github.io/og/agentic-ai-irq-completion-path-kernel-proposal.png">
+<meta property="og:image:alt" content="Preview card for Agentic AI and the IRQ Completion Path: A Kernel Proposal">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Agentic AI and the IRQ Completion Path: A Kernel Proposal | MANISH AI">
+<meta name="twitter:description" content="A systems note proposing agent-aware kernel completion paths across IRQ, softirq, blk-mq, NAPI, wakeups, and scheduling for latency-amplified agentic AI workloads.">
+<meta name="twitter:image" content="https://manishklach.github.io/og/agentic-ai-irq-completion-path-kernel-proposal.png">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Agentic AI and the IRQ Completion Path: A Kernel Proposal","description":"A systems note proposing agent-aware kernel completion paths across IRQ, softirq, blk-mq, NAPI, wakeups, and scheduling for latency-amplified agentic AI workloads.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/agentic-ai-irq-completion-path-kernel-proposal.html","mainEntityOfPage":"https://manishklach.github.io/writings/agentic-ai-irq-completion-path-kernel-proposal.html","datePublished":"2026-04-30","dateModified":"2026-04-30","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,600;1,400&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;1,9..144,300&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0d0f14;
+  --surface: #13161d;
+  --surface2: #191c24;
+  --surface3: #1f2330;
+  --border: #272c3a;
+  --border2: #2f3547;
+  --ink: #e8ecf5;
+  --ink2: #9aa3b8;
+  --ink3: #5c6480;
+  --accent: #5b8fff;
+  --accent2: #3dffa0;
+  --accent3: #ffd166;
+  --accent-soft: rgba(91,143,255,.12);
+  --accent2-soft: rgba(61,255,160,.10);
+  --accent3-soft: rgba(255,209,102,.10);
+  --red: #ff6b6b;
+  --mono: 'IBM Plex Mono', 'Cascadia Code', 'Fira Code', monospace;
+  --serif: 'Fraunces', 'Palatino Linotype', Georgia, serif;
+  --sans: 'Inter', system-ui, sans-serif;
+  --radius: 12px;
+  --radius-lg: 20px;
+  --gutter: 64px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+.site-top {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 22px 28px 0;
+  position: relative;
+  z-index: 2;
+}
+
+.site-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 14px 16px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 18px;
+  background: rgba(12, 15, 22, .74);
+  backdrop-filter: blur(10px);
+}
+
+.site-mark {
+  color: #f4f7ff;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.site-links {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.site-links a {
+  color: var(--ink2);
+  text-decoration: none;
+}
+
+/* ── Layout ── */
+.page { max-width: 900px; margin: 0 auto; padding: 0 28px 120px; }
+
+/* ── Scan line texture ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(255,255,255,.012) 3px, rgba(255,255,255,.012) 4px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Header ── */
+.site-header {
+  position: relative;
+  padding: 80px 0 56px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 56px;
+  overflow: hidden;
+}
+
+.site-header::after {
+  content: '';
+  position: absolute;
+  top: -80px; right: -160px;
+  width: 580px; height: 580px;
+  background: radial-gradient(circle, rgba(91,143,255,.14) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 24px;
+}
+.kicker::before {
+  content: '';
+  display: block;
+  width: 24px; height: 1px;
+  background: var(--accent);
+}
+
+h1 {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: clamp(32px, 5vw, 52px);
+  line-height: 1.08;
+  letter-spacing: -.02em;
+  color: var(--ink);
+  margin-bottom: 20px;
+  max-width: 720px;
+}
+
+.subtitle {
+  font-size: 17px;
+  color: var(--ink2);
+  max-width: 680px;
+  line-height: 1.65;
+  margin-bottom: 32px;
+}
+
+.publish-meta {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: -8px 0 22px;
+  color: var(--ink2);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.meta-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink3);
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  padding: 5px 12px;
+  background: var(--surface);
+}
+
+/* ── Abstract ── */
+.abstract {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 24px 28px;
+  margin-bottom: 56px;
+  font-size: 15.5px;
+  color: var(--ink2);
+  line-height: 1.72;
+}
+
+.abstract b { color: var(--ink); font-weight: 600; }
+.abstract .label {
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 10px;
+}
+
+/* ── Sections ── */
+.section { margin-bottom: 56px; }
+
+h2 {
+  font-family: var(--serif);
+  font-weight: 300;
+  font-size: clamp(22px, 3vw, 30px);
+  letter-spacing: -.01em;
+  color: var(--ink);
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+h2 .sec-num {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 400;
+  letter-spacing: .05em;
+  flex-shrink: 0;
+}
+
+h3 {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent2);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin: 32px 0 12px;
+}
+
+p {
+  font-size: 16px;
+  color: var(--ink2);
+  margin-bottom: 16px;
+  line-height: 1.75;
+}
+
+p strong { color: var(--ink); font-weight: 600; }
+
+/* ── Callouts ── */
+.callout {
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  margin: 24px 0;
+  font-size: 15.5px;
+  line-height: 1.68;
+}
+
+.callout-blue {
+  background: var(--accent-soft);
+  border: 1px solid rgba(91,143,255,.25);
+  color: #b3c8ff;
+}
+
+.callout-amber {
+  background: var(--accent3-soft);
+  border: 1px solid rgba(255,209,102,.2);
+  color: #f5d98a;
+}
+
+.callout-green {
+  background: var(--accent2-soft);
+  border: 1px solid rgba(61,255,160,.2);
+  color: #8effd3;
+}
+
+.callout b { color: #fff; }
+
+/* ── Code ── */
+pre {
+  background: #0a0c12;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  overflow-x: auto;
+  margin: 20px 0;
+  position: relative;
+}
+
+pre::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--accent) 0%, transparent 60%);
+  opacity: .5;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.65;
+  color: #c9d4ee;
+}
+
+.kw { color: #7eb3ff; }
+.type { color: #3dffa0; }
+.cmt { color: #4a5370; font-style: italic; }
+.str { color: #ffd166; }
+.num { color: #ff9f7e; }
+
+/* ── Tables ── */
+.table-wrap {
+  overflow-x: auto;
+  margin: 24px 0;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+thead th {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink3);
+  background: var(--surface2);
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 400;
+  border-bottom: 1px solid var(--border);
+}
+
+tbody td {
+  padding: 12px 16px;
+  color: var(--ink2);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  line-height: 1.6;
+}
+
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: var(--surface); }
+
+td:first-child { font-family: var(--mono); font-size: 12.5px; color: var(--accent); }
+
+/* ── Figures / Diagrams ── */
+.figure {
+  margin: 32px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: 4px;
+  overflow: hidden;
+}
+
+.figure svg { display: block; width: 100%; height: auto; }
+
+.figcap {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink3);
+  text-align: center;
+  padding: 12px 16px 14px;
+  letter-spacing: .04em;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Two-col grid ── */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+}
+
+.card-title {
+  font-family: var(--mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--accent2);
+  margin-bottom: 12px;
+}
+
+.card ul {
+  list-style: none;
+  padding: 0;
+}
+
+.card li {
+  font-size: 14px;
+  color: var(--ink2);
+  padding: 4px 0;
+  padding-left: 16px;
+  position: relative;
+  line-height: 1.5;
+}
+
+.card li::before {
+  content: '→';
+  position: absolute;
+  left: 0;
+  color: var(--ink3);
+  font-family: var(--mono);
+  font-size: 11px;
+  top: 6px;
+}
+
+/* ── References ── */
+.refs { list-style: none; padding: 0; }
+.refs li {
+  display: flex;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14.5px;
+  color: var(--ink2);
+  line-height: 1.6;
+}
+.refs li:last-child { border-bottom: 0; }
+
+.ref-num {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  flex-shrink: 0;
+  padding-top: 3px;
+}
+
+/* ── Footer ── */
+.footer {
+  margin-top: 64px;
+  padding-top: 28px;
+  border-top: 1px solid var(--border);
+}
+
+.takeaway {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-left: 3px solid var(--accent2);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  font-size: 15px;
+  color: var(--ink2);
+  line-height: 1.7;
+}
+.takeaway b { color: var(--accent2); }
+
+/* ── Highlight spans ── */
+.hl { color: var(--ink); font-weight: 500; }
+.hl-blue { color: var(--accent); }
+.hl-green { color: var(--accent2); }
+.hl-amber { color: var(--accent3); }
+
+/* ── Inline code ── */
+ic {
+  display: inline;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  padding: 1px 7px;
+  color: #b3c8ff;
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  :root { --gutter: 20px; }
+  .site-top { padding: 16px 18px 0; }
+  .site-nav { align-items: flex-start; flex-direction: column; }
+  .grid-2 { grid-template-columns: 1fr; }
+  h1 { font-size: 28px; }
+}
+</style>
+</head>
+<body>
+<div class="site-top">
+  <div class="site-nav">
+    <a class="site-mark" href="/">MANISH AI</a>
+    <div class="site-links">
+      <a href="/writings.html">&larr; Writings</a>
+      <a href="https://github.com/manishklach">GitHub</a>
+    </div>
+  </div>
+</div>
+<div class="page" data-pagefind-body>
+
+<!-- ══════════════════════════════════════════════════════════
+     HEADER
+══════════════════════════════════════════════════════════ -->
+<header class="site-header">
+  <div class="kicker">Systems Note / Kernel Proposal</div>
+  <h1>Agentic AI and<br>the IRQ Completion Path</h1>
+  <p class="subtitle">A proposal for agent-aware completion chains across IRQ, softirq, NAPI, blk-mq, wakeups, and scheduling — treating agent steps as first-class latency-critical work units in the Linux kernel.</p>
+  <div class="publish-meta">MANISH AI · <time datetime="2026-04-30">April 30, 2026</time> · 20 min read</div>
+  <div class="meta-pills">
+    <span class="pill">Focus: Linux kernel latency</span>
+    <span class="pill">Scope: network · disk · timers · async I/O</span>
+    <span class="pill">Thesis: agent step → kernel-visible unit</span>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════
+     ABSTRACT
+══════════════════════════════════════════════════════════ -->
+<div class="abstract">
+  <span class="label">Abstract</span>
+  Agentic AI workloads are not merely CPU-bound, memory-bound, or I/O-bound. They are <b>completion-path bound</b>. A tool reply, NVMe read, timer expiry, or asynchronous I/O completion enters the kernel through an interrupt or completion path, traverses softirq or block completion machinery, wakes a userspace waiter, and depends on the scheduler to resume the agent control loop. Each stage may add only tens of microseconds — but agent loops execute hundreds or thousands of steps. This creates <b>latency amplification</b>: small kernel delays compound into visible task latency. This note proposes a kernel-stack design that treats agent steps as first-class latency-critical completion chains rather than unrelated IRQs, softirqs, block completions, and wakeups.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     §1
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">§ 01</span>From Device IRQs to Completion Chains</h2>
+
+  <p>The mistake is to ask, "How do we make NIC IRQs faster?" or "How do we make NVMe IRQs faster?" The better question is:</p>
+
+  <div class="callout callout-blue">
+    <b>How do we make the complete device → kernel → scheduler → userspace path predictable for an agent step?</b>
+  </div>
+
+  <p>In an agentic runtime, a tool result may arrive through the network, a retrieval page from NVMe, a local database operation from io_uring, or a timer may simply expire. Different sources — same conceptual path:</p>
+
+<pre><code>asynchronous event completes
+  ↓
+kernel completion handling
+  ↓
+waiter becomes runnable
+  ↓
+scheduler places it on a CPU
+  ↓
+userspace agent loop resumes</code></pre>
+
+  <p>The kernel already has strong machinery here: the generic IRQ layer abstracts device interrupts, NAPI handles network event processing via interrupt-then-poll, and blk-mq exploits multi-queue parallelism for fast storage. The issue is not that these systems are <em>bad</em>. It is that they are optimized for <strong>general-purpose fairness and throughput</strong>, not per-agent-step tail latency.</p>
+
+  <!-- Figure 1 -->
+  <div class="figure">
+    <svg viewBox="0 0 900 280" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#5b6480"/>
+        </marker>
+      </defs>
+      <rect width="900" height="280" fill="#13161d"/>
+      <!-- title -->
+      <text x="40" y="46" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#5c6480" letter-spacing="2">UNIFIED COMPLETION CHAIN</text>
+
+      <!-- boxes -->
+      <g font-family="'Inter',sans-serif">
+        <!-- Event Source -->
+        <rect x="30" y="90" width="136" height="62" rx="10" fill="#191c24" stroke="#2f3547"/>
+        <text x="98" y="117" text-anchor="middle" font-size="13" font-weight="600" fill="#e8ecf5">Event Source</text>
+        <text x="98" y="137" text-anchor="middle" font-size="11" fill="#5c6480">NIC / NVMe / Timer</text>
+
+        <!-- IRQ/Poll -->
+        <rect x="205" y="90" width="136" height="62" rx="10" fill="#191c24" stroke="#2f3547"/>
+        <text x="273" y="117" text-anchor="middle" font-size="13" font-weight="600" fill="#e8ecf5">IRQ / Poll</text>
+        <text x="273" y="137" text-anchor="middle" font-size="11" fill="#5c6480">MSI-X, NAPI, blk</text>
+
+        <!-- Completion -->
+        <rect x="380" y="90" width="136" height="62" rx="10" fill="#191c24" stroke="#2f3547"/>
+        <text x="448" y="117" text-anchor="middle" font-size="13" font-weight="600" fill="#e8ecf5">Completion</text>
+        <text x="448" y="137" text-anchor="middle" font-size="11" fill="#5c6480">skb / req / CQE</text>
+
+        <!-- Wakeup -->
+        <rect x="555" y="90" width="136" height="62" rx="10" fill="#191c24" stroke="#2f3547"/>
+        <text x="623" y="117" text-anchor="middle" font-size="13" font-weight="600" fill="#e8ecf5">Wakeup</text>
+        <text x="623" y="137" text-anchor="middle" font-size="11" fill="#5c6480">wake_up_process()</text>
+
+        <!-- Agent Resumes -->
+        <rect x="730" y="90" width="140" height="62" rx="10" fill="#1a2a1c" stroke="#2a4a30"/>
+        <text x="800" y="117" text-anchor="middle" font-size="13" font-weight="600" fill="#3dffa0">Agent Resumes</text>
+        <text x="800" y="137" text-anchor="middle" font-size="11" fill="#4a8a60">epoll / io_uring</text>
+      </g>
+
+      <!-- arrows -->
+      <line x1="166" y1="121" x2="205" y2="121" stroke="#2f3547" stroke-width="2" marker-end="url(#arr)"/>
+      <line x1="341" y1="121" x2="380" y2="121" stroke="#2f3547" stroke-width="2" marker-end="url(#arr)"/>
+      <line x1="516" y1="121" x2="555" y2="121" stroke="#2f3547" stroke-width="2" marker-end="url(#arr)"/>
+      <line x1="691" y1="121" x2="730" y2="121" stroke="#2f3547" stroke-width="2" marker-end="url(#arr)"/>
+
+      <!-- proposed context bar -->
+      <rect x="30" y="190" width="840" height="54" rx="10" fill="rgba(91,143,255,.08)" stroke="rgba(91,143,255,.2)"/>
+      <text x="50" y="214" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#5b8fff">PROPOSED:</text>
+      <text x="148" y="214" font-family="'Inter',sans-serif" font-size="12" fill="#9aa3b8">  agent_id + step_id + latency_class + deadline/budget — propagated along the chain</text>
+    </svg>
+    <div class="figcap">Fig 1 — The real optimization target is the completion chain, not any single IRQ source.</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     §2
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">§ 02</span>Network Path: IRQ → NAPI → Socket → Wakeup</h2>
+
+  <p>For a networked tool response, the simplified path:</p>
+
+<pre><code>NIC DMA writes packet into RX ring
+  ↓  MSI-X interrupt
+  ↓  generic IRQ layer
+  ↓  driver hardirq handler → napi_schedule()
+  ↓  NET_RX softirq → net_rx_action()
+  ↓  driver NAPI poll receives packets
+  ↓  TCP/IP stack attaches data to socket
+  ↓  epoll/io_uring waiter is woken
+  ↓  scheduler runs agent thread
+  ↓  userspace parses tool reply</code></pre>
+
+  <p>NAPI is the correct model for high-rate network events: device interrupts, then host-scheduled polling. But for an agent loop, excessive batching or delayed <ic>ksoftirqd</ic> execution becomes part of the user-visible step latency.</p>
+
+  <!-- Fig 2 — Network and Disk convergence -->
+  <div class="figure">
+    <svg viewBox="0 0 900 340" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#5b6480"/>
+        </marker>
+      </defs>
+      <rect width="900" height="340" fill="#13161d"/>
+      <text x="40" y="46" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#5c6480" letter-spacing="2">NETWORK + DISK — SHARED COMPLETION TAIL</text>
+
+      <!-- Network row -->
+      <text x="40" y="94" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#5b8fff" letter-spacing="1">NETWORK</text>
+      <rect x="40" y="104" width="150" height="48" rx="8" fill="#1a1e2e" stroke="#2f3a5c"/>
+      <text x="115" y="134" text-anchor="middle" font-family="'Inter',sans-serif" font-size="12" font-weight="600" fill="#b3c8ff">NIC MSI-X</text>
+      <rect x="218" y="104" width="150" height="48" rx="8" fill="#1a1e2e" stroke="#2f3a5c"/>
+      <text x="293" y="134" text-anchor="middle" font-family="'Inter',sans-serif" font-size="12" font-weight="600" fill="#b3c8ff">NAPI / softirq</text>
+      <rect x="396" y="104" width="150" height="48" rx="8" fill="#1a1e2e" stroke="#2f3a5c"/>
+      <text x="471" y="134" text-anchor="middle" font-family="'Inter',sans-serif" font-size="12" font-weight="600" fill="#b3c8ff">socket ready</text>
+
+      <!-- Disk row -->
+      <text x="40" y="214" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#3dffa0" letter-spacing="1">DISK</text>
+      <rect x="40" y="224" width="150" height="48" rx="8" fill="#141e1a" stroke="#2a4030"/>
+      <text x="115" y="254" text-anchor="middle" font-family="'Inter',sans-serif" font-size="12" font-weight="600" fill="#8effd3">NVMe MSI-X</text>
+      <rect x="218" y="224" width="150" height="48" rx="8" fill="#141e1a" stroke="#2a4030"/>
+      <text x="293" y="254" text-anchor="middle" font-family="'Inter',sans-serif" font-size="12" font-weight="600" fill="#8effd3">blk-mq complete</text>
+      <rect x="396" y="224" width="150" height="48" rx="8" fill="#141e1a" stroke="#2a4030"/>
+      <text x="471" y="254" text-anchor="middle" font-family="'Inter',sans-serif" font-size="12" font-weight="600" fill="#8effd3">CQE / read ready</text>
+
+      <!-- Wakeup (shared) -->
+      <rect x="618" y="148" width="120" height="56" rx="10" fill="#201e14" stroke="#4a3a10"/>
+      <text x="678" y="174" text-anchor="middle" font-family="'Inter',sans-serif" font-size="12" font-weight="600" fill="#ffd166">Wakeup</text>
+      <text x="678" y="192" text-anchor="middle" font-family="'Inter',sans-serif" font-size="11" fill="#7a6a40">scheduler</text>
+
+      <!-- Agent -->
+      <rect x="778" y="148" width="106" height="56" rx="10" fill="#1a2a1c" stroke="#2a4a30"/>
+      <text x="831" y="174" text-anchor="middle" font-family="'Inter',sans-serif" font-size="13" font-weight="600" fill="#3dffa0">Agent</text>
+      <text x="831" y="192" text-anchor="middle" font-family="'Inter',sans-serif" font-size="11" fill="#4a8060">userspace</text>
+
+      <!-- Net arrows -->
+      <line x1="190" y1="128" x2="218" y2="128" stroke="#2f3a5c" stroke-width="1.8" marker-end="url(#arr2)"/>
+      <line x1="368" y1="128" x2="396" y2="128" stroke="#2f3a5c" stroke-width="1.8" marker-end="url(#arr2)"/>
+      <path d="M546 128 C580 128 600 165 618 170" fill="none" stroke="#4a5580" stroke-width="1.8" marker-end="url(#arr2)"/>
+
+      <!-- Disk arrows -->
+      <line x1="190" y1="248" x2="218" y2="248" stroke="#2a4030" stroke-width="1.8" marker-end="url(#arr2)"/>
+      <line x1="368" y1="248" x2="396" y2="248" stroke="#2a4030" stroke-width="1.8" marker-end="url(#arr2)"/>
+      <path d="M546 248 C580 248 600 190 618 186" fill="none" stroke="#3a5540" stroke-width="1.8" marker-end="url(#arr2)"/>
+
+      <!-- Wakeup → Agent -->
+      <line x1="738" y1="176" x2="778" y2="176" stroke="#6a5a20" stroke-width="1.8" marker-end="url(#arr2)"/>
+    </svg>
+    <div class="figcap">Fig 2 — NIC and NVMe enter through different subsystems but converge at wakeup and scheduling.</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     §3
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">§ 03</span>Disk Path: NVMe IRQ → blk-mq → bio/io_uring → Wakeup</h2>
+
+  <p>A vector index read, small SQLite/LMDB page fetch, local document retrieval, or mmap major fault can all arrive through the block completion path:</p>
+
+<pre><code>NVMe controller completes command
+  ↓  MSI-X interrupt → nvme_irq()
+  ↓  blk_mq_complete_request()
+  ↓  bio_endio() / request completion
+  ↓  io_uring CQE or blocking read wakeup
+  ↓  scheduler runs agent thread
+  ↓  userspace resumes with data</code></pre>
+
+  <p>blk-mq is designed for modern high-IOPS storage using software and hardware queues to exploit parallelism. But the agentic case is not simply "maximize IOPS." It often needs <strong>small, blocking, latency-critical reads</strong> to complete predictably even when background writeback, logging, indexing, or scans are active.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     §4
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">§ 04</span>Where the Kernel Currently Lacks Context</h2>
+
+  <p>Today, the kernel sees only local, per-event information:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Subsystem</th>
+          <th>What it sees</th>
+          <th>What the agent runtime needs</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>generic IRQ</td>
+          <td>device interrupt vector, irq_desc, handler</td>
+          <td>is this IRQ completing an agent-critical step?</td>
+        </tr>
+        <tr>
+          <td>NAPI / softirq</td>
+          <td>packet budget, poll state, backlog</td>
+          <td>will batching delay a waiting control loop?</td>
+        </tr>
+        <tr>
+          <td>blk-mq</td>
+          <td>request queues, hw queues, completion</td>
+          <td>is this small read blocking a step?</td>
+        </tr>
+        <tr>
+          <td>scheduler</td>
+          <td>task runnable state, CPU selection, fairness</td>
+          <td>should this agent resume on a warm, IRQ-quiet CPU?</td>
+        </tr>
+        <tr>
+          <td>epoll / io_uring</td>
+          <td>completion queue or readiness event</td>
+          <td>which agent step did this unblock?</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout callout-amber">
+    <b>Key gap:</b> the kernel cannot distinguish an agent-critical completion from background telemetry, log flushes, bulk scans, or maintenance I/O.
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     §5
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">§ 05</span>Proposed Abstraction: Agent Completion Context</h2>
+
+  <p>The central proposal: add a small, budgeted, propagation-friendly context object for agent-critical completion chains.</p>
+
+<pre><code><span class="kw">struct</span> <span class="type">agent_latency_ctx</span> {
+    <span class="type">u64</span> agent_id;        <span class="cmt">/* runtime / session / agent identity */</span>
+    <span class="type">u64</span> step_id;         <span class="cmt">/* current reasoning / tool step */</span>
+    <span class="type">u8</span>  latency_class;   <span class="cmt">/* normal | agent-interactive | background */</span>
+    <span class="type">u64</span> deadline_ns;     <span class="cmt">/* optional soft deadline */</span>
+    <span class="type">u64</span> budget_ns;       <span class="cmt">/* cgroup-controlled latency budget */</span>
+};</code></pre>
+
+  <p>This context is attached at the userspace boundary and propagated only along paths that can prove causality:</p>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Userspace Sources</div>
+      <ul>
+        <li>io_uring SQE tag</li>
+        <li>socket option / cmsg</li>
+        <li>epoll wait context</li>
+        <li>mmap / page fault context</li>
+        <li>prctl / sched_attr hint</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">Kernel Propagation</div>
+      <ul>
+        <li>skb metadata (network)</li>
+        <li>request / bio metadata (block)</li>
+        <li>wake_q / task_struct wakeup context</li>
+        <li>tracepoints for attribution</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     §6
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">§ 06</span>Patch Stack: RFC-Style Series</h2>
+
+<pre><code>[PATCH 0/8] agent-latency: propagate latency-critical completion context
+
+[PATCH 1/8] sched: add task flag for agent latency-sensitive control loops
+[PATCH 2/8] sched: add agent_home_cpu and wakeup placement hint
+[PATCH 3/8] irq: add IRQ-to-wakeup attribution tracepoints
+[PATCH 4/8] net: allow socket-level agent latency tagging
+[PATCH 5/8] net/napi: add latency-bounded processing for agent-tagged flows
+[PATCH 6/8] block/blk-mq: propagate agent latency tags through request completion
+[PATCH 7/8] io_uring: expose agent_step_id on SQEs and CQEs
+[PATCH 8/8] sched: bias wakeups away from IRQ/softirq-hot CPUs</code></pre>
+
+  <h3>6.1 — Scheduler Flag</h3>
+<pre><code><span class="num">#define</span> SCHED_FLAG_AGENT_LATENCY <span class="num">0x10000000</span>
+
+<span class="kw">static inline</span> <span class="type">bool</span> task_agent_latency(<span class="kw">const</span> <span class="kw">struct</span> <span class="type">task_struct</span> *p)
+{
+    <span class="kw">return</span> p->sched_flags & SCHED_FLAG_AGENT_LATENCY;
+}</code></pre>
+
+  <h3>6.2 — Wakeup Placement</h3>
+<pre><code><span class="cmt">/* Conceptual hook near try_to_wake_up() / select_task_rq_fair().
+ * Do not replace EEVDF. Bias wakeup CPU selection for latency-sensitive
+ * control loops.
+ */</span>
+<span class="kw">if</span> (task_agent_latency(p)) {
+    <span class="type">int</span> home = p->agent_home_cpu;
+
+    <span class="kw">if</span> (cpu_online(home)           &&
+        !cpu_irq_hot(home)         &&
+        !cpu_softirq_pressure(home) &&
+        cpumask_test_cpu(home, p->cpus_ptr)) {
+        cpu = home;
+    } <span class="kw">else</span> {
+        cpu = select_nearby_quiet_cpu(p);
+    }
+}</code></pre>
+
+  <h3>6.3 — Completion Latency Class</h3>
+<pre><code><span class="kw">enum</span> <span class="type">completion_latency_class</span> {
+    COMPLETION_NORMAL            = <span class="num">0</span>,
+    COMPLETION_AGENT_INTERACTIVE = <span class="num">1</span>,
+    COMPLETION_BACKGROUND        = <span class="num">2</span>,
+};</code></pre>
+
+  <h3>6.4 — blk-mq Request Metadata</h3>
+<pre><code><span class="kw">struct</span> <span class="type">request</span> {
+    <span class="cmt">/* existing fields ... */</span>
+<span class="num">#ifdef</span> CONFIG_AGENT_LATENCY
+    <span class="type">u64</span> agent_id;
+    <span class="type">u64</span> agent_step_id;
+    <span class="type">u8</span>  completion_latency_class;
+<span class="num">#endif</span>
+};</code></pre>
+
+  <h3>6.5 — Network skb Metadata</h3>
+<pre><code><span class="kw">struct</span> <span class="type">sk_buff</span> {
+    <span class="cmt">/* existing fields ... */</span>
+<span class="num">#ifdef</span> CONFIG_AGENT_LATENCY
+    <span class="type">u64</span> agent_id;
+    <span class="type">u64</span> agent_step_id;
+    <span class="type">u8</span>  completion_latency_class;
+<span class="num">#endif</span>
+};</code></pre>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     §7
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">§ 07</span>NAPI and Softirq: Latency-Bounded, Not Batch-Free</h2>
+
+  <p>The proposal is <em>not</em> "disable NAPI" or "turn off batching." That harms throughput and may trigger IRQ storms. Instead, the policy should be <strong>latency-bounded batching</strong> for tagged flows:</p>
+
+<pre><code><span class="cmt">/* Conceptual net_rx_action() policy.
+ * If an agent-critical waiter is blocked behind this NAPI instance,
+ * cap the service window and wake the agent before continuing
+ * background batching.
+ */</span>
+<span class="kw">if</span> (napi_has_agent_waiter(napi)) {
+    budget      = min(budget, AGENT_NAPI_PACKET_BUDGET);
+    time_budget = min(time_budget, AGENT_NAPI_USEC_BUDGET);
+}
+
+work_done = napi_poll(napi, budget);
+
+<span class="kw">if</span> (agent_waiter_ready(napi))
+    agent_wake_latency_critical_waiter(napi);</code></pre>
+
+  <p>This keeps NAPI's core model intact while preventing long polling bursts from hiding a ready agent behind background work.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     §8
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">§ 08</span>IRQ/Softirq CPU Topology: Separate Control and Completion</h2>
+
+  <p>Agentic systems benefit from explicitly separating CPUs that run the control loop from CPUs that absorb IRQ, softirq, and block completions.</p>
+
+  <!-- Fig 3 — CPU Split -->
+  <div class="figure">
+    <svg viewBox="0 0 900 280" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr3" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#ffd166"/>
+        </marker>
+      </defs>
+      <rect width="900" height="280" fill="#13161d"/>
+      <text x="40" y="44" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#5c6480" letter-spacing="2">CONTROL / COMPLETION CPU SPLIT</text>
+
+      <!-- Completion CPUs -->
+      <rect x="40" y="66" width="340" height="168" rx="14" fill="#1a1e2e" stroke="#2f3a5c"/>
+      <text x="210" y="96" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#5b8fff" letter-spacing="1">COMPLETION CPUs</text>
+      <text x="70" y="124" font-family="'Inter',sans-serif" font-size="13" fill="#7a8aaa">→  NIC IRQs, NVMe IRQs</text>
+      <text x="70" y="148" font-family="'Inter',sans-serif" font-size="13" fill="#7a8aaa">→  NAPI / softirq</text>
+      <text x="70" y="172" font-family="'Inter',sans-serif" font-size="13" fill="#7a8aaa">→  blk-mq completions</text>
+      <text x="70" y="196" font-family="'Inter',sans-serif" font-size="13" fill="#7a8aaa">→  background batching</text>
+
+      <!-- Agent CPU -->
+      <rect x="520" y="66" width="340" height="168" rx="14" fill="#141e1a" stroke="#2a4030"/>
+      <text x="690" y="96" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#3dffa0" letter-spacing="1">AGENT HOME CPU</text>
+      <text x="550" y="124" font-family="'Inter',sans-serif" font-size="13" fill="#6aaa8a">→  agent control loop</text>
+      <text x="550" y="148" font-family="'Inter',sans-serif" font-size="13" fill="#6aaa8a">→  epoll / io_uring return</text>
+      <text x="550" y="172" font-family="'Inter',sans-serif" font-size="13" fill="#6aaa8a">→  parse + next decision</text>
+      <text x="550" y="196" font-family="'Inter',sans-serif" font-size="13" fill="#6aaa8a">→  cache-hot execution</text>
+
+      <!-- Arrow -->
+      <line x1="380" y1="150" x2="520" y2="150" stroke="#ffd166" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arr3)"/>
+      <text x="450" y="138" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#ffd166">targeted wakeup</text>
+    </svg>
+    <div class="figcap">Fig 3 — The completion CPU absorbs noisy work; the agent CPU resumes the control loop predictably.</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     §9
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">§ 09</span>eBPF Measurement Plan</h2>
+
+  <p>Before policy changes, expose enough attribution to prove the bottleneck. These bpftrace snippets are minimal starting points.</p>
+
+  <h3>9.1 — IRQ Handler Duration</h3>
+<pre><code>bpftrace -e <span class="str">'
+tracepoint:irq:irq_handler_entry
+{
+  @irq_start[args->irq] = nsecs;
+}
+tracepoint:irq:irq_handler_exit
+/@irq_start[args->irq]/
+{
+  printf("irq=%d duration=%dus\n",
+    args->irq, (nsecs - @irq_start[args->irq]) / 1000);
+  delete(@irq_start[args->irq]);
+}'</span></code></pre>
+
+  <h3>9.2 — Softirq Runtime</h3>
+<pre><code>bpftrace -e <span class="str">'
+tracepoint:irq:softirq_entry
+{
+  @soft_start[args->vec] = nsecs;
+}
+tracepoint:irq:softirq_exit
+/@soft_start[args->vec]/
+{
+  printf("softirq vec=%d duration=%dus\n",
+    args->vec, (nsecs - @soft_start[args->vec]) / 1000);
+  delete(@soft_start[args->vec]);
+}'</span></code></pre>
+
+  <h3>9.3 — Wakeup-to-Run Latency</h3>
+<pre><code>bpftrace -e <span class="str">'
+tracepoint:sched:sched_wakeup
+{
+  @wake[args->pid] = nsecs;
+}
+tracepoint:sched:sched_switch
+/@wake[args->next_pid]/
+{
+  printf("pid=%d wake_to_run=%dus\n",
+    args->next_pid, (nsecs - @wake[args->next_pid]) / 1000);
+  delete(@wake[args->next_pid]);
+}'</span></code></pre>
+
+  <h3>9.4 — epoll Gate Latency</h3>
+<pre><code>bpftrace -e <span class="str">'
+tracepoint:syscalls:sys_enter_epoll_wait { @epoll[tid] = nsecs; }
+tracepoint:syscalls:sys_exit_epoll_wait
+/@epoll[tid]/
+{
+  printf("tid=%d epoll_wait=%dus ret=%d\n",
+    tid, (nsecs - @epoll[tid]) / 1000, args->ret);
+  delete(@epoll[tid]);
+}'</span></code></pre>
+
+  <h3>9.5 — io_uring Gate Latency</h3>
+<pre><code>bpftrace -e <span class="str">'
+tracepoint:syscalls:sys_enter_io_uring_enter { @uring[tid] = nsecs; }
+tracepoint:syscalls:sys_exit_io_uring_enter
+/@uring[tid]/
+{
+  printf("tid=%d io_uring_enter=%dus ret=%d\n",
+    tid, (nsecs - @uring[tid]) / 1000, args->ret);
+  delete(@uring[tid]);
+}'</span></code></pre>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     §10
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">§ 10</span>Expected Latency Budget</h2>
+
+  <p>Actual numbers depend on hardware, kernel config, driver, queue depth, and system load. The key insight is the <strong>shape of the tail</strong>: each stage is small alone, but the chain repeats many times per agent session.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Stage</th>
+          <th>Typical uncontended</th>
+          <th>Tail under pressure</th>
+          <th>Agent-aware target</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>IRQ entry / handler</td>
+          <td>~1–10 µs</td>
+          <td>10–50+ µs</td>
+          <td>bounded, attributed</td>
+        </tr>
+        <tr>
+          <td>NAPI / softirq</td>
+          <td>~5–50 µs</td>
+          <td>100–500+ µs</td>
+          <td>latency-bounded batching</td>
+        </tr>
+        <tr>
+          <td>blk-mq completion</td>
+          <td>~5–30 µs</td>
+          <td>100+ µs + device tail</td>
+          <td>completion priority + steering</td>
+        </tr>
+        <tr>
+          <td>wakeup-to-run</td>
+          <td>~20–200 µs</td>
+          <td>500+ µs</td>
+          <td>warm CPU, IRQ-quiet CPU</td>
+        </tr>
+        <tr>
+          <td>epoll / io_uring return</td>
+          <td>~5–50 µs</td>
+          <td>100+ µs</td>
+          <td>step-attributed gate latency</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     §11
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">§ 11</span>What Not To Do First</h2>
+
+  <p>The proposal deliberately avoids blunt mechanisms that look attractive but are unsafe to deploy broadly.</p>
+
+<pre><code><span class="cmt">Do NOT start with:</span>
+  ✗  replacing EEVDF / CFS
+  ✗  running agents as SCHED_FIFO priority 99
+  ✗  globally disabling interrupt coalescing
+  ✗  globally disabling NAPI batching
+  ✗  polling every device all the time
+  ✗  bypassing the kernel completely</code></pre>
+
+  <div class="callout callout-amber">
+    Those approaches may improve one benchmark and damage <b>system stability, fairness, thermals, or multi-tenant behavior</b>. The deployable path is a budgeted latency class plus observability.
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     §12
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">§ 12</span>Proposed Evaluation</h2>
+
+  <p>A credible experiment compares default Linux behavior against progressive isolation and finally the proposed kernel changes. Metrics must focus on <strong>p99 / p999 step latency</strong>, not average throughput.</p>
+
+<pre><code>Experiment A — baseline
+  default IRQ affinity · default scheduler · default NAPI/block
+
+Experiment B — manual tuning
+  move IRQs off agent CPU · pin thread · chrt/renice · interrupt moderation
+
+Experiment C — observability only
+  agent_step_id tracepoints · epoll/io_uring gate timing · per-step attribution
+
+Experiment D — policy patches
+  agent wakeup placement · latency-bounded NAPI
+  blk-mq completion class · IRQ/softirq-hot CPU avoidance</code></pre>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Why it matters</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>agent step p50 / p99 / p999</td>
+          <td>captures latency amplification across the full chain</td>
+        </tr>
+        <tr>
+          <td>wakeup-to-run latency</td>
+          <td>isolates the scheduler's contribution</td>
+        </tr>
+        <tr>
+          <td>softirq runtime + ksoftirqd share</td>
+          <td>identifies deferred completion noise</td>
+        </tr>
+        <tr>
+          <td>NVMe completion-to-CQE latency</td>
+          <td>captures disk-side completion tail</td>
+        </tr>
+        <tr>
+          <td>epoll / io_uring blocked time</td>
+          <td>shows user-visible wait gates</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     §13
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">§ 13</span>Final Thesis</h2>
+
+  <div class="callout callout-green">
+    <b>The kernel should treat agent steps as first-class latency-critical completion chains — not as unrelated IRQs, softirqs, I/O completions, and wakeups.</b>
+  </div>
+
+  <p>The next useful primitive is not just a process, thread, socket, or request. It is the <strong>agent step</strong>: a bounded, causally connected unit of work that crosses userspace, IRQ handling, network, block I/O, memory, and scheduler paths. Making that path predictable is a kernel problem, and the kernel has the right place to solve it.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     REFERENCES
+══════════════════════════════════════════════════════════ -->
+<section class="section">
+  <h2><span class="sec-num">Refs</span>References</h2>
+  <ol class="refs">
+    <li><span class="ref-num">[1]</span>Linux kernel documentation: generic IRQ layer — abstraction of interrupt handling for device drivers.</li>
+    <li><span class="ref-num">[2]</span>Linux kernel documentation: NAPI — event handling model where device interrupts schedule NAPI processing.</li>
+    <li><span class="ref-num">[3]</span>Linux kernel documentation: blk-mq — multi-queue block I/O mechanism for high-IOPS storage devices.</li>
+    <li><span class="ref-num">[4]</span>Linux kernel documentation: EEVDF scheduler — fair scheduling using virtual runtime, lag, and virtual deadlines.</li>
+  </ol>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     FOOTER
+══════════════════════════════════════════════════════════ -->
+<footer class="footer">
+  <div class="takeaway">
+    <b>One-line takeaway:</b> In agentic systems, every network reply, disk read, timer, and async I/O completion can sit on the reasoning critical path — the Linux kernel needs agent-aware completion context to make that path predictable.
+  </div>
+  <p style="margin-top:16px; color:var(--ink2);">© 2026 <a href="/" style="color:inherit;">MANISH AI</a>. All rights reserved. <a href="/writings.html" style="color:inherit;">&larr; All writings</a> · <a href="https://github.com/manishklach" style="color:inherit;">GitHub</a></p>
+</footer>
+
+</div><!-- /page -->
+</body>
+</html>
