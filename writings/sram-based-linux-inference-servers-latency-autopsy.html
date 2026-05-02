@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SRAM-Based Linux Inference Servers: A Kernel-Level Latency Autopsy</title>
+  <meta name="description" content="A deep systems post on why SRAM-based inference makes compute deterministic but exposes Linux scheduling, DMA, IRQ, softirq, and wakeup paths as the next inference bottleneck." />
+  <meta name="keywords" content="SRAM inference, Linux kernel, inference latency, DMA, io_uring, IRQ, softirq, scheduler, isolcpus, nohz_full, tail latency, AI infrastructure" />
+  <meta name="author" content="Manish KL" />
+  <meta property="og:title" content="SRAM-Based Linux Inference Servers: A Kernel-Level Latency Autopsy" />
+  <meta property="og:description" content="When compute becomes deterministic, the operating system becomes the problem. A deep dive into syscall, DMA, IRQ, softirq, and scheduler latency in SRAM-based inference servers." />
+  <meta property="og:type" content="article" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <style>
+    :root {
+      --bg: #071018;
+      --panel: #0d1824;
+      --panel2: #111f2e;
+      --text: #e6edf3;
+      --muted: #9fb1c1;
+      --blue: #58a6ff;
+      --cyan: #7ee7ff;
+      --orange: #ffb86b;
+      --red: #ff7b72;
+      --green: #7ee787;
+      --line: #263648;
+      --code: #101923;
+      --shadow: rgba(0,0,0,.28);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(88,166,255,.18), transparent 32rem),
+        radial-gradient(circle at top right, rgba(126,231,255,.12), transparent 30rem),
+        var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Arial, sans-serif;
+      line-height: 1.72;
+    }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 44px 24px 80px;
+    }
+    .hero {
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(13,24,36,.96), rgba(7,16,24,.96));
+      border-radius: 28px;
+      padding: 44px;
+      box-shadow: 0 24px 70px var(--shadow);
+      overflow: hidden;
+      position: relative;
+    }
+    .hero:after {
+      content: "";
+      position: absolute;
+      right: -140px;
+      top: -140px;
+      width: 360px;
+      height: 360px;
+      border-radius: 50%;
+      background: rgba(88,166,255,.12);
+      filter: blur(12px);
+    }
+    .eyebrow {
+      color: var(--cyan);
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      font-size: .82rem;
+    }
+    h1 {
+      font-size: clamp(2.2rem, 5vw, 4.2rem);
+      line-height: 1.04;
+      margin: 14px 0 18px;
+      letter-spacing: -0.05em;
+    }
+    h2 {
+      color: var(--blue);
+      font-size: clamp(1.6rem, 3vw, 2.25rem);
+      margin-top: 56px;
+      line-height: 1.18;
+      letter-spacing: -0.03em;
+    }
+    h3 {
+      color: #a5d6ff;
+      margin-top: 30px;
+      letter-spacing: -0.015em;
+    }
+    p { font-size: 1.05rem; }
+    .lede {
+      font-size: 1.25rem;
+      color: var(--muted);
+      max-width: 830px;
+    }
+    .thesis {
+      margin-top: 28px;
+      padding: 20px 22px;
+      border-left: 4px solid var(--red);
+      background: rgba(255,123,114,.08);
+      border-radius: 16px;
+      font-size: 1.18rem;
+    }
+    section {
+      margin-top: 34px;
+    }
+    .card {
+      background: rgba(13,24,36,.86);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 24px;
+      margin: 24px 0;
+      box-shadow: 0 18px 50px rgba(0,0,0,.18);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+    @media (max-width: 820px) {
+      .grid { grid-template-columns: 1fr; }
+      .hero { padding: 30px 22px; }
+    }
+    pre {
+      background: var(--code);
+      border: 1px solid var(--line);
+      padding: 18px;
+      border-radius: 16px;
+      overflow-x: auto;
+      color: #d9e7f2;
+      line-height: 1.55;
+      font-size: .96rem;
+    }
+    code {
+      background: rgba(16,25,35,.95);
+      border: 1px solid rgba(38,54,72,.9);
+      padding: 2px 6px;
+      border-radius: 7px;
+      color: #d9e7f2;
+    }
+    ul { padding-left: 1.25rem; }
+    li { margin: 7px 0; }
+    .callout {
+      background: rgba(88,166,255,.08);
+      border: 1px solid rgba(88,166,255,.24);
+      border-radius: 18px;
+      padding: 18px 20px;
+      color: #d6e9ff;
+    }
+    .warning {
+      background: rgba(255,184,107,.08);
+      border: 1px solid rgba(255,184,107,.25);
+      border-radius: 18px;
+      padding: 18px 20px;
+    }
+    .punch {
+      color: var(--red);
+      font-weight: 800;
+    }
+    .muted { color: var(--muted); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      background: rgba(13,24,36,.76);
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+    th, td {
+      text-align: left;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th { color: var(--cyan); background: rgba(88,166,255,.08); }
+    tr:last-child td { border-bottom: none; }
+    .svg-wrap {
+      background: linear-gradient(180deg, rgba(17,31,46,.92), rgba(7,16,24,.92));
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 16px;
+      overflow-x: auto;
+      margin: 22px 0;
+    }
+    svg { max-width: 100%; height: auto; display: block; }
+    .caption {
+      color: var(--muted);
+      font-size: .92rem;
+      margin-top: 8px;
+    }
+    .two-col {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 22px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .two-col { grid-template-columns: 1fr; }
+    }
+    .footer {
+      margin-top: 70px;
+      padding-top: 28px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: .95rem;
+    }
+  
+  .site-top {
+    position: sticky;
+    top: 0;
+    z-index: 140;
+    background: rgba(10,11,14,0.92);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 32px;
+  }
+  .site-top-inner {
+    max-width: 820px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .site-mark {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-decoration: none;
+    text-transform: uppercase;
+  }
+  .site-links {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .site-links a {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 0.05em;
+    text-decoration: none;
+    text-transform: uppercase;
+  }
+  .site-links a:hover { color: var(--text); }
+
+</style>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+
+</head>
+
+<body>
+
+<div class="site-top">
+  <div class="site-top-inner">
+    <a class="site-mark" href="/">MANISH AI</a>
+    <div class="site-links">
+      <a href="/writings.html">&larr; Writings</a>
+      <a href="https://github.com/manishklach">GitHub</a>
+    </div>
+  </div>
+</div>
+
+<main>
+  <header class="hero">
+    <div class="eyebrow">Kernel path analysis · SRAM inference · Linux servers</div>
+    <h1>SRAM-Based Linux Inference Servers: A Kernel-Level Latency Autopsy</h1>
+    <p class="lede">
+      SRAM-heavy inference accelerators make the compute path more deterministic.
+      That is exactly why the Linux path around them becomes impossible to ignore.
+      When the device stops being noisy, the host operating system becomes the noise floor.
+    </p>
+    <div class="thesis">
+      <strong>Thesis:</strong> In SRAM-based inference servers, the accelerator may execute predictably,
+      but the request still enters through Linux, leaves through Linux, and waits on Linux.
+      The new bottleneck is the CPU + kernel control plane.
+    </div>
+  </header>
+
+  <section>
+    <h2>1. Why SRAM-Based Inference Feels Different</h2>
+    <p>
+      In traditional inference systems, much of the performance variance is hidden inside memory hierarchy behavior:
+      cache misses, DRAM access patterns, HBM pressure, contention, kernel launch overhead, queueing, and runtime scheduling.
+      In an SRAM-heavy design, more of the working set is moved into fast on-chip memory, and the execution plan is often
+      shaped more aggressively by the compiler or runtime.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <h3>DRAM/HBM-style uncertainty</h3>
+        <ul>
+          <li>External memory access can dominate execution time.</li>
+          <li>Row-buffer locality, bank conflicts, refresh behavior, and queuing can create variable service time.</li>
+          <li>Large memory hierarchies hide latency but do not eliminate it.</li>
+          <li>Runtime scheduling and data movement introduce additional jitter.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>SRAM-heavy inference behavior</h3>
+        <ul>
+          <li>On-chip SRAM access is much more predictable.</li>
+          <li>The compiler/runtime can schedule dataflow more deterministically.</li>
+          <li>There are fewer surprise stalls from external memory.</li>
+          <li>The chip execution window becomes a smaller and more stable part of total latency.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Important nuance:</strong> SRAM does not magically make the whole server deterministic.
+      It makes the accelerator execution path more predictable. The server still has Linux scheduling,
+      interrupts, DMA setup, PCIe/CXL/NIC behavior, memory pinning, and userspace wakeups.
+    </div>
+  </section>
+
+  <section>
+    <h2>2. The End-to-End Request Lifecycle</h2>
+    <p>
+      The inference dataplane may be SRAM-powered, but the request lifecycle is still host-driven.
+      A user request has to be admitted, batched or routed, copied or referenced, submitted to a device queue,
+      completed, and delivered back to userspace.
+    </p>
+
+    <div class="svg-wrap">
+      <svg width="1040" height="315" viewBox="0 0 1040 315" role="img" aria-label="End-to-end inference request path through Linux and SRAM accelerator">
+        <defs>
+          <linearGradient id="g1" x1="0" x2="1">
+            <stop offset="0%" stop-color="#58a6ff" stop-opacity=".95"/>
+            <stop offset="100%" stop-color="#7ee7ff" stop-opacity=".95"/>
+          </linearGradient>
+          <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000" flood-opacity=".35"/>
+          </filter>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L9,3 z" fill="#7ee7ff"/>
+          </marker>
+        </defs>
+        <rect x="20" y="38" width="145" height="72" rx="16" fill="#111f2e" stroke="#263648" filter="url(#shadow)"/>
+        <text x="92" y="70" text-anchor="middle" fill="#e6edf3" font-size="15" font-weight="700">Userspace</text>
+        <text x="92" y="93" text-anchor="middle" fill="#9fb1c1" font-size="12">request thread</text>
+
+        <rect x="215" y="38" width="145" height="72" rx="16" fill="#111f2e" stroke="#263648" filter="url(#shadow)"/>
+        <text x="287" y="70" text-anchor="middle" fill="#e6edf3" font-size="15" font-weight="700">Kernel entry</text>
+        <text x="287" y="93" text-anchor="middle" fill="#9fb1c1" font-size="12">syscall/io_uring</text>
+
+        <rect x="410" y="38" width="145" height="72" rx="16" fill="#111f2e" stroke="#263648" filter="url(#shadow)"/>
+        <text x="482" y="70" text-anchor="middle" fill="#e6edf3" font-size="15" font-weight="700">Driver</text>
+        <text x="482" y="93" text-anchor="middle" fill="#9fb1c1" font-size="12">DMA descriptors</text>
+
+        <rect x="605" y="38" width="145" height="72" rx="16" fill="#0f2a31" stroke="#2f5964" filter="url(#shadow)"/>
+        <text x="677" y="70" text-anchor="middle" fill="#e6edf3" font-size="15" font-weight="700">SRAM fabric</text>
+        <text x="677" y="93" text-anchor="middle" fill="#9fb1c1" font-size="12">deterministic compute</text>
+
+        <rect x="800" y="38" width="145" height="72" rx="16" fill="#111f2e" stroke="#263648" filter="url(#shadow)"/>
+        <text x="872" y="70" text-anchor="middle" fill="#e6edf3" font-size="15" font-weight="700">Completion</text>
+        <text x="872" y="93" text-anchor="middle" fill="#9fb1c1" font-size="12">IRQ / poll / wakeup</text>
+
+        <line x1="165" y1="74" x2="210" y2="74" stroke="#7ee7ff" stroke-width="3" marker-end="url(#arrow)"/>
+        <line x1="360" y1="74" x2="405" y2="74" stroke="#7ee7ff" stroke-width="3" marker-end="url(#arrow)"/>
+        <line x1="555" y1="74" x2="600" y2="74" stroke="#7ee7ff" stroke-width="3" marker-end="url(#arrow)"/>
+        <line x1="750" y1="74" x2="795" y2="74" stroke="#7ee7ff" stroke-width="3" marker-end="url(#arrow)"/>
+
+        <rect x="70" y="170" width="900" height="82" rx="18" fill="#0d1824" stroke="#263648"/>
+        <text x="520" y="198" text-anchor="middle" fill="#ffb86b" font-size="15" font-weight="800">Where latency variance hides</text>
+        <text x="170" y="228" text-anchor="middle" fill="#9fb1c1" font-size="13">scheduler</text>
+        <text x="340" y="228" text-anchor="middle" fill="#9fb1c1" font-size="13">GUP / IOMMU</text>
+        <text x="520" y="228" text-anchor="middle" fill="#7ee787" font-size="13">compute stable</text>
+        <text x="700" y="228" text-anchor="middle" fill="#9fb1c1" font-size="13">IRQ / softirq</text>
+        <text x="870" y="228" text-anchor="middle" fill="#9fb1c1" font-size="13">wakeup delay</text>
+
+        <line x1="92" y1="112" x2="160" y2="170" stroke="#ffb86b" stroke-dasharray="5 5"/>
+        <line x1="482" y1="112" x2="340" y2="170" stroke="#ffb86b" stroke-dasharray="5 5"/>
+        <line x1="677" y1="112" x2="520" y2="170" stroke="#7ee787" stroke-dasharray="5 5"/>
+        <line x1="872" y1="112" x2="760" y2="170" stroke="#ffb86b" stroke-dasharray="5 5"/>
+      </svg>
+      <div class="caption">The accelerator can be deterministic while the server pipeline remains full of variable Linux paths.</div>
+    </div>
+
+    <pre>Userspace inference request
+  → syscall / io_uring
+  → kernel submission path
+  → driver + DMA programming
+  → device execution             // most deterministic part
+  → interrupt or polling completion
+  → softirq / completion handling
+  → scheduler wakeup
+  → userspace continuation</pre>
+  </section>
+
+  <section>
+    <h2>3. Submission Path: Where the Request Enters the Kernel</h2>
+    <p>
+      The submit path is often underestimated. Before an accelerator can read request data safely,
+      the host has to ensure that memory is stable, mapped, and visible to the device. That is where
+      page pinning, IOMMU mapping, descriptor construction, and doorbell writes appear.
+    </p>
+
+    <pre>io_uring_enter()
+  → __do_sys_io_uring_enter()
+    → io_submit_sqes()
+      → io_issue_sqe()
+        → driver submit()
+
+Driver submission:
+  → pin_user_pages()        // formerly discussed as get_user_pages()
+  → dma_map_sg()            // IOMMU translation + DMA visibility
+  → build DMA descriptors
+  → write device doorbell   // PCIe MMIO</pre>
+
+    <div class="two-col">
+      <div>
+        <h3>Why <code>pin_user_pages()</code> matters</h3>
+        <p>
+          DMA cannot safely target arbitrary pageable userspace memory unless the kernel guarantees those pages will not
+          disappear or move during device access. That guarantee costs time: page-table walks, reference count updates,
+          TLB effects, and sometimes page faults or NUMA surprises.
+        </p>
+        <p>
+          On a slow compute path, this overhead may be hidden. On a deterministic SRAM inference path,
+          this overhead can become visible and sometimes dominant.
+        </p>
+      </div>
+      <div class="warning">
+        <strong>Key optimization bridge:</strong><br />
+        Use pre-registration when possible. With <code>IORING_REGISTER_BUFFERS</code>,
+        buffers can be registered ahead of time so the hot request path avoids repeated pinning work.
+        The goal is to pay GUP cost during setup, not per inference request.
+      </div>
+    </div>
+
+    <h3>Submit-path costs that show up in P99</h3>
+    <ul>
+      <li><strong>Page pinning:</strong> page-table walks, page references, and potential TLB/cache disturbance.</li>
+      <li><strong>IOMMU mapping:</strong> address translation setup for the device view of memory.</li>
+      <li><strong>Descriptor construction:</strong> CPU cacheline activity and queue ownership transitions.</li>
+      <li><strong>MMIO doorbell:</strong> posted writes, ordering rules, and PCIe interaction.</li>
+      <li><strong>Queue contention:</strong> multiple submitters fighting over shared rings or locks.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. Completion Path: IRQ → SoftIRQ → Wakeup → Schedule</h2>
+    <p>
+      The completion path is the latency autopsy. People often focus on the interrupt handler, but the ISR itself is
+      usually designed to do minimal work. The expensive and variable work is deferred: softirq processing, completion
+      queue handling, waking the target task, and actually getting that task scheduled.
+    </p>
+
+    <pre>Hardware completion event
+
+→ do_IRQ()
+  → irq_enter()
+  → handle_irq_event()
+    → driver ISR
+       // acknowledge device, collect completion metadata,
+       // defer heavy processing
+  → irq_exit()
+    → __raise_softirq_irqoff()
+
+→ __do_softirq()
+  → net_rx_action() / blk_done_softirq() / driver completion handler
+  → update completion queue
+  → mark userspace-visible completion
+
+→ try_to_wake_up()
+  → ttwu_queue()
+  → sched_ttwu_pending()
+  → enqueue task on runqueue
+
+→ schedule()
+  → pick_next_task_fair()
+  → context_switch()
+
+→ userspace resumes</pre>
+
+    <div class="callout">
+      <strong>Wakeup ≠ execution.</strong> A task can be made runnable and still not run immediately.
+      It must wait behind scheduler policy, runqueue state, CPU affinity, preemption state, interrupts,
+      and whatever else is occupying that core.
+    </div>
+
+    <h3>Why softirq is often the real trap</h3>
+    <p>
+      Softirq is a deferred execution mechanism. It is fast when the system is quiet, but it can become a batching point
+      under load. If a CPU is handling a burst of completions, packets, or block I/O events, the target inference thread
+      may not see completion immediately. The hardware finished. The kernel did not finish delivering that fact to userspace.
+    </p>
+  </section>
+
+  <section>
+    <h2>5. Microsecond-Level Latency Breakdown</h2>
+    <p>
+      Exact numbers depend on CPU generation, kernel version, BIOS settings, IOMMU mode, NUMA placement,
+      interrupt moderation, driver behavior, and load. But the shape of the problem is consistent:
+      Linux overhead can be in the same order of magnitude as the accelerator execution window.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Component</th>
+          <th>Typical range</th>
+          <th>Why it varies</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Syscall entry/exit</td>
+          <td>~0.2–1 µs</td>
+          <td>CPU state, mitigations, cache warmth, syscall type</td>
+        </tr>
+        <tr>
+          <td>Buffer pinning / GUP</td>
+          <td>~2–20+ µs</td>
+          <td>Page-table walks, page faults, NUMA, TLB/cache effects</td>
+        </tr>
+        <tr>
+          <td>DMA / IOMMU mapping</td>
+          <td>~1–10+ µs</td>
+          <td>IOMMU state, scatter-gather length, mapping reuse</td>
+        </tr>
+        <tr>
+          <td>PCIe/MMIO queue doorbell</td>
+          <td>~sub-µs to several µs</td>
+          <td>Ordering, posted writes, bridge behavior, contention</td>
+        </tr>
+        <tr>
+          <td>IRQ delivery</td>
+          <td>~3–15+ µs</td>
+          <td>Interrupt moderation, CPU state, routing, masking</td>
+        </tr>
+        <tr>
+          <td>SoftIRQ / deferred work</td>
+          <td>~5–50+ µs</td>
+          <td>Backlog, NAPI budget, batching, local CPU load</td>
+        </tr>
+        <tr>
+          <td>Scheduler delay</td>
+          <td>~10–200+ µs</td>
+          <td>Runqueue length, CFS/EEVDF decisions, migration, preemption</td>
+        </tr>
+        <tr>
+          <td>Context switch</td>
+          <td>~1–5 µs</td>
+          <td>Cache warmth, TLB effects, task state</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="svg-wrap">
+      <svg width="1040" height="300" viewBox="0 0 1040 300" role="img" aria-label="Latency timeline showing variable Linux components and stable SRAM execution">
+        <defs>
+          <marker id="arrow2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L9,3 z" fill="#9fb1c1"/>
+          </marker>
+        </defs>
+        <line x1="70" y1="238" x2="970" y2="238" stroke="#9fb1c1" stroke-width="2" marker-end="url(#arrow2)"/>
+        <text x="72" y="265" fill="#9fb1c1" font-size="13">request start</text>
+        <text x="900" y="265" fill="#9fb1c1" font-size="13">userspace resumes</text>
+
+        <rect x="80" y="92" width="70" height="58" rx="10" fill="#25364a" stroke="#58a6ff"/>
+        <text x="115" y="126" text-anchor="middle" fill="#e6edf3" font-size="12">syscall</text>
+
+        <rect x="165" y="70" width="135" height="80" rx="10" fill="#3b2b1e" stroke="#ffb86b"/>
+        <text x="232" y="106" text-anchor="middle" fill="#e6edf3" font-size="12">GUP / pin</text>
+        <text x="232" y="126" text-anchor="middle" fill="#9fb1c1" font-size="11">variable</text>
+
+        <rect x="315" y="80" width="105" height="70" rx="10" fill="#3b2b1e" stroke="#ffb86b"/>
+        <text x="367" y="112" text-anchor="middle" fill="#e6edf3" font-size="12">IOMMU</text>
+        <text x="367" y="132" text-anchor="middle" fill="#9fb1c1" font-size="11">mapping</text>
+
+        <rect x="435" y="98" width="80" height="52" rx="10" fill="#25364a" stroke="#58a6ff"/>
+        <text x="475" y="128" text-anchor="middle" fill="#e6edf3" font-size="12">doorbell</text>
+
+        <rect x="535" y="112" width="120" height="38" rx="10" fill="#173b2a" stroke="#7ee787"/>
+        <text x="595" y="136" text-anchor="middle" fill="#e6edf3" font-size="12">SRAM exec</text>
+
+        <rect x="675" y="76" width="105" height="74" rx="10" fill="#3b2b1e" stroke="#ffb86b"/>
+        <text x="727" y="110" text-anchor="middle" fill="#e6edf3" font-size="12">IRQ</text>
+        <text x="727" y="130" text-anchor="middle" fill="#9fb1c1" font-size="11">delivery</text>
+
+        <rect x="795" y="55" width="105" height="95" rx="10" fill="#3b2b1e" stroke="#ffb86b"/>
+        <text x="847" y="96" text-anchor="middle" fill="#e6edf3" font-size="12">softirq</text>
+        <text x="847" y="118" text-anchor="middle" fill="#9fb1c1" font-size="11">backlog</text>
+
+        <rect x="915" y="35" width="85" height="115" rx="10" fill="#451f24" stroke="#ff7b72"/>
+        <text x="957" y="82" text-anchor="middle" fill="#e6edf3" font-size="12">schedule</text>
+        <text x="957" y="104" text-anchor="middle" fill="#9fb1c1" font-size="11">tail</text>
+
+        <text x="520" y="210" fill="#9fb1c1" font-size="14" text-anchor="middle">The green box is stable; the orange/red boxes drive P99 variance.</text>
+      </svg>
+      <div class="caption">A visual timeline of why a stable accelerator can still produce unstable end-to-end latency.</div>
+    </div>
+
+    <p class="punch">
+      The uncomfortable conclusion: SRAM execution can be smaller than the scheduler delay alone.
+    </p>
+  </section>
+
+  <section>
+    <h2>6. Scheduler Effects: The Silent Killer</h2>
+    <p>
+      The scheduler is optimized for fairness, utilization, and general-purpose behavior. Inference serving cares about
+      something narrower: predictable wakeup and bounded tail latency. Those goals often conflict.
+    </p>
+
+    <pre>try_to_wake_up()
+  → task becomes runnable
+  → task is enqueued
+  → scheduler chooses when it actually runs
+  → context_switch()
+  → userspace sees completion</pre>
+
+    <h3>Scheduler-driven latency mechanisms</h3>
+    <ul>
+      <li><strong>Runqueue contention:</strong> the completion thread is runnable but waits behind other work.</li>
+      <li><strong>CPU migration:</strong> the task resumes on a different CPU and loses cache warmth.</li>
+      <li><strong>Preemption windows:</strong> kernel or userspace code may delay when the target can run.</li>
+      <li><strong>Tick behavior:</strong> timer and tick configuration can affect latency distribution.</li>
+      <li><strong>Fairness vs latency:</strong> CFS/EEVDF fairness is not the same as inference deadline control.</li>
+    </ul>
+
+    <div class="warning">
+      <strong>Practical mitigation bridge:</strong> high-performance inference servers often isolate cores using
+      boot/runtime techniques such as <code>isolcpus</code>, <code>nohz_full</code>, IRQ affinity control, and dedicated
+      polling threads. The idea is not that Linux disappears; it is that Linux is kept away from the hottest cores.
+    </div>
+  </section>
+
+  <section>
+    <h2>7. Interrupt Mode vs Polling Mode</h2>
+    <p>
+      Interrupts are efficient when work is sparse. Polling is wasteful but predictable when work is constant.
+      SRAM inference servers often operate in a regime where burning a CPU core to protect P99 can be a rational trade.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Interrupt-driven completion</h3>
+        <ul>
+          <li>Lower idle CPU usage.</li>
+          <li>Better for bursty or low-duty workloads.</li>
+          <li>Completion path crosses IRQ and deferred work.</li>
+          <li>Tail latency depends on interrupt routing and scheduler behavior.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Polling-driven completion</h3>
+        <ul>
+          <li>Higher CPU usage.</li>
+          <li>Better for stable, high-throughput inference service loops.</li>
+          <li>Can avoid IRQ/softirq wakeup chains.</li>
+          <li>Turns latency variance into reserved CPU capacity.</li>
+        </ul>
+      </div>
+    </div>
+
+    <pre>Dedicated polling loop:
+  bind thread to isolated CPU
+  pre-register buffers
+  submit work through shared ring
+  while service is active:
+      poll completion queue
+      process completions immediately
+      submit next ready batch</pre>
+
+    <p>
+      This is why the CPU should not be treated as a passive host. In these servers, the CPU is the timing controller,
+      queue manager, and completion delivery mechanism for the accelerator.
+    </p>
+  </section>
+
+  <section>
+    <h2>8. Tail at Scale: Why Small Delays Explode at P99</h2>
+    <p>
+      The post earlier said variance compounds. More precisely, the server’s tail latency is not determined by one component.
+      It is determined by the slowest unlucky component in the chain. If a request crosses ten stages, and each stage has
+      a small probability of a bad delay, the chance that at least one stage hits a bad delay is much larger than the chance
+      of one isolated delay.
+    </p>
+
+    <div class="callout">
+      This is the classic <strong>Tail at Scale</strong> problem: a small amount of jitter in many parallel or serial
+      components becomes a large end-to-end P99 problem. SRAM reduces variance in compute, but Linux still contributes
+      several independent jitter sources.
+    </div>
+
+    <pre>P50 path:
+  warm thread + no GUP surprise + clean IRQ + empty runqueue
+
+P99 path:
+  GUP slow path + IOMMU churn + IRQ delay + softirq backlog + scheduler wait</pre>
+
+    <p class="punch">
+      If deterministic compute removes the big obvious source of variance, the remaining kernel micro-delays become the new product experience.
+    </p>
+  </section>
+
+  <section>
+    <h2>9. The CPU’s Responsibility in an SRAM-Based Inference Server</h2>
+    <p>
+      In the GPU-era mental model, the CPU “feeds” the accelerator. In the SRAM-inference mental model, that framing is too weak.
+      The CPU is the control-plane engine that determines whether the deterministic dataplane is actually reachable at low latency.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>CPU responsibility</th>
+          <th>Why it matters</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Request admission</td>
+          <td>Prevents queue overload from turning deterministic execution into user-visible tail latency.</td>
+        </tr>
+        <tr>
+          <td>Batch shaping</td>
+          <td>Balances throughput against per-request latency and deadline sensitivity.</td>
+        </tr>
+        <tr>
+          <td>Memory registration</td>
+          <td>Moves GUP/pinning cost out of the hot path using fixed or pre-registered buffers.</td>
+        </tr>
+        <tr>
+          <td>DMA orchestration</td>
+          <td>Controls descriptor layout, queue depth, IOMMU reuse, and device-visible memory flow.</td>
+        </tr>
+        <tr>
+          <td>Core affinity</td>
+          <td>Keeps submission/completion threads on hot, isolated cores.</td>
+        </tr>
+        <tr>
+          <td>Interrupt steering</td>
+          <td>Routes completions away from noisy cores and toward service loops that can act immediately.</td>
+        </tr>
+        <tr>
+          <td>Tail protection</td>
+          <td>Detects backlog, drops or reroutes work, and avoids P99 collapse.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      This is the heart of the argument: the CPU is no longer just a general-purpose host.
+      It is the inference control plane.
+    </p>
+  </section>
+
+  <section>
+    <h2>10. Problem → Mitigation Map</h2>
+    <p>
+      This post is not yet a full redesign proposal, but the mitigation map is already visible.
+      Each kernel cost points toward a specific systems technique.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Problem</th>
+          <th>Kernel-level source</th>
+          <th>Mitigation direction</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Per-request memory pinning</td>
+          <td><code>pin_user_pages()</code>, page-table walks</td>
+          <td><code>IORING_REGISTER_BUFFERS</code>, fixed buffers, pre-pinned DMA pools</td>
+        </tr>
+        <tr>
+          <td>Syscall overhead</td>
+          <td>Repeated kernel entry/exit</td>
+          <td><code>io_uring</code>, SQPOLL-style submission, shared rings</td>
+        </tr>
+        <tr>
+          <td>Completion jitter</td>
+          <td>IRQ + softirq + wakeup</td>
+          <td>Polling, interrupt affinity, completion coalescing tuned for latency</td>
+        </tr>
+        <tr>
+          <td>Scheduler delay</td>
+          <td>Runqueue contention, fairness policy</td>
+          <td><code>isolcpus</code>, <code>nohz_full</code>, CPU affinity, dedicated service cores</td>
+        </tr>
+        <tr>
+          <td>Cache-cold wakeups</td>
+          <td>Task migration and shared CPU noise</td>
+          <td>Pin service threads, avoid migration, partition cores by role</td>
+        </tr>
+        <tr>
+          <td>Tail amplification</td>
+          <td>Independent jitter sources across layers</td>
+          <td>Admission control, bounded queues, deadline-aware dispatch</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>11. Architectural Conclusion</h2>
+    <p>
+      SRAM-based inference changes the system bottleneck by making accelerator execution less mysterious.
+      That is a good thing, but it means the host can no longer hide behind the device.
+    </p>
+
+    <div class="card">
+      <p>
+        The server now looks like this:
+      </p>
+      <pre>Total latency =
+    Linux submission path
+  + DMA and queueing
+  + deterministic SRAM execution
+  + Linux completion path
+  + scheduler wakeup</pre>
+      <p>
+        The stable part is the accelerator. The unstable parts are the paths into and out of it.
+      </p>
+    </div>
+
+    <p class="punch">
+      The bottleneck did not disappear. It moved into the Linux control plane.
+    </p>
+  </section>
+
+  <section>
+    <h2>12. Final Statement</h2>
+    <p>
+      The next phase of inference performance will not be won only by faster dataplanes.
+      It will be won by making the CPU, kernel, driver, DMA, and completion path behave like a deterministic
+      inference pipeline instead of a generic best-effort operating system path.
+    </p>
+
+    <div class="thesis">
+      If you want faster SRAM-based inference servers, do not stop at the chip.
+      Follow the request through Linux: syscall, GUP, DMA, IRQ, softirq, wakeup, and schedule.
+      That is where the next bottleneck lives.
+    </div>
+  </section>
+
+  <footer class="post-footer" style="max-width:820px;margin:80px auto 40px;padding:24px;border-top:1px solid var(--border);color:var(--text3);font-family:var(--mono);font-size:11px;letter-spacing:0.06em;display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+  <div style="display:flex;gap:16px;">
+    <span>SRAM Inference Servers &middot; May 2026</span>
+    <span><a href="/writings.html" style="color:inherit;text-decoration:none;">All writings</a></span>
+  </div>
+  <div>
+    <span>&copy; 2026 <a href="/" style="color:inherit;text-decoration:none;">MANISH AI</a>. All rights reserved. &middot; <a href="https://github.com/manishklach" style="color:inherit;text-decoration:none;">GitHub</a></span>
+  </div>
+</footer>
+</main>
+</body>
+</html>
