@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic AI & the Linux Kernel — Part 1: The Latency Control Plane</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;0,9..144,900;1,9..144,400&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── RESET & TOKENS ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0a0b0e;
+  --bg2:      #0f1117;
+  --bg3:      #161925;
+  --surface:  #1a1f2e;
+  --border:   #252c3f;
+  --border2:  #2e3650;
+  --text:     #e8eaf0;
+  --text2:    #9ba5c0;
+  --text3:    #5a6480;
+  --red:      #ff4757;
+  --orange:   #ff6b35;
+  --yellow:   #ffd166;
+  --green:    #06d6a0;
+  --blue:     #4cc9f0;
+  --purple:   #9b5de5;
+  --accent:   #ff4757;
+  --mono:     'JetBrains Mono', monospace;
+  --serif:    'Fraunces', Georgia, serif;
+  --sans:     'Instrument Sans', sans-serif;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.75;
+  overflow-x: hidden;
+}
+
+/* ── SCANLINE OVERLAY ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,.08) 2px,
+    rgba(0,0,0,.08) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── HERO ── */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 60px 80px;
+  overflow: hidden;
+}
+
+.hero-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,71,87,.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,71,87,.06) 1px, transparent 1px);
+  background-size: 60px 60px;
+  animation: gridDrift 40s linear infinite;
+}
+
+@keyframes gridDrift {
+  from { background-position: 0 0; }
+  to   { background-position: 60px 60px; }
+}
+
+.hero-glow {
+  position: absolute;
+  width: 900px;
+  height: 600px;
+  border-radius: 50%;
+  top: -100px;
+  right: -200px;
+  background: radial-gradient(ellipse, rgba(255,71,87,.12) 0%, transparent 70%);
+  filter: blur(40px);
+}
+
+.hero-glow2 {
+  position: absolute;
+  width: 600px;
+  height: 400px;
+  border-radius: 50%;
+  bottom: 50px;
+  left: -100px;
+  background: radial-gradient(ellipse, rgba(76,201,240,.08) 0%, transparent 70%);
+  filter: blur(40px);
+}
+
+.hero-eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .25em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hero-eyebrow::before {
+  content: '';
+  display: block;
+  width: 32px;
+  height: 1px;
+  background: var(--accent);
+}
+
+.hero h1 {
+  font-family: var(--serif);
+  font-size: clamp(48px, 7vw, 96px);
+  font-weight: 900;
+  line-height: .95;
+  color: #fff;
+  max-width: 800px;
+  margin-bottom: 32px;
+  letter-spacing: -.02em;
+}
+
+.hero h1 em {
+  font-style: italic;
+  font-weight: 300;
+  color: var(--accent);
+}
+
+.hero-sub {
+  font-family: var(--sans);
+  font-size: 18px;
+  color: var(--text2);
+  max-width: 560px;
+  line-height: 1.6;
+  margin-bottom: 40px;
+}
+
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  color: var(--text3);
+}
+.tag.hot { border-color: var(--accent); color: var(--accent); }
+
+/* ── STICKY NAV ── */
+.sidenav {
+  position: fixed;
+  left: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  z-index: 100;
+}
+
+.sidenav a {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border2);
+  transition: all .2s;
+  position: relative;
+}
+.sidenav a:hover, .sidenav a.active {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  width: 6px;
+  height: 24px;
+  border-radius: 3px;
+}
+.sidenav a .nav-label {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  color: var(--text3);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity .2s;
+  pointer-events: none;
+}
+.sidenav a:hover .nav-label { opacity: 1; }
+
+/* ── CONTENT LAYOUT ── */
+.content {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 0 60px;
+}
+
+section {
+  padding: 80px 0 20px;
+  border-top: 1px solid var(--border);
+}
+
+.sec-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sec-label::after {
+  content: '';
+  flex: 0 0 20px;
+  height: 1px;
+  background: var(--accent);
+  opacity: .4;
+}
+
+h2 {
+  font-family: var(--serif);
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 700;
+  line-height: 1.1;
+  color: #fff;
+  margin-bottom: 24px;
+  letter-spacing: -.02em;
+}
+
+h3 {
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 32px 0 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+p {
+  color: var(--text2);
+  margin-bottom: 18px;
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+strong { color: var(--text); font-weight: 600; }
+
+/* ── PULLQUOTE ── */
+.pullquote {
+  border-left: 2px solid var(--accent);
+  margin: 36px 0;
+  padding: 20px 28px;
+  background: rgba(255,71,87,.04);
+}
+.pullquote p {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-style: italic;
+  font-weight: 300;
+  color: var(--text);
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+.pullquote cite {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  letter-spacing: .06em;
+}
+
+/* ── CODE BLOCKS ── */
+.code-block {
+  margin: 24px 0;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.code-header {
+  background: var(--surface);
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+.code-header .lang {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.code-header .dots {
+  display: flex;
+  gap: 6px;
+}
+.code-header .dots span {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+.code-header .dots span:nth-child(1) { background: #ff5f56; }
+.code-header .dots span:nth-child(2) { background: #ffbd2e; }
+.code-header .dots span:nth-child(3) { background: #27c93f; }
+
+pre {
+  background: var(--bg2);
+  padding: 24px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+  color: #c9d1e8;
+}
+
+/* Syntax token colors */
+.kw  { color: #ff6b9d; }      /* keywords: if, while, struct */
+.ty  { color: #4cc9f0; }      /* types: u64, bool, rq */
+.fn  { color: #a8d8a8; }      /* function names */
+.cm  { color: #4a5568; font-style:italic; }  /* comments */
+.st  { color: #ffd166; }      /* strings/macros */
+.nu  { color: #f0a500; }      /* numbers */
+.op  { color: #ff4757; }      /* operators */
+
+/* ── DIAGRAMS (SVG containers) ── */
+.diagram-wrap {
+  margin: 36px 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg2);
+}
+.diagram-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text3);
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.diagram-wrap svg { width: 100%; display: block; }
+.diagram-cap {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  padding: 10px 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── SUBSYSTEM CARDS ── */
+.subsys-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  background: var(--border);
+  margin: 28px 0;
+  border: 1px solid var(--border);
+}
+.subsys-card {
+  background: var(--bg2);
+  padding: 28px;
+  position: relative;
+  overflow: hidden;
+}
+.subsys-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+}
+.subsys-card.sched::before  { background: var(--blue); }
+.subsys-card.dvfs::before   { background: var(--orange); }
+.subsys-card.idle::before   { background: var(--purple); }
+.subsys-card.irq::before    { background: var(--green); }
+
+.subsys-card .sc-num {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  color: var(--text3);
+  margin-bottom: 10px;
+}
+.subsys-card .sc-name {
+  font-family: var(--sans);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.subsys-card .sc-file {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  margin-bottom: 14px;
+}
+.subsys-card p {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.subsys-card .sc-tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 2px;
+  margin-top: 10px;
+  letter-spacing: .06em;
+}
+.subsys-card.sched .sc-tag  { background: rgba(76,201,240,.12); color: var(--blue); }
+.subsys-card.dvfs  .sc-tag  { background: rgba(255,107,53,.12); color: var(--orange); }
+.subsys-card.idle  .sc-tag  { background: rgba(155,93,229,.12); color: var(--purple); }
+.subsys-card.irq   .sc-tag  { background: rgba(6,214,160,.12);  color: var(--green); }
+
+/* ── LATENCY TABLE ── */
+.lat-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 24px 0;
+  font-size: 13px;
+}
+.lat-table th {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text3);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border2);
+  text-align: left;
+  background: var(--surface);
+}
+.lat-table td {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text2);
+  vertical-align: top;
+}
+.lat-table tr:last-child td { border-bottom: none; }
+.lat-table .metric { font-family: var(--mono); font-size: 12px; color: var(--text); font-weight: 500; }
+.lat-table .bad  { color: var(--red); font-family: var(--mono); font-size: 12px; }
+.lat-table .good { color: var(--green); font-family: var(--mono); font-size: 12px; }
+
+/* ── BPFTRACE BLOCK ── */
+.bpf-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: rgba(6,214,160,.06);
+  border-bottom: 1px solid var(--border);
+}
+.bpf-header .bpf-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+.bpf-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: blink 2s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ── MEASUREMENT TABLE ── */
+.measure-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  margin: 24px 0;
+}
+.measure-cell {
+  background: var(--bg2);
+  padding: 20px;
+}
+.measure-cell .mc-val {
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.measure-cell .mc-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 6px;
+}
+.measure-cell .mc-desc {
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.5;
+}
+
+/* ── FOOTER ── */
+.post-footer {
+  margin-top: 80px;
+  padding: 60px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.footer-links a {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text3);
+  text-decoration: none;
+  letter-spacing: .06em;
+  border-bottom: 1px solid var(--border2);
+  padding-bottom: 2px;
+  transition: color .2s, border-color .2s;
+}
+.footer-links a:hover { color: var(--accent); border-color: var(--accent); }
+.footer-copy {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+}
+
+/* ── INLINE FORMULA ── */
+.formula {
+  display: block;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--yellow);
+  background: var(--surface);
+  border-left: 3px solid var(--yellow);
+  padding: 14px 20px;
+  margin: 20px 0;
+  border-radius: 0 4px 4px 0;
+  overflow-x: auto;
+}
+
+/* ── STEP FLOW ── */
+.loop-steps {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin: 28px 0;
+  overflow-x: auto;
+}
+.loop-step {
+  flex: 1;
+  min-width: 120px;
+  padding: 20px 16px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-right: none;
+  position: relative;
+}
+.loop-step:last-child { border-right: 1px solid var(--border); }
+.loop-step::after {
+  content: '→';
+  position: absolute;
+  right: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text3);
+  font-size: 18px;
+  z-index: 1;
+}
+.loop-step:last-child::after { display: none; }
+.loop-step .ls-num {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: .1em;
+  margin-bottom: 6px;
+}
+.loop-step .ls-name {
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.loop-step .ls-sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+}
+.loop-step.ls-wait { border-top: 2px solid var(--blue); }
+.loop-step.ls-wake { border-top: 2px solid var(--orange); }
+.loop-step.ls-comp { border-top: 2px solid var(--green); }
+.loop-step.ls-rep  { border-top: 2px solid var(--accent); }
+
+@media (max-width: 700px) {
+  .hero { padding: 0 24px 60px; }
+  .content { padding: 0 24px; }
+  .subsys-grid { grid-template-columns: 1fr; }
+  .measure-grid { grid-template-columns: 1fr 1fr; }
+  .loop-steps { flex-direction: column; }
+  .loop-step::after { content: '↓'; right: auto; left: 50%; top: auto; bottom: -16px; transform: translateX(-50%); }
+  .sidenav { display: none; }
+}
+  .site-top {
+    position: sticky;
+    top: 0;
+    z-index: 140;
+    background: rgba(10,11,14,0.92);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 32px;
+  }
+  .site-top-inner {
+    max-width: 820px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .site-mark {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-decoration: none;
+    text-transform: uppercase;
+  }
+  .site-links {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .site-links a {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 0.05em;
+    text-decoration: none;
+    text-transform: uppercase;
+  }
+  .site-links a:hover { color: var(--text); }
+</style>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</head>
+<body>
+
+<div class="site-top">
+  <div class="site-top-inner">
+    <a class="site-mark" href="/">MANISH AI</a>
+    <div class="site-links">
+      <a href="/writings.html">&larr; Writings</a>
+      <a href="https://github.com/manishklach">GitHub</a>
+    </div>
+  </div>
+</div>
+
+<!-- SIDE NAV -->
+<nav class="sidenav" aria-hidden="true">
+  <a href="#problem"><span class="nav-label">The Problem</span></a>
+  <a href="#anatomy"><span class="nav-label">Anatomy</span></a>
+  <a href="#design"><span class="nav-label">Kernel Design</span></a>
+  <a href="#subsystems"><span class="nav-label">Subsystems</span></a>
+  <a href="#code"><span class="nav-label">Patch Code</span></a>
+  <a href="#deferred"><span class="nav-label">Deferred</span></a>
+  <a href="#ebpf"><span class="nav-label">eBPF</span></a>
+  <a href="#measure"><span class="nav-label">Measure</span></a>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-glow"></div>
+  <div class="hero-glow2"></div>
+  <div style="position:relative;z-index:1">
+    <div class="hero-eyebrow">Part 1 of N &nbsp;·&nbsp; Linux Kernel Deep Dive &nbsp;·&nbsp; May 2026</div>
+    <h1>Agentic AI<br>and the<br><em>Linux Kernel</em></h1>
+    <p class="hero-sub">Why modern AI agents make the Linux scheduler, DVFS governor, cpuidle, and IRQ path fight each other — and the cross-subsystem patch that fixes it.</p>
+    <div class="hero-meta">
+      <span class="tag hot">RFC Patch Series</span>
+      <span class="tag">scheduler</span>
+      <span class="tag">dvfs · schedutil</span>
+      <span class="tag">cpuidle</span>
+      <span class="tag">irq / wakeup</span>
+      <span class="tag">ebpf observability</span>
+    </div>
+  </div>
+</header>
+
+<!-- MAIN CONTENT -->
+<main class="content">
+
+<!-- SECTION 1: THE PROBLEM -->
+<section id="problem">
+  <div class="sec-label">01 — The Problem</div>
+  <h2>A New Kind of<br>Workload Shape</h2>
+
+  <p>Modern AI agents don't behave like web servers. They don't run continuously, and they don't idle for long periods like batch jobs. They run in <strong>tight sequential control loops</strong> — a form of I/O-bound compute that aggressively triggers every power-management heuristic in the Linux kernel simultaneously.</p>
+
+  <div class="loop-steps">
+    <div class="loop-step ls-wait">
+      <div class="ls-num">01</div>
+      <div class="ls-name">Wait</div>
+      <div class="ls-sub">epoll_wait / io_uring_enter<br>Blocks on async request</div>
+    </div>
+    <div class="loop-step ls-wake">
+      <div class="ls-num">02</div>
+      <div class="ls-name">Wake</div>
+      <div class="ls-sub">IRQ fires → kernel wakes task<br>Entire wake path executes</div>
+    </div>
+    <div class="loop-step ls-comp">
+      <div class="ls-num">03</div>
+      <div class="ls-name">Compute</div>
+      <div class="ls-sub">Parse result, update ctx<br>Often only 50–500 µs</div>
+    </div>
+    <div class="loop-step ls-rep">
+      <div class="ls-num">04</div>
+      <div class="ls-name">Repeat</div>
+      <div class="ls-sub">Submit next request<br>N = thousands of steps</div>
+    </div>
+  </div>
+
+  <p>The compute phase is so short that the kernel's power management treats each wait as an invitation to save power. The CPU drops frequency, enters deep C-states, and may even migrate the task to a cold core. When the next IRQ arrives, every subsystem pays a re-entry penalty simultaneously.</p>
+
+  <div class="pullquote">
+    <p>"Agentic loops expose the gap between reactive DVFS and static uclamp; we need a moving control-plane window."</p>
+    <cite>— github.com/manishklach/kernel-dvfs-agentic-latency</cite>
+  </div>
+
+  <h3>Latency Amplification</h3>
+  <p>Each subsystem penalty is individually small. The catastrophe is multiplication — compounded across every step of a reasoning chain:</p>
+
+  <div class="formula">
+    Latency_total = (T_disk + T_irq + T_sched + T_dvfs + T_idle_exit) × N_steps
+  </div>
+
+  <p>For a 2000-step agent chain with a conservative combined penalty of 300 µs per step, that's <strong>600 ms of pure kernel overhead</strong> — invisible in any single trace, but dominating user-perceived latency at scale.</p>
+
+  <!-- Latency breakdown table -->
+  <table class="lat-table">
+    <thead>
+      <tr>
+        <th>Latency Source</th>
+        <th>Mechanism</th>
+        <th>Without patch</th>
+        <th>With patch</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="metric">Idle exit (C6→C0)</td>
+        <td>cpuidle deep C-state wake</td>
+        <td class="bad">200–500 µs</td>
+        <td class="good">&lt; 10 µs (C1)</td>
+      </tr>
+      <tr>
+        <td class="metric">DVFS ramp</td>
+        <td>schedutil PELT low-pass filter</td>
+        <td class="bad">50–150 µs</td>
+        <td class="good">~0 (floored)</td>
+      </tr>
+      <tr>
+        <td class="metric">Scheduler migration</td>
+        <td>Load balancer to cold CPU</td>
+        <td class="bad">30–80 µs (cache miss)</td>
+        <td class="good">~0 (affinity hint)</td>
+      </tr>
+      <tr>
+        <td class="metric">Wakeup-to-run</td>
+        <td>try_to_wake_up → context switch</td>
+        <td class="bad">15–40 µs</td>
+        <td class="good">5–12 µs</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- SECTION 2: ANATOMY OF THE WAKE PATH -->
+<section id="anatomy">
+  <div class="sec-label">02 — Anatomy</div>
+  <h2>The Complete<br>Wake Path</h2>
+
+  <p>Before writing a single line of kernel code, you must understand the precise sequence of events that occurs between "IRQ fires" and "agent code resumes." Every subsystem in this chain is a potential contributor to latency amplification.</p>
+
+  <!-- Wake path diagram -->
+  <div class="diagram-wrap">
+    <div class="diagram-title">Fig 1 — Linux wake path for an agentic task (annotated)</div>
+    <svg viewBox="0 0 820 520" xmlns="http://www.w3.org/2000/svg" font-family="'JetBrains Mono',monospace">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M2 2L8 5L2 8" fill="none" stroke="#5a6480" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+        <marker id="arr-hot" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M2 2L8 5L2 8" fill="none" stroke="#ff4757" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- Userspace band -->
+      <rect x="0" y="0" width="820" height="80" fill="#0f1117"/>
+      <text x="20" y="24" font-size="9" fill="#5a6480" letter-spacing="2" text-anchor="start">USERSPACE</text>
+      <rect x="100" y="30" width="160" height="36" rx="3" fill="#1a1f2e" stroke="#2e3650" stroke-width="1"/>
+      <text x="180" y="47" font-size="11" fill="#e8eaf0" text-anchor="middle" font-weight="600">Agent Thread</text>
+      <text x="180" y="59" font-size="9" fill="#5a6480" text-anchor="middle">epoll_wait / io_uring</text>
+      <rect x="570" y="30" width="160" height="36" rx="3" fill="#1a1f2e" stroke="#06d6a0" stroke-width="1"/>
+      <text x="650" y="47" font-size="11" fill="#06d6a0" text-anchor="middle" font-weight="600">Resumed</text>
+      <text x="650" y="59" font-size="9" fill="#5a6480" text-anchor="middle">context hot, freq high</text>
+
+      <!-- divider -->
+      <line x1="0" y1="80" x2="820" y2="80" stroke="#252c3f" stroke-width="1" stroke-dasharray="4 4"/>
+      <text x="20" y="100" font-size="9" fill="#5a6480" letter-spacing="2">KERNEL SPACE</text>
+
+      <!-- Step boxes -->
+      <!-- IRQ -->
+      <rect x="30" y="110" width="120" height="60" rx="3" fill="#1a1f2e" stroke="#ff4757" stroke-width="1"/>
+      <text x="90" y="134" font-size="11" fill="#ff4757" text-anchor="middle" font-weight="600">① IRQ</text>
+      <text x="90" y="150" font-size="9" fill="#9ba5c0" text-anchor="middle">Hardware fires</text>
+      <text x="90" y="162" font-size="9" fill="#5a6480" text-anchor="middle">do_IRQ()</text>
+
+      <!-- try_to_wake_up -->
+      <rect x="200" y="110" width="140" height="60" rx="3" fill="#1a1f2e" stroke="#4cc9f0" stroke-width="1"/>
+      <text x="270" y="130" font-size="11" fill="#4cc9f0" text-anchor="middle" font-weight="600">② Wakeup</text>
+      <text x="270" y="147" font-size="9" fill="#9ba5c0" text-anchor="middle">try_to_wake_up()</text>
+      <text x="270" y="162" font-size="9" fill="#5a6480" text-anchor="middle">+ agent window refresh</text>
+
+      <!-- Scheduler -->
+      <rect x="390" y="110" width="130" height="60" rx="3" fill="#1a1f2e" stroke="#4cc9f0" stroke-width="1"/>
+      <text x="455" y="130" font-size="11" fill="#4cc9f0" text-anchor="middle" font-weight="600">③ Scheduler</text>
+      <text x="455" y="147" font-size="9" fill="#9ba5c0" text-anchor="middle">CFS / EEVDF pick</text>
+      <text x="455" y="162" font-size="9" fill="#5a6480" text-anchor="middle">affinity preserved</text>
+
+      <!-- DVFS -->
+      <rect x="570" y="110" width="130" height="60" rx="3" fill="#1a1f2e" stroke="#ff6b35" stroke-width="1"/>
+      <text x="635" y="130" font-size="11" fill="#ff6b35" text-anchor="middle" font-weight="600">④ DVFS</text>
+      <text x="635" y="147" font-size="9" fill="#9ba5c0" text-anchor="middle">schedutil boost</text>
+      <text x="635" y="162" font-size="9" fill="#5a6480" text-anchor="middle">util ≥ agent_min_util</text>
+
+      <!-- cpuidle (below) -->
+      <rect x="200" y="240" width="300" height="60" rx="3" fill="#1a1f2e" stroke="#9b5de5" stroke-width="1"/>
+      <text x="350" y="264" font-size="11" fill="#9b5de5" text-anchor="middle" font-weight="600">⑤ cpuidle governor</text>
+      <text x="350" y="281" font-size="9" fill="#9ba5c0" text-anchor="middle">menu / teo: C-state selection</text>
+      <text x="350" y="296" font-size="9" fill="#5a6480" text-anchor="middle">blocked to C1 if window active</text>
+
+      <!-- rq (shared state) -->
+      <rect x="290" y="360" width="240" height="80" rx="4" fill="rgba(255,71,87,.06)" stroke="#ff4757" stroke-width="1" stroke-dasharray="4 3"/>
+      <text x="410" y="385" font-size="10" fill="#ff4757" text-anchor="middle" letter-spacing="1">rq (per-CPU runqueue)</text>
+      <text x="410" y="402" font-size="9" fill="#9ba5c0" text-anchor="middle">agent_active_until_ns</text>
+      <text x="410" y="416" font-size="9" fill="#9ba5c0" text-anchor="middle">agent_min_util</text>
+      <text x="410" y="430" font-size="9" fill="#5a6480" text-anchor="middle">shared O(1) read by all subsystems</text>
+
+      <!-- Arrows horizontal -->
+      <line x1="150" y1="140" x2="198" y2="140" stroke="#5a6480" stroke-width="1" marker-end="url(#arr)"/>
+      <line x1="340" y1="140" x2="388" y2="140" stroke="#5a6480" stroke-width="1" marker-end="url(#arr)"/>
+      <line x1="520" y1="140" x2="568" y2="140" stroke="#5a6480" stroke-width="1" marker-end="url(#arr)"/>
+
+      <!-- Arrow: DVFS to resumed -->
+      <line x1="635" y1="170" x2="635" y2="22" stroke="#5a6480" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arr)"/>
+
+      <!-- Arrow: wakeup to cpuidle -->
+      <line x1="270" y1="170" x2="270" y2="238" stroke="#9b5de5" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arr)"/>
+
+      <!-- Arrows to rq -->
+      <line x1="350" y1="300" x2="390" y2="358" stroke="#ff4757" stroke-width="1" stroke-dasharray="2 3" opacity=".5" marker-end="url(#arr-hot)"/>
+      <line x1="455" y1="170" x2="420" y2="358" stroke="#ff4757" stroke-width="1" stroke-dasharray="2 3" opacity=".5" marker-end="url(#arr-hot)"/>
+      <line x1="635" y1="170" x2="490" y2="358" stroke="#ff4757" stroke-width="1" stroke-dasharray="2 3" opacity=".5" marker-end="url(#arr-hot)"/>
+
+      <!-- rq label -->
+      <text x="180" y="400" font-size="9" fill="#ff4757" text-anchor="middle" opacity=".7">all subsystems</text>
+      <text x="180" y="412" font-size="9" fill="#ff4757" text-anchor="middle" opacity=".7">read rq state</text>
+
+      <!-- Problem annotations (right side) -->
+      <text x="730" y="128" font-size="9" fill="#ff4757" text-anchor="start">PROBLEM:</text>
+      <text x="730" y="140" font-size="9" fill="#5a6480" text-anchor="start">migrates task</text>
+      <text x="730" y="152" font-size="9" fill="#5a6480" text-anchor="start">to cold CPU</text>
+
+      <text x="730" y="248" font-size="9" fill="#ff4757" text-anchor="start">PROBLEM:</text>
+      <text x="730" y="260" font-size="9" fill="#5a6480" text-anchor="start">selects C6 on</text>
+      <text x="730" y="272" font-size="9" fill="#5a6480" text-anchor="start">long wait</text>
+
+      <line x1="724" y1="140" x2="700" y2="140" stroke="#ff4757" stroke-width=".5" opacity=".4"/>
+      <line x1="724" y1="260" x2="500" y2="275" stroke="#ff4757" stroke-width=".5" opacity=".4"/>
+
+      <!-- Legend -->
+      <rect x="20" y="460" width="10" height="10" fill="none" stroke="#ff4757" stroke-width="1" stroke-dasharray="3 2"/>
+      <text x="36" y="470" font-size="9" fill="#5a6480">shared kernel state (rq)</text>
+      <rect x="180" y="460" width="10" height="1" fill="#5a6480"/>
+      <text x="196" y="465" font-size="9" fill="#5a6480">normal flow</text>
+      <line x1="280" y1="464" x2="290" y2="464" stroke="#ff4757" stroke-width="1" stroke-dasharray="2 2"/>
+      <text x="296" y="468" font-size="9" fill="#5a6480">patch-introduced reads</text>
+    </svg>
+    <div class="diagram-cap">▲ The wake path from IRQ to userspace resumption. Our patch adds a shared rq state (agent_active_until_ns, agent_min_util) that all four subsystems read in O(1) time.</div>
+  </div>
+
+  <h3>Why existing solutions fail</h3>
+  <p><strong>uclamp</strong> sets a static utilization floor — it cannot adapt to the "open/closed" nature of the control loop window. If you set uclamp_min high enough to prevent DVFS sagging, you waste power during long waits. <strong>schedutil</strong> is purely reactive: PELT decays exponentially, so a short burst after a long sleep produces near-zero utilization, resulting in minimum frequency at the exact moment compute is most critical. <strong>The menu/teo cpuidle governors</strong> correctly predict that the task will sleep for a while (it's waiting on an API call), and correctly select deep C-states — which then produce multi-hundred-microsecond exit latencies for the next step.</p>
+</section>
+
+<!-- SECTION 3: KERNEL DESIGN -->
+<section id="design">
+  <div class="sec-label">03 — Kernel Design</div>
+  <h2>The Active<br>Window Model</h2>
+
+  <p>The core insight is to model the agentic control loop as a <strong>moving time-bounded window</strong>. When an IRQ wakes an agent task, we arm a window of duration <code>agent_window_ns</code> on the runqueue. While the window is open, all four power management subsystems operate in a "stay warm" mode. When the loop pauses or the window expires without renewal, power management resumes immediately — so we don't waste energy.</p>
+
+  <!-- Window state machine diagram -->
+  <div class="diagram-wrap">
+    <div class="diagram-title">Fig 2 — Agent window state machine</div>
+    <svg viewBox="0 0 820 220" xmlns="http://www.w3.org/2000/svg" font-family="'JetBrains Mono',monospace">
+      <defs>
+        <marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M2 2L8 5L2 8" fill="none" stroke="#5a6480" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+        <marker id="a2r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M2 2L8 5L2 8" fill="none" stroke="#ff4757" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+        <marker id="a2g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M2 2L8 5L2 8" fill="none" stroke="#06d6a0" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+
+      <!-- IDLE state -->
+      <circle cx="100" cy="110" r="50" fill="rgba(155,93,229,.1)" stroke="#9b5de5" stroke-width="1.5"/>
+      <text x="100" y="106" font-size="11" fill="#9b5de5" text-anchor="middle" font-weight="600">IDLE</text>
+      <text x="100" y="120" font-size="9" fill="#5a6480" text-anchor="middle">window expired</text>
+      <text x="100" y="132" font-size="9" fill="#5a6480" text-anchor="middle">PM free to run</text>
+
+      <!-- ACTIVE state -->
+      <circle cx="410" cy="110" r="60" fill="rgba(255,71,87,.1)" stroke="#ff4757" stroke-width="2"/>
+      <text x="410" y="104" font-size="12" fill="#ff4757" text-anchor="middle" font-weight="600">ACTIVE</text>
+      <text x="410" y="120" font-size="9" fill="#9ba5c0" text-anchor="middle">window open</text>
+      <text x="410" y="134" font-size="9" fill="#5a6480" text-anchor="middle">cpuidle ≤ C1</text>
+      <text x="410" y="146" font-size="9" fill="#5a6480" text-anchor="middle">util ≥ agent_min</text>
+
+      <!-- EXPIRED state -->
+      <circle cx="720" cy="110" r="50" fill="rgba(90,100,128,.08)" stroke="#5a6480" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text x="720" y="106" font-size="11" fill="#5a6480" text-anchor="middle" font-weight="600">EXPIRED</text>
+      <text x="720" y="120" font-size="9" fill="#5a6480" text-anchor="middle">no renewal</text>
+      <text x="720" y="132" font-size="9" fill="#5a6480" text-anchor="middle">→ back to idle</text>
+
+      <!-- Transitions -->
+      <!-- IDLE -> ACTIVE (IRQ wakeup) -->
+      <path d="M 148 90 Q 250 40 348 90" fill="none" stroke="#ff4757" stroke-width="1.5" marker-end="url(#a2r)"/>
+      <text x="248" y="48" font-size="9" fill="#ff4757" text-anchor="middle">IRQ wakeup</text>
+      <text x="248" y="60" font-size="9" fill="#5a6480" text-anchor="middle">task_agent_refresh_window()</text>
+
+      <!-- ACTIVE -> EXPIRED (no renewal) -->
+      <path d="M 470 90 Q 590 40 668 90" fill="none" stroke="#5a6480" stroke-width="1.5" marker-end="url(#a2)"/>
+      <text x="570" y="48" font-size="9" fill="#5a6480" text-anchor="middle">window_ns elapsed</text>
+      <text x="570" y="60" font-size="9" fill="#5a6480" text-anchor="middle">no new wakeup</text>
+
+      <!-- ACTIVE self-loop (repeated wakeup) -->
+      <path d="M 450 60 Q 530 10 370 60" fill="none" stroke="#ff4757" stroke-width="1.5" marker-end="url(#a2r)"/>
+      <text x="410" y="18" font-size="9" fill="#ff4757" text-anchor="middle">wakeup within window</text>
+      <text x="410" y="30" font-size="9" fill="#5a6480" text-anchor="middle">→ window extended</text>
+
+      <!-- EXPIRED -> IDLE -->
+      <path d="M 670 130 Q 590 180 150 130" fill="none" stroke="#9b5de5" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#a2)"/>
+      <text x="410" y="195" font-size="9" fill="#5a6480" text-anchor="middle">no wakeup for &gt; window_ns → power management resumes</text>
+    </svg>
+    <div class="diagram-cap">▲ The window is armed on every agent wakeup. Repeated wakeups within the window extend it. If the loop pauses, the window expires and PM resumes immediately — zero energy waste.</div>
+  </div>
+
+  <h3>task_struct additions</h3>
+  <p>We add two new fields to <code>struct task_struct</code>. These are the per-task configuration set once by userspace via <code>sched_setattr(2)</code>. Placing them here keeps the hot-path read on the runqueue, not per-task:</p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="dots"><span></span><span></span><span></span></div>
+      <div class="lang">kernel/sched/sched.h (task_struct additions)</div>
+    </div>
+    <pre><span class="cm">/* include/linux/sched.h — added inside struct task_struct */</span>
+
+<span class="cm">/**
+ * agent_window_ns: duration in nanoseconds the "active window"
+ * stays armed after each wakeup.  Set by userspace via sched_setattr().
+ * 0 means feature disabled (default for all tasks).
+ *
+ * agent_min_util: minimum utilization signal (0–1024 SCHED_CAPACITY_SCALE)
+ * injected into schedutil while the window is open.
+ */</span>
+<span class="ty">u64</span>    agent_window_ns;   <span class="cm">/* e.g. 5000000 = 5 ms window    */</span>
+<span class="ty">u32</span>    agent_min_util;    <span class="cm">/* e.g. 512 = 50% of max freq    */</span></pre>
+  </div>
+
+  <h3>rq additions (hot path)</h3>
+  <p>The runqueue is the per-CPU synchronization point that the scheduler, schedutil, and cpuidle all already touch on every scheduling event. Adding two fields here enables O(1) reads from all subsystems without any locking:</p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="dots"><span></span><span></span><span></span></div>
+      <div class="lang">kernel/sched/sched.h (struct rq additions)</div>
+    </div>
+    <pre><span class="cm">/* kernel/sched/sched.h — added inside struct rq */</span>
+
+<span class="ty">u64</span>    agent_active_until_ns;  <span class="cm">/* ktime_get() deadline          */</span>
+<span class="ty">u32</span>    agent_min_util;         <span class="cm">/* currently asserted util floor */</span>
+
+<span class="cm">/* Helper: is the agent window currently open?
+ * Called from schedutil and cpuidle — must be lockless and O(1). */</span>
+<span class="kw">static inline</span> <span class="ty">bool</span> <span class="fn">rq_agent_window_active</span>(<span class="kw">const</span> <span class="ty">struct</span> rq *rq, <span class="ty">u64</span> now)
+{
+    <span class="kw">return</span> rq->agent_active_until_ns != <span class="nu">0</span> &amp;&amp; now &lt; rq->agent_active_until_ns;
+}</pre>
+  </div>
+</section>
+
+<!-- SECTION 4: FOUR SUBSYSTEM PATCHES -->
+<section id="subsystems">
+  <div class="sec-label">04 — Four Subsystems</div>
+  <h2>Cross-Subsystem<br>Integration</h2>
+
+  <p>The patch touches exactly four files in the Linux kernel. Each change is minimal and self-contained — the design philosophy is to inject into the existing decision point rather than bypass it:</p>
+
+  <div class="subsys-grid">
+    <div class="subsys-card sched">
+      <div class="sc-num">PATCH 1 OF 4</div>
+      <div class="sc-name">Scheduler</div>
+      <div class="sc-file">kernel/sched/core.c</div>
+      <p>In <code>try_to_wake_up()</code>, when the waking task has <code>agent_window_ns &gt; 0</code>, call <code>task_agent_refresh_window()</code> to arm the rq deadline. Also sets a wakeup-affinity hint to prefer the task's previous CPU, preserving L1/L2 cache state.</p>
+      <span class="sc-tag">SCHED_FLAG_AGENT_LATENCY</span>
+    </div>
+    <div class="subsys-card dvfs">
+      <div class="sc-num">PATCH 2 OF 4</div>
+      <div class="sc-name">DVFS / schedutil</div>
+      <div class="sc-file">kernel/sched/cpufreq_schedutil.c</div>
+      <p>In <code>sugov_update_single_freq()</code>, intercept the raw PELT utilization before it's sent to the cpufreq driver. If the agent window is active, enforce <code>util = max(util, rq→agent_min_util)</code>. This bypasses the PELT decay filter for the duration of the window.</p>
+      <span class="sc-tag">util floor</span>
+    </div>
+    <div class="subsys-card idle">
+      <div class="sc-num">PATCH 3 OF 4</div>
+      <div class="sc-name">cpuidle Governor</div>
+      <div class="sc-file">drivers/cpuidle/cpuidle.c</div>
+      <p>In <code>cpuidle_enter_state()</code>, after the governor selects a C-state, check the agent window. If active, walk down from the selected C-state index until <code>exit_latency ≤ AGENT_LATENCY_IDLE_EXIT_LIMIT_US</code>. Ensures worst-case idle exit latency is bounded to ~10 µs (C1).</p>
+      <span class="sc-tag">C-state cap</span>
+    </div>
+    <div class="subsys-card irq">
+      <div class="sc-num">PATCH 4 OF 4</div>
+      <div class="sc-name">IRQ / Wakeup</div>
+      <div class="sc-file">kernel/sched/core.c</div>
+      <p>Window refresh happens inside <code>try_to_wake_up()</code>, which executes in IRQ or softirq context. This is the earliest possible moment — the CPU state is being warmed <em>before</em> the context switch completes, not after. This eliminates the "too late to help" problem of post-switch hooks.</p>
+      <span class="sc-tag">pre-ctx-switch</span>
+    </div>
+  </div>
+</section>
+
+<!-- SECTION 5: PATCH CODE -->
+<section id="code">
+  <div class="sec-label">05 — Patch Code</div>
+  <h2>The Actual<br>Kernel Diff</h2>
+
+  <h3>Userspace opt-in via sched_setattr()</h3>
+  <p>No agent changes its behavior without explicitly opting in. The flag is namespaced under <code>SCHED_FLAG_AGENT_LATENCY</code> in the existing <code>sched_attr</code> struct:</p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="dots"><span></span><span></span><span></span></div>
+      <div class="lang">C — userspace agent opt-in (selftests/agent_loop.c)</div>
+    </div>
+    <pre><span class="cm">/* Opt the current thread into agent latency mode.
+ * agent_window_ns: how long to keep the CPU warm after each wakeup.
+ * agent_min_util: minimum utilization floor (0–1024).               */</span>
+<span class="kw">static int</span> <span class="fn">set_agent_latency</span>(<span class="ty">u64</span> window_ns, <span class="ty">u32</span> min_util)
+{
+    <span class="ty">struct</span> sched_attr attr = {
+        .size        = <span class="kw">sizeof</span>(attr),
+        .sched_flags = SCHED_FLAG_AGENT_LATENCY,  <span class="cm">/* new flag */</span>
+        .sched_agent_window_ns  = window_ns,
+        .sched_agent_min_util   = min_util,
+    };
+    <span class="kw">return</span> <span class="fn">syscall</span>(SYS_sched_setattr, <span class="nu">0</span>, &amp;attr, <span class="nu">0</span>);
+}
+
+<span class="kw">int</span> <span class="fn">main</span>(<span class="kw">void</span>)
+{
+    <span class="cm">/* 5 ms window, 50% minimum frequency floor */</span>
+    <span class="fn">set_agent_latency</span>(<span class="nu">5000000ULL</span>, <span class="nu">512</span>);
+
+    <span class="kw">while</span> (<span class="nu">1</span>) {
+        <span class="cm">/* submit async work (io_uring, GPU dispatch, etc.) */</span>
+        <span class="fn">io_uring_submit</span>(&ring, sqe);
+
+        <span class="cm">/* block until completion — kernel stays warm for us */</span>
+        <span class="fn">io_uring_wait_cqe</span>(&ring, &cqe);
+
+        <span class="cm">/* fast compute: kernel CPU is already at target freq */</span>
+        <span class="fn">process_result</span>(cqe);
+    }
+}</pre>
+  </div>
+
+  <h3>Window refresh in try_to_wake_up()</h3>
+  <div class="code-block">
+    <div class="code-header">
+      <div class="dots"><span></span><span></span><span></span></div>
+      <div class="lang">C — kernel/sched/core.c (patch excerpt)</div>
+    </div>
+    <pre><span class="cm">/* In try_to_wake_up(), after the task is placed on the runqueue
+ * and before the IRQ handler returns.
+ * Executes in IRQ / softirq context — must be lock-free and fast.  */</span>
+
+<span class="kw">static inline void</span> <span class="fn">task_agent_refresh_window</span>(<span class="ty">struct</span> rq *rq,
+                                              <span class="ty">struct</span> task_struct *p)
+{
+    <span class="ty">u64</span> now, deadline;
+
+    <span class="kw">if</span> (!p->agent_window_ns)          <span class="cm">/* not an agent task: fast-exit */</span>
+        <span class="kw">return</span>;
+
+    now      = <span class="fn">ktime_get_ns</span>();
+    deadline = now + p->agent_window_ns;
+
+    <span class="cm">/* Extend or arm the window — always push out the deadline. */</span>
+    WRITE_ONCE(rq->agent_active_until_ns, deadline);
+    WRITE_ONCE(rq->agent_min_util,        p->agent_min_util);
+
+    <span class="cm">/* Hint: prefer to wake on the task's last CPU to keep cache hot. */</span>
+    <span class="fn">set_task_cpu</span>(p, p->wake_cpu);
+}
+
+<span class="cm">/* In the main try_to_wake_up() body — add a single call: */</span>
+<span class="fn">task_agent_refresh_window</span>(__this_cpu_ptr(&runqueues), p);</pre>
+  </div>
+
+  <h3>schedutil DVFS boost hook</h3>
+  <div class="code-block">
+    <div class="code-header">
+      <div class="dots"><span></span><span></span><span></span></div>
+      <div class="lang">C — kernel/sched/cpufreq_schedutil.c (patch excerpt)</div>
+    </div>
+    <pre><span class="cm">/* sugov_update_single_freq() — called by schedutil every DVFS tick.
+ * 'util' is the raw PELT utilization signal.
+ * We intercept it before it reaches the cpufreq driver.             */</span>
+
+<span class="kw">static void</span> <span class="fn">sugov_update_single_freq</span>(<span class="ty">struct</span> update_util_data *hook,
+                                     <span class="ty">u64</span> time, <span class="ty">unsigned int</span> flags)
+{
+    <span class="ty">struct</span> sugov_cpu *sg_cpu = container_of(hook, ...);
+    <span class="ty">struct</span> rq        *rq     = cpu_rq(sg_cpu->cpu);
+    <span class="ty">unsigned long</span>     util   = <span class="fn">cpu_util_cfs</span>(rq);   <span class="cm">/* raw PELT */</span>
+
+    <span class="cm">/* ── AGENT LATENCY PATCH ── */</span>
+    <span class="kw">if</span> (<span class="fn">rq_agent_window_active</span>(rq, time))
+        util = <span class="fn">max</span>(util, (<span class="ty">unsigned long</span>)rq->agent_min_util);
+    <span class="cm">/* ── END PATCH ── */</span>
+
+    <span class="ty">unsigned long</span> freq = <span class="fn">map_util_freq</span>(util, sg_cpu->max,
+                                        sg_cpu->max_cap);
+    <span class="fn">cpufreq_driver_fast_switch</span>(policy, freq);
+}</pre>
+  </div>
+
+  <h3>cpuidle C-state cap</h3>
+  <div class="code-block">
+    <div class="code-header">
+      <div class="dots"><span></span><span></span><span></span></div>
+      <div class="lang">C — drivers/cpuidle/cpuidle.c (patch excerpt)</div>
+    </div>
+    <pre><span class="cm">/* cpuidle_enter_state() — called just before the CPU halts.
+ * 'index' is the C-state the governor selected (e.g. C6).
+ * We veto deep states when the agent window is still open.          */</span>
+
+<span class="kw">int</span> <span class="fn">cpuidle_enter_state</span>(<span class="ty">struct</span> cpuidle_device *dev,
+                        <span class="ty">struct</span> cpuidle_driver *drv, <span class="ty">int</span> index)
+{
+    <span class="ty">struct</span> rq *rq  = this_rq();
+    <span class="ty">u64</span>        now = <span class="fn">ktime_get_ns</span>();
+
+    <span class="cm">/* ── AGENT LATENCY PATCH ── */</span>
+    <span class="kw">if</span> (<span class="fn">rq_agent_window_active</span>(rq, now)) {
+        <span class="kw">while</span> (index > <span class="nu">0</span> &amp;&amp;
+               drv->states[index].exit_latency > AGENT_LATENCY_IDLE_EXIT_LIMIT_US)
+            index--;
+        <span class="cm">/* index now points to C1 or C0 — exit latency &lt; 10 µs */</span>
+    }
+    <span class="cm">/* ── END PATCH ── */</span>
+
+    <span class="kw">return</span> drv->states[index].<span class="fn">enter</span>(dev, drv, index);
+}</pre>
+  </div>
+</section>
+
+<!-- SECTION 6: DEFERRED COMPLETION -->
+<section id="deferred">
+  <div class="sec-label">06 — Deferred Paths</div>
+  <h2>The kworker<br>Problem</h2>
+
+  <p>Agent latency isn't only caused by direct hardware IRQs. In modern kernels, many completions are deferred through workqueues or hrtimer SoftIRQ callbacks. A kworker thread may execute the agent's completion on behalf of an I/O subsystem — meaning the wakeup path is longer and the window can be armed at the wrong moment.</p>
+
+  <!-- Deferred path diagram -->
+  <div class="diagram-wrap">
+    <div class="diagram-title">Fig 3 — Direct vs deferred completion paths</div>
+    <svg viewBox="0 0 820 300" xmlns="http://www.w3.org/2000/svg" font-family="'JetBrains Mono',monospace">
+      <defs>
+        <marker id="a3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M2 2L8 5L2 8" fill="none" stroke="#5a6480" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+        <marker id="a3g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M2 2L8 5L2 8" fill="none" stroke="#ffd166" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+
+      <!-- PATH A: Direct -->
+      <text x="30" y="40" font-size="9" fill="#06d6a0" letter-spacing="1">PATH A: DIRECT (fast)</text>
+      <rect x="30" y="50" width="90" height="36" rx="2" fill="#1a1f2e" stroke="#06d6a0" stroke-width="1"/>
+      <text x="75" y="65" font-size="9" fill="#06d6a0" text-anchor="middle">Hardware IRQ</text>
+      <text x="75" y="78" font-size="9" fill="#5a6480" text-anchor="middle">do_IRQ()</text>
+      <line x1="120" y1="68" x2="148" y2="68" stroke="#5a6480" stroke-width="1" marker-end="url(#a3)"/>
+      <rect x="150" y="50" width="90" height="36" rx="2" fill="#1a1f2e" stroke="#5a6480" stroke-width="1"/>
+      <text x="195" y="68" font-size="9" fill="#9ba5c0" text-anchor="middle">try_to_wake_up</text>
+      <line x1="240" y1="68" x2="268" y2="68" stroke="#5a6480" stroke-width="1" marker-end="url(#a3)"/>
+      <rect x="270" y="50" width="90" height="36" rx="2" fill="rgba(6,214,160,.1)" stroke="#06d6a0" stroke-width="1"/>
+      <text x="315" y="65" font-size="9" fill="#06d6a0" text-anchor="middle">Agent woken</text>
+      <text x="315" y="78" font-size="9" fill="#5a6480" text-anchor="middle">window armed ✓</text>
+
+      <!-- PATH B: Deferred via workqueue -->
+      <text x="30" y="140" font-size="9" fill="#ffd166" letter-spacing="1">PATH B: DEFERRED via kworker (needs fix)</text>
+      <rect x="30" y="150" width="90" height="36" rx="2" fill="#1a1f2e" stroke="#ffd166" stroke-width="1"/>
+      <text x="75" y="167" font-size="9" fill="#ffd166" text-anchor="middle">Hardware IRQ</text>
+      <text x="75" y="178" font-size="9" fill="#5a6480" text-anchor="middle">do_IRQ()</text>
+      <line x1="120" y1="168" x2="148" y2="168" stroke="#5a6480" stroke-width="1" marker-end="url(#a3)"/>
+      <rect x="150" y="150" width="90" height="36" rx="2" fill="#1a1f2e" stroke="#ff6b35" stroke-width="1"/>
+      <text x="195" y="165" font-size="9" fill="#ff6b35" text-anchor="middle">queue_work()</text>
+      <text x="195" y="178" font-size="9" fill="#5a6480" text-anchor="middle">schedule kworker</text>
+      <line x1="240" y1="168" x2="268" y2="168" stroke="#5a6480" stroke-width="1" marker-end="url(#a3)"/>
+      <rect x="270" y="150" width="90" height="36" rx="2" fill="#1a1f2e" stroke="#ff6b35" stroke-width="1"/>
+      <text x="315" y="165" font-size="9" fill="#ff6b35" text-anchor="middle">kworker runs</text>
+      <text x="315" y="178" font-size="9" fill="#5a6480" text-anchor="middle">processes I/O</text>
+      <line x1="360" y1="168" x2="388" y2="168" stroke="#5a6480" stroke-width="1" marker-end="url(#a3)"/>
+      <rect x="390" y="150" width="90" height="36" rx="2" fill="#1a1f2e" stroke="#5a6480" stroke-width="1"/>
+      <text x="435" y="165" font-size="9" fill="#9ba5c0" text-anchor="middle">try_to_wake_up</text>
+      <text x="435" y="178" font-size="9" fill="#5a6480" text-anchor="middle">finally wakes agent</text>
+
+      <!-- Problem annotation -->
+      <rect x="270" y="195" width="210" height="30" rx="2" fill="rgba(255,71,87,.06)" stroke="#ff4757" stroke-width=".5"/>
+      <text x="375" y="210" font-size="9" fill="#ff4757" text-anchor="middle">kworker doesn't inherit agent context</text>
+      <text x="375" y="222" font-size="9" fill="#5a6480" text-anchor="middle">→ kworker may run at low freq / deep idle</text>
+
+      <!-- PATH C: Deferred + fix -->
+      <text x="30" y="255" font-size="9" fill="#4cc9f0" letter-spacing="1">PATH C: DEFERRED + CONTEXT INHERITANCE (proposed fix)</text>
+      <rect x="150" y="263" width="90" height="28" rx="2" fill="#1a1f2e" stroke="#4cc9f0" stroke-width="1"/>
+      <text x="195" y="274" font-size="9" fill="#4cc9f0" text-anchor="middle">queue_work()</text>
+      <text x="195" y="284" font-size="9" fill="#5a6480" text-anchor="middle">+ agent_ctx tag</text>
+      <line x1="240" y1="277" x2="268" y2="277" stroke="#4cc9f0" stroke-width="1" marker-end="url(#a3g)"/>
+      <rect x="270" y="263" width="90" height="28" rx="2" fill="rgba(76,201,240,.08)" stroke="#4cc9f0" stroke-width="1"/>
+      <text x="315" y="274" font-size="9" fill="#4cc9f0" text-anchor="middle">kworker inherits</text>
+      <text x="315" y="284" font-size="9" fill="#5a6480" text-anchor="middle">agent window ✓</text>
+    </svg>
+    <div class="diagram-cap">▲ Path B is the common case for io_uring + NVMe completions. The kworker thread must inherit the originating agent's latency context to ensure it runs at elevated frequency.</div>
+  </div>
+
+  <p>The proposed fix tags the <code>work_struct</code> with the originating task's agent context at queue time. When the kworker picks up the work item, it checks for an inherited agent tag and arms a window on its own runqueue before executing the work function. This ensures the kworker itself runs fast — and the subsequent agent wakeup it triggers also finds the CPU already warm.</p>
+</section>
+
+<!-- SECTION 7: eBPF TRACING -->
+<section id="ebpf">
+  <div class="sec-label">07 — Observability</div>
+  <h2>Measuring with<br>eBPF</h2>
+
+  <p>Kernel patches without observability are hypotheses, not engineering. The repository ships three bpftrace scripts that measure every stage of the wake path independently, allowing precise attribution of which subsystem is consuming the latency budget.</p>
+
+  <h3>Script 1 — wakeup_to_run latency histogram</h3>
+  <div class="code-block">
+    <div class="code-header">
+      <div class="bpf-dot"></div>
+      <div class="bpf-label">eBPF / bpftrace — tools/bpftrace/wakeup_to_run.bt</div>
+    </div>
+    <pre><span class="cm">#!/usr/bin/bpftrace
+/* Measures wakeup-to-run latency for agent-flagged tasks.
+ * Attach: sudo bpftrace wakeup_to_run.bt                           */</span>
+
+<span class="st">kprobe:try_to_wake_up</span>
+{
+    $task = (struct task_struct *)arg0;
+    <span class="kw">if</span> ($task->sched_flags & SCHED_FLAG_AGENT_LATENCY) {
+        @wake_ts[$task->pid] = nsecs;
+    }
+}
+
+<span class="st">kprobe:finish_task_switch</span>
+{
+    $prev = (struct task_struct *)arg0;
+    $ts   = @wake_ts[pid];           <span class="cm">/* pid of incoming task */</span>
+    <span class="kw">if</span> ($ts) {
+        @wakeup_latency_us = hist((nsecs - $ts) / <span class="nu">1000</span>);
+        delete(@wake_ts[pid]);
+    }
+}
+
+<span class="st">END</span> { print(@wakeup_latency_us); clear(@wake_ts); }</pre>
+  </div>
+
+  <h3>Script 2 — DVFS ramp time (freq vs. time)</h3>
+  <div class="code-block">
+    <div class="code-header">
+      <div class="bpf-dot"></div>
+      <div class="bpf-label">eBPF / bpftrace — tools/bpftrace/dvfs_ramp.bt</div>
+    </div>
+    <pre><span class="cm">#!/usr/bin/bpftrace
+/* Tracks CPU frequency on the agent's CPU vs. elapsed wall time.
+ * Run alongside the agent loop to visualise DVFS sagging.          */</span>
+
+<span class="st">kprobe:cpufreq_driver_fast_switch</span>
+{
+    $cpu  = arg0;
+    $freq = arg1;  <span class="cm">/* kHz */</span>
+
+    <span class="kw">if</span> ($cpu == <span class="fn">cpu</span>()) {
+        printf(<span class="st">"t=%llu freq=%u\n"</span>, nsecs, $freq);
+        @freq_khz = hist($freq);
+    }
+}
+
+<span class="st">END</span> { print(@freq_khz); }</pre>
+  </div>
+
+  <h3>Script 3 — cpuidle C-state audit</h3>
+  <div class="code-block">
+    <div class="code-header">
+      <div class="bpf-dot"></div>
+      <div class="bpf-label">eBPF / bpftrace — tools/bpftrace/cstate_audit.bt</div>
+    </div>
+    <pre><span class="cm">#!/usr/bin/bpftrace
+/* Records which C-state is entered before each agent wakeup.
+ * Deep C-states (C6+) with exit_latency > 100 µs are flagged.     */</span>
+
+<span class="st">kprobe:cpuidle_enter_state</span>
+{
+    $dev   = (struct cpuidle_device *)arg0;
+    $drv   = (struct cpuidle_driver *)arg1;
+    $index = arg2;
+    $lat   = $drv->states[$index].exit_latency;   <span class="cm">/* µs */</span>
+
+    @cstate_hist = hist($index);
+    @exit_lat_us = hist($lat);
+
+    <span class="kw">if</span> ($lat > <span class="nu">100</span>) {
+        @deep_sleeps = count();
+        printf(<span class="st">"DEEP: cpu=%d C-state=%d exit_lat=%d µs\n"</span>,
+               $dev->cpu, $index, $lat);
+    }
+}
+
+<span class="st">END</span> {
+    print(@cstate_hist);
+    print(@exit_lat_us);
+    printf(<span class="st">"Total deep-sleep entries: %llu\n"</span>, @deep_sleeps);
+}</pre>
+  </div>
+</section>
+
+<!-- SECTION 8: MEASUREMENT -->
+<section id="measure">
+  <div class="sec-label">08 — Measurement</div>
+  <h2>Benchmark<br>Protocol</h2>
+
+  <p>Subjective before/after comparisons are insufficient for kernel patches. The measurement plan specifies exact metrics, collection methods, and statistical requirements to produce publishable results:</p>
+
+  <div class="measure-grid">
+    <div class="measure-cell">
+      <div class="mc-label">Metric 1</div>
+      <div class="mc-val">p99</div>
+      <div class="mc-desc">wakeup-to-run latency across 10,000 loop iterations, measured by bpftrace histogram</div>
+    </div>
+    <div class="measure-cell">
+      <div class="mc-label">Metric 2</div>
+      <div class="mc-val">Δfreq</div>
+      <div class="mc-desc">CPU frequency delta between task-blocked and task-running states during the control loop</div>
+    </div>
+    <div class="measure-cell">
+      <div class="mc-label">Metric 3</div>
+      <div class="mc-val">C%</div>
+      <div class="mc-desc">Percentage of idle exits from deep C-states (C3+) during the active agent session</div>
+    </div>
+    <div class="measure-cell">
+      <div class="mc-label">Metric 4</div>
+      <div class="mc-val">e2e</div>
+      <div class="mc-desc">End-to-end wall time for a 1000-step agent benchmark (fetch → parse → emit × 1000)</div>
+    </div>
+    <div class="measure-cell">
+      <div class="mc-label">Metric 5</div>
+      <div class="mc-val">WAT</div>
+      <div class="mc-desc">Watts at the CPU package during the agent loop — verifying energy neutrality when idle</div>
+    </div>
+    <div class="measure-cell">
+      <div class="mc-label">Metric 6</div>
+      <div class="mc-val">MISS</div>
+      <div class="mc-desc">L1/L2 cache miss rate before vs. after enabling CPU affinity hint in the wake path</div>
+    </div>
+  </div>
+
+  <h3>Running the selftest</h3>
+  <div class="code-block">
+    <div class="code-header">
+      <div class="dots"><span></span><span></span><span></span></div>
+      <div class="lang">shell — quickstart</div>
+    </div>
+    <pre><span class="cm"># 1. Build the benchmark</span>
+cd selftests && make
+
+<span class="cm"># 2. Baseline: no patch</span>
+./agent_loop --steps 1000 --interval-us 500 | tee baseline.txt
+
+<span class="cm"># 3. Apply kernel patch and rebuild</span>
+git apply ../patches/0000-kernel-agent-latency-control-plane-rfc.patch
+make -C /lib/modules/$(uname -r)/build M=$(pwd) modules
+sudo insmod agent_latency.ko
+
+<span class="cm"># 4. With patch: 5 ms window, 50% util floor</span>
+./agent_loop --agent-latency --window-ns 5000000 --min-util 512 \
+             --steps 1000 --interval-us 500 | tee patched.txt
+
+<span class="cm"># 5. Attach eBPF tracing (in a second terminal)</span>
+sudo bpftrace tools/bpftrace/wakeup_to_run.bt
+sudo bpftrace tools/bpftrace/dvfs_ramp.bt
+sudo bpftrace tools/bpftrace/cstate_audit.bt
+
+<span class="cm"># 6. Compare p99 latencies</span>
+awk '/p99/{print}' baseline.txt patched.txt</pre>
+  </div>
+
+  <!-- Future work / status -->
+  <h3>Status and future work</h3>
+  <p>This patch series is <strong>RFC — experimental</strong>. It is not upstream-ready. Known gaps before production consideration: cgroup-level token buckets to prevent power abuse by unprivileged agents; dynamic window sizing based on historical loop duration (exponential moving average of last N step times); and integration with the sched-ext framework for eBPF-accelerated scheduler policies that subsume the window logic entirely.</p>
+
+  <div class="pullquote">
+    <p>Agentic workloads need kernels that stay fast between steps — and stop punishing fast code for the crime of waiting.</p>
+    <cite>— Patch 0000 cover letter</cite>
+  </div>
+</section>
+
+</main>
+
+<!-- FOOTER -->
+<footer class="post-footer" style="max-width:820px;margin:80px auto 40px;padding:24px;border-top:1px solid var(--border);color:var(--text3);font-family:var(--mono);font-size:11px;letter-spacing:0.06em;display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+  <div style="display:flex;gap:16px;">
+    <span>Agentic AI & Linux Kernel · Part 1 · May 2026</span>
+    <span><a href="/writings.html" style="color:inherit;text-decoration:none;">All writings</a></span>
+  </div>
+  <div>
+    <span>© 2026 <a href="/" style="color:inherit;text-decoration:none;">MANISH AI</a>. All rights reserved. · <a href="https://github.com/manishklach" style="color:inherit;text-decoration:none;">GitHub</a></span>
+  </div>
+</footer>
+
+<script>
+/* Sidenav active state on scroll */
+const sections = document.querySelectorAll('section[id]');
+const navLinks  = document.querySelectorAll('.sidenav a');
+
+const obs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      navLinks.forEach(l => l.classList.remove('active'));
+      const link = document.querySelector(`.sidenav a[href="#${e.target.id}"]`);
+      if (link) link.classList.add('active');
+    }
+  });
+}, { threshold: 0.4 });
+
+sections.forEach(s => obs.observe(s));
+</script>
+</body>
+</html>
