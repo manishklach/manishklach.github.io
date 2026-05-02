@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic AI on ARM: Rethinking DVFS, IRQs, and Scheduler Wakeups | MANISH AI</title>
+<meta name="description" content="A USENIX-style systems note on ARM CPUFreq and DVFS for agentic AI workloads, connecting IRQ completion paths, scheduler wakeups, cpuidle, and eBPF tracing.">
+<meta name="keywords" content="ARM Linux, agentic AI, DVFS, CPUFreq, IRQ completion, scheduler wakeups, cpuidle, eBPF tracing, kernel latency">
+<meta name="author" content="MANISH AI">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://manishklach.github.io/writings/agentic-arm-dvfs-irqs-scheduler-wakeups.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Agentic AI on ARM: Rethinking DVFS, IRQs, and Scheduler Wakeups | MANISH AI">
+<meta property="og:description" content="A USENIX-style systems note on ARM CPUFreq and DVFS for agentic AI workloads, connecting IRQ completion paths, scheduler wakeups, cpuidle, and eBPF tracing.">
+<meta property="og:url" content="https://manishklach.github.io/writings/agentic-arm-dvfs-irqs-scheduler-wakeups.html">
+<meta property="og:image" content="https://manishklach.github.io/og/agentic-arm-dvfs-irqs-scheduler-wakeups.png">
+<meta property="og:image:alt" content="Preview card for Agentic AI on ARM: Rethinking DVFS, IRQs, and Scheduler Wakeups">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Agentic AI on ARM: Rethinking DVFS, IRQs, and Scheduler Wakeups | MANISH AI">
+<meta name="twitter:description" content="A USENIX-style systems note on ARM CPUFreq and DVFS for agentic AI workloads, connecting IRQ completion paths, scheduler wakeups, cpuidle, and eBPF tracing.">
+<meta name="twitter:image" content="https://manishklach.github.io/og/agentic-arm-dvfs-irqs-scheduler-wakeups.png">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Agentic AI on ARM: Rethinking DVFS, IRQs, and Scheduler Wakeups","description":"A USENIX-style systems note on ARM CPUFreq and DVFS for agentic AI workloads, connecting IRQ completion paths, scheduler wakeups, cpuidle, and eBPF tracing.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/agentic-arm-dvfs-irqs-scheduler-wakeups.html","mainEntityOfPage":"https://manishklach.github.io/writings/agentic-arm-dvfs-irqs-scheduler-wakeups.html","datePublished":"2026-05-02","dateModified":"2026-05-02","inLanguage":"en"}</script>
+<style>
+:root{
+  --bg:#f5f7fb; --paper:#ffffff; --ink:#111827; --muted:#5b6472; --line:#d9dee8;
+  --blue:#2454ff; --green:#00a37a; --purple:#7c3aed; --orange:#f59e0b;
+  --code:#08111f; --soft:#eef3ff; --soft2:#e9fff8; --warn:#fff7e6;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; color:var(--ink);
+  background:
+    radial-gradient(circle at 10% -10%, rgba(36,84,255,.16), transparent 32%),
+    radial-gradient(circle at 95% 4%, rgba(0,163,122,.12), transparent 30%),
+    radial-gradient(circle at 50% 100%, rgba(124,58,237,.08), transparent 35%),
+    var(--bg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Arial,sans-serif;
+  line-height:1.62;
+}
+.wrapper{max-width:1160px;margin:0 auto;padding:42px 22px 80px}
+.paper{background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:30px;box-shadow:0 30px 90px rgba(20,30,70,.12);overflow:hidden}
+header{padding:58px 56px 38px;border-bottom:1px solid var(--line);background:linear-gradient(135deg,rgba(36,84,255,.09),rgba(0,163,122,.07),rgba(124,58,237,.06)),#fff}
+.kicker{text-transform:uppercase;letter-spacing:.16em;color:var(--blue);font-size:13px;font-weight:900}
+h1{font-size:49px;line-height:1.04;letter-spacing:-.045em;margin:15px 0 17px;max-width:1000px}
+.subtitle{color:var(--muted);font-size:20px;max-width:940px;margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px;font-size:14px;color:#334155}
+.pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 12px}
+main{padding:42px 56px 64px}
+h2{font-size:30px;line-height:1.18;letter-spacing:-.03em;margin:52px 0 15px;padding-top:6px}
+h3{font-size:21px;margin:30px 0 10px;letter-spacing:-.015em}
+p{font-size:17px;color:#202938;margin:0 0 16px}.lede{font-size:19px;color:#172033}
+.abstract{background:linear-gradient(180deg,#f8fbff,#fff);border:1px solid var(--line);border-radius:22px;padding:24px 26px;margin:0 0 34px}
+.callout{border-left:5px solid var(--blue);background:var(--soft);border-radius:17px;padding:18px 21px;margin:22px 0}
+.callout.green{border-left-color:var(--green);background:var(--soft2)}.callout.warn{border-left-color:var(--orange);background:var(--warn)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:20px 0}
+.card{border:1px solid var(--line);border-radius:19px;background:#fff;padding:19px;box-shadow:0 10px 28px rgba(20,30,70,.045)}
+.card h3{margin-top:0}
+pre{background:var(--code);color:#e6edf7;border-radius:17px;padding:18px 20px;overflow:auto;font-size:13.4px;line-height:1.48;border:1px solid #17233a;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace}
+.inline{font-family:"SFMono-Regular",Consolas,monospace;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:7px;padding:1px 6px;font-size:.93em}
+table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border:1px solid var(--line);border-radius:17px;margin:22px 0;font-size:15px;background:#fff}
+th,td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}th{background:#f8fafc;text-align:left;color:#172033}tr:last-child td{border-bottom:0}
+.figure{margin:30px 0;border:1px solid var(--line);border-radius:25px;background:#fff;padding:18px}.figcap{font-size:14px;color:var(--muted);margin-top:10px;text-align:center}
+svg{width:100%;height:auto;display:block}ol.refs li{margin:9px 0;color:#334155;font-size:15px}
+.footer{margin-top:42px;border-top:1px solid var(--line);padding-top:22px;color:var(--muted);font-size:14px}.badge{font-weight:900;color:var(--blue)}
+.site-top{max-width:1160px;margin:0 auto;padding:18px 22px 0}
+.site-top-inner{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:14px 18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.82);backdrop-filter:blur(10px)}
+.site-mark{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#1d4ed8;text-decoration:none}
+.site-links{display:flex;gap:1rem;flex-wrap:wrap;font-size:12px;color:#64748b}
+.site-links a{text-decoration:none;color:#475569}
+.site-links a:hover{text-decoration:underline}
+@media(max-width:820px){h1{font-size:34px}header,main{padding-left:24px;padding-right:24px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="site-top">
+  <div class="site-top-inner">
+    <a class="site-mark" href="/">MANISH AI</a>
+    <div class="site-links">
+      <a href="/writings.html">&larr; Writings</a>
+      <a href="https://github.com/manishklach">GitHub</a>
+    </div>
+  </div>
+</div>
+<div class="wrapper"><article class="paper">
+<header>
+  <div class="kicker">Systems Note / ARM Kernel Proposal</div>
+  <h1>Agentic AI on ARM: Rethinking DVFS, IRQs, and Scheduler Wakeups</h1>
+  <p class="subtitle">Why CPUFreq must become control-loop-aware: integrating schedutil, cpuidle, IRQ completions, and eBPF measurement for latency-amplified agent workloads.</p>
+  <div class="meta">
+    <span class="pill"><time datetime="2026-05-02">May 2, 2026</time></span>
+    <span class="pill">12 min read</span>
+    <span class="pill">Focus: ARM Linux</span>
+    <span class="pill">Subsystems: CPUFreq / schedutil / cpuidle / IRQ / scheduler</span>
+    <span class="pill">Thesis: keep the CPU warm across agent steps</span>
+  </div>
+</header>
+<main data-pagefind-body>
+<section class="abstract">
+<p><b>Abstract.</b> Agentic AI workloads execute tight control loops: wait for a tool, network reply, disk read, timer, or io_uring completion; wake up; parse; decide; repeat. On ARM systems, this pattern interacts badly with aggressive power management. During short waits, CPUFreq may downscale frequency, cpuidle may select deeper states, and IRQ/softirq completions may wake the agent onto a cold or noisy CPU. The result is <b>latency amplification</b>: frequency ramp latency, wakeup delay, and completion-path jitter repeated hundreds or thousands of times. This note proposes an <b>agent-aware DVFS window</b> integrated with the IRQ completion path and scheduler wakeup placement. The design extends, rather than replaces, Linux CPUFreq/schedutil, uclamp, cpuidle, NAPI, blk-mq, and scheduler traceability.</p>
+</section>
+
+<h2>1. The New Slowpath: The CPU Goes Cold Between Agent Steps</h2>
+<p class="lede">Classic throughput tuning asks whether the CPU is busy enough. Agentic workloads ask something different: <b>when the next completion arrives, is the CPU ready immediately?</b></p>
+<pre><code>Agent loop:
+  issue tool call / disk read / local RPC
+  wait in epoll_wait() or io_uring_enter()
+  completion arrives through IRQ / softirq / blk-mq / timer
+  agent wakes
+  parse result
+  decide next step
+  repeat × 1000</code></pre>
+<p>On ARM, the idle gap between steps can be long enough for the platform to save power, but short enough that the next step immediately pays the exit cost.</p>
+<pre><code>agent blocks
+  ↓
+schedutil observes low utilization
+  ↓
+CPU frequency decays
+  ↓
+cpuidle may choose deeper idle
+  ↓
+IRQ / completion arrives
+  ↓
+agent wakes on a cold CPU
+  ↓
+frequency ramps + idle exit + scheduler wakeup
+  ↓
+latency paid again next step</code></pre>
+<div class="callout"><p><b>Core thesis:</b> ARM Linux DVFS should not react only to average utilization. For agentic workloads, it should preserve performance across short control-loop gaps.</p></div>
+
+<h2>2. Current Linux Building Blocks</h2>
+<p>Linux CPUFreq provides a common core, governors, and platform scaling drivers. The <span class="inline">schedutil</span> governor uses scheduler utilization signals to select CPU frequency. Utilization clamping can influence schedutil’s frequency decision by clamping task utilization to performance requirements. CPU idle management separately selects idle states to save power when CPUs have no runnable work.</p>
+<table><thead><tr><th>Kernel mechanism</th><th>What it already does</th><th>Agentic gap</th></tr></thead><tbody>
+<tr><td>CPUFreq core</td><td>Provides frequency scaling framework and userspace interfaces.</td><td>Does not know that a short wait is part of an active reasoning loop.</td></tr>
+<tr><td>schedutil</td><td>Maps scheduler utilization to frequency.</td><td>Can be reactive; a bursty agent may downscale between steps.</td></tr>
+<tr><td>uclamp</td><td>Hints minimum/maximum utilization to scheduler and schedutil.</td><td>Useful but usually static; agent loops need time-windowed boost.</td></tr>
+<tr><td>cpuidle</td><td>Selects deeper idle states for energy efficiency.</td><td>Deep idle exit latency can become visible at every agent completion.</td></tr>
+<tr><td>IRQ/NAPI/blk-mq</td><td>Completes network/storage/timer events.</td><td>Completion does not carry agent-step criticality into DVFS and wakeup policy.</td></tr>
+</tbody></table>
+
+<h2>3. Latency Amplification Model</h2>
+<p>Small costs become large when the loop repeats. Even if each stage is only tens or hundreds of microseconds, an agent can execute thousands of waits and completions.</p>
+<pre><code>per-step delay =
+  IRQ / completion handling
++ softirq or blk-mq completion
++ wakeup-to-run latency
++ cpuidle exit latency
++ CPUFreq ramp latency
++ userspace gate return
+
+Total task delay = per-step delay × number_of_steps</code></pre>
+
+<div class="figure">
+<svg viewBox="0 0 1120 480" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agentic loop with DVFS and IRQ completion path">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#243044"/></marker><filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#1f2a44" flood-opacity=".14"/></filter></defs>
+<rect x="22" y="24" width="1076" height="432" rx="26" fill="#f8fafc" stroke="#d9dee8"/>
+<text x="54" y="72" font-size="24" font-weight="800" fill="#111827">Agent Step Meets ARM Power Management</text>
+<text x="54" y="101" font-size="15" fill="#5b6472">The wait gap looks idle to the kernel, but it is active time in the agent control loop.</text>
+<g filter="url(#shadow)">
+<rect x="70" y="170" width="135" height="72" rx="18" fill="white" stroke="#d9dee8"/><text x="137" y="198" text-anchor="middle" font-size="15" font-weight="800">Wait</text><text x="137" y="222" text-anchor="middle" font-size="12" fill="#5b6472">epoll/io_uring</text>
+<rect x="250" y="170" width="135" height="72" rx="18" fill="#fff7e6" stroke="#ffd589"/><text x="317" y="198" text-anchor="middle" font-size="15" font-weight="800">Downscale</text><text x="317" y="222" text-anchor="middle" font-size="12" fill="#5b6472">CPUFreq/cpuidle</text>
+<rect x="430" y="170" width="135" height="72" rx="18" fill="white" stroke="#d9dee8"/><text x="497" y="198" text-anchor="middle" font-size="15" font-weight="800">Completion</text><text x="497" y="222" text-anchor="middle" font-size="12" fill="#5b6472">IRQ / blk / NAPI</text>
+<rect x="610" y="170" width="135" height="72" rx="18" fill="#eef3ff" stroke="#cbd7ff"/><text x="677" y="198" text-anchor="middle" font-size="15" font-weight="800">Wakeup</text><text x="677" y="222" text-anchor="middle" font-size="12" fill="#5b6472">scheduler</text>
+<rect x="790" y="170" width="135" height="72" rx="18" fill="#e9fff8" stroke="#b8ecdd"/><text x="857" y="198" text-anchor="middle" font-size="15" font-weight="800">Ramp</text><text x="857" y="222" text-anchor="middle" font-size="12" fill="#5b6472">frequency rises</text>
+<rect x="970" y="170" width="100" height="72" rx="18" fill="white" stroke="#d9dee8"/><text x="1020" y="198" text-anchor="middle" font-size="15" font-weight="800">Run</text><text x="1020" y="222" text-anchor="middle" font-size="12" fill="#5b6472">parse/decide</text>
+</g>
+<path d="M205 206 H250" stroke="#243044" stroke-width="2.5" marker-end="url(#arrow)"/><path d="M385 206 H430" stroke="#243044" stroke-width="2.5" marker-end="url(#arrow)"/><path d="M565 206 H610" stroke="#243044" stroke-width="2.5" marker-end="url(#arrow)"/><path d="M745 206 H790" stroke="#243044" stroke-width="2.5" marker-end="url(#arrow)"/><path d="M925 206 H970" stroke="#243044" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="115" y="305" width="890" height="66" rx="16" fill="#eef3ff" stroke="#cbd7ff"/>
+<text x="135" y="334" font-size="15" font-weight="800" fill="#111827">Proposed fix:</text>
+<text x="250" y="334" font-size="15" fill="#111827">time-windowed agent DVFS boost + shallow idle guard + IRQ-aware wakeup placement</text>
+<text x="250" y="357" font-size="13" fill="#5b6472">Keep CPU warm during short gaps; decay only after the agent window expires.</text>
+</svg>
+<div class="figcap">Figure 1. Agentic workloads turn DVFS and idle exit latency into repeated control-loop overhead.</div>
+</div>
+
+<h2>4. Design: Agent-Aware DVFS Windows</h2>
+<p>The design is intentionally incremental. It does not replace CPUFreq, schedutil, uclamp, or EEVDF. Instead, it adds a short-lived <b>agent-active window</b> that raises the effective utilization seen by schedutil and constrains cpuidle during active reasoning loops.</p>
+
+<h3>4.1 Task Flag</h3>
+<pre><code>/* include/uapi/linux/sched.h */
+
+#define SCHED_FLAG_AGENT_LATENCY 0x10000000</code></pre>
+
+<h3>4.2 Per-task and Per-runqueue State</h3>
+<pre><code>/* include/linux/sched.h */
+
+struct task_struct {
+#ifdef CONFIG_AGENT_LATENCY
+    u64 agent_active_until_ns;
+    unsigned int agent_min_util;
+    u32 agent_id;
+    u64 agent_step_id;
+#endif
+};</code></pre>
+<pre><code>/* kernel/sched/sched.h */
+
+struct rq {
+#ifdef CONFIG_AGENT_LATENCY
+    u64 agent_active_until_ns;
+    unsigned int agent_min_util;
+    int agent_home_cpu;
+#endif
+};</code></pre>
+
+<h3>4.3 Userspace API</h3>
+<p>A runtime can mark only the control-loop thread as agent-latency sensitive. This should not be applied blindly to every worker.</p>
+<pre><code>#include &lt;linux/sched/types.h&gt;
+#include &lt;sys/syscall.h&gt;
+#include &lt;unistd.h&gt;
+
+#ifndef SCHED_FLAG_AGENT_LATENCY
+#define SCHED_FLAG_AGENT_LATENCY 0x10000000
+#endif
+
+static int mark_agent_control_thread(void)
+{
+    struct sched_attr attr = {
+        .size = sizeof(attr),
+        .sched_policy = SCHED_NORMAL,
+        .sched_flags = SCHED_FLAG_AGENT_LATENCY,
+        .sched_nice = -5,
+    };
+
+    return syscall(SYS_sched_setattr, 0, &attr, 0);
+}</code></pre>
+
+<h2>5. schedutil Hook: Time-Windowed Minimum Utilization</h2>
+<p>The key change is in the frequency selection path. During an active agent window, schedutil should see a minimum effective utilization for the CPU or performance domain.</p>
+<pre><code>/* kernel/sched/cpufreq_schedutil.c -- conceptual */
+
+static unsigned long
+agent_boost_util(struct rq *rq, unsigned long util, unsigned long max)
+{
+#ifdef CONFIG_AGENT_LATENCY
+    u64 now = ktime_get_ns();
+
+    if (rq->agent_active_until_ns > now)
+        util = max(util, (unsigned long)rq->agent_min_util);
+#endif
+    return min(util, max);
+}</code></pre>
+<pre><code>/* Called before selecting next frequency. */
+
+util = agent_boost_util(rq, util, max_cap);
+next_f = get_next_freq(sg_policy, util, max_cap);</code></pre>
+
+<table><thead><tr><th>Mechanism</th><th>Semantics</th><th>Agentic limitation</th></tr></thead><tbody>
+<tr><td><span class="inline">performance</span> governor</td><td>Always high frequency.</td><td>Power-heavy and not multi-tenant friendly.</td></tr>
+<tr><td><span class="inline">uclamp.min</span></td><td>Clamp task utilization to a minimum performance point.</td><td>Useful but often static; does not encode active step windows.</td></tr>
+<tr><td>Agent DVFS window</td><td>Keep frequency warm for short gaps after agent activity/completion.</td><td>Needs careful budget enforcement.</td></tr>
+</tbody></table>
+
+<h2>6. cpuidle Coordination: Avoid Deep Sleep During Active Windows</h2>
+<p>DVFS alone is not enough. If the CPU enters a deep idle state between steps, the agent can still pay idle-exit latency. The agent window should also provide a latency constraint to cpuidle.</p>
+<pre><code>/* drivers/cpuidle/governors/menu.c or teo.c -- conceptual */
+
+static int agent_limit_idle_state(struct cpuidle_driver *drv,
+                                  struct cpuidle_device *dev,
+                                  int candidate)
+{
+#ifdef CONFIG_AGENT_LATENCY
+    struct rq *rq = cpu_rq(dev-&gt;cpu);
+    u64 now = ktime_get_ns();
+
+    if (rq-&gt;agent_active_until_ns &gt; now) {
+        /*
+         * Avoid states whose target residency or exit latency exceeds
+         * the control-loop budget.
+         */
+        while (candidate &gt; 0 &&
+               drv-&gt;states[candidate].exit_latency &gt; AGENT_IDLE_EXIT_LIMIT_US)
+            candidate--;
+    }
+#endif
+    return candidate;
+}</code></pre>
+
+<div class="callout warn"><p><b>Guardrail:</b> This must be budgeted. Otherwise every process will claim to be latency critical and the platform will run hot. The control plane should be tied to cgroups, runtime limits, or explicit admin policy.</p></div>
+
+<h2>7. Integration with IRQ + Scheduler Completion Path</h2>
+<p>The DVFS window should not be triggered only when userspace runs. It should also be refreshed when an agent-critical completion arrives: NIC packet, NVMe read completion, timer event, or io_uring CQE.</p>
+<pre><code>Network:
+  NIC MSI-X
+    → generic IRQ
+    → NAPI / NET_RX softirq
+    → socket ready
+    → agent wakeup
+    → refresh agent DVFS window
+
+Disk:
+  NVMe MSI-X
+    → blk_mq_complete_request()
+    → io_uring CQE / read wakeup
+    → agent wakeup
+    → refresh agent DVFS window</code></pre>
+
+<div class="figure">
+<svg viewBox="0 0 1120 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Integrated IRQ scheduler DVFS architecture">
+<defs><marker id="a2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#243044"/></marker></defs>
+<rect x="22" y="24" width="1076" height="512" rx="26" fill="#fff" stroke="#d9dee8"/>
+<text x="54" y="72" font-size="24" font-weight="800" fill="#111827">Completion-Aware DVFS</text>
+<text x="54" y="101" font-size="15" fill="#5b6472">Agent-critical completions refresh a short performance window before userspace resumes.</text>
+<rect x="70" y="160" width="180" height="74" rx="18" fill="#eef3ff" stroke="#cbd7ff"/><text x="160" y="190" text-anchor="middle" font-size="15" font-weight="800">IRQ / Completion</text><text x="160" y="214" text-anchor="middle" font-size="12" fill="#5b6472">NIC / NVMe / timer</text>
+<rect x="310" y="160" width="180" height="74" rx="18" fill="#f8fafc" stroke="#d9dee8"/><text x="400" y="190" text-anchor="middle" font-size="15" font-weight="800">Agent Tag</text><text x="400" y="214" text-anchor="middle" font-size="12" fill="#5b6472">agent_id / step_id</text>
+<rect x="550" y="160" width="180" height="74" rx="18" fill="#e9fff8" stroke="#b8ecdd"/><text x="640" y="190" text-anchor="middle" font-size="15" font-weight="800">DVFS Window</text><text x="640" y="214" text-anchor="middle" font-size="12" fill="#5b6472">min util until T</text>
+<rect x="790" y="160" width="230" height="74" rx="18" fill="#fff7e6" stroke="#ffd589"/><text x="905" y="190" text-anchor="middle" font-size="15" font-weight="800">Wakeup Placement</text><text x="905" y="214" text-anchor="middle" font-size="12" fill="#5b6472">warm, IRQ-quiet CPU</text>
+<path d="M250 197 H310" stroke="#243044" stroke-width="2.4" marker-end="url(#a2)"/><path d="M490 197 H550" stroke="#243044" stroke-width="2.4" marker-end="url(#a2)"/><path d="M730 197 H790" stroke="#243044" stroke-width="2.4" marker-end="url(#a2)"/>
+<rect x="130" y="320" width="850" height="90" rx="20" fill="#f8fafc" stroke="#d9dee8"/>
+<text x="165" y="354" font-size="16" font-weight="800" fill="#111827">Result:</text>
+<text x="230" y="354" font-size="15" fill="#111827">the CPU is already at an acceptable performance point when the agent thread runs.</text>
+<text x="230" y="382" font-size="13" fill="#5b6472">The completion path and the power-management path cooperate instead of acting independently.</text>
+</svg>
+<div class="figcap">Figure 2. The IRQ completion path should refresh a short DVFS window before scheduler wakeup completes.</div>
+</div>
+
+<h2>8. Proposed Patch Series</h2>
+<pre><code>[PATCH 0/7] sched/cpufreq: agent-aware DVFS windows for latency-amplified workloads
+
+[PATCH 1/7] sched: add SCHED_FLAG_AGENT_LATENCY for control-loop tasks
+[PATCH 2/7] sched: track agent_active_until_ns and agent_min_util on rq
+[PATCH 3/7] schedutil: apply time-windowed agent min-util boost
+[PATCH 4/7] cpuidle: bound deep idle selection during active agent windows
+[PATCH 5/7] irq/sched: refresh agent DVFS window on tagged completions
+[PATCH 6/7] trace: add agent_dvfs_window and agent_freq_transition tracepoints
+[PATCH 7/7] selftests: add agent loop DVFS latency microbenchmark</code></pre>
+
+<h2>9. eBPF Measurement: DVFS Ramp Tracing</h2>
+<p>The measurement goal is to separate four delays:</p>
+<pre><code>1. completion arrives
+2. task becomes runnable
+3. task actually runs
+4. CPU frequency reaches target</code></pre>
+<p>Linux exposes power tracepoints for CPU frequency and idle transitions, and scheduler tracepoints for wakeup/switch behavior. On many ARM systems, <span class="inline">power:cpu_frequency</span> is available and records frequency transitions.</p>
+
+<h3>9.1 CPU Frequency Transition Trace</h3>
+<pre><code>sudo bpftrace -e '
+tracepoint:power:cpu_frequency
+{
+  printf("cpu=%d freq=%d kHz ts=%llu\n",
+    args->cpu_id, args->state, nsecs);
+}'</code></pre>
+
+<h3>9.2 CPU Idle Entry/Exit Trace</h3>
+<pre><code>sudo bpftrace -e '
+tracepoint:power:cpu_idle
+{
+  printf("cpu=%d idle_state=%d ts=%llu\n",
+    args->cpu_id, args->state, nsecs);
+}'</code></pre>
+
+<h3>9.3 Wakeup-to-Run Latency</h3>
+<pre><code>sudo bpftrace -e '
+tracepoint:sched:sched_wakeup
+/comm == "agent_loop"/
+{
+  @wake[args->pid] = nsecs;
+}
+
+tracepoint:sched:sched_switch
+/@wake[args->next_pid]/
+{
+  printf("pid=%d wake_to_run=%dus cpu=%d\n",
+    args->next_pid,
+    (nsecs - @wake[args->next_pid]) / 1000,
+    cpu);
+  delete(@wake[args->next_pid]);
+}'</code></pre>
+
+<h3>9.4 epoll Gate Latency</h3>
+<pre><code>sudo bpftrace -e '
+tracepoint:syscalls:sys_enter_epoll_wait
+/comm == "agent_loop"/
+{
+  @epoll[tid] = nsecs;
+}
+
+tracepoint:syscalls:sys_exit_epoll_wait
+/@epoll[tid]/
+{
+  printf("tid=%d epoll_wait=%dus ret=%d\n",
+    tid, (nsecs - @epoll[tid]) / 1000, args->ret);
+  delete(@epoll[tid]);
+}'</code></pre>
+
+<h3>9.5 io_uring Gate Latency</h3>
+<pre><code>sudo bpftrace -e '
+tracepoint:syscalls:sys_enter_io_uring_enter
+/comm == "agent_loop"/
+{
+  @uring[tid] = nsecs;
+}
+
+tracepoint:syscalls:sys_exit_io_uring_enter
+/@uring[tid]/
+{
+  printf("tid=%d io_uring_enter=%dus ret=%d\n",
+    tid, (nsecs - @uring[tid]) / 1000, args->ret);
+  delete(@uring[tid]);
+}'</code></pre>
+
+<h3>9.6 Correlating Wakeup and Frequency Ramp</h3>
+<p>The useful derived metric is:</p>
+<pre><code>freq_ramp_after_wakeup =
+  first cpu_frequency event after sched_wakeup
+  - sched_wakeup timestamp</code></pre>
+<p>If this value appears repeatedly in the p99 tail, the workload is paying DVFS ramp latency at every agent step.</p>
+<pre><code># Pseudocode for post-processing trace logs
+
+for each agent_step:
+    t_complete = completion_timestamp(step)
+    t_wakeup   = sched_wakeup_timestamp(step)
+    t_schedin  = sched_switch_to_agent(step)
+    t_freq     = first_cpu_frequency_after(t_wakeup)
+
+    print({
+      "step": step,
+      "completion_to_wakeup_us": (t_wakeup - t_complete) / 1000,
+      "wakeup_to_run_us":        (t_schedin - t_wakeup) / 1000,
+      "freq_ramp_us":            (t_freq - t_wakeup) / 1000,
+    })</code></pre>
+
+<h2>10. Minimal Agent Loop Microbenchmark</h2>
+<p>This benchmark intentionally models an agent loop: wait, wake, do short CPU work, repeat. Replace the eventfd with a socket, local DB, or io_uring completion to test specific paths.</p>
+<pre><code>// agent_loop.c -- conceptual microbenchmark
+#define _GNU_SOURCE
+#include &lt;sys/epoll.h&gt;
+#include &lt;sys/eventfd.h&gt;
+#include &lt;pthread.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;stdint.h&gt;
+#include &lt;stdio.h&gt;
+
+static int efd;
+
+static void busy_parse_work(void)
+{
+    volatile uint64_t x = 0;
+    for (int i = 0; i &lt; 20000; i++)
+        x += i;
+}
+
+void *producer(void *arg)
+{
+    uint64_t one = 1;
+
+    for (;;) {
+        usleep(500);              // simulate tool/network/disk gap
+        write(efd, &one, sizeof(one));
+    }
+    return NULL;
+}
+
+int main(void)
+{
+    efd = eventfd(0, EFD_NONBLOCK);
+    int ep = epoll_create1(0);
+
+    struct epoll_event ev = {
+        .events = EPOLLIN,
+        .data.fd = efd,
+    };
+
+    epoll_ctl(ep, EPOLL_CTL_ADD, efd, &ev);
+
+    pthread_t t;
+    pthread_create(&t, NULL, producer, NULL);
+
+    for (uint64_t step = 0; ; step++) {
+        struct epoll_event out;
+        epoll_wait(ep, &out, 1, -1);
+
+        uint64_t val;
+        read(efd, &val, sizeof(val));
+
+        busy_parse_work();
+
+        if ((step % 1000) == 0)
+            printf("step=%lu\n", step);
+    }
+}</code></pre>
+
+<h2>11. Evaluation Matrix</h2>
+<table><thead><tr><th>Configuration</th><th>Description</th><th>Expected signal</th></tr></thead><tbody>
+<tr><td>Baseline</td><td>Default schedutil, default cpuidle, no pinning.</td><td>Frequency drops between short gaps; p99 step latency elevated.</td></tr>
+<tr><td>performance governor</td><td>Force max frequency.</td><td>Improves latency but wastes power; upper-bound result.</td></tr>
+<tr><td>uclamp.min</td><td>Use userspace clamp for agent control thread.</td><td>Shows whether existing scheduler hints are enough.</td></tr>
+<tr><td>agent DVFS window</td><td>Time-windowed boost after each agent step/completion.</td><td>Lower p99 with less energy than always-performance.</td></tr>
+<tr><td>agent DVFS + IRQ wakeup</td><td>Refresh DVFS window from tagged completions and wake on warm CPU.</td><td>Best control-loop tail latency.</td></tr>
+</tbody></table>
+
+<h2>12. Why This Belongs With IRQ + Scheduler Work</h2>
+<p>The IRQ/scheduler work and ARM DVFS work are not separate projects. They are one control-path problem.</p>
+<pre><code>Completion path:
+  IRQ / softirq / blk-mq
+      ↓
+  task becomes runnable
+      ↓
+  scheduler chooses CPU
+      ↓
+  CPUFreq / cpuidle determine how ready that CPU is
+      ↓
+  userspace agent resumes</code></pre>
+<p>If the kernel improves wakeup placement but wakes the agent on a CPU that just downclocked or entered a deep idle state, latency remains. If DVFS keeps the CPU warm but completions are delayed behind softirq/ksoftirqd, latency remains. The performance win comes from coordinating all three:</p>
+<pre><code>agent-aware completion path
++ agent-aware wakeup placement
++ agent-aware DVFS/cpuidle window
+= predictable agent step latency</code></pre>
+
+<h2>13. Risks and Guardrails</h2>
+<div class="grid">
+<div class="card"><h3>Risk: Hint Abuse</h3><p>Every workload may claim to be latency critical. The solution is cgroup-level budgeting, admin opt-in, and rate-limited windows.</p></div>
+<div class="card"><h3>Risk: Thermal Pressure</h3><p>Keeping ARM cores warm too long can hurt power and thermals. The boost must decay quickly and respect thermal caps.</p></div>
+<div class="card"><h3>Risk: Fairness</h3><p>The goal is not RT priority. The goal is bounded control-loop latency without starving normal tasks.</p></div>
+<div class="card"><h3>Risk: Platform Variance</h3><p>Different ARM SoCs expose frequency and idle behavior differently. Tracepoints and policy must be optional and capability-aware.</p></div>
+</div>
+
+<h2>14. Final Thesis</h2>
+<div class="callout green"><p><b>Agentic AI exposes a new ARM kernel slowpath: the CPU cooling down between reasoning steps.</b> The fix is not simply max frequency. It is a budgeted, time-windowed DVFS policy integrated with IRQ completions, scheduler wakeups, and cpuidle.</p></div>
+<p>The next useful kernel primitive is not only “task utilization.” It is the <b>agent step window</b>: a short, causally connected period during which completions, wakeups, CPU placement, and power state transitions should cooperate to minimize tail latency.</p>
+
+<h2>References</h2>
+<ol class="refs">
+<li>Linux kernel CPUFreq documentation: CPU performance scaling core, governors, and drivers.</li>
+<li>Linux scheduler utilization clamping documentation: uclamp influences schedutil CPU frequency selection.</li>
+<li>Linux power tracepoint documentation: CPU frequency and CPU idle tracepoints.</li>
+<li>Linux generic IRQ handling documentation: architecture-independent IRQ handling layer.</li>
+<li>Linux NAPI documentation: interrupt notification followed by scheduled event processing.</li>
+<li>Linux blk-mq documentation: multi-queue block I/O for high-IOPS storage.</li>
+</ol>
+
+<div class="footer">
+<p><span class="badge">One-line takeaway:</span> ARM Linux should preserve CPU performance across short agent-control gaps; otherwise DVFS, cpuidle, IRQ completion, and scheduler wakeup delays get multiplied by every reasoning step.</p>
+<p>May 2026 · Systems Note · ARM Linux · Agentic AI</p>
+<p>&copy; 2026 <a href="/">MANISH AI</a>. All rights reserved. · <a href="/writings.html">All writings</a> · <a href="https://github.com/manishklach">GitHub</a></p>
+</div>
+</main></article></div>
+</body></html>
