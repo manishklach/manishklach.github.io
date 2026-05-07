@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kernel and Driver Samples for AI Storage and RDMA Locality | MANISH AI</title>
+<meta name="description" content="A code-heavy follow-on essay with sample kernel and driver sketches for blk-mq, NVMe, io_uring, RDMA, and BPF tracing around completion locality and storage-to-GPU paths.">
+<meta name="keywords" content="Linux kernel, blk-mq, NVMe, io_uring, RDMA, NVMe-oF, BPF, driver samples, completion locality, AI storage">
+<meta name="author" content="MANISH AI">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f4f7fb">
+<link rel="canonical" href="https://manishklach.github.io/writings/kernel-driver-samples-storage-rdma-locality.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Kernel and Driver Samples for AI Storage and RDMA Locality | MANISH AI">
+<meta property="og:description" content="A code-heavy follow-on essay with sample kernel and driver sketches for blk-mq, NVMe, io_uring, RDMA, and BPF tracing around completion locality and storage-to-GPU paths.">
+<meta property="og:url" content="https://manishklach.github.io/writings/kernel-driver-samples-storage-rdma-locality.html">
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta property="og:image:alt" content="Preview card for Kernel and Driver Samples for AI Storage and RDMA Locality">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kernel and Driver Samples for AI Storage and RDMA Locality | MANISH AI">
+<meta name="twitter:description" content="A code-heavy follow-on essay with sample kernel and driver sketches for blk-mq, NVMe, io_uring, RDMA, and BPF tracing around completion locality and storage-to-GPU paths.">
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta name="twitter:image:alt" content="Preview card for Kernel and Driver Samples for AI Storage and RDMA Locality">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Kernel and Driver Samples for AI Storage and RDMA Locality","description":"A code-heavy follow-on essay with sample kernel and driver sketches for blk-mq, NVMe, io_uring, RDMA, and BPF tracing around completion locality and storage-to-GPU paths.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/kernel-driver-samples-storage-rdma-locality.html","mainEntityOfPage":"https://manishklach.github.io/writings/kernel-driver-samples-storage-rdma-locality.html","datePublished":"2026-05-07","dateModified":"2026-05-07","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#f4f7fb;--paper:rgba(255,255,255,.95);--paper-strong:#fff;--ink:#101828;--muted:#536075;--line:rgba(15,23,42,.10);--blue:#2563eb;--cyan:#0f766e;--orange:#d97706;--shadow:0 30px 90px rgba(15,23,42,.11);--radius-xl:30px;--radius-lg:22px}
+  *{box-sizing:border-box} html{scroll-behavior:smooth}
+  body{margin:0;color:var(--ink);background:radial-gradient(circle at 10% 0%, rgba(37,99,235,.11), transparent 28rem),radial-gradient(circle at 100% 0%, rgba(15,118,110,.10), transparent 24rem),linear-gradient(180deg,#f8fbff 0%,#f4f7fb 38%,#f6f4ff 100%);font-family:"Sora",system-ui,sans-serif;line-height:1.68}
+  a{color:inherit}.site-top{max-width:1160px;margin:0 auto;padding:18px 22px 0}.site-top-inner{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:14px 18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.8);backdrop-filter:blur(12px)}.site-mark,.site-links a{text-decoration:none}.site-mark{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--blue)}.site-links{display:flex;gap:1rem;flex-wrap:wrap}.site-links a{font-size:12px;color:#475569}.wrapper{max-width:1160px;margin:0 auto;padding:22px 22px 78px}.paper{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-xl);box-shadow:var(--shadow);overflow:hidden}
+  header{padding:58px 54px 38px;border-bottom:1px solid var(--line);background:radial-gradient(circle at top right, rgba(37,99,235,.12), transparent 20rem),radial-gradient(circle at 0% 100%, rgba(15,118,110,.09), transparent 20rem),linear-gradient(135deg, rgba(255,255,255,.95), rgba(244,247,251,.98))}
+  .kicker{text-transform:uppercase;letter-spacing:.16em;color:var(--blue);font-size:12px;font-weight:800}
+  h1{margin:16px 0 18px;font-family:"Instrument Serif",Georgia,serif;font-size:clamp(42px,6vw,72px);line-height:.98;letter-spacing:-.035em;max-width:1000px}
+  .subtitle{font-size:20px;color:var(--muted);max-width:940px;margin:0}
+  .meta{display:flex;flex-wrap:wrap;gap:12px;margin-top:25px}.pill{font-size:13px;color:#334155;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 12px}
+  main{padding:40px 54px 62px} p{font-size:17px;color:#1f2937;margin:0 0 16px}.lede{font-size:19px;color:#132033}
+  h2{margin:52px 0 14px;padding-top:6px;font-size:31px;line-height:1.15;letter-spacing:-.03em}
+  h3{margin:30px 0 10px;font-size:22px;letter-spacing:-.02em}
+  .abstract,.callout,.scorecard,.stack-block,.architecture{border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--paper-strong)}
+  .abstract{padding:24px 26px;margin:0 0 34px;background:linear-gradient(180deg,#f7fbff,#fff)}
+  .callout{padding:18px 20px;margin:22px 0;background:#eef4ff;border-left:5px solid var(--blue)}
+  .callout.warn{background:#fff8ec;border-left-color:var(--orange)}
+  .callout.alt{background:#edfdfa;border-left-color:var(--cyan)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:20px 0}
+  .scorecard,.stack-block,.architecture{padding:18px 20px}
+  .scorecard h3,.stack-block h3,.architecture h3{margin-top:0}
+  .figure{margin:28px 0;border:1px solid var(--line);border-radius:24px;background:#fff;padding:18px}
+  .figcap{font-size:14px;color:var(--muted);text-align:center;margin-top:10px}
+  svg{width:100%;height:auto;display:block}
+  table{width:100%;border-collapse:separate;border-spacing:0;margin:22px 0;border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff;font-size:15px}
+  th,td{padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top} th{text-align:left;background:#f8fafc;color:#172033} tr:last-child td{border-bottom:0}
+  ul,ol{margin:0 0 18px 22px;color:#1f2937} li{margin:0 0 10px}
+  pre{background:#091220;color:#e6edf7;border:1px solid #16243a;border-radius:18px;padding:18px 20px;overflow:auto;font-size:13.4px;line-height:1.5}
+  code{font-family:"IBM Plex Mono",Consolas,monospace}.inline{font-family:"IBM Plex Mono",Consolas,monospace;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:7px;padding:1px 6px;font-size:.92em}
+  .footer{margin-top:40px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+  .site-footer{padding:0 22px 42px}
+  .site-footer .wrap{max-width:1160px;margin:0 auto;padding:28px 18px 0;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px;color:var(--muted)}
+  .site-footer a{text-decoration:none}
+  .site-footer .small{font-size:.92rem}
+  @media (max-width:860px){header,main{padding-left:24px;padding-right:24px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="site-top"><div class="site-top-inner"><a class="site-mark" href="/">MANISH AI</a><div class="site-links"><a href="/writings.html">&larr; Writings</a><a href="https://github.com/manishklach">GitHub</a></div></div></div>
+<div class="wrapper"><article class="paper"><header><div class="kicker">Storage Systems Essay / Kernel Samples / RDMA</div><h1>Kernel and Driver Samples for AI Storage and RDMA Locality</h1><p class="subtitle">The last two essays argued that completion locality, bounded batching, and flow identity should become first-class kernel concerns. This follow-on post turns that into concrete sample structs, hooks, and tracing code.</p><div class="meta"><span class="pill"><time datetime="2026-05-07">May 7, 2026</time></span><span class="pill">22 min read</span><span class="pill">Focus: blk-mq / NVMe / io_uring / RDMA / BPF</span><span class="pill">Thesis: policy only matters if you can wire it into code paths</span></div></header>
+<main data-pagefind-body>
+<section class="abstract"><p><b>Abstract.</b> It is easy to say that Linux should preserve completion provenance across SSD, block, <span class="inline">io_uring</span>, and RDMA boundaries. The harder question is where the bits would live, how they would get attached to requests, which call sites would consult them, and how teams would measure whether the design actually reduced useless latency. This post is a code-heavy companion to the previous storage/RDMA essays. The samples here are not upstream-ready patches. They are design sketches meant to make the architecture concrete: request-side metadata in <span class="inline">blk-mq</span>, bounded completion deferral, <span class="inline">io_uring</span> hint propagation, RDMA flow identity reuse, and BPF tracing that measures completion usefulness instead of only completion existence.</p></section>
+<h2>1. What the Samples Need to Prove</h2>
+<p class="lede">A good sample is not a toy. It should answer where the state lives, when it is set, who consumes it, and what metric gets better if the mechanism works.</p>
+<div class="grid">
+<section class="scorecard"><h3>State</h3><p>Where does locality intent live after userspace submits the work? If that answer is “somewhere vague,” the design is not real yet.</p></section>
+<section class="scorecard"><h3>Timing</h3><p>When do we decide between throughput mode and latency mode? Doing it after completion is too late for many of the wins.</p></section>
+<section class="scorecard"><h3>Reuse</h3><p>How does a repeated flow avoid paying registration, CPU discovery, and queue selection costs every time?</p></section>
+<section class="scorecard"><h3>Measurement</h3><p>Which tracepoints expose the delta? If the only chart is GB/s, the sample is missing the point.</p></section>
+</div>
+<div class="callout"><p><b>My bias:</b> I would rather see a slightly ugly but concrete per-request struct and a measurable tracepoint story than another abstract paragraph about “policy.”</p></div>
+<h2>2. Request-Side Provenance in blk-mq</h2>
+<p>The first problem is that the Linux storage path does not preserve enough submission-side context. So the most direct sample is to hang a lightweight provenance record off the request.</p>
+<pre><code>enum io_latency_class {
+    IO_CLASS_THROUGHPUT = 0,
+    IO_CLASS_LATENCY    = 1,
+    IO_CLASS_STEP_CRIT  = 2,
+    IO_CLASS_PREFETCH   = 3,
+};
+
+struct io_completion_prov {
+    u32 flow_id;
+    s16 home_cpu;
+    s16 home_node;
+    u16 latency_class;
+    u16 flags;
+    u32 budget_us;
+    u64 expires_ns;
+};
+
+#define IO_PROV_F_ANTI_MIGRATE   BIT(0)
+#define IO_PROV_F_BOUNDED_BATCH  BIT(1)
+#define IO_PROV_F_REUSE_REG      BIT(2)
+
+struct request {
+    ...
+    struct io_completion_prov *prov;
+    ...
+};</code></pre>
+<p>I would not default-allocate this for every request in the first prototype. A simpler design is to allocate or embed it only for requests marked from a latency-aware submission path. That keeps the sample honest about overhead.</p>
+<h3>2.1 Submission-Time Attachment</h3>
+<pre><code>static inline void blk_rq_attach_prov(struct request *rq,
+                                      const struct io_completion_prov *src)
+{
+    if (!src)
+        return;
+
+    rq-&gt;prov = kmem_cache_alloc(prov_cachep, GFP_ATOMIC);
+    if (!rq-&gt;prov)
+        return;
+
+    *rq-&gt;prov = *src;
+}</code></pre>
+<p>The key point here is not the allocator choice. It is that <span class="inline">flow_id</span>, <span class="inline">home_cpu</span>, <span class="inline">home_node</span>, and <span class="inline">budget_us</span> stop being “userspace knowledge only.”</p>
+<h2>3. Completion Steering in the Block Layer</h2>
+<p>The next sample is where the earlier argument becomes real: completion CPU selection should care about consumer locality, not just generic dispatch mechanics.</p>
+<pre><code>static int choose_completion_cpu(struct request *rq, int complete_cpu)
+{
+    const struct io_completion_prov *prov = READ_ONCE(rq-&gt;prov);
+
+    if (!prov)
+        return complete_cpu;
+
+    if (prov-&gt;latency_class &lt; IO_CLASS_LATENCY)
+        return complete_cpu;
+
+    if (cpu_online(prov-&gt;home_cpu) &amp;&amp;
+        cpus_share_cache(prov-&gt;home_cpu, complete_cpu))
+        return prov-&gt;home_cpu;
+
+    if (cpu_online(prov-&gt;home_cpu))
+        return prov-&gt;home_cpu;
+
+    return complete_cpu;
+}</code></pre>
+<p>This is intentionally simple. A real implementation would use LLC topology, queue ownership, and perhaps current per-CPU load. But the design objective is visible: do not throw away knowledge of who is likely to consume the completion.</p>
+<h3>3.1 Bounded Deferral Instead of Unlimited “Helpful” Deferral</h3>
+<pre><code>static bool should_bypass_generic_defer(const struct request *rq, u64 now_ns)
+{
+    const struct io_completion_prov *prov = READ_ONCE(rq-&gt;prov);
+
+    if (!prov)
+        return false;
+
+    if (!(prov-&gt;flags &amp; IO_PROV_F_BOUNDED_BATCH))
+        return false;
+
+    return now_ns &lt;= prov-&gt;expires_ns;
+}</code></pre>
+<p>This matters because many of the worst AI storage path failures are not media failures. They are “the kernel helpfully delayed a useful completion because the generic throughput heuristics said it was efficient.”</p>
+<div class="callout alt"><p><b>Design principle:</b> if a flow carries a near-term latency budget, generic batching should need to justify itself rather than happening automatically.</p></div>
+<h2>4. NVMe Driver Sketch: Queue and IRQ Affinity</h2>
+<p>The controller layer is where locality can get lost very early. If the queue mapping and MSI-X affinity spray completions arbitrarily, the higher layers are already working uphill.</p>
+<pre><code>static void nvme_map_latency_flow(struct nvme_queue *nvmeq,
+                                  const struct io_completion_prov *prov)
+{
+    if (!prov)
+        return;
+
+    if (prov-&gt;latency_class &lt; IO_CLASS_LATENCY)
+        return;
+
+    if (cpu_online(prov-&gt;home_cpu))
+        irq_set_affinity_hint(nvmeq-&gt;irq, cpumask_of(prov-&gt;home_cpu));
+}</code></pre>
+<p>I would not call <span class="inline">irq_set_affinity_hint()</span> per request in a production path. That would be too expensive and too unstable. But as a sample, it communicates the correct control surface: latency-marked queue flows should influence how the queue and its completion vectors are placed.</p>
+<h3>4.1 Completion Path Hook</h3>
+<pre><code>static void nvme_complete_rq(struct request *rq)
+{
+    int cpu = choose_completion_cpu(rq, raw_smp_processor_id());
+
+    if (cpu != raw_smp_processor_id())
+        smp_call_function_single_async(cpu, &amp;rq-&gt;csd);
+    else
+        blk_mq_complete_request_local(rq);
+}</code></pre>
+<p>This exact sketch is not proposing that every completion become an IPI. The point is to show the decision boundary explicitly: there is a branch where locality-aware steering can happen. If the kernel never admits that branch exists, the architecture remains generic by construction.</p>
+<h2>5. io_uring UAPI and Propagation Sample</h2>
+<p>The userspace-to-kernel handoff needs a compact way to express flow identity and latency mode. A hint structure is enough to make the design concrete.</p>
+<pre><code>struct io_uring_locality_hint {
+    __u32 flow_id;
+    __s16 home_cpu;
+    __s16 home_node;
+    __u16 latency_class;
+    __u16 flags;
+    __u32 budget_us;
+};</code></pre>
+<p>Then the submission path can copy that into the request-side provenance record.</p>
+<pre><code>static int io_req_set_locality(struct io_kiocb *req,
+                               const struct io_uring_locality_hint *hint)
+{
+    struct io_completion_prov prov = {
+        .flow_id       = hint-&gt;flow_id,
+        .home_cpu      = hint-&gt;home_cpu,
+        .home_node     = hint-&gt;home_node,
+        .latency_class = hint-&gt;latency_class,
+        .flags         = hint-&gt;flags,
+        .budget_us     = hint-&gt;budget_us,
+        .expires_ns    = ktime_get_ns() + ((u64)hint-&gt;budget_us * 1000ULL),
+    };
+
+    req-&gt;prov = prov;
+    return 0;
+}</code></pre>
+<h3>5.1 CQE Visibility Matters Too</h3>
+<pre><code>static inline bool io_cqe_should_flush_now(struct io_ring_ctx *ctx,
+                                           const struct io_completion_prov *prov)
+{
+    if (!prov)
+        return false;
+
+    if (prov-&gt;latency_class == IO_CLASS_STEP_CRIT)
+        return true;
+
+    return false;
+}</code></pre>
+<p>This is the missing bridge between “the device is done” and “the application can act now.” A lot of systems stop mentally at device completion. <span class="inline">io_uring</span> forces you to be precise about the second half of the path too.</p>
+<h2>6. RDMA Flow Identity and Registration Reuse</h2>
+<p>RDMA is where systems keep pretending every transfer is a fresh event. For stable AI pipelines, that is often false. The same tensor region, staging buffer, or tool-output buffer gets hit repeatedly.</p>
+<pre><code>struct rdma_flow_state {
+    u32 flow_id;
+    s16 home_cpu;
+    s16 home_node;
+    u32 reg_cookie;
+    u64 last_use_ns;
+    struct ib_mr *mr;
+};</code></pre>
+<pre><code>static struct ib_mr *rdma_lookup_or_reg_mr(struct rdma_flow_state *flow,
+                                           struct ib_pd *pd,
+                                           void *addr, size_t len)
+{
+    if (flow-&gt;mr &amp;&amp; region_still_valid(flow, addr, len)) {
+        flow-&gt;last_use_ns = ktime_get_ns();
+        return flow-&gt;mr;
+    }
+
+    flow-&gt;mr = ib_reg_mr(pd, addr, len, IB_ACCESS_LOCAL_WRITE |
+                                        IB_ACCESS_REMOTE_READ |
+                                        IB_ACCESS_REMOTE_WRITE);
+    flow-&gt;last_use_ns = ktime_get_ns();
+    return flow-&gt;mr;
+}</code></pre>
+<p>This sample is not radical. It is just honest about the fact that reuse requires a persistent identity. If the stack never carries <span class="inline">flow_id</span>, it cannot build sane reuse policy above the verbs.</p>
+<h3>6.1 Completion Queue Locality</h3>
+<pre><code>static int rdma_choose_poll_cpu(const struct rdma_flow_state *flow, int cq_cpu)
+{
+    if (!flow)
+        return cq_cpu;
+
+    if (cpu_online(flow-&gt;home_cpu))
+        return flow-&gt;home_cpu;
+
+    return cq_cpu;
+}</code></pre>
+<p>Again, the point is not that this tiny helper is enough. The point is that transport code should explicitly admit the question “who should consume this completion?” instead of delegating the answer to accident.</p>
+<h2>7. Storage-to-GPU Bounce-Path Guard Sample</h2>
+<p>Even before true storage-to-GPU continuation is perfect, the kernel can at least make bounce costs visible and avoidable in the common case.</p>
+<pre><code>struct gpu_feed_desc {
+    u32 flow_id;
+    u32 gpu_id;
+    dma_addr_t dma_addr;
+    u64 bytes;
+    bool used_bounce;
+};
+
+static void trace_gpu_feed_handoff(const struct gpu_feed_desc *d)
+{
+    trace_printk("flow=%u gpu=%u bytes=%llu bounce=%d\n",
+                 d-&gt;flow_id, d-&gt;gpu_id,
+                 (unsigned long long)d-&gt;bytes, d-&gt;used_bounce);
+}</code></pre>
+<p>A surprising amount of infrastructure still has no crisp counter for “how often did this supposedly direct path bounce through host-owned memory?” That is exactly the sort of missing instrumentation that keeps teams overconfident.</p>
+<h2>8. BPF Sample: Measure Completion Usefulness</h2>
+<p>If I only got to ship one part of this design quickly, it might be the tracing. Better policy gets easier once the measurements stop lying.</p>
+<pre><code>struct flow_key {
+    u32 flow_id;
+    u32 pid;
+};
+
+struct flow_state {
+    u64 issue_ns;
+    u64 complete_ns;
+    u64 wake_ns;
+    u32 complete_cpu;
+    u32 wake_cpu;
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, struct flow_key);
+    __type(value, struct flow_state);
+    __uint(max_entries, 16384);
+} flows SEC(".maps");</code></pre>
+<pre><code>SEC("tracepoint/block/block_rq_complete")
+int tp_block_complete(struct trace_event_raw_block_rq_complete *ctx)
+{
+    struct flow_key key = {};
+    struct flow_state *st;
+
+    key.flow_id = extract_flow_id(ctx);
+    key.pid = bpf_get_current_pid_tgid() &gt;&gt; 32;
+
+    st = bpf_map_lookup_elem(&amp;flows, &amp;key);
+    if (!st)
+        return 0;
+
+    st-&gt;complete_ns = bpf_ktime_get_ns();
+    st-&gt;complete_cpu = bpf_get_smp_processor_id();
+    return 0;
+}</code></pre>
+<pre><code>SEC("tracepoint/sched/sched_wakeup")
+int tp_sched_wakeup(struct trace_event_raw_sched_wakeup *ctx)
+{
+    struct flow_key key = {};
+    struct flow_state *st;
+
+    key.flow_id = lookup_flow_id_for_pid(ctx-&gt;pid);
+    key.pid = ctx-&gt;pid;
+
+    st = bpf_map_lookup_elem(&amp;flows, &amp;key);
+    if (!st)
+        return 0;
+
+    st-&gt;wake_ns = bpf_ktime_get_ns();
+    st-&gt;wake_cpu = bpf_get_smp_processor_id();
+    return 0;
+}</code></pre>
+<pre><code>derived:
+  useful_completion_ns = wake_ns - complete_ns
+  remote_completion    = (complete_cpu != wake_cpu)
+  locality_debt        = oncpu_ns - wake_ns
+</code></pre>
+<p>That is the metric story the architecture needs. Not “average disk latency.” Not “CQ depth.” Measure how long it took for a completion to become actionable by the next consumer.</p>
+<div class="callout warn"><p><b>Warning:</b> if your tracing can only tell you the media was done, it is still blind to a large fraction of the problem.</p></div>
+<h2>9. How I Would Stage a Real Patch Queue</h2>
+<table><thead><tr><th>Phase</th><th>Change</th><th>Why it should land first</th></tr></thead><tbody>
+<tr><td>1</td><td>BPF tracing keyed by flow identity and consumer PID</td><td>Proves whether locality and bounded batching are actually a problem on the target fleet</td></tr>
+<tr><td>2</td><td><span class="inline">io_uring</span> hint propagation into block request metadata</td><td>Minimal path to attach submission-side intent to real I/O</td></tr>
+<tr><td>3</td><td><span class="inline">blk-mq</span> completion steering with bounded deferral bypass</td><td>Moves the critical-path policy decision into the place where it can matter</td></tr>
+<tr><td>4</td><td>NVMe queue locality mode and optional IRQ affinity shaping</td><td>Prevents lower layers from destroying locality before the block layer can recover it</td></tr>
+<tr><td>5</td><td>RDMA flow reuse state and CQ locality hints</td><td>Turns transport from a stateless mechanism into part of the same policy loop</td></tr>
+</tbody></table>
+<h2>10. What I Deliberately Left Out</h2>
+<p>I left out a lot of complications on purpose: full locking rules, precise queue lifetime semantics, backpressure interaction, multipath, device reset behavior, IOMMU invalidation details, and NUMA page-cache steering. Those are all real. But the point of a sample essay is to pin down the skeleton before drowning in edge cases.</p>
+<ul>
+<li>I did not attempt an upstream-quality API.</li>
+<li>I did not assume one universal queue-selection rule.</li>
+<li>I did not hide the fact that some policies belong in userspace and some in the kernel.</li>
+<li>I did not claim these hooks solve storage-to-GPU feeding by themselves.</li>
+</ul>
+<p>What the samples do show is that the previous two essays can be translated into real touch points in Linux, not just architecture rhetoric.</p>
+<h2>11. Final View</h2>
+<p>The biggest gap in AI storage and RDMA today is not the absence of mechanisms. It is the absence of a shared identity that can survive from submission through completion, wakeup, and reuse. Once that identity exists, the code paths that need to consult it become surprisingly obvious: block completion, queue affinity, CQE visibility, registration caches, and tracepoints.</p>
+<div class="callout"><p><b>The short version:</b> if you cannot point to the struct, the call site, and the tracepoint, then the policy probably is not real yet.</p></div>
+<div class="footer"><p><b>Why this matters.</b> Systems work gets more useful when it stops speaking only in architecture nouns and starts showing what the kernel and drivers would actually do.</p></div>
+</main></article></div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="small">MANISH AI · Essays · May 2026 · <a href="/writings.html">&larr; All writings</a></div>
+    <div class="small">&copy; 2026 <a href="https://github.com/manishklach">MANISH AI</a>. All rights reserved.</div>
+  </div>
+</footer>
+</body>
+</html>
