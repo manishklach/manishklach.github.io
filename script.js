@@ -72,10 +72,15 @@ const homepageData = {
   ],
   patentStats: [
     { value: "52", label: "U.S. patents and applications" },
-    { value: "22", label: "India filings in 2026" },
-    { value: "61+", label: "applications and patents surfaced here" }
+    { value: "26", label: "India filings in 2026" },
+    { value: "65+", label: "applications and patents surfaced here" }
   ],
   patents: [
+    {
+      id: "202641057517",
+      title: "Predictive expert weight staging and sparse-dispatch memory orchestration for mixture-of-experts neural processors",
+      href: "patents.html#patent-202641057517"
+    },
     {
       id: "202641043359",
       title: "Hardware-enforced wired on-chip volatile memory residency with explicit bind-release semantics",
@@ -85,11 +90,6 @@ const homepageData = {
       id: "202641042337",
       title: "Semantic deduplication and shared execution of agent-generated enterprise tasks",
       href: "patents/202641042337-semantic-deduplication-enterprise-tasks.html"
-    },
-    {
-      id: "US 10,698,310 B2",
-      title: "Regional device profiling systems",
-      href: "patents.html#us-patents"
     }
   ]
 };
