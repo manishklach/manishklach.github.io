@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The AI Storage Stack Is Still Wasting Latency: SSD Controllers, Linux, io_uring, and RDMA After the GPU | MANISH AI</title>
+<meta name="description" content="A deep technical essay on why the SSD, block, kernel, io_uring, and RDMA stack still wastes latency in AI systems, and what should change across controllers, Linux, and storage-to-GPU paths.">
+<meta name="keywords" content="AI storage, SSD controller, Linux kernel, blk-mq, io_uring, RDMA, NVMe, NVMe-oF, storage to GPU, inference infrastructure">
+<meta name="author" content="MANISH AI">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f4f7fb">
+<link rel="canonical" href="https://manishklach.github.io/writings/ai-storage-stack-wasting-latency-ssd-kernel-rdma.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="The AI Storage Stack Is Still Wasting Latency: SSD Controllers, Linux, io_uring, and RDMA After the GPU | MANISH AI">
+<meta property="og:description" content="A deep technical essay on why the SSD, block, kernel, io_uring, and RDMA stack still wastes latency in AI systems, and what should change across controllers, Linux, and storage-to-GPU paths.">
+<meta property="og:url" content="https://manishklach.github.io/writings/ai-storage-stack-wasting-latency-ssd-kernel-rdma.html">
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta property="og:image:alt" content="Preview card for The AI Storage Stack Is Still Wasting Latency">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The AI Storage Stack Is Still Wasting Latency: SSD Controllers, Linux, io_uring, and RDMA After the GPU | MANISH AI">
+<meta name="twitter:description" content="A deep technical essay on why the SSD, block, kernel, io_uring, and RDMA stack still wastes latency in AI systems, and what should change across controllers, Linux, and storage-to-GPU paths.">
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta name="twitter:image:alt" content="Preview card for The AI Storage Stack Is Still Wasting Latency">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"The AI Storage Stack Is Still Wasting Latency: SSD Controllers, Linux, io_uring, and RDMA After the GPU","description":"A deep technical essay on why the SSD, block, kernel, io_uring, and RDMA stack still wastes latency in AI systems, and what should change across controllers, Linux, and storage-to-GPU paths.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/ai-storage-stack-wasting-latency-ssd-kernel-rdma.html","mainEntityOfPage":"https://manishklach.github.io/writings/ai-storage-stack-wasting-latency-ssd-kernel-rdma.html","datePublished":"2026-05-07","dateModified":"2026-05-07","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#f4f7fb;--paper:rgba(255,255,255,.95);--paper-strong:#fff;--ink:#101828;--muted:#536075;--line:rgba(15,23,42,.10);--blue:#2563eb;--cyan:#0f766e;--orange:#d97706;--shadow:0 30px 90px rgba(15,23,42,.11);--radius-xl:30px;--radius-lg:22px}
+  *{box-sizing:border-box} html{scroll-behavior:smooth}
+  body{margin:0;color:var(--ink);background:radial-gradient(circle at 10% 0%, rgba(37,99,235,.11), transparent 28rem),radial-gradient(circle at 100% 0%, rgba(15,118,110,.10), transparent 24rem),linear-gradient(180deg,#f8fbff 0%,#f4f7fb 38%,#f6f4ff 100%);font-family:"Sora",system-ui,sans-serif;line-height:1.68}
+  a{color:inherit}.site-top{max-width:1160px;margin:0 auto;padding:18px 22px 0}.site-top-inner{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:14px 18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.8);backdrop-filter:blur(12px)}.site-mark,.site-links a{text-decoration:none}.site-mark{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--blue)}.site-links{display:flex;gap:1rem;flex-wrap:wrap}.site-links a{font-size:12px;color:#475569}.wrapper{max-width:1160px;margin:0 auto;padding:22px 22px 78px}.paper{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-xl);box-shadow:var(--shadow);overflow:hidden}
+  header{padding:58px 54px 38px;border-bottom:1px solid var(--line);background:radial-gradient(circle at top right, rgba(37,99,235,.12), transparent 20rem),radial-gradient(circle at 0% 100%, rgba(15,118,110,.09), transparent 20rem),linear-gradient(135deg, rgba(255,255,255,.95), rgba(244,247,251,.98))}
+  .kicker{text-transform:uppercase;letter-spacing:.16em;color:var(--blue);font-size:12px;font-weight:800}
+  h1{margin:16px 0 18px;font-family:"Instrument Serif",Georgia,serif;font-size:clamp(42px,6vw,72px);line-height:.98;letter-spacing:-.035em;max-width:1000px}
+  .subtitle{font-size:20px;color:var(--muted);max-width:940px;margin:0}
+  .meta{display:flex;flex-wrap:wrap;gap:12px;margin-top:25px}.pill{font-size:13px;color:#334155;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 12px}
+  main{padding:40px 54px 62px} p{font-size:17px;color:#1f2937;margin:0 0 16px}.lede{font-size:19px;color:#132033}
+  h2{margin:52px 0 14px;padding-top:6px;font-size:31px;line-height:1.15;letter-spacing:-.03em}
+  h3{margin:30px 0 10px;font-size:22px;letter-spacing:-.02em}
+  .abstract,.callout,.scorecard,.stack-block,.architecture{border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--paper-strong)}
+  .abstract{padding:24px 26px;margin:0 0 34px;background:linear-gradient(180deg,#f7fbff,#fff)}
+  .callout{padding:18px 20px;margin:22px 0;background:#eef4ff;border-left:5px solid var(--blue)}
+  .callout.warn{background:#fff8ec;border-left-color:var(--orange)}
+  .callout.alt{background:#edfdfa;border-left-color:var(--cyan)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:20px 0}
+  .scorecard,.stack-block,.architecture{padding:18px 20px}
+  .scorecard h3,.stack-block h3,.architecture h3{margin-top:0}
+  .figure{margin:28px 0;border:1px solid var(--line);border-radius:24px;background:#fff;padding:18px}
+  .figcap{font-size:14px;color:var(--muted);text-align:center;margin-top:10px}
+  svg{width:100%;height:auto;display:block}
+  table{width:100%;border-collapse:separate;border-spacing:0;margin:22px 0;border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff;font-size:15px}
+  th,td{padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top} th{text-align:left;background:#f8fafc;color:#172033} tr:last-child td{border-bottom:0}
+  ul,ol{margin:0 0 18px 22px;color:#1f2937} li{margin:0 0 10px}
+  pre{background:#091220;color:#e6edf7;border:1px solid #16243a;border-radius:18px;padding:18px 20px;overflow:auto;font-size:13.4px;line-height:1.5}
+  code{font-family:"IBM Plex Mono",Consolas,monospace}.inline{font-family:"IBM Plex Mono",Consolas,monospace;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:7px;padding:1px 6px;font-size:.92em}
+  .footer{margin-top:40px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+  @media (max-width:860px){header,main{padding-left:24px;padding-right:24px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="site-top"><div class="site-top-inner"><a class="site-mark" href="/">MANISH AI</a><div class="site-links"><a href="/writings.html">&larr; Writings</a><a href="https://github.com/manishklach">GitHub</a></div></div></div>
+<div class="wrapper"><article class="paper"><header><div class="kicker">Storage Systems Essay / Linux / RDMA</div><h1>The AI Storage Stack Is Still Wasting Latency</h1><p class="subtitle">If a cluster can afford premium GPUs but still treats SSD controllers, <span class="inline">blk-mq</span>, <span class="inline">io_uring</span>, DMA, and RDMA as generic pipes, it is leaving real performance and cost efficiency on the table.</p><div class="meta"><span class="pill"><time datetime="2026-05-07">May 7, 2026</time></span><span class="pill">23 min read</span><span class="pill">Focus: SSD / block / io_uring / RDMA</span><span class="pill">Thesis: latency mode beats generic throughput mode</span></div></header>
+<main data-pagefind-body>
+<section class="abstract"><p><b>Abstract.</b> Modern AI infrastructure spends enormous attention on accelerators and surprisingly little on the path that feeds them. That is a mistake. Inference and agentic systems increasingly depend on storage-backed model artifacts, prefetching, retrieval corpora, checkpoint movement, tool outputs, and disaggregated data paths whose performance is shaped by SSD controller policy, Linux block completions, DMA placement, userspace wakeups, and RDMA memory semantics. The problem is not that SSDs are too slow in aggregate. The problem is that the stack is still optimized around generic queue depth, fairness, and throughput instead of predictable completion locality and low tail latency. My view is that the biggest opportunity now is not a single faster drive. It is redesigning the stack so controller hints, queue affinity, <span class="inline">blk-mq</span>, <span class="inline">io_uring</span>, memory registration, and RDMA completion handling behave like one coordinated system.</p></section>
+<h2>1. The Wrong Storage Story for AI</h2>
+<p class="lede">People still describe AI storage as a bandwidth problem. That is only half the story.</p>
+<p>Training and inference both need throughput, but many of the highest-value failures in real systems are not sustained-media limits. They are coordination failures. A read completes on the wrong CPU. A completion gets coalesced for throughput when the application needed it now. The page cache and buffer ownership drift across NUMA domains. The RDMA registration path burns cycles because the stack keeps acting as if each transfer is unrelated to the last. None of that shows up cleanly if you only plot GB/s.</p>
+<pre><code>real storage latency in AI =
+  media completion
++ controller scheduling
++ interrupt delivery
++ blk-mq completion path
++ io_uring or page-cache handoff
++ userspace wakeup
++ DMA / copy / registration side effects
++ possible RDMA or GPU transfer continuation</code></pre>
+<p>Once systems become orchestration-heavy or retrieval-heavy, small repeated coordination costs matter more than people expect. A GPU can sit idle because of a storage path that is technically healthy by classic metrics and still wrong for the workload.</p>
+<div class="callout"><p><b>Key point:</b> the stack is too often tuned for average bandwidth while the workload depends on the latency shape of thousands of small control decisions.</p></div>
+<h2>2. The Stack Is Too Generic</h2>
+<p>The path from storage media to application state crosses too many layers that currently know too little about intent.</p>
+<div class="grid">
+<section class="stack-block"><h3>SSD controller</h3><p>Understands flash timing, background work, queue scheduling, and internal DRAM, but usually sees host requests as generic reads and writes with weak semantic hints.</p></section>
+<section class="stack-block"><h3>Linux block layer</h3><p>Optimizes for queue parallelism and fairness, but often lacks a first-class notion of step-critical or latency-sensitive storage work.</p></section>
+<section class="stack-block"><h3>io_uring / page cache</h3><p>Reduces syscall overhead, but does not automatically solve completion locality, batching mistakes, or interaction with page ownership and wakeups.</p></section>
+<section class="stack-block"><h3>RDMA and GPU path</h3><p>Provides transport efficiency, but still leaves policy above transport mostly unowned: placement, admission, locality, registration reuse, and budget enforcement.</p></section>
+</div>
+<p>That fragmentation is why people often say “storage is fine” while the application still experiences stalls. The system is missing an end-to-end latency policy.</p>
+<div class="callout alt"><p><b>Another way to say it:</b> the stack has plenty of mechanisms and too little intent. What is missing is not “more I/O.” It is shared agreement on which completions matter most, where they should land, and how much latency variance is acceptable.</p></div>
+<h2>3. The Hidden Tax in SSD and Block I/O</h2>
+<p>Linux block I/O on modern NVMe hardware is fast enough that the remaining taxes become architectural rather than obvious. They include completion CPU mismatch, excessive coalescing, generic worker fallback, memory locality drift, and poor attribution of delays after the media has already finished work.</p>
+<table><thead><tr><th>Layer</th><th>Classic optimization target</th><th>AI-era problem</th><th>Better target</th></tr></thead><tbody>
+<tr><td>SSD controller</td><td>Parallelism, wear, garbage collection</td><td>No strong host-visible hint for step-critical reads</td><td>Deadline classes and confidence-aware prefetch hints</td></tr>
+<tr><td>NVMe queues</td><td>High queue depth</td><td>Queue depth can hide latency variance instead of fixing it</td><td>Mode switch between throughput and bounded-latency behavior</td></tr>
+<tr><td>blk-mq</td><td>Scalable dispatch and completion</td><td>Completion locality not preserved end-to-end</td><td>Completion-to-consumer affinity as a first-class policy</td></tr>
+<tr><td>io_uring</td><td>Low syscall overhead</td><td>CQE visibility and task_work timing still vary</td><td>Latency-mode CQE delivery and wakeup shaping</td></tr>
+<tr><td>RDMA</td><td>Low-copy transport</td><td>Registration and placement policy still expensive</td><td>Long-lived memory intent and transport-aware control plane</td></tr>
+</tbody></table>
+<h2>4. Completion Locality Matters More Than Another Queue</h2>
+<p>The storage stack still acts as if finishing the I/O is the main goal. For AI systems, finishing the I/O on the <b>right CPU with the right memory ownership</b> is usually more important than shaving a tiny amount off raw dispatch overhead.</p>
+<div class="figure"><svg viewBox="0 0 1120 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Storage completion critical path"><rect x="20" y="20" width="1080" height="390" rx="24" fill="#f8fbff" stroke="#d7e2f0"/><text x="52" y="62" font-size="24" font-weight="700" fill="#101828">The storage path that actually matters</text><text x="52" y="88" font-size="15" fill="#536075">The media can be done while the application is still effectively waiting.</text><g font-family="sans-serif"><rect x="58" y="156" width="128" height="74" rx="18" fill="#ffffff" stroke="#d7e2f0"/><text x="122" y="185" text-anchor="middle" font-size="15" font-weight="700">SSD done</text><text x="122" y="208" text-anchor="middle" font-size="12" fill="#536075">media complete</text><rect x="230" y="156" width="148" height="74" rx="18" fill="#eef4ff" stroke="#c8d8ff"/><text x="304" y="185" text-anchor="middle" font-size="15" font-weight="700">Controller + IRQ</text><text x="304" y="208" text-anchor="middle" font-size="12" fill="#536075">MSI-X delivery</text><rect x="420" y="156" width="144" height="74" rx="18" fill="#ffffff" stroke="#d7e2f0"/><text x="492" y="185" text-anchor="middle" font-size="15" font-weight="700">blk-mq</text><text x="492" y="208" text-anchor="middle" font-size="12" fill="#536075">completion path</text><rect x="606" y="156" width="156" height="74" rx="18" fill="#ecfdf7" stroke="#b8ecdd"/><text x="684" y="185" text-anchor="middle" font-size="15" font-weight="700">io_uring / cache</text><text x="684" y="208" text-anchor="middle" font-size="12" fill="#536075">ownership handoff</text><rect x="804" y="156" width="138" height="74" rx="18" fill="#ffffff" stroke="#d7e2f0"/><text x="873" y="185" text-anchor="middle" font-size="15" font-weight="700">Wakeup</text><text x="873" y="208" text-anchor="middle" font-size="12" fill="#536075">right CPU?</text><rect x="984" y="156" width="92" height="74" rx="18" fill="#fff7ec" stroke="#f7d8a8"/><text x="1030" y="185" text-anchor="middle" font-size="15" font-weight="700">Use</text><text x="1030" y="208" text-anchor="middle" font-size="12" fill="#536075">next step</text></g><path d="M186 193 H230" stroke="#344054" stroke-width="2.5"/><path d="M378 193 H420" stroke="#344054" stroke-width="2.5"/><path d="M564 193 H606" stroke="#344054" stroke-width="2.5"/><path d="M762 193 H804" stroke="#344054" stroke-width="2.5"/><path d="M942 193 H984" stroke="#344054" stroke-width="2.5"/><rect x="116" y="292" width="896" height="56" rx="14" fill="#ffffff" stroke="#d7e2f0"/><text x="144" y="326" font-size="14" font-weight="700" fill="#101828">Optimization target:</text><text x="292" y="326" font-size="14" fill="#101828">keep completion, memory ownership, and userspace resumption on the same locality path.</text></svg><div class="figcap">Figure 1. Storage performance should be measured by completion usefulness, not just completion existence.</div></div>
+<p>That is why queue affinity is not a low-level detail anymore. It is product behavior.</p>
+<h2>5. io_uring Helped, But It Did Not Finish the Job</h2>
+<p><span class="inline">io_uring</span> removed plenty of userspace/kernel friction, but many teams over-read what that means. It made async composition cheaper. It did not suddenly give the storage stack a policy brain.</p>
+<ul>
+<li>The CQE may still show up later than the application really wanted because of batching or task_work timing.</li>
+<li>The completion path may still land on a CPU that is wrong for the consumer.</li>
+<li>The memory touched next may still be remote, cold, or trapped behind a registration/copy decision that lives outside the ring.</li>
+</ul>
+<p>In AI systems, <span class="inline">io_uring</span> should be thought of as a mechanism that needs a stronger latency mode above it, not as the final answer.</p>
+<h2>6. RDMA Is Powerful and Still Incomplete</h2>
+<p>RDMA solved a transport problem brilliantly. It did not solve the system problem around transport. That missing layer is becoming more obvious now that AI clusters care about memory placement, storage-backed prefetch, GPU-feeding latency, and multi-tenant cost control.</p>
+<div class="grid">
+<section class="architecture"><h3>What RDMA already does well</h3><p>Low-copy movement, queue pairs, completion queues, transport offload, and high-throughput low-CPU data transfer across fabrics.</p></section>
+<section class="architecture"><h3>What it still does poorly as a system</h3><p>Intent expression, locality policy, long-lived registration reuse, storage alignment, and application-visible latency contracts.</p></section>
+</div>
+<p>The missing abstraction is not another verb. It is a control plane above the verbs that can say:</p>
+<pre><code>this transfer is:
+  step-critical
+  likely to be consumed by CPU X / GPU Y
+  expected to recur
+  worth pre-registration
+  allowed to bypass generic batching
+  subject to a latency budget rather than a throughput-only budget</code></pre>
+<h2>7. The Measurement Model Is Wrong Too Often</h2>
+<p>One reason this area stays under-optimized is that the wrong counters still dominate reviews. Teams look at SSD bandwidth, average latency, queue depth, or network throughput and conclude the stack is healthy. For AI systems, I would care more about these:</p>
+<table><thead><tr><th>Metric</th><th>Why it matters</th><th>Likely root cause when bad</th></tr></thead><tbody>
+<tr><td>device_done_to_userspace_ready</td><td>Captures whether completion was actually useful when it arrived</td><td>IRQ mismatch, <span class="inline">blk-mq</span> deferral, task_work lag, wakeup noise</td></tr>
+<tr><td>completion_cpu != consumer_cpu ratio</td><td>Shows whether locality is being preserved or thrown away</td><td>Queue affinity mistakes, generic interrupt spray, weak steering</td></tr>
+<tr><td>registration_reuse hit rate</td><td>Makes RDMA and GPU-adjacent memory churn visible</td><td>Short-lived mappings, transport policy ignorance, poor buffer lifecycle</td></tr>
+<tr><td>storage_to_gpu continuation gap</td><td>Measures how long it takes for bytes to become accelerator-usable</td><td>Bounce buffers, copy paths, IOMMU overhead, wakeup mismatch</td></tr>
+</tbody></table>
+<pre><code>tracepoints I would join:
+  block_rq_issue
+  block_rq_complete
+  nvme completion hooks
+  io_uring CQE visibility
+  sched_wakeup
+  sched_switch
+  dma_fence or GPU handoff markers when available
+  RDMA CQ handling
+
+derived signals:
+  useful_completion_ns
+  locality_miss_rate
+  deferred_completion_rate
+  registration_churn_per_flow
+</code></pre>
+<h2>8. The Storage-to-GPU Path Is Still Too Wasteful</h2>
+<p>Even in systems that advertise direct paths, the reality is often messier. There are still hidden bounce buffers, registration churn, IOMMU overhead, pinned-memory lifecycle costs, userspace wakeup mismatch, and queueing decisions that were made for old throughput assumptions instead of modern accelerator economics.</p>
+<div class="callout warn"><p><b>The expensive mistake:</b> buying faster accelerators while leaving the storage-to-GPU feed path governed by generic server defaults.</p></div>
+<h2>9. What I Would Change First</h2>
+<table><thead><tr><th>Priority</th><th>Area</th><th>Change</th><th>Why it matters</th></tr></thead><tbody>
+<tr><td>1</td><td>Completion locality</td><td>Align SSD queue affinity, <span class="inline">blk-mq</span> completion CPU, and userspace consumer CPU</td><td>Reduces the repeated boundary tax after the media is already done</td></tr>
+<tr><td>2</td><td>Latency mode</td><td>Add bounded-latency operating modes across controller, block layer, and <span class="inline">io_uring</span></td><td>Lets the stack stop pretending every workload wants maximum queue depth</td></tr>
+<tr><td>3</td><td>Hinting</td><td>Expose step-critical, hot metadata, and prefetch-confidence hints to the storage stack</td><td>Controllers and the host need better semantics than generic reads</td></tr>
+<tr><td>4</td><td>Registration reuse</td><td>Treat repeated RDMA and GPU-adjacent memory regions as first-class, long-lived objects</td><td>Registration churn is wasted CPU time in stable pipelines</td></tr>
+<tr><td>5</td><td>Observability</td><td>Trace from NVMe completion through wakeup and onward to GPU-feed continuation</td><td>You cannot fix what the stack refuses to attribute</td></tr>
+</tbody></table>
+<h2>10. A Better Way to Think About the Stack</h2>
+<p>The storage path should not be decomposed into isolated teams each maximizing its own local metric. It should be treated as a coordinated latency surface with shared ownership.</p>
+<pre><code>desired policy loop:
+  application declares intent
+    -> controller and host queues choose latency mode
+    -> completion steered to consumer locality
+    -> io_uring or cache hands off without generic detours
+    -> memory registration / DMA reuse honored
+    -> possible RDMA or GPU continuation inherits same policy
+    -> instrumentation records end-to-end usefulness
+</code></pre>
+<p>That is how you stop the system from wasting tens or hundreds of microseconds at every boundary and then hiding behind good aggregate bandwidth numbers.</p>
+<h2>11. Why This Matters More for Agents and Retrieval</h2>
+<p>Agentic systems, retrieval-heavy systems, and disaggregated inference systems all amplify storage path flaws because they chain many dependent operations together. They are not just “reading data.” They are reading data that gates the next decision. That means the kernel and controller path becomes part of the reasoning loop.</p>
+<h2>12. Final View</h2>
+<p>The next storage win for AI is probably not a new marketing number on the SSD box. It is a control-plane upgrade across SSD controller policy, Linux completion locality, <span class="inline">io_uring</span> latency behavior, memory registration, and RDMA semantics. The hardware is already fast enough that the coordination mistakes now dominate more than people want to admit.</p>
+<div class="callout"><p><b>The short version:</b> the AI storage stack is still too generic. The systems that win will be the ones that treat storage completions as latency-sensitive orchestration events, not just successful I/O.</p></div>
+<div class="footer"><p><b>Why this matters.</b> Better accelerators multiply the value of better feeding. Once compute gets expensive enough, the “boring” stack stops being boring.</p></div>
+</main></article></div>
+</body>
+</html>
