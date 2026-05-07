@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARM vs x86 for Agentic AI: The Kernel Stack Changes That Actually Matter | MANISH AI</title>
+<meta name="description" content="A deep technical essay on Linux kernel changes for agentic AI on ARM and x86, covering scheduler wakeups, IRQ and softirq completion locality, NUMA and TLB stability, io_uring, DVFS, cpuidle, and deterministic orchestration.">
+<meta name="keywords" content="agentic AI, Linux kernel, ARM, x86, scheduler, IRQ, softirq, DVFS, cpuidle, NUMA, TLB, io_uring, AI infrastructure">
+<meta name="author" content="MANISH AI">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://manishklach.github.io/writings/arm-x86-kernel-stack-changes-agentic-ai.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="ARM vs x86 for Agentic AI: The Kernel Stack Changes That Actually Matter | MANISH AI">
+<meta property="og:description" content="A deep technical essay on Linux kernel changes for agentic AI on ARM and x86, covering scheduler wakeups, IRQ and softirq completion locality, NUMA and TLB stability, io_uring, DVFS, cpuidle, and deterministic orchestration.">
+<meta property="og:url" content="https://manishklach.github.io/writings/arm-x86-kernel-stack-changes-agentic-ai.html">
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta property="og:image:alt" content="Preview card for ARM vs x86 for Agentic AI: The Kernel Stack Changes That Actually Matter">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ARM vs x86 for Agentic AI: The Kernel Stack Changes That Actually Matter | MANISH AI">
+<meta name="twitter:description" content="A deep technical essay on Linux kernel changes for agentic AI on ARM and x86, covering scheduler wakeups, IRQ and softirq completion locality, NUMA and TLB stability, io_uring, DVFS, cpuidle, and deterministic orchestration.">
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"ARM vs x86 for Agentic AI: The Kernel Stack Changes That Actually Matter","description":"A deep technical essay on Linux kernel changes for agentic AI on ARM and x86, covering scheduler wakeups, IRQ and softirq completion locality, NUMA and TLB stability, io_uring, DVFS, cpuidle, and deterministic orchestration.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/arm-x86-kernel-stack-changes-agentic-ai.html","mainEntityOfPage":"https://manishklach.github.io/writings/arm-x86-kernel-stack-changes-agentic-ai.html","datePublished":"2026-05-07","dateModified":"2026-05-07","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#f4f7fb;--paper:rgba(255,255,255,.94);--paper-strong:#fff;--ink:#101828;--muted:#536075;--line:rgba(15,23,42,.10);--blue:#2563eb;--cyan:#0f766e;--orange:#d97706;--shadow:0 30px 90px rgba(15,23,42,.11);--radius-xl:30px;--radius-lg:22px}
+  *{box-sizing:border-box} html{scroll-behavior:smooth}
+  body{margin:0;color:var(--ink);background:radial-gradient(circle at 10% 0%, rgba(37,99,235,.11), transparent 28rem),radial-gradient(circle at 100% 0%, rgba(15,118,110,.10), transparent 24rem),linear-gradient(180deg,#f8fbff 0%,#f4f7fb 38%,#f6f4ff 100%);font-family:"Sora",system-ui,sans-serif;line-height:1.68}
+  a{color:inherit}.site-top{max-width:1160px;margin:0 auto;padding:18px 22px 0}.site-top-inner{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:14px 18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.8);backdrop-filter:blur(12px)}.site-mark,.site-links a{text-decoration:none}.site-mark{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--blue)}.site-links{display:flex;gap:1rem;flex-wrap:wrap}.site-links a{font-size:12px;color:#475569}.wrapper{max-width:1160px;margin:0 auto;padding:22px 22px 78px}.paper{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-xl);box-shadow:var(--shadow);overflow:hidden}
+  header{padding:58px 54px 38px;border-bottom:1px solid var(--line);background:radial-gradient(circle at top right, rgba(37,99,235,.12), transparent 20rem),radial-gradient(circle at 0% 100%, rgba(124,58,237,.09), transparent 20rem),linear-gradient(135deg, rgba(255,255,255,.95), rgba(244,247,251,.98))}
+  .kicker{text-transform:uppercase;letter-spacing:.16em;color:var(--blue);font-size:12px;font-weight:800} h1{margin:16px 0 18px;font-family:"Instrument Serif",Georgia,serif;font-size:clamp(42px,6vw,72px);line-height:.98;letter-spacing:-.035em;max-width:980px}.subtitle{font-size:20px;color:var(--muted);max-width:930px;margin:0}.meta{display:flex;flex-wrap:wrap;gap:12px;margin-top:25px}.pill{font-size:13px;color:#334155;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 12px}
+  main{padding:40px 54px 62px} p{font-size:17px;color:#1f2937;margin:0 0 16px}.lede{font-size:19px;color:#132033} h2{margin:52px 0 14px;padding-top:6px;font-size:31px;line-height:1.15;letter-spacing:-.03em} h3{margin:30px 0 10px;font-size:22px;letter-spacing:-.02em}
+  .abstract,.callout,.scorecard,.stack-block,.architecture{border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--paper-strong)} .abstract{padding:24px 26px;margin:0 0 34px;background:linear-gradient(180deg,#f7fbff,#fff)} .callout{padding:18px 20px;margin:22px 0;background:#eef4ff;border-left:5px solid var(--blue)} .callout.warn{background:#fff8ec;border-left-color:var(--orange)} .callout.alt{background:#edfdfa;border-left-color:var(--cyan)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:20px 0}.scorecard,.stack-block,.architecture{padding:18px 20px}.scorecard h3,.stack-block h3,.architecture h3{margin-top:0}.figure{margin:28px 0;border:1px solid var(--line);border-radius:24px;background:#fff;padding:18px}.figcap{font-size:14px;color:var(--muted);text-align:center;margin-top:10px} svg{width:100%;height:auto;display:block}
+  table{width:100%;border-collapse:separate;border-spacing:0;margin:22px 0;border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff;font-size:15px} th,td{padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top} th{text-align:left;background:#f8fafc;color:#172033} tr:last-child td{border-bottom:0}
+  ul,ol{margin:0 0 18px 22px;color:#1f2937} li{margin:0 0 10px} pre{background:#091220;color:#e6edf7;border:1px solid #16243a;border-radius:18px;padding:18px 20px;overflow:auto;font-size:13.4px;line-height:1.5} code{font-family:"IBM Plex Mono",Consolas,monospace}.inline{font-family:"IBM Plex Mono",Consolas,monospace;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:7px;padding:1px 6px;font-size:.92em}.footer{margin-top:40px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+  @media (max-width: 860px){header,main{padding-left:24px;padding-right:24px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="site-top"><div class="site-top-inner"><a class="site-mark" href="/">MANISH AI</a><div class="site-links"><a href="/writings.html">&larr; Writings</a><a href="https://github.com/manishklach">GitHub</a></div></div></div>
+<div class="wrapper"><article class="paper"><header><div class="kicker">Kernel Systems Essay / Agentic AI</div><h1>ARM vs x86 for Agentic AI: The Kernel Stack Changes That Actually Matter</h1><p class="subtitle">If you want agents to feel fast, do not start with FLOPS charts. Start with <span class="inline">try_to_wake_up()</span>, IRQ and softirq locality, TLB stability, NUMA discipline, <span class="inline">io_uring</span> completion delivery, schedutil, and cpuidle.</p><div class="meta"><span class="pill"><time datetime="2026-05-07">May 7, 2026</time></span><span class="pill">24 min read</span><span class="pill">Focus: Linux on ARM + x86</span><span class="pill">Subsystems: scheduler / IRQ / memory / I/O / power</span><span class="pill">Thesis: tail latency, not average utilization</span></div></header>
+<main data-pagefind-body>
+<section class="abstract"><p><b>Abstract.</b> Agentic AI is a control-plane workload masquerading as an inference workload. The hot path is often not matrix math but a sequence of kernel-mediated boundaries: IRQ completion, softirq or block completion, scheduler wakeup, C-state exit, frequency selection, cache warmup, page-table stability, userspace parsing, and the next outbound operation. This produces a pathological performance shape: small sub-millisecond penalties repeated across hundreds or thousands of dependent steps. The Linux kernel today does not have a strong notion of a <b>step-critical orchestration thread</b>. It sees short bursts, low average utilization, occasional blocking, and abundant opportunities to rebalance, downclock, migrate, reclaim, or defer work. Those are reasonable defaults for generic workloads and often the wrong defaults for agents. My view is that the highest-leverage stack changes on both ARM and x86 sit in five surfaces: scheduler wakeup placement, IRQ-to-userspace completion locality, memory and TLB stability, I/O runtime completion semantics, and power-state control. The architecture-specific failure mode differs. On ARM, the repeated debt is usually DVFS lag, cpuidle exit latency, and heterogeneous-cluster misplacement. On x86, it is more often NUMA drift, interrupt spray, TLB shootdown noise, and housekeeping interference across large core topologies.</p></section>
+<h2>1. The Wrong Mental Model</h2>
+<p class="lede">Most people still profile agent systems as if they were either training jobs or steady-state token generators. They are neither.</p>
+<p>The execution pattern of an agent is a long dependency chain of short critical sections. A runtime issues work to a model server, a tool process, a remote RPC endpoint, a filesystem, a browser session, or a local sandbox. Then it blocks in <span class="inline">epoll_wait()</span>, <span class="inline">io_uring_enter()</span>, a futex, an eventfd, a timerfd, or a socket receive path. The next visible unit of user experience is therefore determined by what the kernel does with the completion, not only by what the model did before the completion.</p>
+<pre><code>agent step:
+  submit work
+  block on event source
+  device or remote side completes
+  IRQ fires
+  softirq / blk-mq / task_work / wake_q path runs
+  target task becomes runnable
+  scheduler chooses CPU
+  task returns to userspace
+  parse / plan / emit next operation
+  repeat
+
+critical latency =
+  completion_to_runnable
++ runnable_to_oncpu
++ idle_exit
++ freq_ramp
++ cache_and_tlb_rewarm
++ userspace_resume</code></pre>
+<p>That means the relevant optimization target is not “faster model kernel launch” in isolation. It is minimizing the variance and mean of the completion-to-next-issue loop. If you lose 80 microseconds at wakeup, 120 microseconds to frequency ramp, 60 microseconds to migration and cold-cache effects, and 50 microseconds to an avoidable TLB disturbance, you have already lost more than many agent frameworks spend on the actual control logic for a step.</p>
+<div class="callout"><p><b>Key reframing:</b> the operating system is part of the agent runtime. Linux is not a neutral substrate here; it actively shapes how quickly one reasoning step can become the next.</p></div>
+<h2>2. The Critical Path Through Linux</h2>
+<p>The chain below is where I would focus the first six months of serious systems work. Every stage is measurable, and every stage has architecture-specific failure modes.</p>
+<div class="figure"><svg viewBox="0 0 1120 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agent step critical path"><rect x="20" y="20" width="1080" height="380" rx="24" fill="#f8fbff" stroke="#d7e2f0"/><text x="52" y="62" font-size="24" font-weight="700" fill="#101828">The real agent critical path</text><text x="52" y="88" font-size="15" fill="#536075">The model call is only one stage. The rest is kernel orchestration.</text><g font-family="sans-serif"><rect x="60" y="150" width="120" height="72" rx="18" fill="#ffffff" stroke="#d7e2f0"/><text x="120" y="181" text-anchor="middle" font-size="15" font-weight="700">I/O done</text><text x="120" y="204" text-anchor="middle" font-size="12" fill="#536075">IRQ / block / net</text><rect x="220" y="150" width="138" height="72" rx="18" fill="#eef4ff" stroke="#c8d8ff"/><text x="289" y="181" text-anchor="middle" font-size="15" font-weight="700">Completion</text><text x="289" y="204" text-anchor="middle" font-size="12" fill="#536075">softirq / workqueue</text><rect x="400" y="150" width="138" height="72" rx="18" fill="#ffffff" stroke="#d7e2f0"/><text x="469" y="181" text-anchor="middle" font-size="15" font-weight="700">Wakeup</text><text x="469" y="204" text-anchor="middle" font-size="12" fill="#536075">scheduler path</text><rect x="580" y="150" width="138" height="72" rx="18" fill="#ecfdf7" stroke="#b8ecdd"/><text x="649" y="181" text-anchor="middle" font-size="15" font-weight="700">Warm CPU?</text><text x="649" y="204" text-anchor="middle" font-size="12" fill="#536075">DVFS / idle / locality</text><rect x="760" y="150" width="138" height="72" rx="18" fill="#ffffff" stroke="#d7e2f0"/><text x="829" y="181" text-anchor="middle" font-size="15" font-weight="700">Run step</text><text x="829" y="204" text-anchor="middle" font-size="12" fill="#536075">parse / decide</text><rect x="940" y="150" width="118" height="72" rx="18" fill="#fff7ec" stroke="#f7d8a8"/><text x="999" y="181" text-anchor="middle" font-size="15" font-weight="700">Next issue</text><text x="999" y="204" text-anchor="middle" font-size="12" fill="#536075">tool / RPC / file</text></g><path d="M180 186 H220" stroke="#344054" stroke-width="2.5"/><path d="M358 186 H400" stroke="#344054" stroke-width="2.5"/><path d="M538 186 H580" stroke="#344054" stroke-width="2.5"/><path d="M718 186 H760" stroke="#344054" stroke-width="2.5"/><path d="M898 186 H940" stroke="#344054" stroke-width="2.5"/><rect x="92" y="284" width="936" height="56" rx="14" fill="#ffffff" stroke="#d7e2f0"/><text x="120" y="318" font-size="14" font-weight="700" fill="#101828">Optimization target:</text><text x="267" y="318" font-size="14" fill="#101828">minimize repeated boundary cost, not just compute time inside the model.</text></svg><div class="figcap">Figure 1. Agent responsiveness depends on the entire completion-to-next-issue loop, not only model execution time.</div></div>
+<table><thead><tr><th>Stage</th><th>Kernel structures involved</th><th>Typical failure mode</th><th>What I would change</th></tr></thead><tbody>
+<tr><td>Completion arrival</td><td>MSI/MSI-X, IRQ descriptors, blk-mq tags, NAPI poll lists</td><td>IRQ lands on a distant or noisy CPU</td><td>Preserve a home CPU or home cluster for step-critical control threads and bias completion toward it</td></tr>
+<tr><td>Deferred completion</td><td>softirq, task_work, workqueues, ksoftirqd</td><td>Completion falls out of the fast path into overloaded generic contexts</td><td>Stronger affinity propagation and reduced handoff count for latency-marked flows</td></tr>
+<tr><td>Wakeup</td><td>wake_q, ttwu, rq selection, EEVDF/CFS placement</td><td>Task wakes on the wrong CPU or after unnecessary migration</td><td>Locality-preserving wakeup placement and anti-migration windows</td></tr>
+<tr><td>Resume on CPU</td><td>cpuidle, cpufreq, schedutil, uclamp, idle governors</td><td>CPU is in the wrong idle state or at the wrong frequency</td><td>Windowed performance floors and shallow-idle bias during active control loops</td></tr>
+<tr><td>Userspace run</td><td>TLB, page tables, slab, page allocator, page cache</td><td>Cold TLBs, remote memory, reclaim noise, mmap churn</td><td>Step-local memory stability accounting and control-plane-local allocators</td></tr>
+</tbody></table>
+<h2>3. Scheduler: Wakeup Determinism Beats Average Fairness</h2>
+<p>The default scheduler objective is fairness and high aggregate utilization, not minimal boundary latency for bursty orchestration threads. For agents, the highest-value scheduler improvement is not a new general-purpose class for everything. It is a precise recognition of <b>step-critical threads</b> whose wakeup-to-run delay dominates user-visible latency even when they consume little CPU time overall.</p>
+<h3>3.1 The Wakeup Path I Care About</h3>
+<p>On Linux, the important path is not just “the task is runnable.” It is what happens inside the wakeup path: <span class="inline">try_to_wake_up()</span>, CPU selection, runqueue locking, task enqueue, preemption decision, and whether the destination CPU matches the locality of the completion source and the task’s prior hot state. If an agent runtime wakes on CPU 5, but the relevant socket completion arrived on CPU 17, and the task last touched hot metadata on CPU 6 in the same LLC slice, generic balancing has already lost important context.</p>
+<pre><code>idealized agent-aware wakeup policy:
+  if task has active_step_window:
+      prefer previous_cpu if cache-hot and not overloaded
+      else prefer completion_cpu if same LLC / cluster
+      else prefer task.home_cpu
+      suppress load-balance migration unless latency budget violated
+  else:
+      use normal policy</code></pre>
+<h3>3.2 What I Would Add</h3>
+<div class="grid">
+<section class="stack-block"><h3>Latency-tagged control threads</h3><p>Add a task or cgroup hint so the runtime can mark only the orchestration thread, not the whole process tree. This hint should decay in short windows rather than acting like permanent priority inflation.</p></section>
+<section class="stack-block"><h3>Home-CPU semantics</h3><p>Maintain a preferred home CPU or cluster chosen from recent completion locality, cache warmth, and memory locality. This is weaker than hard pinning and stronger than best-effort fairness.</p></section>
+<section class="stack-block"><h3>Anti-migration windows</h3><p>For tens or hundreds of microseconds after a completion, avoid migrations triggered by transient queue imbalance. That time range is exactly where many agents perform parse-plan-dispatch work.</p></section>
+<section class="stack-block"><h3>Deterministic wakeup slots</h3><p>For extremely latency-sensitive deployments, add a mode where specific CPUs reserve micro-windows for orchestration wakeups, reducing runqueue variability and preemption debt.</p></section>
+</div>
+<p>That last item is important because it moves the design from “please try to be local” toward “the system can bound where and when this thread will run.” It is also one of the cleanest differentiators versus GPU-centric systems thinking, which usually assumes the host scheduler is background noise.</p>
+<h2>4. IRQ, Softirq, and Completion Path: This Is Where Agent Latency Starts</h2>
+<p>In many agent traces, the real latency pathology begins long before userspace sees anything. It begins when device completion and deferred work lose locality or fall off the fast path into generic worker contexts.</p>
+<h3>4.1 Network and Storage Should Not Be Treated Symmetrically</h3>
+<p>Agent runtimes often mix network completions, local file reads, subprocess I/O, browser automation traffic, and model-server RPCs. Each one touches different kernel paths: NAPI and GRO for network, blk-mq for storage, task_work for <span class="inline">io_uring</span>, eventfd/futex for internal runtimes. Their common requirement is not maximum throughput. It is minimal variance between completion and resumption.</p>
+<table><thead><tr><th>Path</th><th>Kernel fast path</th><th>Where it goes wrong</th><th>Preferred fix</th></tr></thead><tbody>
+<tr><td>TCP/QUIC RPC reply</td><td>IRQ → NAPI poll → socket receive → wakeup</td><td>RPS/RFS, GRO batching, or ksoftirqd detours add jitter</td><td>Affinity propagation to the agent home core and bounded batching for latency-marked sockets</td></tr>
+<tr><td>Local NVMe read</td><td>IRQ → blk-mq completion → wakeup or task_work</td><td>Completion CPU differs from consumer CPU; queue depth tuned for throughput not latency</td><td>Per-queue affinity and fast completion steering to the control thread locality island</td></tr>
+<tr><td>io_uring tool chain</td><td>submission queue → device work → CQE → task_work / eventfd</td><td>CQE delivery coalesced too aggressively or consumed on the wrong CPU</td><td>Latency-mode CQE delivery and userspace consumption aligned to a home CPU</td></tr>
+</tbody></table>
+<h3>4.2 The Design Principle</h3>
+<p>I would preserve <b>completion provenance</b>. The kernel should remember enough about where a completion came from, who is likely to consume it, and which CPU or cluster is best suited to finish the step. Today that information gets diluted across layers. A wakeup knows there is a task. The scheduler knows there are runnable queues. The power subsystem knows there is utilization. But nothing explicitly carries “this exact thread is finishing an active control loop and should resume on a warm nearby CPU now.”</p>
+<div class="callout alt"><p><b>My rule:</b> the number of CPU handoffs between device completion and userspace resumption should be treated as a first-class SLO for agent platforms.</p></div>
+<h2>5. ARM: The Main Enemy Is Overeager Power Management</h2>
+<p>ARM systems often have excellent energy efficiency and very good raw performance-per-watt, but agent workloads expose the downside of policy loops built for smoother utilization curves. The mistake is to interpret a short blocked interval as meaningful quiescence when it is actually a phase boundary in a still-active control loop.</p>
+<h3>5.1 schedutil Is Usually Too Reactive for Bursty Orchestration</h3>
+<p>On ARM, schedutil frequently makes the “right” decision for the wrong workload: the task blocked, utilization dropped, so the frequency should decay. An agent runtime may then wake tens or hundreds of microseconds later and immediately pay ramp latency. The exact microarchitectural cost varies by SoC and firmware, but the pattern is consistent.</p>
+<pre><code>agent blocks on completion
+  -> util_est decays
+  -> schedutil reduces target frequency
+  -> cpuidle picks deeper state
+  -> next completion arrives
+  -> IRQ handled on sibling cluster
+  -> control task wakes cold
+  -> latency debt repeats</code></pre>
+<p>I would add a kernel-visible <b>active step window</b> with an expiration timestamp. During the window, schedutil would clamp the effective minimum utilization seen for the task or cgroup, and cpuidle would bias away from deeper states on the relevant CPU or cluster. This is not the same as “performance governor.” It is a short-lived guardrail.</p>
+<h3>5.2 big.LITTLE Placement Needs Much Tighter Semantics</h3>
+<p>Capacity-aware scheduling is necessary but not sufficient. Agent control threads should not bounce between LITTLE and big cores mid-conversation simply because the instantaneous load picture changed. If a control thread is the sink for network and tool completions, it should stay on a home island until the active step window decays, unless there is a compelling thermal or contention reason to move it.</p>
+<h3>5.3 The Deterministic Scheduling Embodiment</h3>
+<p>For a more aggressive ARM design, I would create a deterministic scheduling mode for one or more orchestration cores:</p>
+<pre><code>per-cluster orchestration core:
+  reserve a fixed micro-timeslice every T microseconds
+  admit only latency-marked control threads into that slot
+  align IRQ steering for marked sockets / queues to the same cluster
+  hold minimum freq during slot-bearing active windows
+  disallow deep idle while slot reservation is live</code></pre>
+<p>This matters because it converts an otherwise probabilistic wakeup path into a partially time-bounded one. NVIDIA-style host orchestration usually assumes the CPU side is a best-effort feeder for the GPU. A deterministic orchestration slot says the opposite: for agent systems, host-side control latency is part of the product, so we reserve scheduling structure for it.</p>
+<h3>5.4 cpuidle Should Be Completion-Cadence Aware</h3>
+<p>The idle-state question is not “how idle is the CPU in aggregate?” but “what is the recent cadence of completions for this latency-marked flow?” If the same control thread has been reactivated every 200 microseconds to 3 milliseconds for the last several steps, deep idle entry is probably a mistake even if aggregate CPU utilization remains low.</p>
+<h2>6. x86: The Main Enemy Is Topology and Noise</h2>
+<p>x86 systems usually do not fail because they lack raw speed. They fail because large topologies create too many ways to waste locality. Multiple NUMA nodes, large LLC slices, SMT siblings, broad interrupt spray, background daemons, remote page cache, shootdowns, and housekeeping traffic can make a monster server behave worse than a smaller machine for interactive orchestration.</p>
+<h3>6.1 NUMA Locality Must Include the Control Plane</h3>
+<p>Most NUMA guidance is built around throughput threads. Agent runtimes need a different policy: keep the orchestration thread, its frequently touched metadata, its page cache working set, its socket buffers, and its short-lived tool I/O state on the same NUMA home. The thread itself may be light; the penalty of remoteness is not.</p>
+<pre><code>control-plane NUMA policy:
+  choose home node for agent runtime
+  allocate hot metadata on home node
+  prefer wakeup CPUs in home node
+  steer IRQs for relevant queues to home node
+  keep page cache readahead and socket memory local when possible</code></pre>
+<h3>6.2 TLB Shootdowns Are an Underappreciated Tax</h3>
+<p>Agent frameworks often create exactly the kind of memory behavior that produces shootdown noise: short-lived subprocesses, mmap-heavy tools, sandbox remaps, JITs, browser automation sessions, shared-memory buffers, and background memory pressure. On x86, a badly timed TLB shootdown or page-table invalidation can perturb the very control thread you are trying to wake quickly.</p>
+<p>I would add step-scoped accounting for:</p>
+<ul>
+<li><span class="inline">tlb_flush</span> events occurring between completion and next issue</li>
+<li>remote IPI traffic attributable to address-space changes in neighboring workloads</li>
+<li>migrations that coincide with page-table refill and cache rewarm events</li>
+</ul>
+<p>This is one of those domains where average counters are misleading. You need correlation with agent step boundaries, not just system totals.</p>
+<h3>6.3 IRQ Isolation Is More Important Than Raw Core Count</h3>
+<p>On x86, I would much rather have four cores with disciplined IRQ isolation, bounded housekeeping, and stable NUMA locality than sixty-four cores with indiscriminate interrupt delivery. Agentic responsiveness collapses when orchestration CPUs share their immediate neighborhood with unrelated packet floods, storage storms, or timer-heavy background services.</p>
+<div class="callout warn"><p><b>My x86 thesis:</b> once the machine is big enough, the main performance problem is coordination complexity, not arithmetic throughput.</p></div>
+<h2>7. Memory Management: Keep the Control Plane Warm</h2>
+<p>Agent runtimes are not purely CPU-latency problems. They are also memory hygiene problems. The control thread often touches a surprisingly rich working set: token state, parser buffers, JSON trees, tool descriptors, socket state, page cache metadata, sandbox bookkeeping, and policy state for what to do next. None of this is individually large. Together it is fragile.</p>
+<h3>7.1 What I Would Change</h3>
+<div class="grid">
+<section class="architecture"><h3>Local allocators for control threads</h3><p>Small hot allocations for orchestration threads should bias toward node-local, CPU-local caches and avoid incidental cross-node refill where possible.</p></section>
+<section class="architecture"><h3>Reclaim guardrails</h3><p>Background reclaim and compaction should become less willing to perturb pages touched repeatedly inside active step windows, especially on systems with ample free memory.</p></section>
+<section class="architecture"><h3>Page-cache stability</h3><p>Tool artifacts, prompt templates, policy files, and other repeatedly opened metadata should be protected from pointless churn caused by broader file-cache pressure.</p></section>
+<section class="architecture"><h3>TLB disturbance accounting</h3><p>Expose per-cgroup or per-task counters for TLB flushes and page-table disruption during marked orchestration windows.</p></section>
+</div>
+<p>This is also where future CXL and heterogeneous-memory systems become interesting. Even without redesigning everything around new memory tiers, the kernel should know that some agent state is latency-critical control state and should stay close to CPU caches and low-latency memory.</p>
+<h2>8. I/O Runtime: io_uring Is Useful, But It Still Needs Kernel Help</h2>
+<p>Many people see <span class="inline">io_uring</span> and assume the problem is solved. It is not. <span class="inline">io_uring</span> reduces some userspace/kernel transition overhead and enables efficient async composition, but the completion path still runs through the same underlying locality and scheduling machinery. A CQE delivered after the wrong batching decision or consumed on the wrong CPU is still late.</p>
+<h3>8.1 What I Would Want from io_uring for Agents</h3>
+<ul>
+<li>A latency mode that prioritizes timely CQE visibility over aggressive completion batching.</li>
+<li>Better affinity coupling between submission-side control threads and completion-side wakeups.</li>
+<li>Step-aware observability joining CQE timestamps to scheduler, cpuidle, and cpufreq events.</li>
+<li>Cleaner policy hooks so runtimes can say “this queue belongs to a step-critical orchestration loop.”</li>
+</ul>
+<pre><code>desired derived metrics:
+  cqe_visible_ns - device_complete_ns
+  wakeup_ns - cqe_visible_ns
+  oncpu_ns - wakeup_ns
+  next_issue_ns - oncpu_ns
+  migrations_in_between
+  freq_transitions_in_between
+  tlb_flushes_in_between</code></pre>
+<h2>9. The Measurement Model</h2>
+<p>Before changing policy, I would build a measurement pipeline that treats the agent step as the unit of analysis. Linux already exposes most of what is needed through tracepoints, BPF, PMU events, and perf infrastructure.</p>
+<table><thead><tr><th>Metric</th><th>Collection source</th><th>Why it matters</th></tr></thead><tbody>
+<tr><td>completion_to_runnable_ns</td><td>IRQ, softirq, blk-mq, wakeup tracepoints</td><td>Measures the boundary cost before the task is runnable</td></tr>
+<tr><td>runnable_to_oncpu_ns</td><td>sched_wakeup + sched_switch</td><td>Shows scheduler contention or placement mistakes</td></tr>
+<tr><td>migrations_per_step</td><td>sched_switch + task CPU history</td><td>Correlates locality loss with step latency</td></tr>
+<tr><td>freq_drop_between_steps</td><td>cpufreq transitions, scheduler utilization</td><td>Captures DVFS overreaction on ARM and sometimes x86</td></tr>
+<tr><td>deep_idle_entries_during_active_window</td><td>cpuidle tracepoints</td><td>Explains wakeup penalties in bursty control loops</td></tr>
+<tr><td>tlb_flushes_per_step</td><td>mm/tlb tracepoints, IPIs, perf</td><td>Makes memory-management interference visible</td></tr>
+<tr><td>remote_irq_ratio</td><td>IRQ CPU vs task home CPU</td><td>Direct signal of affinity failure</td></tr>
+</tbody></table>
+<pre><code>tracepoints I would join:
+  irq_handler_entry / irq_handler_exit
+  softirq_entry / softirq_exit
+  napi_poll
+  blk_mq_complete_request
+  sched_wakeup
+  sched_switch
+  mm_tlb_flush_*
+  cpu_frequency
+  cpu_idle
+  io_uring_cqe or task_work related hooks
+
+BPF key:
+  {agent_id, step_id, task_pid, home_cpu, completion_cpu, wake_cpu}</code></pre>
+<h2>10. A Concrete Kernel Design: Agent Latency Control Plane</h2>
+<p>The cleanest way to think about all of this is as a tiny cross-subsystem control plane in the kernel. Not a giant new scheduler. Not a magic governor. A small piece of shared state that says: this task or cgroup is in an active orchestration window, here is its home locality, and here is its latency budget.</p>
+<div class="figure"><svg viewBox="0 0 1120 470" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agent latency control plane"><rect x="20" y="20" width="1080" height="430" rx="24" fill="#ffffff" stroke="#dde6f2"/><text x="52" y="62" font-size="24" font-weight="700" fill="#101828">Agent Latency Control Plane</text><text x="52" y="88" font-size="15" fill="#536075">One hint fans out across scheduler, IRQ routing, power, and memory policy.</text><rect x="430" y="150" width="260" height="100" rx="22" fill="#eef4ff" stroke="#c8d8ff"/><text x="560" y="186" text-anchor="middle" font-size="18" font-weight="700">Agent Window Controller</text><text x="560" y="210" text-anchor="middle" font-size="13" fill="#536075">short-lived kernel control state</text><text x="560" y="230" text-anchor="middle" font-size="13" fill="#536075">step-aware, decaying, locality-biased</text><rect x="86" y="94" width="220" height="78" rx="18" fill="#ffffff" stroke="#dde6f2"/><text x="196" y="126" text-anchor="middle" font-size="16" font-weight="700">Userspace runtime</text><text x="196" y="150" text-anchor="middle" font-size="12" fill="#536075">marks control thread and step windows</text><rect x="84" y="294" width="220" height="92" rx="18" fill="#ffffff" stroke="#dde6f2"/><text x="194" y="328" text-anchor="middle" font-size="16" font-weight="700">Scheduler</text><text x="194" y="351" text-anchor="middle" font-size="12" fill="#536075">wakeup placement</text><text x="194" y="368" text-anchor="middle" font-size="12" fill="#536075">anti-migration / locality</text><rect x="356" y="294" width="220" height="92" rx="18" fill="#ffffff" stroke="#dde6f2"/><text x="466" y="328" text-anchor="middle" font-size="16" font-weight="700">IRQ + I/O path</text><text x="466" y="351" text-anchor="middle" font-size="12" fill="#536075">blk-mq / NAPI / workqueue</text><text x="466" y="368" text-anchor="middle" font-size="12" fill="#536075">affinity propagation</text><rect x="628" y="294" width="220" height="92" rx="18" fill="#ffffff" stroke="#dde6f2"/><text x="738" y="328" text-anchor="middle" font-size="16" font-weight="700">Power policy</text><text x="738" y="351" text-anchor="middle" font-size="12" fill="#536075">DVFS floor / shallow idle</text><text x="738" y="368" text-anchor="middle" font-size="12" fill="#536075">windowed decay</text><rect x="900" y="294" width="140" height="92" rx="18" fill="#ffffff" stroke="#dde6f2"/><text x="970" y="328" text-anchor="middle" font-size="16" font-weight="700">Memory</text><text x="970" y="351" text-anchor="middle" font-size="12" fill="#536075">local alloc /</text><text x="970" y="368" text-anchor="middle" font-size="12" fill="#536075">reclaim guard</text><path d="M306 133 H430" stroke="#344054" stroke-width="2.5"/><path d="M560 250 V294" stroke="#344054" stroke-width="2.5"/><path d="M430 250 L250 294" stroke="#344054" stroke-width="2.5"/><path d="M500 250 L466 294" stroke="#344054" stroke-width="2.5"/><path d="M620 250 L738 294" stroke="#344054" stroke-width="2.5"/><path d="M690 250 L970 294" stroke="#344054" stroke-width="2.5"/></svg><div class="figcap">Figure 2. The useful abstraction is a shared control plane for short-lived latency-sensitive agent windows.</div></div>
+<pre><code>struct agent_window {
+    u64 expires_ns;
+    u32 agent_id;
+    s16 home_cpu;
+    s16 home_node;
+    u32 latency_budget_us;
+    u16 flags;   /* anti_migrate, shallow_idle, dvfs_floor, deterministic_slot */
+};</code></pre>
+<p>Subsystem interactions would look like this:</p>
+<ol>
+<li>Userspace runtime marks a control thread or cgroup and renews an active window when issuing or receiving a step-critical operation.</li>
+<li>IRQ or completion paths consult the active window to bias CPU selection and delivery locality.</li>
+<li>The scheduler prefers the home CPU, completion CPU, or same-LLC CPU while the window remains valid.</li>
+<li>cpufreq and cpuidle apply bounded policy overrides only for the relevant CPUs and only while the window remains active.</li>
+<li>Memory management accounts for TLB disturbance and optionally shields hot control-plane pages from needless perturbation.</li>
+</ol>
+<h2>11. If I Had to Prioritize the Patch Queue</h2>
+<p>I would not start by changing everything. I would stage the work in a way that makes proof easy.</p>
+<table><thead><tr><th>Phase</th><th>Primary subsystem</th><th>Deliverable</th><th>Proof of value</th></tr></thead><tbody>
+<tr><td>1</td><td>Observability</td><td>BPF step tracer joining completion, wakeup, frequency, idle, and TLB events</td><td>Tail-latency decomposition per agent step</td></tr>
+<tr><td>2</td><td>Scheduler</td><td>Home CPU + anti-migration window for marked threads</td><td>Lower runnable_to_oncpu and fewer migrations per step</td></tr>
+<tr><td>3</td><td>IRQ / completion</td><td>Affinity propagation for marked queues and sockets</td><td>Lower completion_to_runnable and remote_irq_ratio</td></tr>
+<tr><td>4</td><td>ARM power path</td><td>Windowed uclamp / schedutil floor + shallow idle bias</td><td>Reduced freq_drop_between_steps and idle-exit debt</td></tr>
+<tr><td>5</td><td>x86 topology hygiene</td><td>NUMA-home control plane + IRQ / housekeeping isolation</td><td>Lower remote memory and interrupt noise for orchestration cores</td></tr>
+<tr><td>6</td><td>Memory</td><td>TLB disturbance accounting and control-plane reclaim guardrails</td><td>Reduced long-tail stalls correlated with mm activity</td></tr>
+</tbody></table>
+<h2>12. Architecture-Specific Bottom Line</h2>
+<div class="grid">
+<section class="scorecard"><h3>ARM</h3><ol><li>Introduce short-lived active step windows integrated with schedutil and cpuidle.</li><li>Keep orchestration threads on a stable big-core or stable cluster home until the window expires.</li><li>Route IRQs and completion work to the same locality island.</li><li>Consider deterministic orchestration slots for the most latency-sensitive deployments.</li></ol></section>
+<section class="scorecard"><h3>x86</h3><ol><li>Choose a NUMA home for the control plane and keep wakeups local.</li><li>Isolate agent-critical CPUs from indiscriminate interrupt spray and housekeeping.</li><li>Measure and reduce TLB and page-table disturbance within step windows.</li><li>Treat topology discipline as more important than raw core count.</li></ol></section>
+</div>
+<h2>13. Final View</h2>
+<p>If you ask me what part of the ARM or x86 kernel stack I would change first to boost agentic performance, the answer is not “the model driver” and not “some generic AI acceleration path.” It is the part of Linux that decides what happens between one step and the next. That means wakeup placement, completion locality, power-state continuity, and memory stability.</p>
+<p>On ARM, the real bug is often that the machine keeps trying to save power in the middle of an active reasoning conversation. On x86, the real bug is often that the machine has so much topology and background noise that it cannot preserve locality for a tiny but critical control thread. In both cases, the winning design is the same: teach the kernel that short orchestration gaps are not dead time. They are active time with deferred visibility.</p>
+<div class="callout"><p><b>The short version:</b> if I had to redesign only three surfaces, I would redesign scheduler wakeups, IRQ-to-userspace completion, and memory-stability accounting, then attach bounded power policy on top. That is where the real step-function gains are.</p></div>
+<div class="footer"><p><b>Why this matters.</b> The next leap in agent responsiveness will not come only from better models. It will come from kernels that treat orchestration latency as a first-class systems problem.</p></div>
+</main></article></div>
+</body>
+</html>
