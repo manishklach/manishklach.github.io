@@ -55,6 +55,11 @@ const homepageData = {
   ],
   writing: [
     {
+      title: "Beyond the CPU: Why agentic datacenters need SmartNICs, DPUs, RDMA, and zero-copy",
+      text: "A systems-level essay on why rising CPU pressure in agentic AI points to a bigger story: the whole datacenter data path is now on the critical path.",
+      href: "writings/beyond-the-cpu-agentic-datacenters-smartnics-dpus-rdma-zerocopy.html"
+    },
+    {
       title: "Why AI needs a new memory hierarchy, not just bigger caches",
       text: "A clear argument for why inference bottlenecks are shifting toward byte movement, residency policy, and hierarchy design.",
       href: "writings/why-ai-needs-a-new-memory-hierarchy-not-just-bigger-caches.html"

@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Beyond the CPU: Why Agentic Datacenters Need SmartNICs, DPUs, RDMA, and Zero-Copy | MANISH AI</title>
+<meta content="A polished systems essay on why rising CPU demand in agentic AI makes SmartNICs, DPUs, RDMA, zero-copy, and host-bypass data paths far more important in modern AI datacenters." name="description"/>
+<meta content="agentic AI, SmartNIC, DPU, RDMA, zero-copy, AF_XDP, MSG_ZEROCOPY, io_uring, GPUDirect RDMA, AI datacenter, CPU bottleneck" name="keywords"/>
+<meta content="MANISH AI" name="author"/>
+<meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/>
+<meta content="#08111f" name="theme-color"/>
+<link href="https://manishklach.github.io/writings/beyond-the-cpu-agentic-datacenters-smartnics-dpus-rdma-zerocopy.html" rel="canonical"/>
+<meta content="article" property="og:type"/>
+<meta content="Beyond the CPU: Why Agentic Datacenters Need SmartNICs, DPUs, RDMA, and Zero-Copy | MANISH AI" property="og:title"/>
+<meta content="A polished systems essay on why rising CPU demand in agentic AI makes SmartNICs, DPUs, RDMA, zero-copy, and host-bypass data paths far more important in modern AI datacenters." property="og:description"/>
+<meta content="https://manishklach.github.io/writings/beyond-the-cpu-agentic-datacenters-smartnics-dpus-rdma-zerocopy.html" property="og:url"/>
+<meta content="MANISH AI" property="og:site_name"/>
+<meta content="en_US" property="og:locale"/>
+<meta content="https://manishklach.github.io/og/beyond-the-cpu-agentic-datacenters-smartnics-dpus-rdma-zerocopy.png" property="og:image"/>
+<meta content="Agentic datacenter architecture cover image." property="og:image:alt"/>
+<meta content="summary_large_image" name="twitter:card"/>
+<meta content="Beyond the CPU: Why Agentic Datacenters Need SmartNICs, DPUs, RDMA, and Zero-Copy" name="twitter:title"/>
+<meta content="A polished systems essay on why rising CPU demand in agentic AI makes SmartNICs, DPUs, RDMA, zero-copy, and host-bypass data paths far more important in modern AI datacenters." name="twitter:description"/>
+<meta content="https://manishklach.github.io/og/beyond-the-cpu-agentic-datacenters-smartnics-dpus-rdma-zerocopy.png" name="twitter:image"/>
+<meta content="@manishkl_" name="twitter:site"/>
+<meta content="2026-05-08T00:00:00Z" property="article:published_time"/>
+<meta content="2026-05-08T00:00:00Z" property="article:modified_time"/>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Beyond the CPU: Why Agentic Datacenters Need SmartNICs, DPUs, RDMA, and Zero-Copy",
+  "description": "A polished systems essay on why rising CPU demand in agentic AI makes SmartNICs, DPUs, RDMA, zero-copy, and host-bypass data paths far more important in modern AI datacenters.",
+  "url": "https://manishklach.github.io/writings/beyond-the-cpu-agentic-datacenters-smartnics-dpus-rdma-zerocopy.html",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/beyond-the-cpu-agentic-datacenters-smartnics-dpus-rdma-zerocopy.html",
+  "datePublished": "2026-05-08",
+  "dateModified": "2026-05-08",
+  "author": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  }
+}
+</script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&amp;display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#08111f;
+  --bg2:#0b1629;
+  --panel:rgba(11,22,41,.84);
+  --panel-strong:rgba(12,19,36,.94);
+  --panel-soft:rgba(19,32,56,.66);
+  --line:rgba(163,190,255,.14);
+  --line-strong:rgba(108,227,255,.34);
+  --text:#dbe8ff;
+  --muted:#97abcf;
+  --strong:#f7fbff;
+  --accent:#73c8ff;
+  --accent2:#8ff4cf;
+  --accent3:#bba7ff;
+  --warn:#ffd58a;
+  --danger:#ff8e9f;
+  --shadow:0 28px 90px rgba(2,8,20,.46);
+  --maxw:1180px;
+  --content:760px;
+  --body:"IBM Plex Sans", sans-serif;
+  --display:"Fraunces", serif;
+  --mono:"IBM Plex Mono", monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  color:var(--text);
+  font-family:var(--body);
+  font-size:17px;
+  line-height:1.84;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(115,200,255,.11), transparent 26%),
+    radial-gradient(circle at 88% 8%, rgba(187,167,255,.12), transparent 24%),
+    radial-gradient(circle at 15% 88%, rgba(143,244,207,.08), transparent 24%),
+    linear-gradient(180deg, #08111f 0%, #091222 42%, #07101d 100%);
+  background-attachment:fixed;
+}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code,pre{font-family:var(--mono)}
+.wrap{width:min(calc(100vw - 40px), var(--maxw));margin:0 auto}
+.site-header{
+  position:sticky;
+  top:0;
+  z-index:100;
+  backdrop-filter:blur(18px);
+  background:rgba(6,11,22,.74);
+  border-bottom:1px solid var(--line);
+}
+.nav{
+  min-height:72px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+}
+.brand{
+  color:var(--strong);
+  font-family:var(--display);
+  font-weight:700;
+  font-size:1rem;
+  letter-spacing:.02em;
+}
+.back-link{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  color:var(--muted);
+  font-size:13px;
+}
+.back-link:hover{color:var(--accent);text-decoration:none}
+.hero{padding:80px 0 38px}
+.eyebrow{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  padding:8px 15px;
+  border-radius:999px;
+  border:1px solid rgba(115,200,255,.25);
+  background:rgba(115,200,255,.08);
+  color:#cce8ff;
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.pulse{
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:var(--accent2);
+  box-shadow:0 0 0 5px rgba(143,244,207,.12);
+}
+h1{
+  margin:22px 0 16px;
+  max-width:11.5ch;
+  color:var(--strong);
+  font-family:var(--display);
+  font-size:clamp(3rem, 6vw, 5.25rem);
+  line-height:.96;
+  letter-spacing:-.05em;
+  text-wrap:balance;
+}
+.dek{
+  max-width:760px;
+  margin:0;
+  color:#afc3e5;
+  font-size:clamp(1.06rem, 2vw, 1.24rem);
+}
+.meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px 18px;
+  margin-top:28px;
+  padding-top:24px;
+  border-top:1px solid var(--line);
+  color:var(--muted);
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:.04em;
+}
+.meta span{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+}
+.hero-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1.12fr) minmax(320px,.88fr);
+  gap:24px;
+  margin-top:34px;
+}
+.card{
+  border:1px solid var(--line);
+  border-radius:28px;
+  background:linear-gradient(180deg, rgba(18,29,52,.88), rgba(10,18,33,.94));
+  box-shadow:var(--shadow);
+}
+.hero-panel{
+  padding:24px 24px 26px;
+  position:relative;
+  overflow:hidden;
+}
+.hero-panel::after{
+  content:"";
+  position:absolute;
+  right:-60px;
+  bottom:-70px;
+  width:260px;
+  height:260px;
+  border-radius:50%;
+  background:radial-gradient(circle, rgba(115,200,255,.12), transparent 70%);
+  pointer-events:none;
+}
+.panel-title{
+  margin:0 0 8px;
+  color:var(--strong);
+  font-size:1.02rem;
+  font-weight:600;
+}
+.panel-copy{
+  margin:0 0 18px;
+  color:var(--muted);
+  max-width:62ch;
+}
+.stack-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+}
+.stack-item{
+  padding:15px 16px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:18px;
+  background:rgba(255,255,255,.03);
+}
+.stack-item b{
+  display:block;
+  margin-bottom:6px;
+  color:#dbe8ff;
+  font-size:.82rem;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.stack-item span{
+  color:var(--muted);
+  font-size:.95rem;
+}
+.toc{
+  padding:24px;
+}
+.toc h2{
+  margin:0 0 14px;
+  font-size:1rem;
+  color:var(--strong);
+}
+.toc ol{
+  margin:0;
+  padding-left:18px;
+  color:var(--muted);
+}
+.toc li{margin:8px 0}
+main{padding:10px 0 96px}
+.article-shell{
+  display:grid;
+  grid-template-columns:minmax(0,var(--content)) minmax(280px,1fr);
+  gap:34px;
+  align-items:start;
+}
+.content{min-width:0}
+.content h2{
+  margin:54px 0 14px;
+  color:var(--strong);
+  font-family:var(--display);
+  font-size:clamp(1.9rem, 2.8vw, 2.85rem);
+  line-height:1.04;
+  letter-spacing:-.035em;
+}
+.content h3{
+  margin:30px 0 10px;
+  color:var(--strong);
+  font-size:1.22rem;
+  letter-spacing:-.02em;
+}
+.content p{margin:14px 0}
+.content ul,.content ol{
+  margin:14px 0 14px 1.2rem;
+  padding:0;
+}
+.content li{margin:7px 0}
+.lead{
+  margin-top:0;
+  font-size:1.08rem;
+  color:#e5efff;
+}
+.callout{
+  margin:28px 0;
+  padding:18px 20px;
+  border-left:3px solid var(--accent2);
+  border-radius:0 18px 18px 0;
+  background:rgba(143,244,207,.08);
+  color:#f0fbff;
+}
+.quick-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px;
+  margin:26px 0 10px;
+}
+.quick{
+  padding:16px;
+  border-radius:20px;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.03);
+}
+.quick h4{
+  margin:0 0 6px;
+  font-size:1rem;
+  color:var(--strong);
+}
+.quick p{
+  margin:0;
+  color:var(--muted);
+  font-size:.95rem;
+  line-height:1.62;
+}
+.figure{
+  margin:28px 0;
+  padding:18px;
+  border:1px solid var(--line);
+  border-radius:26px;
+  background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.018));
+}
+.figcap{
+  margin-top:12px;
+  color:var(--muted);
+  font-size:.93rem;
+}
+.diagram-title{
+  margin:0 0 14px;
+  color:var(--strong);
+  font-size:1rem;
+  letter-spacing:-.02em;
+}
+.flow{
+  display:grid;
+  gap:16px;
+}
+.flow-row{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:12px;
+  align-items:center;
+}
+.flow-row.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.node{
+  position:relative;
+  min-height:96px;
+  padding:15px;
+  border-radius:20px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);
+}
+.node b{
+  display:block;
+  margin-bottom:7px;
+  color:var(--strong);
+  font-size:.95rem;
+}
+.node span{
+  display:block;
+  color:var(--muted);
+  font-size:.92rem;
+  line-height:1.55;
+}
+.arrow{
+  position:relative;
+  height:2px;
+  background:linear-gradient(90deg, rgba(115,200,255,.28), rgba(143,244,207,.7));
+}
+.arrow::after{
+  content:"";
+  position:absolute;
+  top:50%;
+  right:-1px;
+  width:10px;
+  height:10px;
+  border-top:2px solid var(--accent2);
+  border-right:2px solid var(--accent2);
+  transform:translateY(-50%) rotate(45deg);
+}
+.arrow-down{
+  width:2px;
+  height:28px;
+  margin:0 auto;
+  background:linear-gradient(180deg, rgba(115,200,255,.3), rgba(143,244,207,.8));
+  position:relative;
+}
+.arrow-down::after{
+  content:"";
+  position:absolute;
+  bottom:-1px;
+  left:50%;
+  width:10px;
+  height:10px;
+  border-right:2px solid var(--accent2);
+  border-bottom:2px solid var(--accent2);
+  transform:translateX(-50%) rotate(45deg);
+}
+.compare-table{
+  width:100%;
+  border-collapse:collapse;
+  margin:26px 0;
+  overflow:hidden;
+  border-radius:24px;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.03);
+}
+.compare-table th,
+.compare-table td{
+  padding:14px 16px;
+  border-bottom:1px solid rgba(255,255,255,.06);
+  text-align:left;
+  vertical-align:top;
+}
+.compare-table th{
+  color:var(--strong);
+  font-size:.92rem;
+  background:rgba(255,255,255,.04);
+}
+.compare-table td{color:var(--muted)}
+.compare-table tr:last-child td{border-bottom:0}
+pre{
+  margin:22px 0;
+  padding:20px;
+  overflow:auto;
+  border-radius:22px;
+  border:1px solid rgba(115,200,255,.14);
+  background:#06101d;
+  color:#dce7fb;
+  line-height:1.68;
+  font-size:13px;
+}
+code.inline{
+  padding:2px 7px;
+  border-radius:8px;
+  background:rgba(255,255,255,.06);
+  color:#dff6ff;
+  font-size:.95em;
+}
+.sidebar{
+  position:sticky;
+  top:92px;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+.sidecard{
+  padding:20px;
+  border-radius:22px;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.03);
+}
+.sidecard h4{
+  margin:0 0 10px;
+  color:var(--strong);
+  font-size:1rem;
+}
+.sidecard p,
+.sidecard li{
+  color:var(--muted);
+  font-size:.94rem;
+  line-height:1.66;
+}
+.sidecard ul{
+  margin:0;
+  padding-left:18px;
+}
+.sources{
+  padding-left:18px;
+}
+.sources li{margin:10px 0}
+.source-note{
+  color:var(--muted);
+  font-size:.95rem;
+}
+.footer-note{
+  margin-top:40px;
+  padding-top:22px;
+  border-top:1px solid var(--line);
+  color:var(--muted);
+  font-size:.95rem;
+}
+@media (max-width: 1080px){
+  .article-shell{grid-template-columns:minmax(0,1fr)}
+  .sidebar{position:static;order:-1}
+}
+@media (max-width: 860px){
+  .hero-grid,
+  .flow-row,
+  .flow-row.three,
+  .quick-grid{
+    grid-template-columns:1fr;
+  }
+  .arrow,
+  .arrow-down{
+    width:2px;
+    height:22px;
+    margin:0 auto;
+    background:linear-gradient(180deg, rgba(115,200,255,.3), rgba(143,244,207,.8));
+  }
+  .arrow::after{
+    top:auto;
+    right:auto;
+    bottom:-1px;
+    left:50%;
+    border-top:0;
+    border-right:2px solid var(--accent2);
+    border-bottom:2px solid var(--accent2);
+    transform:translateX(-50%) rotate(45deg);
+  }
+}
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="../index.html">MANISH AI</a>
+    <a class="back-link" href="../writings.html">← Back to writings</a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="eyebrow"><span class="pulse"></span> Agentic infrastructure essay</div>
+    <h1>Beyond the CPU</h1>
+    <p class="dek">Everybody is finally noticing that CPUs matter for agentic AI. That is true, but it is only the first layer of the story. Once agentic workloads start stressing the orchestration path, the real bottleneck becomes the whole datacenter stack: packet processing, memory movement, storage paths, host isolation, and the cost of moving bytes between NICs, CPUs, GPUs, and userspace.</p>
+    <div class="meta">
+      <span><time datetime="2026-05-08">May 8, 2026</time></span>
+      <span>26 min read</span>
+      <span>SmartNICs · DPUs · RDMA · Zero-copy</span>
+    </div>
+
+    <div class="hero-grid">
+      <div class="card hero-panel">
+        <p class="panel-title">What changes in agentic datacenters</p>
+        <p class="panel-copy">The old picture was simple: send a prompt, run a big model, return a response. The new picture is a control loop with planning, tool calls, retrieval, storage, verification, retries, telemetry, and distributed coordination. That means AI systems now spend far more time shepherding data than people expect.</p>
+        <div class="stack-grid">
+          <div class="stack-item"><b>CPU</b><span>Planning, RPC fan-out, security, scheduling, retrieval, serialization, queueing.</span></div>
+          <div class="stack-item"><b>GPU</b><span>Dense transformer math, embeddings, training, vector-heavy kernels.</span></div>
+          <div class="stack-item"><b>SmartNIC</b><span>Network data-plane offload, flow steering, switching, encapsulation and policy assist.</span></div>
+          <div class="stack-item"><b>DPU</b><span>An infrastructure compute island for switching, isolation, storage, crypto, and control.</span></div>
+        </div>
+      </div>
+      <aside class="card toc">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#plain-english">The plain-English version</a></li>
+          <li><a href="#cpu-first">Why CPUs become the first visible bottleneck</a></li>
+          <li><a href="#smartnic-dpu">What SmartNICs and DPUs actually are</a></li>
+          <li><a href="#rdma-zero-copy">Where RDMA and zero-copy fit</a></li>
+          <li><a href="#driver-init">How the data path is initialized in Linux</a></li>
+          <li><a href="#examples">Code-level examples</a></li>
+          <li><a href="#takeaways">What this means for AI infrastructure</a></li>
+        </ol>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<main>
+  <div class="wrap article-shell">
+    <article class="content" data-pagefind-body>
+      <p class="lead">The conversation around AI infrastructure still defaults to one question: how much GPU do you have? Agentic systems force a better one: how much coordination overhead can your infrastructure absorb before the model itself stops being the bottleneck? Once that question matters, the stack around the accelerator starts to dominate architectural decisions.</p>
+
+      <div class="callout">The short thesis is simple: rising CPU demand is not the ending of the story. It is the signal that infrastructure work is leaking into the host, and that is exactly why SmartNICs, DPUs, RDMA, and zero-copy techniques become more valuable in agentic datacenters.</div>
+
+      <section id="plain-english">
+        <h2>The plain-English version</h2>
+        <p>Imagine a large restaurant.</p>
+        <ul>
+          <li>The <code class="inline">GPU</code> is the main kitchen line. It is incredible at high-volume repetitive cooking.</li>
+          <li>The <code class="inline">CPU</code> is the floor manager. It coordinates tables, substitutions, inventory, payment, and staff timing.</li>
+          <li>The <code class="inline">NIC</code> is the front door.</li>
+          <li>A <code class="inline">SmartNIC</code> is a front-door team with its own specialists, so the manager does not personally inspect every delivery and every guest.</li>
+          <li>A <code class="inline">DPU</code> is a whole operations office built into the entrance. It can enforce policy, handle intake, route traffic, isolate problems, and keep the restaurant protected before work reaches the manager.</li>
+        </ul>
+        <p>Traditional inference was usually one large order to the kitchen. Agentic AI is dozens of small decisions: planning, branching, checking tools, consulting memory, fetching data, spawning subtasks, retrying failures, and streaming results back. The kitchen still matters, but the restaurant can now stall because the hallway, front desk, and manager are overloaded.</p>
+      </section>
+
+      <section id="cpu-first">
+        <h2>Why CPUs become the first visible bottleneck</h2>
+        <p>CPUs are the first subsystem people notice because they sit in the path of almost every coordination event. They terminate network connections, run application threads, host sidecars and proxies, batch work, maintain process state, perform auth, drive storage control paths, and wake the GPU runtime at exactly the right moment.</p>
+
+        <div class="quick-grid">
+          <div class="quick">
+            <h4>Too many copies</h4>
+            <p>Packets land in host memory, get copied into kernel structures, copied into userspace buffers, and then moved again toward a GPU or another service.</p>
+          </div>
+          <div class="quick">
+            <h4>Too many packets</h4>
+            <p>Agent loops turn one model call into dozens of tiny RPCs, storage lookups, retries, and telemetry events, each with per-packet overhead.</p>
+          </div>
+          <div class="quick">
+            <h4>Too much host policy</h4>
+            <p>Virtual switching, overlay networking, service mesh work, TLS, and ACLs all consume premium host cycles.</p>
+          </div>
+          <div class="quick">
+            <h4>Too much orchestration</h4>
+            <p>Planning, state transitions, context assembly, and tool supervision create bursts of CPU-heavy control work around every inference.</p>
+          </div>
+        </div>
+
+        <p>That is why CPU utilization becomes an early warning sign. It is not just that the CPU is “important again.” It is that the host is accidentally doing too much infrastructure labor.</p>
+
+        <div class="figure">
+          <p class="diagram-title">Classic inference vs. agentic request path</p>
+          <div class="flow">
+            <div class="flow-row three">
+              <div class="node"><b>Classic request</b><span>Client sends prompt.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Model service</b><span>Batch, infer, stream response.</span></div>
+            </div>
+            <div class="arrow-down"></div>
+            <div class="flow-row">
+              <div class="node"><b>User input</b><span>Arrives through API ingress and auth.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Planner</b><span>Chooses tools, sequence, and policy path.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Model</b><span>Generates intermediate steps and decisions.</span></div>
+            </div>
+            <div class="flow-row">
+              <div class="node"><b>Tool calls</b><span>Search, DB, code execution, retrieval, memory.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Verifier</b><span>Guardrails, sanity checks, retries, branch logic.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>State store</b><span>Logs, memory, artifacts, checkpoints.</span></div>
+            </div>
+          </div>
+          <p class="figcap">Agentic requests create far more control-plane activity, which amplifies CPU, network, and memory-path overhead around the model.</p>
+        </div>
+      </section>
+
+      <section id="smartnic-dpu">
+        <h2>What SmartNICs and DPUs actually are</h2>
+        <p>A traditional NIC is mainly a packet mover with DMA engines and queue machinery. A SmartNIC adds enough programmable acceleration to offload network-intensive functions such as flow steering, switching assistance, overlay handling, or firewall-like tasks. A DPU pushes farther: it becomes a first-class infrastructure processor with its own compute domain.</p>
+
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Core job</th>
+              <th>Why it matters in agentic AI</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>CPU</td>
+              <td>General-purpose control, scheduling, syscalls, service logic</td>
+              <td>Agent runtimes amplify orchestration, retries, security, and state management.</td>
+            </tr>
+            <tr>
+              <td>GPU</td>
+              <td>Dense matrix and vector math</td>
+              <td>Still the main model-compute engine, but easily starved by slow data delivery.</td>
+            </tr>
+            <tr>
+              <td>SmartNIC</td>
+              <td>Network data-plane offload</td>
+              <td>Reduces host packet overhead and frees CPU cycles for application logic.</td>
+            </tr>
+            <tr>
+              <td>DPU</td>
+              <td>Infrastructure processing with embedded cores and offloads</td>
+              <td>Moves switching, isolation, storage, and policy enforcement closer to the wire.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>Red Hat describes SmartNIC hardware offloading as diverting network tasks away from the CPU to a dedicated processor on a NIC, which reduces host CPU load and increases data-processing performance. NVIDIA describes BlueField DPU mode as an embedded Arm system that owns and controls NIC resources and the data path. Those are not cosmetic differences. They change where trust, policy, and packet work live in the system.</p>
+
+        <div class="figure">
+          <p class="diagram-title">Three levels of infrastructure responsibility</p>
+          <div class="flow">
+            <div class="flow-row three">
+              <div class="node"><b>NIC</b><span>Packets arrive, DMA runs, host handles almost all policy and virtualization.</span></div>
+              <div class="node"><b>SmartNIC</b><span>Some switching, steering, and packet-heavy functions move onto the card.</span></div>
+              <div class="node"><b>DPU</b><span>An embedded compute island owns more of the infrastructure control and data path.</span></div>
+            </div>
+          </div>
+          <p class="figcap">The progression is not “faster NIC.” It is “more infrastructure work moved away from the host.”</p>
+        </div>
+      </section>
+
+      <section id="rdma-zero-copy">
+        <h2>Where RDMA and zero-copy fit</h2>
+        <p>Once the problem is framed as byte movement rather than only model FLOPS, two ideas become central: avoid unnecessary copies and reduce host mediation on the fast path.</p>
+
+        <h3>DMA</h3>
+        <p><code class="inline">DMA</code>, direct memory access, lets a device read or write host memory without the CPU copying every byte itself. Modern NICs and accelerators already depend on this. The CPU sets up rings and descriptors; the device moves the payload.</p>
+
+        <h3>RDMA</h3>
+        <p><code class="inline">RDMA</code> extends the idea over the network. After setup and memory registration, the NIC can access remote memory with minimal CPU intervention. The Linux kernel documents this through the <code class="inline">ib_uverbs</code> userspace interface and the <code class="inline">libibverbs</code> userspace library from <code class="inline">rdma-core</code>.</p>
+
+        <h3>Zero-copy</h3>
+        <p><code class="inline">Zero-copy</code> usually means avoiding extra hot-path copies between kernel space and userspace, or between one software layer and the next. It rarely means literally zero copies anywhere. The point is to keep the CPU from wasting bandwidth and cache on shuffling payloads around.</p>
+
+        <div class="figure">
+          <p class="diagram-title">Why RDMA and zero-copy reduce host overhead</p>
+          <div class="flow">
+            <div class="flow-row">
+              <div class="node"><b>Network port</b><span>Packets hit wire-speed ingress.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>NIC or DPU</b><span>Steering, queue choice, DMA, optional offloads.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Host memory</b><span>Normal path stores payloads in RAM.</span></div>
+            </div>
+            <div class="flow-row">
+              <div class="node"><b>Kernel path</b><span>sk_buff handling, protocol state, accounting, wakeups.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Userspace</b><span>Service runtime, tokenizer, app logic, queues.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>GPU</b><span>Consumes data only after it has been delivered.</span></div>
+            </div>
+          </div>
+          <p class="figcap">RDMA reduces CPU mediation. Zero-copy reduces duplicate movement. Offloads reduce the host’s packet and policy burden.</p>
+        </div>
+
+        <p>Linux exposes several relevant paths:</p>
+        <ul>
+          <li><code class="inline">AF_XDP</code> for high-performance packet delivery to userspace, including zero-copy mode when the driver supports it.</li>
+          <li><code class="inline">MSG_ZEROCOPY</code> for copy avoidance on send-side socket operations.</li>
+          <li><code class="inline">io_uring</code> zero-copy receive, which preserves the kernel TCP stack while placing payload data directly into userspace memory.</li>
+          <li><code class="inline">GPUDirect RDMA</code> in supported topologies, where NICs and GPUs can exchange data more directly over PCIe.</li>
+        </ul>
+      </section>
+
+      <section id="driver-init">
+        <h2>How the data path is initialized in Linux</h2>
+        <p>The Linux PCI driver sequence tells the bigger story cleanly: enable the device, request MMIO resources, set DMA masks, allocate coherent DMA control memory, register interrupts, initialize the device, then enable DMA and processing engines. That is the skeleton underneath every NIC, storage controller, and accelerator data path.</p>
+
+        <p>Two DMA modes matter especially here:</p>
+        <ul>
+          <li><strong>Coherent DMA</strong> for long-lived shared control structures such as descriptor rings.</li>
+          <li><strong>Streaming DMA</strong> for transient packet or buffer payloads that are mapped for one transfer direction.</li>
+        </ul>
+
+        <pre><code>// illustrative only
+#include &lt;linux/module.h&gt;
+#include &lt;linux/pci.h&gt;
+#include &lt;linux/dma-mapping.h&gt;
+
+struct demo_ring {
+    void *desc_cpu;
+    dma_addr_t desc_dma;
+    size_t size;
+};
+
+struct demo_dev {
+    struct pci_dev *pdev;
+    void __iomem *bar0;
+    struct demo_ring tx;
+};
+
+static int demo_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+{
+    struct demo_dev *d;
+    int ret;
+
+    d = devm_kzalloc(&pdev-&gt;dev, sizeof(*d), GFP_KERNEL);
+    if (!d)
+        return -ENOMEM;
+
+    ret = pcim_enable_device(pdev);
+    if (ret)
+        return ret;
+
+    pci_set_master(pdev);
+
+    ret = dma_set_mask_and_coherent(&pdev-&gt;dev, DMA_BIT_MASK(64));
+    if (ret)
+        return ret;
+
+    ret = pci_request_region(pdev, 0, "demo_accel");
+    if (ret)
+        return ret;
+
+    d-&gt;bar0 = pci_iomap(pdev, 0, 0);
+    if (!d-&gt;bar0)
+        return -ENOMEM;
+
+    d-&gt;tx.size = PAGE_SIZE;
+    d-&gt;tx.desc_cpu = dma_alloc_coherent(&pdev-&gt;dev,
+                                        d-&gt;tx.size,
+                                        &d-&gt;tx.desc_dma,
+                                        GFP_KERNEL);
+    if (!d-&gt;tx.desc_cpu)
+        return -ENOMEM;
+
+    /*
+     * Real drivers now program descriptor base addresses into MMIO
+     * registers, arm interrupts, and start the DMA engine.
+     */
+    return 0;
+}</code></pre>
+
+        <p>The point is not just that the CPU is involved. The point is that the CPU is mostly arranging movement and ownership so devices can execute the hot path efficiently. If too much of the hot path returns to the host, efficiency collapses.</p>
+      </section>
+
+      <section id="examples">
+        <h2>Code-level examples</h2>
+        <h3>Userspace RDMA verbs</h3>
+        <p>The Linux RDMA userspace path revolves around registering memory, creating queue pairs and completion queues, and posting work requests. After setup, the NIC fast path can operate with very low host CPU involvement.</p>
+
+        <pre><code>// illustrative only
+#include &lt;infiniband/verbs.h&gt;
+
+struct ibv_device **list = ibv_get_device_list(NULL);
+struct ibv_context *ctx = ibv_open_device(list[0]);
+struct ibv_pd *pd = ibv_alloc_pd(ctx);
+struct ibv_cq *cq = ibv_create_cq(ctx, 128, NULL, NULL, 0);
+
+struct ibv_qp_init_attr qpia = {
+    .send_cq = cq,
+    .recv_cq = cq,
+    .qp_type = IBV_QPT_RC,
+    .cap = {
+        .max_send_wr = 128,
+        .max_recv_wr = 128,
+        .max_send_sge = 1,
+        .max_recv_sge = 1,
+    },
+};
+
+struct ibv_qp *qp = ibv_create_qp(pd, &qpia);
+
+char buf[4096];
+struct ibv_mr *mr = ibv_reg_mr(pd, buf, sizeof(buf),
+    IBV_ACCESS_LOCAL_WRITE |
+    IBV_ACCESS_REMOTE_WRITE |
+    IBV_ACCESS_REMOTE_READ);
+
+struct ibv_sge sge = {
+    .addr = (uintptr_t)buf,
+    .length = sizeof(buf),
+    .lkey = mr-&gt;lkey,
+};
+
+struct ibv_send_wr wr = {
+    .wr_id = 1,
+    .sg_list = &sge,
+    .num_sge = 1,
+    .opcode = IBV_WR_SEND,
+    .send_flags = IBV_SEND_SIGNALED,
+};
+
+struct ibv_send_wr *bad = NULL;
+ibv_post_send(qp, &wr, &bad);</code></pre>
+
+        <p>Real code must transition the queue pair through <code class="inline">RESET → INIT → RTR → RTS</code>, connect to a peer, post receives, and poll completions carefully. But the example shows the mental model: register memory once, point the NIC at it, and let hardware move the bytes.</p>
+
+        <h3>AF_XDP zero-copy packet path</h3>
+        <p><code class="inline">AF_XDP</code> sockets let an XDP program redirect packets into userspace memory. When the driver and hardware support it, binding with <code class="inline">XDP_ZEROCOPY</code> avoids copying packet data out to userspace.</p>
+
+        <pre><code>// illustrative only
+int fd = socket(AF_XDP, SOCK_RAW, 0);
+
+/*
+ * UMEM setup omitted:
+ * - create fill/completion rings
+ * - register UMEM
+ * - create RX/TX rings
+ */
+
+struct sockaddr_xdp sxdp = {
+    .sxdp_family = AF_XDP,
+    .sxdp_ifindex = if_nametoindex("eth0"),
+    .sxdp_queue_id = 0,
+    .sxdp_flags = XDP_ZEROCOPY,
+};
+
+bind(fd, (struct sockaddr *)&sxdp, sizeof(sxdp));
+
+/*
+ * An XDP program loaded on the interface uses bpf_redirect_map()
+ * to steer matching ingress packets into this socket's queue.
+ */</code></pre>
+
+        <p>That makes <code class="inline">AF_XDP</code> attractive when an application wants extreme packet rates without carrying the full burden of a DPDK-style stack.</p>
+
+        <h3>Socket send with <code class="inline">MSG_ZEROCOPY</code></h3>
+        <p>Linux also supports copy avoidance on ordinary socket send calls. The important caveat from the kernel documentation is that this is a hint, not a guarantee. Applications must drain completion notifications from the error queue before reusing buffers safely.</p>
+
+        <pre><code>// illustrative only
+int one = 1;
+setsockopt(fd, SOL_SOCKET, SO_ZEROCOPY, &one, sizeof(one));
+
+ssize_t sent = send(fd, big_buf, big_len, MSG_ZEROCOPY);
+if (sent &lt; 0) {
+    perror("send");
+}
+
+/*
+ * Later:
+ * poll() for POLLERR and drain MSG_ERRQUEUE with recvmsg()
+ * to learn which sends are complete and safe to reuse.
+ */</code></pre>
+
+        <p>This is one of the clearest examples of the tradeoff around zero-copy. You avoid a hot-path copy, but you introduce page pinning, completion handling, and more complex buffer lifecycle rules.</p>
+
+        <h3>io_uring zero-copy receive</h3>
+        <p>The newer <code class="inline">io_uring</code> zero-copy receive path is especially interesting for AI services because it preserves the kernel TCP stack while still reducing kernel-to-userspace copy overhead. NICs need hardware support such as header/data split and proper flow steering, but when those conditions hold, the receive path becomes much leaner.</p>
+      </section>
+
+      <section>
+        <h2>Where GPUDirect RDMA changes the picture</h2>
+        <p>GPUDirect RDMA matters when a NIC and GPU can exchange data more directly over PCIe, cutting out some host bounce-buffer work. NVIDIA's documentation is careful about the constraints: topology matters, PCIe placement matters, and IOMMU configuration matters. The cleanest case is when the NIC and GPU share a favorable root-complex and switch topology.</p>
+
+        <div class="figure">
+          <p class="diagram-title">Conventional path vs. direct NIC-to-GPU movement</p>
+          <div class="flow">
+            <div class="flow-row three">
+              <div class="node"><b>Conventional</b><span>NIC DMA to host memory, host stack coordinates, GPU pull follows later.</span></div>
+              <div class="node"><b>Host-bypass leaning</b><span>More movement stays on device DMA paths and fewer bounce buffers touch the CPU.</span></div>
+              <div class="node"><b>GPUDirect-style path</b><span>Supported topologies allow tighter NIC-to-GPU transfer behavior.</span></div>
+            </div>
+          </div>
+          <p class="figcap">The payoff is lower CPU pressure and better accelerator feed efficiency. The cost is operational complexity and stricter platform constraints.</p>
+        </div>
+      </section>
+
+      <section id="takeaways">
+        <h2>What this means for AI infrastructure</h2>
+        <p>There is a common misconception that AI performance is just a matter of buying more GPU FLOPS. That mental model only works when the rest of the system is quiet. Agentic systems are not quiet. They are networked control systems with storage, policy, orchestration, retries, and memory movement happening around each inference step.</p>
+
+        <p>The winning architecture therefore is not the one with the prettiest accelerator spec sheet. It is the one that keeps expensive host and accelerator resources focused on the work only they can do.</p>
+
+        <ul>
+          <li>Use CPUs for control logic, not avoidable packet grunt work.</li>
+          <li>Use SmartNICs and DPUs to move repetitive infrastructure tasks closer to the wire.</li>
+          <li>Use RDMA when remote memory access and low CPU involvement truly matter.</li>
+          <li>Use zero-copy carefully where buffer sizes, driver support, and lifecycle complexity justify it.</li>
+          <li>Think in terms of whole-path efficiency, not isolated accelerator utilization.</li>
+        </ul>
+
+        <div class="callout">The real progression is not GPU → CPU → done. It is GPU math, CPU orchestration, network steering, memory registration, storage locality, host isolation, and copy avoidance all interacting. Agentic AI does not just revive the CPU. It makes the entire datacenter data path visible again.</div>
+      </section>
+
+      <section>
+        <h2>Sources</h2>
+        <p class="source-note">Primary references used for the technical details and API descriptions in this essay:</p>
+        <ol class="sources">
+          <li><a href="https://www.kernel.org/doc/html/latest/infiniband/user_verbs.html">Linux kernel RDMA userspace verbs documentation</a></li>
+          <li><a href="https://docs.kernel.org/PCI/pci.html">Linux PCI driver documentation</a></li>
+          <li><a href="https://docs.kernel.org/core-api/dma-api-howto.html">Linux DMA API guide</a></li>
+          <li><a href="https://docs.kernel.org/networking/af_xdp.html">Linux AF_XDP documentation</a></li>
+          <li><a href="https://docs.kernel.org/networking/msg_zerocopy.html">Linux MSG_ZEROCOPY documentation</a></li>
+          <li><a href="https://docs.kernel.org/networking/iou-zcrx.html">Linux io_uring zero-copy receive documentation</a></li>
+          <li><a href="https://docs.nvidia.com/networking/display/bluefielddpubspv403/dpu-operation">NVIDIA BlueField DPU operation docs</a></li>
+          <li><a href="https://docs.nvidia.com/networking/display/bluefielddpubspv403/modes-of-operation">NVIDIA BlueField modes of operation</a></li>
+          <li><a href="https://docs.nvidia.com/cuda/gpudirect-rdma/">NVIDIA GPUDirect RDMA documentation</a></li>
+          <li><a href="https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-operator-rdma.html">NVIDIA GPU Operator GPUDirect RDMA overview</a></li>
+          <li><a href="https://docs.redhat.com/de/documentation/openshift_container_platform/4.19/pdf/hardware_networks/switching-bf2-nic-dpu">Red Hat OpenShift SmartNIC hardware offloading docs</a></li>
+        </ol>
+      </section>
+
+      <p class="footer-note">All kernel and userspace code samples above are intentionally illustrative rather than drop-in production code. They are meant to show initialization shape, memory ownership, and offload mechanics clearly enough for systems readers to reason about the stack.</p>
+    </article>
+
+    <aside class="sidebar">
+      <div class="sidecard">
+        <h4>Key idea</h4>
+        <p>Agentic AI turns datacenters into coordination engines. Once coordination dominates, SmartNICs and DPUs become infrastructure multipliers rather than niche accelerators.</p>
+      </div>
+      <div class="sidecard">
+        <h4>Why zero-copy is tricky</h4>
+        <ul>
+          <li>Page pinning has real accounting cost.</li>
+          <li>Completion handling changes buffer lifetime semantics.</li>
+          <li>Driver and NIC support are uneven.</li>
+          <li>Loopback and tiny sends are often bad benchmarks.</li>
+        </ul>
+      </div>
+      <div class="sidecard">
+        <h4>What to watch in real clusters</h4>
+        <ul>
+          <li>IRQ and softirq CPU time</li>
+          <li>Copy and memcpy pressure</li>
+          <li>Completion queue locality</li>
+          <li>vSwitch and overlay overhead</li>
+          <li>GPU feed stalls despite low model utilization</li>
+        </ul>
+      </div>
+    </aside>
+  </div>
+</main>
+</body>
+</html>
