@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Agentic-NIC-Dataplane-Lab: A Linux Dataplane Architecture for Agentic AI | MANISH AI</title>
+<meta content="A polished systems essay on Agentic-NIC-Dataplane-Lab: why agentic AI becomes a NIC and queueing problem, how the tri-path Linux dataplane works, where AF_XDP, io_uring, RDMA, and bounded autonomous NIC control fit, and what the repo contributes." name="description"/>
+<meta content="agentic AI, AF_XDP, io_uring, RDMA, SmartNIC, DPU, Linux networking, NIC dataplane, queueing, zero-copy, agentic NIC, guardian layer" name="keywords"/>
+<meta content="MANISH AI" name="author"/>
+<meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/>
+<meta content="#091421" name="theme-color"/>
+<link href="https://manishklach.github.io/writings/agentic-nic-dataplane-lab-linux-dataplane-architecture.html" rel="canonical"/>
+<meta content="article" property="og:type"/>
+<meta content="Agentic-NIC-Dataplane-Lab: A Linux Dataplane Architecture for Agentic AI | MANISH AI" property="og:title"/>
+<meta content="A polished systems essay on why agentic AI becomes a NIC and queueing problem, how the tri-path Linux dataplane works, and where bounded autonomous NIC control fits next." property="og:description"/>
+<meta content="https://manishklach.github.io/writings/agentic-nic-dataplane-lab-linux-dataplane-architecture.html" property="og:url"/>
+<meta content="MANISH AI" property="og:site_name"/>
+<meta content="en_US" property="og:locale"/>
+<meta content="https://manishklach.github.io/assets/og-image.png" property="og:image"/>
+<meta content="Agentic NIC dataplane architecture essay cover image." property="og:image:alt"/>
+<meta content="summary_large_image" name="twitter:card"/>
+<meta content="Agentic-NIC-Dataplane-Lab: A Linux Dataplane Architecture for Agentic AI" name="twitter:title"/>
+<meta content="A polished systems essay on why agentic AI becomes a NIC and queueing problem, how the tri-path Linux dataplane works, and where bounded autonomous NIC control fits next." name="twitter:description"/>
+<meta content="https://manishklach.github.io/assets/og-image.png" name="twitter:image"/>
+<meta content="@manishkl_" name="twitter:site"/>
+<meta content="2026-05-08T00:00:00Z" property="article:published_time"/>
+<meta content="2026-05-08T00:00:00Z" property="article:modified_time"/>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Agentic-NIC-Dataplane-Lab: A Linux Dataplane Architecture for Agentic AI",
+  "description": "A polished systems essay on Agentic-NIC-Dataplane-Lab: why agentic AI becomes a NIC and queueing problem, how the tri-path Linux dataplane works, where AF_XDP, io_uring, RDMA, and bounded autonomous NIC control fit, and what the repo contributes.",
+  "url": "https://manishklach.github.io/writings/agentic-nic-dataplane-lab-linux-dataplane-architecture.html",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/agentic-nic-dataplane-lab-linux-dataplane-architecture.html",
+  "datePublished": "2026-05-08",
+  "dateModified": "2026-05-08",
+  "author": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  }
+}
+</script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&amp;display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#091421;
+  --bg2:#0d1b2d;
+  --panel:rgba(11,21,36,.88);
+  --panel-soft:rgba(20,31,51,.74);
+  --line:rgba(149,180,255,.14);
+  --line-strong:rgba(133,239,214,.32);
+  --text:#dce8fb;
+  --muted:#97abc9;
+  --strong:#f7fbff;
+  --accent:#78c7ff;
+  --accent2:#86efd6;
+  --accent3:#f4c982;
+  --warn:#ffd899;
+  --shadow:0 28px 90px rgba(2,8,20,.46);
+  --maxw:1180px;
+  --content:760px;
+  --body:"IBM Plex Sans",sans-serif;
+  --display:"Fraunces",serif;
+  --mono:"IBM Plex Mono",monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  color:var(--text);
+  font-family:var(--body);
+  font-size:17px;
+  line-height:1.84;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(120,199,255,.12), transparent 28%),
+    radial-gradient(circle at 86% 10%, rgba(134,239,214,.10), transparent 24%),
+    radial-gradient(circle at 20% 86%, rgba(244,201,130,.10), transparent 24%),
+    linear-gradient(180deg, #091421 0%, #0b1526 46%, #08111d 100%);
+  background-attachment:fixed;
+}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code,pre{font-family:var(--mono)}
+.wrap{width:min(calc(100vw - 40px), var(--maxw));margin:0 auto}
+.site-header{
+  position:sticky;
+  top:0;
+  z-index:100;
+  backdrop-filter:blur(18px);
+  background:rgba(6,11,22,.75);
+  border-bottom:1px solid var(--line);
+}
+.nav{
+  min-height:72px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+}
+.nav-links{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.brand{color:var(--strong);font-family:var(--display);font-weight:700;font-size:1rem;letter-spacing:.02em}
+.nav-link,.footer-links a{
+  display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border-radius:999px;
+  border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:var(--muted);font-size:13px;
+  transition:color .2s ease,border-color .2s ease,background .2s ease;
+}
+.nav-link:hover,.footer-links a:hover{
+  color:var(--accent);border-color:rgba(120,199,255,.28);background:rgba(120,199,255,.08);text-decoration:none;
+}
+.back-link{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:13px}
+.back-link:hover{color:var(--accent);text-decoration:none}
+.hero{padding:82px 0 40px}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:10px;padding:8px 15px;border-radius:999px;border:1px solid rgba(120,199,255,.24);
+  background:rgba(120,199,255,.08);color:#cce7ff;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+}
+.pulse{width:8px;height:8px;border-radius:50%;background:var(--accent2);box-shadow:0 0 0 5px rgba(134,239,214,.12)}
+h1{
+  margin:22px 0 16px;max-width:10.4ch;color:var(--strong);font-family:var(--display);
+  font-size:clamp(3rem, 6vw, 5.1rem);line-height:.96;letter-spacing:-.05em;text-wrap:balance;
+}
+.dek{max-width:820px;margin:0;color:#afc3e5;font-size:clamp(1.06rem,2vw,1.24rem)}
+.meta{
+  display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:28px;padding-top:24px;border-top:1px solid var(--line);
+  color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.04em;
+}
+.meta span{display:inline-flex;align-items:center;gap:8px}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1.14fr) minmax(320px,.86fr);gap:24px;margin-top:34px}
+.card{
+  border:1px solid var(--line);border-radius:28px;background:linear-gradient(180deg, rgba(17,27,45,.88), rgba(9,17,29,.96));box-shadow:var(--shadow);
+}
+.hero-panel,.toc{padding:24px}
+.panel-title,.toc h2,.diagram-title,.sidecard h4{margin:0 0 10px;color:var(--strong)}
+.panel-copy,.figcap,.sidecard p,.sidecard li,.toc li{color:var(--muted)}
+.stack-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.stack-item,.quick,.sidecard,.node{
+  padding:15px 16px;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:rgba(255,255,255,.03);
+}
+.stack-item b,.quick h4,.node b{display:block;margin-bottom:6px;color:var(--strong)}
+.stack-item span,.quick p,.node span{color:var(--muted);font-size:.95rem}
+.toc ol,.sources{margin:0;padding-left:18px}
+main{padding:10px 0 96px}
+.article-shell{display:grid;grid-template-columns:minmax(0,var(--content)) minmax(280px,1fr);gap:34px;align-items:start}
+.content{min-width:0}
+.content h2{
+  margin:54px 0 14px;color:var(--strong);font-family:var(--display);
+  font-size:clamp(1.9rem,2.8vw,2.8rem);line-height:1.04;letter-spacing:-.035em;
+}
+.content h3{margin:30px 0 10px;color:var(--strong);font-size:1.22rem;letter-spacing:-.02em}
+.content p{margin:14px 0}
+.content ul,.content ol{margin:14px 0 14px 1.2rem;padding:0}
+.content li{margin:7px 0}
+.lead{margin-top:0;font-size:1.08rem;color:#e5efff}
+.callout{
+  margin:28px 0;padding:18px 20px;border-left:3px solid var(--accent2);border-radius:0 18px 18px 0;background:rgba(134,239,214,.08);color:#f0fbff;
+}
+.quick-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:26px 0 10px}
+.figure{
+  margin:28px 0;padding:18px;border:1px solid var(--line);border-radius:26px;
+  background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.018));
+}
+.flow{display:grid;gap:16px}
+.flow-row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:center}
+.flow-row.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.flow-row.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.arrow{
+  position:relative;height:2px;background:linear-gradient(90deg, rgba(120,199,255,.28), rgba(134,239,214,.74));
+}
+.arrow::after{
+  content:"";position:absolute;top:50%;right:-1px;width:10px;height:10px;border-top:2px solid var(--accent2);border-right:2px solid var(--accent2);transform:translateY(-50%) rotate(45deg);
+}
+.arrow-down{
+  width:2px;height:28px;margin:0 auto;background:linear-gradient(180deg, rgba(120,199,255,.3), rgba(134,239,214,.8));position:relative;
+}
+.arrow-down::after{
+  content:"";position:absolute;bottom:-1px;left:50%;width:10px;height:10px;border-right:2px solid var(--accent2);border-bottom:2px solid var(--accent2);transform:translateX(-50%) rotate(45deg);
+}
+.compare-table{
+  width:100%;border-collapse:collapse;margin:26px 0;overflow:hidden;border-radius:24px;border:1px solid var(--line);background:rgba(255,255,255,.03);
+}
+.compare-table th,.compare-table td{
+  padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.06);text-align:left;vertical-align:top;
+}
+.compare-table th{color:var(--strong);font-size:.92rem;background:rgba(255,255,255,.04)}
+.compare-table td{color:var(--muted)}
+.compare-table tr:last-child td{border-bottom:0}
+pre{
+  margin:22px 0;padding:20px;overflow:auto;border-radius:22px;border:1px solid rgba(120,199,255,.14);background:#06101d;color:#dce7fb;line-height:1.68;font-size:13px;
+}
+code.inline{
+  padding:2px 7px;border-radius:8px;background:rgba(255,255,255,.06);color:#dff6ff;font-size:.95em;
+}
+.sidebar{position:sticky;top:92px;display:flex;flex-direction:column;gap:16px}
+.source-note,.footer-note{color:var(--muted);font-size:.95rem}
+.site-footer{margin-top:28px;border-top:1px solid var(--line);background:rgba(7,13,24,.58)}
+.footer-shell{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:18px;padding:28px 0 40px;color:var(--muted);font-size:.95rem;
+}
+.footer-links{display:flex;flex-wrap:wrap;gap:10px}
+@media (max-width:1080px){
+  .article-shell{grid-template-columns:minmax(0,1fr)}
+  .sidebar{position:static;order:-1}
+}
+@media (max-width:860px){
+  .hero-grid,.flow-row,.flow-row.three,.flow-row.four,.quick-grid,.stack-grid{grid-template-columns:1fr}
+  .nav{align-items:flex-start;flex-direction:column}
+  .nav-links{width:100%}
+  .footer-shell{flex-direction:column;align-items:flex-start}
+  .arrow,.arrow-down{
+    width:2px;height:22px;margin:0 auto;background:linear-gradient(180deg, rgba(120,199,255,.3), rgba(134,239,214,.8));
+  }
+  .arrow::after{
+    top:auto;right:auto;bottom:-1px;left:50%;border-top:0;border-right:2px solid var(--accent2);border-bottom:2px solid var(--accent2);transform:translateX(-50%) rotate(45deg);
+  }
+}
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="../index.html">MANISH AI</a>
+    <div class="nav-links">
+      <a class="nav-link" href="../index.html">Home</a>
+      <a class="nav-link" href="../writings.html">Writings</a>
+      <a class="nav-link" href="../patents.html">Patents</a>
+      <a class="back-link" href="../writings.html">← Back to writings</a>
+    </div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="eyebrow"><span class="pulse"></span> Repository essay</div>
+    <h1>Agentic NIC Dataplane Lab</h1>
+    <p class="dek">The best way to understand why agentic AI is becoming a Linux networking problem is to study the data path directly. Agentic-NIC-Dataplane-Lab is a small but unusually sharp repository built around that premise: treat agent traffic as a queueing, copy-avoidance, steering, and east-west transport problem first, then decide where kernel TCP, AF_XDP, RDMA, and bounded autonomous NIC control actually belong.</p>
+    <div class="meta">
+      <span><time datetime="2026-05-08">May 8, 2026</time></span>
+      <span>24 min read</span>
+      <span>AF_XDP · io_uring · RDMA · Agentic NICs</span>
+    </div>
+    <div class="hero-grid">
+      <div class="card hero-panel">
+        <p class="panel-title">What this repo is really about</p>
+        <p class="panel-copy">At first glance, this is a Linux dataplane lab. At second glance, it is a systems argument: agentic AI creates multiple traffic shapes, so one networking path cannot be the right answer for all of them. The repo organizes that insight into code, benchmarking, and architecture documents.</p>
+        <div class="stack-grid">
+          <div class="stack-item"><b>Path A</b><span>Kernel TCP for mainstream RPC, with queue affinity, <code class="inline">busy_poll</code>, and <code class="inline">io_uring</code> optimization.</span></div>
+          <div class="stack-item"><b>Path B</b><span><code class="inline">AF_XDP</code> for packet-hot ingress, retrieval edges, routers, and token gateways.</span></div>
+          <div class="stack-item"><b>Path C</b><span><code class="inline">RDMA</code> for bulk east-west state movement, checkpoint transfer, and GPU-adjacent data flows.</span></div>
+          <div class="stack-item"><b>Control Model</b><span><code class="inline">Intent → Agent → Guardian → Dataplane → Audit</code> for bounded autonomous NIC behavior.</span></div>
+        </div>
+      </div>
+      <aside class="card toc">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#why">Why agentic AI changes the NIC story</a></li>
+          <li><a href="#tri-path">The tri-path dataplane</a></li>
+          <li><a href="#code">What the repo actually implements</a></li>
+          <li><a href="#agentic">The agentic NIC extension</a></li>
+          <li><a href="#release-blockers">What still has to be proven</a></li>
+          <li><a href="#value">Why this repo matters</a></li>
+        </ol>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<main>
+  <div class="wrap article-shell">
+    <article class="content" data-pagefind-body>
+      <p class="lead">There are a lot of AI infrastructure repositories that gesture at performance without choosing a clear systems thesis. This one does choose. It says agentic AI is no longer just a model-serving problem. It is a data-path problem, and the Linux host stack, the NIC queue model, and the memory-movement path all show up on the critical path far earlier than many teams expect.</p>
+
+      <div class="callout">The most interesting thing about Agentic-NIC-Dataplane-Lab is not that it mentions <code class="inline">AF_XDP</code>, <code class="inline">io_uring</code>, or <code class="inline">RDMA</code>. It is that it treats them as different answers to different traffic shapes, instead of treating any one of them as the universal “fast path.”</div>
+
+      <section id="why">
+        <h2>Why agentic AI changes the NIC story</h2>
+        <p>Traditional microservices and one-shot inference systems make networking feel secondary. The model dominates the discussion. The GPU dominates the budget. The host path is often treated as a generic transport layer that can be optimized later.</p>
+        <p>Agentic systems break that assumption.</p>
+        <div class="quick-grid">
+          <div class="quick"><h4>Small RPC pressure</h4><p>Planner turns, tool calls, retrieval lookups, and memory fetches create lots of small messages where fixed packet overhead starts to dominate.</p></div>
+          <div class="quick"><h4>Bursty fan-out</h4><p>One agent step can burst into tens of parallel downstream calls, which means queue depth and CPU locality become first-order latency variables.</p></div>
+          <div class="quick"><h4>Bulk state movement</h4><p>Checkpoint copies, shard sync, vector updates, and GPU feed pipelines create a second workload shape that wants high throughput and low CPU per byte.</p></div>
+          <div class="quick"><h4>Control overhead</h4><p>Security, fairness, retries, verification, and policy logic make orchestration cost visible even when the model kernel itself is efficient.</p></div>
+        </div>
+        <p>The repo’s core framing is exactly right here: <em>agentic AI becomes a queueing and copy problem at scale</em>. That is not just a slogan. It is a statement about what you must measure on real systems:</p>
+        <ul>
+          <li>softirq CPU time</li>
+          <li>queue-to-core locality</li>
+          <li>copy and bounce-buffer pressure</li>
+          <li>completion delivery latency</li>
+          <li>host CPU consumed per GB moved</li>
+        </ul>
+        <div class="figure">
+          <p class="diagram-title">Why one transport path is not enough</p>
+          <div class="flow">
+            <div class="flow-row">
+              <div class="node"><b>Agent request</b><span>User turn enters the runtime with tool access, memory access, and policy checks.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Fan-out</b><span>Planner, retrieval, storage, safety, and scheduling paths all wake up together.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Mixed traffic</b><span>Small RPC, bursty ingress, and bulk east-west flows coexist on the same host.</span></div>
+            </div>
+            <div class="arrow-down"></div>
+            <div class="flow-row three">
+              <div class="node"><b>Queueing problem</b><span>Wakeups, softirqs, cache locality, and IRQ placement become visible.</span></div>
+              <div class="node"><b>Copy problem</b><span>Host mediation, buffer movement, and staging overhead leak into p99.</span></div>
+              <div class="node"><b>Transport mismatch</b><span>No single stack is optimal for every flow shape anymore.</span></div>
+            </div>
+          </div>
+          <p class="figcap">The repo is built around the idea that agentic workloads are mixed-shape data-path workloads, not just “larger inference.”</p>
+        </div>
+      </section>
+
+      <section id="tri-path">
+        <h2>The tri-path dataplane is the right abstraction</h2>
+        <p>The most durable idea in the repository is the tri-path split.</p>
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>Path</th>
+              <th>Primary role</th>
+              <th>Best fit</th>
+              <th>Main risk</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Path A</td>
+              <td>Kernel TCP plus tuning</td>
+              <td>Mainstream orchestrator, tool, memory, and service RPC</td>
+              <td>Softirq and copy overhead on hot small-message paths</td>
+            </tr>
+            <tr>
+              <td>Path B</td>
+              <td><code class="inline">AF_XDP</code></td>
+              <td>Routers, ingress edges, retrieval front doors, token gateways</td>
+              <td>XDP redirect and UMEM complexity can outweigh gains for tiny RPCs</td>
+            </tr>
+            <tr>
+              <td>Path C</td>
+              <td><code class="inline">RDMA</code></td>
+              <td>Checkpointing, shard sync, repeated bulk east-west movement</td>
+              <td>Registration cost, queue-pair complexity, and fabric sensitivity</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="figure">
+          <p class="diagram-title">The tri-path Linux dataplane</p>
+          <div class="flow">
+            <div class="flow-row">
+              <div class="node"><b>Users / upstream agents</b><span>RPCs, tool calls, retrieval, streaming, synchronization.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Ingress NIC queues</b><span><code class="inline">RSS</code>, XDP classifiers, flow rules, and queue ownership determine the path.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Dispatch</b><span>The host chooses the path based on workload shape instead of ideological preference.</span></div>
+            </div>
+            <div class="arrow-down"></div>
+            <div class="flow-row three">
+              <div class="node"><b>Path A</b><span>Kernel TCP, <code class="inline">SO_REUSEPORT</code>, IRQ affinity, <code class="inline">busy_poll</code>, <code class="inline">io_uring</code>.</span></div>
+              <div class="node"><b>Path B</b><span><code class="inline">AF_XDP</code>, UMEM, ring ownership, redirect maps, zero-copy mode.</span></div>
+              <div class="node"><b>Path C</b><span><code class="inline">RDMA</code>, registered memory, CQ/QP setup, low host mediation bulk movement.</span></div>
+            </div>
+          </div>
+          <p class="figcap">The key design move is matching transport to traffic shape, not treating “fast networking” as one thing.</p>
+        </div>
+
+        <p>That split is not just architecturally neat. It creates a benchmarkable hypothesis. For each path, the repo asks a measurable question:</p>
+        <ul>
+          <li>Can Path A keep mainstream agent RPC simple while pushing copy and wakeup cost down enough?</li>
+          <li>Can Path B actually beat Path A for the hot queue classes that justify bypass-like complexity?</li>
+          <li>Can Path C cut CPU cost for sustained bulk state traffic enough to justify its setup burden?</li>
+        </ul>
+      </section>
+
+      <section id="code">
+        <h2>What the repo actually implements today</h2>
+        <p>The repo is still an early lab, but it is early in the right way. It contains enough code to teach the initialization shape of each path without pretending the hard parts are already complete.</p>
+
+        <h3>AF_XDP starter path</h3>
+        <p>The current <code class="inline">AF_XDP</code> sample goes beyond a bind-only stub. It now shows the real conceptual lifecycle:</p>
+        <ul>
+          <li>UMEM allocation and locking</li>
+          <li>fill-ring prepopulation</li>
+          <li>RX ring polling</li>
+          <li>frame recycling back into the fill ring</li>
+          <li>completion-ring recycling for TX completion paths</li>
+        </ul>
+
+        <pre><code>#if defined(__has_include)
+#  if __has_include(&lt;xdp/xsk.h&gt;)
+#    include &lt;xdp/xsk.h&gt;
+#  elif __has_include(&lt;bpf/xsk.h&gt;)
+#    include &lt;bpf/xsk.h&gt;
+#  else
+#    error "AF_XDP userspace headers not found"
+#  endif
+#endif
+
+static int configure_umem(struct afxdp_runtime *rt)
+{
+    struct xsk_umem_config cfg;
+    size_t umem_size = (size_t)NUM_FRAMES * FRAME_SIZE;
+
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.fill_size = FQ_RING_SIZE;
+    cfg.comp_size = CQ_RING_SIZE;
+    cfg.frame_size = FRAME_SIZE;
+
+    posix_memalign(&rt-&gt;buffer, getpagesize(), umem_size);
+    mlock(rt-&gt;buffer, umem_size);
+
+    return xsk_umem__create(&rt-&gt;umem,
+                            rt-&gt;buffer,
+                            umem_size,
+                            &rt-&gt;fq,
+                            &rt-&gt;cq,
+                            &cfg);
+}</code></pre>
+
+        <p>This is exactly the kind of scaffold that helps people cross the gap between “I know AF_XDP exists” and “I understand the rings, frames, and ownership model enough to reason about it.”</p>
+
+        <h3>io_uring receive path</h3>
+        <p>The <code class="inline">io_uring</code> sample is intentionally modest, but the repo made the right compatibility move: it does not blindly assume the newest helper wrappers are available. That matters because real Linux networking work is full of version mismatches between kernel capability, userspace headers, and distribution packaging.</p>
+
+        <pre><code>io_uring_prep_recv(sqe, sockfd, buf, sizeof(buf), 0);
+#ifdef IORING_OP_RECV_ZC
+    sqe-&gt;opcode = IORING_OP_RECV_ZC;
+    using_recv_zc = true;
+#endif
+
+ret = io_uring_submit(&amp;ring);
+ret = io_uring_wait_cqe(&amp;ring, &amp;cqe);</code></pre>
+
+        <p>That is a small but important sign of maturity: the repo is not only about architecture ideas, it is also dealing with the actual ugliness of Linux build and packaging reality.</p>
+
+        <h3>RDMA starter path</h3>
+        <p>The verbs sample remains a starter, but it correctly centers memory registration and queue-pair setup as the real conceptual boundary.</p>
+
+        <pre><code>pd = ibv_alloc_pd(ctx);
+cq = ibv_create_cq(ctx, 128, NULL, NULL, 0);
+
+attr.qp_type = IBV_QPT_RC;
+attr.cap.max_send_wr = 128;
+attr.cap.max_recv_wr = 128;
+
+qp = ibv_create_qp(pd, &amp;attr);
+mr = ibv_reg_mr(pd,
+                buf,
+                sizeof(buf),
+                IBV_ACCESS_LOCAL_WRITE |
+                IBV_ACCESS_REMOTE_READ |
+                IBV_ACCESS_REMOTE_WRITE);</code></pre>
+
+        <p>The repo is honest that the rest of the work still matters: the full <code class="inline">RESET → INIT → RTR → RTS</code> state machine and peer exchange are still ahead.</p>
+      </section>
+
+      <section>
+        <h2>What the benchmark and results story gets right</h2>
+        <p>The repository is unusually explicit about benchmark honesty.</p>
+        <p>Instead of vague “faster networking” claims, it defines workload classes that actually resemble agent traffic:</p>
+        <ul>
+          <li><strong>Class A</strong>: small agent RPC and fan-out traffic</li>
+          <li><strong>Class B</strong>: retrieval and memory-service traffic</li>
+          <li><strong>Class C</strong>: bulk east-west state movement</li>
+        </ul>
+        <p>It also emits JSON result envelopes rather than just console screenshots, and it already contains an illustrative <code class="inline">E810</code> baseline artifact plus a plotting script. That is a healthy design choice, because systems work ages badly when results are not machine-readable.</p>
+
+        <div class="figure">
+          <p class="diagram-title">Benchmark posture in the repo</p>
+          <div class="flow">
+            <div class="flow-row four">
+              <div class="node"><b>Path selection</b><span><code class="inline">tcp</code>, <code class="inline">io_uring</code>, <code class="inline">af_xdp</code>, or <code class="inline">rdma</code>.</span></div>
+              <div class="node"><b>Workload class</b><span>Agent RPC, retrieval pressure, or bulk state movement.</span></div>
+              <div class="node"><b>Metadata capture</b><span>Kernel, host, softirqs, NIC counters, and generator status.</span></div>
+              <div class="node"><b>Result artifact</b><span>JSON baseline plus plotting support for structured comparison.</span></div>
+            </div>
+          </div>
+          <p class="figcap">The repo treats benchmark reproducibility as part of the system, not an afterthought.</p>
+        </div>
+      </section>
+
+      <section id="agentic">
+        <h2>The agentic NIC extension is what makes this repo more than a dataplane lab</h2>
+        <p>Many repositories stop at transport optimization. This one does not. It makes a second leap: from “which Linux path should carry the bytes?” to “what if selected dataplane decisions move closer to the NIC itself, but inside a bounded safety envelope?”</p>
+        <p>That is where the repo’s newer architecture docs become genuinely differentiated.</p>
+
+        <div class="figure">
+          <p class="diagram-title">Intent → Agent → Guardian → Dataplane → Audit</p>
+          <div class="flow">
+            <div class="flow-row">
+              <div class="node"><b>Intent</b><span>The host specifies outcomes such as prioritization, fairness, or protection, not raw register twiddles.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Agent</b><span>NIC-local logic proposes bounded queue, pacing, or classification changes.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Guardian</b><span>Deterministic rules approve, clamp, reject, or force fail-safe mode.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Dataplane</b><span>Queues, steering, flow rules, shaping, and path choice actually change.</span></div>
+              <div class="arrow"></div>
+              <div class="node"><b>Audit</b><span>Reasoning and applied actions are logged with integrity and scope.</span></div>
+            </div>
+          </div>
+          <p class="figcap">This is the repo’s strongest conceptual move: bounded autonomy rather than free-form AI inside the NIC.</p>
+        </div>
+
+        <p>That architecture matters because it addresses the obvious failure mode directly: if you say “agentic NIC” too casually, everyone reasonably imagines a control loop that can destabilize queues, violate fairness, or hide its own mistakes. The repository’s answer is the Guardian layer and the audit model.</p>
+
+        <ul>
+          <li>The <strong>Guardian</strong> is the deterministic shell that prevents unsafe dataplane actions.</li>
+          <li>The <strong>Audit layer</strong> makes decisions inspectable and non-forgeable.</li>
+          <li>The <strong>tenant quota model</strong> prevents one local optimization loop from becoming another tenant’s starvation event.</li>
+        </ul>
+
+        <pre><code>tracepoint:sched:sched_wakeup
+/comm == "guardiand"/
+{
+  @guardian_wakeups = count();
+}
+
+tracepoint:sched:sched_switch
+/prev_comm == "guardiand" || next_comm == "guardiand"/
+{
+  @guardian_switches = count();
+}</code></pre>
+
+        <p>Even the tracing hooks matter here. The repo is no longer saying “trust the guardian.” It is moving toward “instrument the guardian.”</p>
+      </section>
+
+      <section id="release-blockers">
+        <h2>What still has to be proven before this idea grows up</h2>
+        <p>The repo also does something that many ambitious systems projects avoid: it names its own release blockers clearly.</p>
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>Open question</th>
+              <th>Why it matters</th>
+              <th>What proof looks like</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Is Path B really faster for tiny RPCs?</td>
+              <td><code class="inline">AF_XDP</code> can lose under sub-512B messages if XDP redirect overhead dominates.</td>
+              <td>Explicit comparisons at 64B, 128B, 256B, and 512B against Path A with p99 and CPU metrics.</td>
+            </tr>
+            <tr>
+              <td>Can the Guardian preserve tail-latency SLOs?</td>
+              <td>Safety logic that causes jitter is still a regression.</td>
+              <td>Trace-based evidence that guardian preemption protects rather than destabilizes the hot path.</td>
+            </tr>
+            <tr>
+              <td>Who can read reasoning logs?</td>
+              <td>Audit without a threat model becomes compliance theater.</td>
+              <td>A scoped read model, integrity story, and tenant isolation guarantees.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>This kind of explicit self-critique makes the project stronger, not weaker. It tells future contributors where the hard work still is, and it keeps the repo from overselling partial implementations as finished systems.</p>
+      </section>
+
+      <section id="value">
+        <h2>Why this repo matters</h2>
+        <p>Agentic-NIC-Dataplane-Lab matters because it sits in a very useful middle layer. It is concrete enough to compile, benchmark, and extend. But it is also ambitious enough to ask what happens after transport optimization, when network policy itself becomes more local, more autonomous, and more safety-critical.</p>
+        <p>That makes it interesting to three different audiences at once:</p>
+        <ul>
+          <li><strong>Linux performance engineers</strong> who want to reason about queue ownership, copies, and completion paths.</li>
+          <li><strong>AI infrastructure teams</strong> who need a sane way to compare kernel TCP, <code class="inline">AF_XDP</code>, and <code class="inline">RDMA</code> without cargo culting any of them.</li>
+          <li><strong>systems architects and patent thinkers</strong> who care about bounded autonomous NIC behavior, Guardian layers, reasoning logs, and multi-tenant control.</li>
+        </ul>
+
+        <div class="callout">The repo’s real contribution is not just a few code samples. It is a clearer systems vocabulary for talking about how agentic AI stresses Linux networking today, and how a bounded autonomous NIC layer might reasonably evolve from that pressure tomorrow.</div>
+      </section>
+
+      <section>
+        <h2>Repository links worth reading first</h2>
+        <ul class="sources">
+          <li><a href="https://github.com/manishklach/Agentic-NIC-Dataplane-Lab">Agentic-NIC-Dataplane-Lab repository</a></li>
+          <li><a href="https://github.com/manishklach/Agentic-NIC-Dataplane-Lab/blob/main/README.md">README.md</a></li>
+          <li><a href="https://github.com/manishklach/Agentic-NIC-Dataplane-Lab/blob/main/docs/reference-architecture.md">Reference architecture</a></li>
+          <li><a href="https://github.com/manishklach/Agentic-NIC-Dataplane-Lab/blob/main/docs/agentic-nic-architecture.md">Agentic NIC architecture</a></li>
+          <li><a href="https://github.com/manishklach/Agentic-NIC-Dataplane-Lab/blob/main/docs/safety-and-guardrails.md">Safety and guardrails</a></li>
+          <li><a href="https://github.com/manishklach/Agentic-NIC-Dataplane-Lab/blob/main/docs/reasoning-log-design.md">Reasoning log design</a></li>
+          <li><a href="https://github.com/manishklach/Agentic-NIC-Dataplane-Lab/blob/main/docs/benchmark-plan.md">Benchmark plan</a></li>
+          <li><a href="https://github.com/manishklach/Agentic-NIC-Dataplane-Lab/blob/main/src/af_xdp/main.c">AF_XDP starter path</a></li>
+          <li><a href="https://github.com/manishklach/Agentic-NIC-Dataplane-Lab/blob/main/src/io_uring/recv_zc.c">io_uring receive starter</a></li>
+          <li><a href="https://github.com/manishklach/Agentic-NIC-Dataplane-Lab/blob/main/src/rdma/verbs_ping.c">RDMA verbs starter</a></li>
+        </ul>
+      </section>
+
+      <p class="footer-note">All code samples above are intentionally excerpted and simplified for explanation. The point of the essay is not that the repo is “finished.” The point is that it has chosen the right problems, the right abstractions, and the right next questions.</p>
+    </article>
+
+    <aside class="sidebar">
+      <div class="sidecard">
+        <h4>Core thesis</h4>
+        <p>Agentic AI is creating three networking problems at once: small-message RPC, packet-hot service edges, and bulk east-west state movement. The repo is valuable because it refuses to collapse those into one “fast path.”</p>
+      </div>
+      <div class="sidecard">
+        <h4>Most differentiated idea</h4>
+        <p>The repo’s strongest architectural move is the bounded autonomy model: <code class="inline">Intent → Agent → Guardian → Dataplane → Audit</code>.</p>
+      </div>
+      <div class="sidecard">
+        <h4>Still open</h4>
+        <ul>
+          <li>Sub-512B proof for Path B</li>
+          <li>Tail-latency-safe Guardian preemption</li>
+          <li>Threat model for reasoning-log read access</li>
+        </ul>
+      </div>
+    </aside>
+  </div>
+</main>
+<footer class="site-footer">
+  <div class="wrap footer-shell">
+    <div>MANISH AI · Systems architecture, AI infrastructure, runtime systems, and long-form essays.</div>
+    <div class="footer-links">
+      <a href="../index.html">Home</a>
+      <a href="../writings.html">All writings</a>
+      <a href="../patents.html">Patents</a>
+      <a href="https://github.com/manishklach">GitHub</a>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

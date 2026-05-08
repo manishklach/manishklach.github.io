@@ -55,6 +55,11 @@ const homepageData = {
   ],
   writing: [
     {
+      title: "Agentic-NIC-Dataplane-Lab: a Linux dataplane architecture for agentic AI",
+      text: "A polished repo essay on tri-path networking, AF_XDP, io_uring, RDMA, bounded autonomous NIC control, and why agentic AI is becoming a queueing and copy problem.",
+      href: "writings/agentic-nic-dataplane-lab-linux-dataplane-architecture.html"
+    },
+    {
       title: "Beyond the CPU: Why agentic datacenters need SmartNICs, DPUs, RDMA, and zero-copy",
       text: "A systems-level essay on why rising CPU pressure in agentic AI points to a bigger story: the whole datacenter data path is now on the critical path.",
       href: "writings/beyond-the-cpu-agentic-datacenters-smartnics-dpus-rdma-zerocopy.html"
