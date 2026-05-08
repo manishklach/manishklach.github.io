@@ -96,6 +96,7 @@
 <li><a href="#how-ai-workloads-use-flash">How AI workloads use flash</a></li>
 <li><a href="#raw-flash-vs-ssd">Raw flash vs SSD-managed flash</a></li>
 <li><a href="#linux-kernel-and-drivers">Linux kernel and driver support</a></li>
+<li><a href="#kernel-init-and-probe-flow">Kernel init and probe flow</a></li>
 <li><a href="#the-hidden-vendor-stack">The hidden vendor stack</a></li>
 <li><a href="#practical-takeaways">Practical takeaways</a></li>
 </ul>
@@ -296,6 +297,41 @@
 </div>
 <h2 id="linux-kernel-and-drivers">Linux kernel and driver support</h2>
 <p>The software stack changes depending on whether the flash is raw or controller-managed.</p>
+<h3>Where these drivers live in the kernel structure</h3>
+<p>At a high level, Linux splits this problem by abstraction boundary. Raw flash sits in the memory-technology world. SSD-backed flash sits in the block-storage world. That split is why <code>MTD</code> and <code>NVMe</code> feel so different even when the underlying persistent medium is ultimately “flash.”</p>
+<ul>
+<li><code>drivers/mtd/</code> holds the flash-oriented subsystem for raw memory technology devices.</li>
+<li><code>drivers/mtd/spi-nor/</code> is the common home for SPI NOR support.</li>
+<li><code>drivers/mtd/nand/raw/</code> contains raw NAND support.</li>
+<li><code>drivers/mtd/nand/spi/</code> contains SPI NAND support in kernels that split it that way.</li>
+<li><code>drivers/spi/</code> contains SPI controller drivers that sit underneath SPI NOR and some SPI NAND paths.</li>
+<li><code>drivers/nvme/host/</code> contains the NVMe host-side driver stack used for SSDs on PCIe.</li>
+<li><code>block/</code> contains the generic block layer that filesystems and storage drivers use to exchange I/O requests.</li>
+<li><code>fs/</code> contains the filesystems that sit on top of block storage or, in some raw-flash cases, flash-aware layers such as <code>UBIFS</code>.</li>
+</ul>
+<div class="figure">
+<div class="figure-inner">
+<svg viewBox="0 0 960 320" xmlns="http://www.w3.org/2000/svg">
+<rect width="960" height="320" fill="rgba(5,8,16,0.98)"/>
+<text x="480" y="34" text-anchor="middle" fill="#edf3ff" font-family="Inter, sans-serif" font-size="18" font-weight="700">Where Flash Support Sits in Linux</text>
+<rect x="90" y="78" width="350" height="190" rx="20" fill="rgba(130,240,161,0.06)" stroke="rgba(130,240,161,0.22)"/>
+<text x="265" y="108" text-anchor="middle" fill="#82f0a1" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700">RAW FLASH PATH</text>
+<text x="120" y="140" fill="#d9e7e3" font-family="JetBrains Mono, monospace" font-size="10">userspace update / firmware logic</text>
+<text x="120" y="163" fill="#d9e7e3" font-family="JetBrains Mono, monospace" font-size="10">MTD core</text>
+<text x="120" y="186" fill="#d9e7e3" font-family="JetBrains Mono, monospace" font-size="10">spi-nor / raw NAND / spi NAND</text>
+<text x="120" y="209" fill="#d9e7e3" font-family="JetBrains Mono, monospace" font-size="10">SPI or NAND controller driver</text>
+<text x="120" y="232" fill="#d9e7e3" font-family="JetBrains Mono, monospace" font-size="10">physical flash device</text>
+<rect x="520" y="78" width="350" height="190" rx="20" fill="rgba(131,188,255,0.06)" stroke="rgba(131,188,255,0.22)"/>
+<text x="695" y="108" text-anchor="middle" fill="#83bcff" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700">SSD-BACKED FLASH PATH</text>
+<text x="550" y="140" fill="#d9e7e3" font-family="JetBrains Mono, monospace" font-size="10">application / filesystem</text>
+<text x="550" y="163" fill="#d9e7e3" font-family="JetBrains Mono, monospace" font-size="10">block layer / blk-mq</text>
+<text x="550" y="186" fill="#d9e7e3" font-family="JetBrains Mono, monospace" font-size="10">NVMe host driver</text>
+<text x="550" y="209" fill="#d9e7e3" font-family="JetBrains Mono, monospace" font-size="10">PCIe subsystem</text>
+<text x="550" y="232" fill="#d9e7e3" font-family="JetBrains Mono, monospace" font-size="10">SSD controller firmware + NAND</text>
+</svg>
+</div>
+<div class="figcap"><strong>Figure 7.</strong> Linux does not have one unified “flash driver stack.” It has one stack for raw flash semantics and another for controller-managed block storage.</div>
+</div>
 <h3>NOR flash on Linux</h3>
 <p>Raw NOR is usually supported through the <code>MTD</code> subsystem. A common path is <code>MTD</code> plus <code>spi-nor</code> on top of an SPI controller driver. Linux probes the chip, exposes MTD partitions, and supports read, erase, and program operations along with vendor-specific quirks and protections.</p>
 <div class="figure">
@@ -374,6 +410,42 @@
 </tbody>
 </table>
 </div>
+<h2 id="kernel-init-and-probe-flow">Kernel init and probe flow</h2>
+<p>The simplest useful way to understand Linux flash support is to follow the probe path. The exact source files differ by platform, but the high-level bring-up sequence is consistent: the kernel discovers a bus or controller, binds the matching driver, identifies the flash device, allocates subsystem structures, and finally exposes an interface that upper layers can use.</p>
+<h3>Basic NOR initialization flow</h3>
+<ol>
+<li>The platform firmware or device tree describes an SPI controller and a child flash device.</li>
+<li>The SPI controller driver registers itself with the kernel and initializes the bus hardware.</li>
+<li>The SPI core matches the flash child node to the <code>spi-nor</code> path.</li>
+<li><code>spi-nor</code> reads JEDEC identification data and determines chip geometry and capabilities.</li>
+<li>The MTD layer allocates an <code>mtd_info</code>-style device representation and wires in read, erase, and program callbacks.</li>
+<li>Partitions may then be registered, after which userspace sees MTD devices it can read or update.</li>
+</ol>
+<p>In plain English, the SPI controller comes up first, the flash driver learns what chip is attached, and the MTD subsystem becomes the public interface that the rest of Linux uses.</p>
+<h3>Basic raw NAND initialization flow</h3>
+<ol>
+<li>A NAND controller driver initializes its hardware registers, DMA setup, and timing hooks.</li>
+<li>The raw NAND core or SPI NAND layer identifies the device and learns page size, erase-block size, and bad-block rules.</li>
+<li>The driver configures ECC requirements, either through a dedicated ECC engine or controller-integrated logic.</li>
+<li>The MTD core registers the NAND device as a flash-aware object rather than as a normal disk.</li>
+<li>Optional upper layers such as <code>UBI</code> and <code>UBIFS</code> are attached if the platform uses them.</li>
+</ol>
+<p>This is why raw NAND drivers feel more complex than NOR drivers: they are not just discovering capacity, they are also establishing the correctness rules needed to survive bad blocks and bit errors.</p>
+<h3>Basic NVMe SSD initialization flow</h3>
+<ol>
+<li>PCIe enumeration discovers the SSD as a PCIe function.</li>
+<li>The kernel matches the device to the <code>nvme</code> host driver.</li>
+<li>The NVMe driver maps controller registers, negotiates queue resources, and sets up admin queues first.</li>
+<li>The driver identifies the controller, then enumerates namespaces that represent logical storage regions.</li>
+<li>The block layer registers those namespaces as block devices.</li>
+<li>Filesystems such as <code>XFS</code> or <code>ext4</code> mount on top, and applications finally see ordinary storage.</li>
+</ol>
+<p>The important difference from raw flash is that Linux never needs to understand the internal NAND geometry. The SSD firmware has already converted the flash medium into a logical namespace abstraction.</p>
+<div class="callout">
+<strong>The probe-order intuition:</strong> bus or transport first, device identification second, subsystem registration third, user-visible node last. That pattern shows up across SPI NOR, raw NAND, and NVMe even though the details differ.
+</div>
+<h3>Why init routines matter in production</h3>
+<p>These initialization steps are not just academic. If the wrong SPI flash description is shipped, the NOR path may boot unreliably. If ECC settings are mismatched, a raw NAND design may silently degrade. If PCIe or NVMe initialization is unstable, SSD namespaces may vanish or reset under load. In production AI servers, a large share of “storage weirdness” actually begins in probe, identification, or controller bring-up rather than in steady-state reads and writes.</p>
 <h2 id="the-hidden-vendor-stack">The hidden vendor stack</h2>
 <p>The most under-discussed part of flash in AI servers is that “flash” is not one vendor decision. It is a stack of vendor decisions layered on top of one another. The NAND manufacturer, the SSD controller vendor, the server OEM, the BMC silicon vendor, the BIOS supplier, and the accelerator platform integrator all influence the behavior that operators eventually experience as “storage reliability” or “boot stability.”</p>
 <h3>1. The firmware-island problem</h3>
