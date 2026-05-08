@@ -96,6 +96,7 @@
 <li><a href="#how-ai-workloads-use-flash">How AI workloads use flash</a></li>
 <li><a href="#raw-flash-vs-ssd">Raw flash vs SSD-managed flash</a></li>
 <li><a href="#linux-kernel-and-drivers">Linux kernel and driver support</a></li>
+<li><a href="#the-hidden-vendor-stack">The hidden vendor stack</a></li>
 <li><a href="#practical-takeaways">Practical takeaways</a></li>
 </ul>
 </nav>
@@ -373,6 +374,39 @@
 </tbody>
 </table>
 </div>
+<h2 id="the-hidden-vendor-stack">The hidden vendor stack</h2>
+<p>The most under-discussed part of flash in AI servers is that “flash” is not one vendor decision. It is a stack of vendor decisions layered on top of one another. The NAND manufacturer, the SSD controller vendor, the server OEM, the BMC silicon vendor, the BIOS supplier, and the accelerator platform integrator all influence the behavior that operators eventually experience as “storage reliability” or “boot stability.”</p>
+<h3>1. The firmware-island problem</h3>
+<p>A modern AI server is full of tiny flash-backed control domains. The motherboard boot ROM may be on one NOR device. The BMC may boot from another. NICs, DPUs, retimers, storage controllers, and even SSDs themselves can each carry independent firmware images and update lifecycles. That means fleet reliability can fail at the seams between these firmware islands rather than at the main host OS.</p>
+<div class="callout">
+<strong>Why this matters operationally:</strong> a thousand-node training cluster can be blocked by a bad BMC rollout, a NIC firmware regression, or a board-level recovery-path failure even when the GPUs, CPUs, and SSD media are perfectly healthy.
+</div>
+<h3>2. The SSD controller is the real storage personality</h3>
+<p>People often compare NAND types as if the media alone defines behavior. In practice, enterprise SSD behavior is dominated by controller firmware policy: the flash translation layer, garbage collection strategy, overprovisioning choices, thermal policy, queue handling, recovery behavior, and power-fail logic. In other words, the SSD controller firmware is often the hidden operating system underneath AI storage.</p>
+<p>That is why two drives with nominally similar 3D NAND can behave very differently under checkpoint bursts, mixed read-write pressure, or long-lived cache workloads. The media matters, but the controller policy often matters more.</p>
+<h3>3. The vendor map that actually matters</h3>
+<p>The most useful way to think about vendors is by layer, not by a flat list of brand names.</p>
+<ul>
+<li><strong>NAND manufacturers:</strong> vendors such as <code>Samsung</code>, <code>Kioxia</code>, <code>Micron</code>, <code>SK hynix</code>, <code>Solidigm</code>, and <code>Western Digital / SanDisk</code> shape density, endurance classes, and enterprise SSD supply.</li>
+<li><strong>SSD controller vendors:</strong> vendors such as <code>Phison</code>, <code>Marvell</code>, and <code>Silicon Motion</code>, along with in-house controller teams at major SSD vendors, shape the actual runtime behavior the host sees.</li>
+<li><strong>Platform firmware vendors:</strong> suppliers such as <code>AMI</code>, <code>Phoenix</code>, and <code>Insyde</code> influence BIOS and UEFI behavior, while <code>ASPEED</code> is a major force in BMC silicon and out-of-band management.</li>
+<li><strong>System OEMs and ODMs:</strong> vendors such as <code>Dell</code>, <code>HPE</code>, <code>Lenovo</code>, <code>Supermicro</code>, <code>Gigabyte</code>, <code>Quanta</code>, and <code>Wiwynn</code> decide NVMe topology, cooling, serviceability, and firmware integration quality.</li>
+<li><strong>AI platform integrators:</strong> ecosystems built around <code>NVIDIA</code>, <code>AMD</code>, <code>Intel</code>, and hyperscaler reference designs influence how much local flash exists per node and which workloads that flash tier must absorb.</li>
+</ul>
+<h3>4. AI creates a strange endurance profile</h3>
+<p>AI workloads do not look like traditional enterprise storage mixes. Checkpoints create huge sequential write bursts. Model rollout and local cache warming can create heavy read waves. Telemetry and logging create smaller steady writes. Some systems add intermediate spill or artifact churn on top. The result is a wear profile that can be surprisingly asymmetric and much harsher than generic enterprise assumptions.</p>
+<p>This is why write amplification, spare area, drive write per day ratings, and controller garbage-collection policy deserve much more attention in AI storage design than they usually get in high-level infrastructure discussions.</p>
+<h3>5. Thermals and throttling are often misdiagnosed as software issues</h3>
+<p>AI operators often think in terms of GPU thermals and rack power, but local flash thermals matter too. Enterprise SSDs can throttle under sustained heavy writes, sustained random I/O, or dense front-bay thermal conditions. When they do, model load times stretch, checkpoint latency grows, and the symptoms often look like a software regression rather than a storage thermal event.</p>
+<div class="callout callout-warn">
+<strong>The hidden failure mode:</strong> a hot SSD bay can silently convert a storage design problem into what looks like a flaky dataloader, a slow model rollout, or a mysteriously inconsistent checkpoint pipeline.
+</div>
+<h3>6. Power-loss protection is not a boring enterprise checkbox</h3>
+<p>Power-loss protection on enterprise SSDs matters a lot more in AI than people usually admit. When a node is checkpointing or writing deployment artifacts, a sudden power event without robust protection can corrupt in-flight metadata or partially committed writes. In large fleets, those edge cases become inevitabilities rather than hypotheticals.</p>
+<p>This is one of the reasons consumer SSD assumptions map badly onto AI infrastructure. The cost of a corrupted checkpoint, a damaged local cache, or a recovery-path failure is far larger than the sticker price difference between a consumer-style drive and a real enterprise one.</p>
+<h3>7. NOR is tiny, but existential</h3>
+<p>NOR rarely gets attention because it is small in capacity and invisible during normal operation. But from a fleet-operations perspective, NOR is existential. If that tiny device holds the wrong firmware, the node may fail to boot, fail to recover, or fail to rejoin the cluster after maintenance. NAND shortages hurt capacity planning; NOR mistakes hurt bootability.</p>
+<blockquote>The smallest flash device in the server may be the one with the highest operational leverage.</blockquote>
 <h2 id="practical-takeaways">Practical takeaways</h2>
 <p>If you are a platform engineer, you care about NOR because it defines boot safety, rollback, recovery, and secure-update behavior. If you are a storage or kernel engineer, you care about whether the flash is raw or controller-managed, because that determines whether you work in the <code>MTD</code> world or the <code>NVMe</code> world. If you are an AI systems engineer, you mostly care about NAND-backed SSD behavior because that is the tier that feeds checkpoints, local caches, and deployment artifacts.</p>
 <div class="callout">
