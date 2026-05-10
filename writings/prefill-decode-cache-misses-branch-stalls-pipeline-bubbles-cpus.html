@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<title>Why LLM Prefill and Decode Suffer from Cache Misses, Branch Stalls, and Pipeline Bubbles on CPUs | Writings | MANISH AI</title>
+<meta content="A detailed technical essay on why CPU-based LLM prefill and decode suffer from cache misses, branch stalls, and pipeline bubbles, and how runtimes, kernels, compilers, and hardware work together to reduce their impact." name="description"/>
+<meta content="LLM prefill decode CPU, cache misses AI inference, branch stalls CPUs, pipeline bubbles transformers, AVX SIMD inference, ARM SVE AI, AMD Intel LLM performance, agentic AI CPU bottlenecks" name="keywords"/>
+<meta content="MANISH AI" name="author"/>
+<meta content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" name="robots"/>
+<link href="https://manishklach.github.io/writings/prefill-decode-cache-misses-branch-stalls-pipeline-bubbles-cpus.html" rel="canonical"/>
+<meta content="article" property="og:type"/>
+<meta content="Why LLM Prefill and Decode Suffer from Cache Misses, Branch Stalls, and Pipeline Bubbles on CPUs | Writings | MANISH AI" property="og:title"/>
+<meta content="A systems deep dive into CPU microarchitecture pathologies in LLM inference: cache misses, branch stalls, pipeline bubbles, SIMD, prefill, decode, and agentic AI latency." property="og:description"/>
+<meta content="https://manishklach.github.io/writings/prefill-decode-cache-misses-branch-stalls-pipeline-bubbles-cpus.html" property="og:url"/>
+<meta content="MANISH AI Writings" property="og:site_name"/>
+<meta content="en_US" property="og:locale"/>
+<meta content="2026-05-10" property="article:published_time"/>
+<meta content="2026-05-10" property="article:modified_time"/>
+<meta content="CPU Inference" property="article:section"/>
+<meta content="prefill, decode, cache misses, branch stalls, pipeline bubbles, SIMD, AVX, SVE, agentic AI" property="article:tag"/>
+<meta content="https://manishklach.github.io/assets/og-image.png" property="og:image"/>
+<meta content="Why LLM Prefill and Decode Suffer from Cache Misses, Branch Stalls, and Pipeline Bubbles on CPUs" property="og:image:alt"/>
+<meta content="1200" property="og:image:width"/>
+<meta content="630" property="og:image:height"/>
+<meta content="summary_large_image" name="twitter:card"/>
+<meta content="Why LLM Prefill and Decode Suffer from Cache Misses, Branch Stalls, and Pipeline Bubbles on CPUs" name="twitter:title"/>
+<meta content="A systems deep dive into CPU microarchitecture pathologies in LLM inference: cache misses, branch stalls, pipeline bubbles, SIMD, prefill, decode, and agentic AI latency." name="twitter:description"/>
+<meta content="https://manishklach.github.io/assets/og-image.png" name="twitter:image"/>
+<meta content="Why LLM Prefill and Decode Suffer from Cache Misses, Branch Stalls, and Pipeline Bubbles on CPUs" name="twitter:image:alt"/>
+<meta content="@manishklach" name="twitter:site"/>
+<meta content="#1a1814" name="theme-color"/>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Why LLM Prefill and Decode Suffer from Cache Misses, Branch Stalls, and Pipeline Bubbles on CPUs | Writings",
+  "description": "A detailed technical essay on why CPU-based LLM prefill and decode suffer from cache misses, branch stalls, and pipeline bubbles, and how runtimes, kernels, compilers, and hardware work together to reduce their impact.",
+  "url": "https://manishklach.github.io/writings/prefill-decode-cache-misses-branch-stalls-pipeline-bubbles-cpus.html",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/prefill-decode-cache-misses-branch-stalls-pipeline-bubbles-cpus.html",
+  "datePublished": "2026-05-10",
+  "dateModified": "2026-05-10",
+  "author": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  }
+}
+</script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&amp;family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --ink: #1a1814; --ink-mid: #3e3b36; --ink-soft: #6e6a64; --ink-muted: #a8a49e;
+      --paper: #f7f4ef; --paper-warm: #ede9e2; --paper-card: #ffffff;
+      --accent: #0f6e78; --accent-soft: #e6f3f4; --accent-mid: #1f8b96; --accent-light: #c6e5e8;
+      --accent-warm: #a56a16; --accent-warm-soft: #f7edd9;
+      --rule: #dcd8d0; --code-bg: #13110f; --code-text: #e2ddd6;
+      --mono: 'JetBrains Mono', monospace; --serif: 'DM Serif Display', Georgia, serif; --sans: 'DM Sans', system-ui, sans-serif;
+    }
+    html { font-size: 18px; scroll-behavior: smooth; }
+    body { background: var(--paper); color: var(--ink); font-family: var(--sans); font-weight: 300; line-height: 1.8; -webkit-font-smoothing: antialiased; }
+    a { color: inherit; }
+    .topbar { position: sticky; top: 0; z-index: 20; background: rgba(247, 244, 239, 0.92); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(220, 216, 208, 0.9); }
+    .topbar-inner { max-width: 980px; margin: 0 auto; padding: 0.95rem 2rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .brand { font-family: var(--serif); font-size: 1.25rem; text-decoration: none; color: var(--ink); }
+    .back-link { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-soft); text-decoration: none; }
+    header { background: var(--ink); color: #f0ece5; padding: 4.5rem 2rem 4rem; position: relative; overflow: hidden; }
+    header::before { content: ''; position: absolute; bottom: -120px; right: -60px; width: 380px; height: 380px; border: 1px solid rgba(255,255,255,0.04); border-radius: 50%; pointer-events: none; }
+    header::after { content: ''; position: absolute; bottom: -60px; right: 20px; width: 220px; height: 220px; border: 1px solid rgba(255,255,255,0.035); border-radius: 50%; pointer-events: none; }
+    .header-inner { max-width: 840px; margin: 0 auto; position: relative; z-index: 1; }
+    .eyebrow { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 0.62rem; font-weight: 500; letter-spacing: 0.13em; text-transform: uppercase; color: #78b9bf; margin-bottom: 1.75rem; flex-wrap: wrap; }
+    .eyebrow-dot { width: 5px; height: 5px; background: #78b9bf; border-radius: 50%; flex-shrink: 0; }
+    h1 { font-family: var(--serif); font-size: clamp(2.1rem, 4.8vw, 3.2rem); font-weight: 400; line-height: 1.15; color: #f0ece5; margin-bottom: 1.5rem; max-width: 780px; }
+    h1 em { font-style: italic; color: #95d8de; }
+    .meta { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(240,236,229,0.48); margin-bottom: 1rem; }
+    .header-sub { font-size: 1rem; font-weight: 300; color: rgba(240,236,229,0.58); max-width: 740px; line-height: 1.65; margin-bottom: 2rem; }
+    .byline { display: flex; align-items: center; gap: 1rem; font-size: 0.8rem; color: rgba(240,236,229,0.45); flex-wrap: wrap; }
+    .byline-sep { color: rgba(240,236,229,0.2); }
+    .content { max-width: 840px; margin: 0 auto; padding: 3.5rem 2rem 6rem; }
+    h2 { font-family: var(--serif); font-size: 1.8rem; font-weight: 400; color: var(--ink); margin: 3.8rem 0 1rem; line-height: 1.2; }
+    h3 { font-family: var(--sans); font-size: 0.72rem; font-weight: 500; letter-spacing: 0.11em; text-transform: uppercase; color: var(--accent); margin: 2.75rem 0 0.75rem; }
+    p { font-size: 1rem; line-height: 1.9; color: var(--ink-mid); margin-bottom: 1.35rem; }
+    p strong { font-weight: 500; color: var(--ink); }
+    p em { font-style: italic; }
+    p code, li code { font-family: var(--mono); font-size: 0.78rem; background: var(--paper-warm); color: var(--ink); padding: 2px 6px; border-radius: 3px; border: 1px solid var(--rule); }
+    ul, ol { margin: 0.5rem 0 1.7rem 1.3rem; color: var(--ink-mid); }
+    li { margin: 0.48rem 0; padding-left: 0.2rem; }
+    .pull-quote { border-left: 3px solid var(--accent-mid); padding: 0.75rem 0 0.75rem 1.75rem; margin: 2.6rem 0; background: linear-gradient(90deg, rgba(15,110,120,0.06), transparent); }
+    .pull-quote p { font-family: var(--serif); font-size: 1.24rem; font-style: italic; color: var(--ink-soft); line-height: 1.55; margin: 0; }
+    .compare-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 2rem 0; }
+    .compare-card { background: var(--paper-card); border: 1px solid var(--rule); border-radius: 8px; padding: 1.2rem 1.25rem; }
+    .compare-card h4 { font-family: var(--mono); font-size: 0.62rem; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.75rem; }
+    .compare-card.prefill h4 { color: var(--accent); }
+    .compare-card.decode h4 { color: var(--accent-warm); }
+    .note-box { display: flex; gap: 1rem; align-items: flex-start; background: var(--paper-warm); border: 1px solid var(--rule); border-left: 3px solid var(--accent-mid); border-radius: 0 6px 6px 0; padding: 1rem 1.25rem; margin: 2.2rem 0; }
+    .note-icon { font-family: var(--mono); font-size: 0.62rem; font-weight: 500; color: var(--accent); letter-spacing: 0.06em; text-transform: uppercase; flex-shrink: 0; padding-top: 2px; }
+    .note-box p { font-size: 0.84rem; color: var(--ink-soft); margin: 0; line-height: 1.65; }
+    .code-block { background: var(--code-bg); border-radius: 8px; overflow: hidden; margin: 2rem 0; }
+    .code-label { background: rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.06); padding: 0.6rem 1.25rem; font-family: var(--mono); font-size: 0.6rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: #8bc9cf; }
+    .code-block pre { padding: 1.5rem 1.25rem; font-family: var(--mono); font-size: 0.72rem; line-height: 1.75; color: var(--code-text); overflow-x: auto; white-space: pre-wrap; }
+    .resp-table { width: 100%; border-collapse: collapse; margin: 2rem 0; font-size: 0.85rem; }
+    .resp-table th { font-family: var(--mono); font-size: 0.62rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); text-align: left; padding: 0.6rem 1rem; border-bottom: 1px solid var(--rule); background: var(--paper-warm); }
+    .resp-table td { padding: 0.8rem 1rem; border-bottom: 1px solid var(--rule); color: var(--ink-mid); vertical-align: top; }
+    .resp-table tr:last-child td { border-bottom: none; }
+    .checklist { list-style: none; margin: 1rem 0 1.5rem; padding: 0; }
+    .checklist li { display: flex; gap: 0.8rem; padding: 0.55rem 0; margin: 0; }
+    .checklist li::before { content: "•"; color: var(--accent); font-weight: 700; }
+    .agentic-box { background: linear-gradient(135deg, rgba(165,106,22,0.06), rgba(15,110,120,0.04)); border: 1px solid var(--rule); border-radius: 8px; padding: 1.25rem 1.25rem 0.9rem; margin: 2rem 0; }
+    .xpost { background: var(--code-bg); border-radius: 8px; padding: 1.25rem; color: var(--code-text); margin: 2rem 0; }
+    .xpost p { color: var(--code-text); font-family: var(--mono); font-size: 0.76rem; line-height: 1.75; margin: 0; }
+    hr { border: none; border-top: 1px solid var(--rule); margin: 3rem 0; }
+    footer { background: var(--ink); color: rgba(240,236,229,0.35); text-align: center; padding: 2rem; font-size: 0.68rem; font-family: var(--mono); letter-spacing: 0.05em; }
+    footer a { color: rgba(120,180,230,0.6); text-decoration: none; }
+    .essay-copyright { margin-top: 1.25rem; color: inherit; font-size: 0.95em; }
+    .essay-copyright a { color: inherit; font-weight: 600; text-decoration: none; }
+    .essay-copyright a:hover { text-decoration: underline; }
+    @media (max-width: 680px) {
+      .topbar-inner { padding: 0.85rem 1.25rem; }
+      header { padding: 3rem 1.25rem 3rem; }
+      .content { padding: 2.5rem 1.25rem 4rem; }
+      h1 { font-size: 1.95rem; }
+      .compare-grid { grid-template-columns: 1fr; }
+      .resp-table { display: block; overflow-x: auto; }
+    }
+</style>
+<meta content="light dark" name="color-scheme"/>
+<script async="" data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script>
+<link href="/assets/site.css" rel="stylesheet"/>
+<script defer="" src="/assets/site.js"></script>
+<link href="/feed.xml" rel="alternate" title="MANISH AI RSS" type="application/rss+xml"/>
+<link href="https://webmention.io/manishklach.github.io/webmention" rel="webmention"/>
+<link href="/feed.json" rel="alternate" title="MANISH AI JSON" type="application/feed+json"/>
+<link href="https://webmention.io/manishklach.github.io/xmlrpc" rel="pingback"/>
+</head>
+<body>
+<div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
+<div class="topbar">
+<div class="topbar-inner">
+<a class="brand" href="/index.html">Home</a>
+<a class="back-link" href="/writings.html">Back to Writings</a>
+</div>
+</div>
+<header>
+<div class="header-inner">
+<div class="eyebrow"><div class="eyebrow-dot"></div>CPU Inference · Microarchitecture · Writings</div>
+<h1>Why LLM Prefill and Decode Suffer from <em>Cache Misses, Branch Stalls, and Pipeline Bubbles</em> on CPUs</h1>
+<div class="meta reading-meta">Published <time datetime="2026-05-10">May 10, 2026</time> · 14 min read</div>
+<p class="header-sub">Raw FLOPs and clock speed tell only half the story. The real performance battle in CPU-based LLM inference is about how often the processor is forced to wait while moving weights, activations, and KV cache through a deep transformer stack.</p>
+<div class="byline">
+<span><time datetime="2026-05-10">May 2026</time></span>
+<span class="byline-sep">·</span>
+<span>14 min read</span>
+<span class="byline-sep">·</span>
+<span>CPU inference / prefill / decode / SIMD</span>
+</div>
+</div>
+</header>
+<main class="content" data-pagefind-body="">
+<p>When people first analyze LLM inference, they usually focus on parameter count, tokens per second, memory bandwidth, or maybe even the total number of CPU cores. Those all matter. But once you get close to actual execution, the deeper question becomes much more mechanical: <strong>how often is the processor forced to wait?</strong></p>
+<p>That waiting shows up in three recurring forms:</p>
+<ul>
+<li><strong>Cache misses</strong>, where the data needed by the core is not present in the cache level it hoped for and must be fetched from farther away.</li>
+<li><strong>Branch stalls</strong>, where the CPU predicts the wrong control-flow path and must recover.</li>
+<li><strong>Pipeline bubbles</strong>, where parts of the execution machinery sit idle because the next instruction or data is not ready.</li>
+</ul>
+<div class="pull-quote">
+<p>To reduce the impact of cache misses, branch stalls, and pipeline bubbles in LLM prefill and decode, make the hot path regular, vectorized, cache-local, and prefetchable.</p>
+</div>
+<p>That sentence sounds simple. The reality under it is not. Prefill and decode are not just two names for one workload. They stress the CPU in different ways, and the same hardware pathologies show up differently in each phase.</p>
+
+<nav class="toc"><strong>Contents</strong><ul>
+<li><a href="#prefill-and-decode-are-different-workloads">Prefill and Decode Are Different Workloads</a></li>
+<li><a href="#cache-misses">Cache Misses</a></li>
+<li><a href="#branch-stalls">Branch Stalls</a></li>
+<li><a href="#pipeline-bubbles">Pipeline Bubbles</a></li>
+<li><a href="#what-regular-vectorized-cache-local-and-prefetchable-really-means">What “Regular, Vectorized, Cache-Local, and Prefetchable” Really Means</a></li>
+<li><a href="#who-helps-avoid-what">Who Helps Avoid What?</a></li>
+<li><a href="#why-agentic-ai-makes-this-more-important">Why Agentic AI Makes This More Important</a></li>
+<li><a href="#practical-optimization-checklist">Practical Optimization Checklist</a></li>
+</ul></nav>
+
+<h2 id="prefill-and-decode-are-different-workloads">Prefill and Decode Are Different Workloads</h2>
+<p>Before talking about microarchitecture, it helps to separate the two major phases of transformer inference.</p>
+<div class="compare-grid">
+<div class="compare-card prefill">
+<h4>Prefill</h4>
+<ul>
+<li>Reads the full prompt and builds initial KV cache.</li>
+<li>Processes many prompt tokens together inside each transformer layer.</li>
+<li>Has larger matrix operations and more token-level parallelism.</li>
+<li>Usually gives SIMD units and caches a better chance to stay busy.</li>
+</ul>
+</div>
+<div class="compare-card decode">
+<h4>Decode</h4>
+<ul>
+<li>Generates one new token at a time.</li>
+<li>Rereads weights and reuses every layer’s KV cache on each step.</li>
+<li>Has less fresh-token parallelism and more exposed memory latency.</li>
+<li>Makes tail latency more visible to the user.</li>
+</ul>
+</div>
+</div>
+<p>Prefill can often look surprisingly healthy on CPUs because it exposes larger, more structured compute kernels. Decode is usually where the machine starts to show its pain more directly.</p>
+
+<h2 id="cache-misses">Cache Misses</h2>
+<p>CPUs rely on a hierarchy of caches: <code>L1</code>, <code>L2</code>, <code>L3</code>, and then DRAM beyond that. A cache miss happens when the data the core wants is not present in the expected cache level and must be fetched from farther away.</p>
+<div class="code-block">
+<div class="code-label">Mental model</div>
+<pre>L1 miss -> maybe L2
+L2 miss -> maybe L3
+L3 miss -> DRAM
+
+The farther out you go, the more expensive the wait.</pre>
+</div>
+<p>In LLM inference, the core constantly touches model weights, activations, KV cache, and temporary buffers. If those accesses miss higher-level caches frequently, the processor spends a growing fraction of time waiting on data movement instead of doing useful work.</p>
+
+<h3>Cache Misses in Prefill</h3>
+<p>Prefill is easier to optimize because multiple prompt tokens are processed together. That enables blocked matrix multiplies, more reuse of activation blocks, and better temporal locality for weight tiles. Kernels can often keep a more useful working set warm in cache.</p>
+
+<h3>Cache Misses in Decode</h3>
+<p>Decode is more fragile because the model still rereads many weights while also touching the KV cache of every layer. As context grows, KV grows too. The result is that DRAM latency becomes much more visible in the token loop, especially when locality breaks down.</p>
+
+<h3>How to Reduce Their Impact</h3>
+<ul>
+<li>Use cache-friendly tensor layouts.</li>
+<li>Block and tile matrix operations aggressively.</li>
+<li>Quantize weights so more fit into upper cache levels.</li>
+<li>Preserve NUMA locality.</li>
+<li>Stage hot weight tiles before they are needed.</li>
+<li>Avoid mixing unrelated hot datasets in the same hottest memory path.</li>
+</ul>
+<div class="note-box">
+<div class="note-icon">Key Point</div>
+<p>Cache misses are reduced mostly by <strong>runtime layout, kernel design, and hardware caches</strong>. The compiler helps, but it is not the only actor here.</p>
+</div>
+
+<h2 id="branch-stalls">Branch Stalls</h2>
+<p>Modern CPUs predict branches before they are resolved so the pipeline stays busy. When the prediction is wrong, the CPU discards speculative work and restarts on the correct path. That recovery creates a branch stall.</p>
+<p>In hot inference kernels, this matters because the CPU should not repeatedly stop to answer unpredictable questions inside the numerical inner loop.</p>
+
+<h3>Branch Stalls in Prefill</h3>
+<p>Prefill usually has relatively regular control flow: larger matrix kernels, stable iteration spaces, and fewer per-token special cases. That makes it easier to keep branch mispredictions low if the kernels are written properly.</p>
+
+<h3>Branch Stalls in Decode</h3>
+<p>Decode is more vulnerable because sequence-length handling, KV management, runtime scheduling decisions, and dynamic batching logic may leak inward. If those decisions show up in the innermost numerical path, branch stalls start to bite.</p>
+
+<h3>How to Reduce Their Impact</h3>
+<ul>
+<li>Move policy logic outside hot kernels.</li>
+<li>Use specialized kernels for common shapes and cases.</li>
+<li>Keep inner loops branch-light and shape-stable.</li>
+<li>Prefer table-driven or precomputed decisions over unpredictable branching.</li>
+</ul>
+<div class="note-box">
+<div class="note-icon">Key Point</div>
+<p>Branch stalls are reduced mostly by <strong>kernel design, compiler shaping, and the CPU’s branch predictor</strong>.</p>
+</div>
+
+<h2 id="pipeline-bubbles">Pipeline Bubbles</h2>
+<p>A pipeline bubble is an underutilized cycle where some part of the execution pipeline goes idle because the next useful instruction or data is not ready. Bubbles can come from memory waits, branch recovery, tight dependency chains, or poor scheduling.</p>
+<p>The CPU is fast when it has a smooth stream of independent, ready work. It is slow when execution units sit around waiting for the next thing to become available.</p>
+
+<h3>Pipeline Bubbles in Prefill</h3>
+<p>Prefill often gives the processor more room to hide bubbles because the operations are larger, richer in instruction-level parallelism, and better suited to loop unrolling and vector scheduling.</p>
+
+<h3>Pipeline Bubbles in Decode</h3>
+<p>Decode is more exposed. There is less fresh-token parallelism, more visible memory latency, and more sequential dependence. One missing tile or one dependency-heavy path can leave execution units idle for longer than people expect.</p>
+
+<h3>How to Reduce Their Impact</h3>
+<ul>
+<li>Vectorize aggressively so the SIMD lanes stay fed.</li>
+<li>Unroll hot loops carefully.</li>
+<li>Overlap loads with compute where possible.</li>
+<li>Reduce dependency chains in the kernel path.</li>
+<li>Keep more independent work in flight for out-of-order execution to exploit.</li>
+</ul>
+<div class="note-box">
+<div class="note-icon">Key Point</div>
+<p>Pipeline bubbles are reduced mostly by <strong>compiler scheduling, kernel design, and hardware scheduling / out-of-order execution</strong>.</p>
+</div>
+
+<h2 id="what-regular-vectorized-cache-local-and-prefetchable-really-means">What “Regular, Vectorized, Cache-Local, and Prefetchable” Really Means</h2>
+<h3>Regular</h3>
+<p>The hot path should have predictable loops, stable kernel shapes, and few special cases in the inner loop. Regularity helps branch prediction, scheduling, and runtime planning.</p>
+
+<h3>Vectorized</h3>
+<p>The CPU should use SIMD effectively. On x86 this usually means <code>AVX2</code> or <code>AVX-512</code>. On ARM it usually means <code>NEON</code>, <code>SVE</code>, or <code>SVE2</code>. Without vectorization, CPU inference falls apart quickly.</p>
+
+<h3>Cache-Local</h3>
+<p>The active working set should remain as close to the core as possible. That means reusing weight tiles and activations before eviction, pinning threads sensibly, and avoiding wasteful trips across cache and NUMA boundaries.</p>
+
+<h3>Prefetchable</h3>
+<p>The system should know what data will be needed soon enough to fetch it early. Static model weights are especially suitable for this because their use order is often far more predictable than dynamic KV traffic.</p>
+
+<h2 id="who-helps-avoid-what">Who Helps Avoid What?</h2>
+<p>No single layer owns this problem. CPU inference performance is co-produced by algorithm design, runtime behavior, kernel implementation, compiler output, and the hardware itself.</p>
+<table class="resp-table">
+<thead>
+<tr><th>Problem</th><th>Main contributors to reducing it</th></tr>
+</thead>
+<tbody>
+<tr><td>Cache misses</td><td>Mostly runtime + kernel design + hardware caches</td></tr>
+<tr><td>Branch stalls</td><td>Kernel design + compiler + branch predictor</td></tr>
+<tr><td>Pipeline bubbles</td><td>Compiler + kernel design + hardware scheduling</td></tr>
+</tbody>
+</table>
+<p>This is why “the compiler will handle it” is not a complete answer. The compiler contributes, but the runtime and the kernels often determine whether the compiler even gets a chance to generate good code.</p>
+
+<h2 id="why-agentic-ai-makes-this-more-important">Why Agentic AI Makes This More Important</h2>
+<div class="agentic-box">
+<p>Agentic systems amplify all of these issues because they often involve long prompts, tool outputs, retrieved documents, scratchpads, and multiple model invocations per user interaction.</p>
+<ul>
+<li>Prefill cost grows with context size.</li>
+<li>Decode latency stays visible to users.</li>
+<li>KV cache keeps growing across turns.</li>
+<li>Orchestration overhead competes with model latency.</li>
+</ul>
+</div>
+<p>On CPUs, this makes locality, vectorization, and prefetchability even more important. It is not enough to “have enough cores.” The entire hot path has to be shaped so the machine spends more time computing and less time stalled on memory and control flow.</p>
+
+<h2 id="practical-optimization-checklist">Practical Optimization Checklist</h2>
+<ul class="checklist">
+<li>Use quantized weights where acceptable.</li>
+<li>Use cache-blocked GEMM and attention kernels.</li>
+<li>Keep hot loops branch-light.</li>
+<li>Pin threads to physical cores and benchmark SMT/HT on and off.</li>
+<li>Keep NUMA locality correct.</li>
+<li>Separate weight traffic from KV traffic where possible.</li>
+<li>Prefetch predictable weight tiles.</li>
+<li>Move policy logic outside the hottest numerical loops.</li>
+<li>Minimize decode-path randomness.</li>
+</ul>
+
+<h2>Final Takeaway</h2>
+<p>The biggest misconception in CPU inference is that performance is mostly about core count or clock speed. For LLM prefill and decode, the deeper truth is that performance comes from how well the system turns repetitive tensor workloads into a regular, locality-friendly, vectorized stream that the processor can execute without constantly stalling.</p>
+<div class="pull-quote">
+<p>Core count and frequency matter, but the machine wins only when the hot path stops fighting the microarchitecture.</p>
+</div>
+
+<h2>X Post Version</h2>
+<div class="xpost">
+<p>To reduce the impact of cache misses, branch stalls, and pipeline bubbles in LLM prefill/decode,<br/>
+make the hot path regular, vectorized, cache-local, and prefetchable.<br/><br/>
+Who helps avoid what:<br/>
+1) Cache misses → mostly runtime + kernel design + hardware caches<br/>
+2) Branch stalls → kernel design + compiler + branch predictor<br/>
+3) Pipeline bubbles → compiler + kernel design + hardware scheduling<br/><br/>
+#AI #CPU #AgenticAI $AMD $INTC $ARM $NVDA</p>
+</div>
+
+<hr/>
+<div id="webmentions"></div>
+<form action="https://buttondown.email/api/emails/embed-subscribe/manishklach" class="subscribe" method="post" target="_blank"><label for="bd-email">Get new posts by email</label><input id="bd-email" name="email" placeholder="you@example.com" required="" type="email"/><input name="tag" type="hidden" value="blog"/><input type="submit" value="Subscribe"/></form>
+<footer class="post-footer">© 2026 <a href="/index.html">MANISH AI</a> · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer>
+</main>
+<footer>
+  Writings · CPU inference / prefill / decode · Cache misses, branch stalls, and pipeline bubbles
+  <p class="essay-copyright">© 2026 <a href="/index.html" rel="noopener noreferrer" target="_blank">MANISH AI</a></p>
+</footer>
+</body>
+</html>
