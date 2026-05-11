@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>KV Cache Is a Memory System | Writings | MANISH AI</title>
+<meta name="description" content="Attention indexing, VRAM, HBM, huge pages, TLB pressure, and pinned memory explained from first principles for modern inference stacks."/>
+<meta name="keywords" content="KV cache, attention indexing, VRAM, HBM, huge pages, pinned memory, TLB, CPU inference, GPU inference, AI memory systems"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/kv-cache-memory-system-attention-indexing-vram-huge-pages-pinned-memory.html"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="KV Cache Is a Memory System | Writings | MANISH AI"/>
+<meta property="og:description" content="A deep systems essay on attention indexing, VRAM, HBM, huge pages, TLB pressure, and pinned memory in modern inference."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/kv-cache-memory-system-attention-indexing-vram-huge-pages-pinned-memory.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="article:published_time" content="2026-05-10"/>
+<meta property="article:modified_time" content="2026-05-10"/>
+<meta property="article:section" content="AI Infrastructure"/>
+<meta property="article:tag" content="KV cache, attention indexing, VRAM, HBM, huge pages, pinned memory, AI memory systems"/>
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png"/>
+<meta property="og:image:alt" content="KV Cache Is a Memory System"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="KV Cache Is a Memory System"/>
+<meta name="twitter:description" content="A deep systems essay on attention indexing, VRAM, HBM, huge pages, TLB pressure, and pinned memory in modern inference."/>
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png"/>
+<meta name="twitter:image:alt" content="KV Cache Is a Memory System"/>
+<meta name="twitter:site" content="@manishklach"/>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "KV Cache Is a Memory System",
+  "description": "Attention indexing, VRAM, HBM, huge pages, TLB pressure, and pinned memory explained from first principles for modern inference stacks.",
+  "url": "https://manishklach.github.io/writings/kv-cache-memory-system-attention-indexing-vram-huge-pages-pinned-memory.html",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/kv-cache-memory-system-attention-indexing-vram-huge-pages-pinned-memory.html",
+  "datePublished": "2026-05-10",
+  "dateModified": "2026-05-10",
+  "author": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  }
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+/* ── TOKENS ─────────────────────────────────────────────── */
+:root {
+  --bg:          #08090d;
+  --ink:         #e8e4dc;
+  --muted:       #6b7280;
+  --soft:        #a8a29e;
+  --surface:     #0f1117;
+  --surface2:    #14181f;
+  --border:      rgba(255,255,255,0.07);
+  --border2:     rgba(255,255,255,0.13);
+
+  --teal:        #2dd4bf;
+  --teal-dim:    rgba(45,212,191,0.12);
+  --teal-glow:   rgba(45,212,191,0.22);
+  --blue:        #60a5fa;
+  --blue-dim:    rgba(96,165,250,0.10);
+  --amber:       #fbbf24;
+  --amber-dim:   rgba(251,191,36,0.10);
+  --coral:       #fb7185;
+  --coral-dim:   rgba(251,113,133,0.10);
+  --violet:      #a78bfa;
+  --violet-dim:  rgba(167,139,250,0.10);
+
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Syne', system-ui, sans-serif;
+  --serif: 'Playfair Display', Georgia, serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.78;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+a { color: inherit; }
+
+.site-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(8, 9, 13, 0.88);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.site-topbar-inner {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0.95rem 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.site-brand {
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  text-decoration: none;
+}
+
+.site-back {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--soft);
+  text-decoration: none;
+}
+
+/* ── LAYOUT ───────────────────────────────────────────── */
+.page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 48px 24px 100px;
+}
+
+/* ── HERO ─────────────────────────────────────────────── */
+.hero {
+  position: relative;
+  padding: 64px 56px 52px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 24px;
+  margin-bottom: 3px;
+  overflow: hidden;
+}
+.hero-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 460px 340px at 110% -20%, rgba(45,212,191,0.09) 0%, transparent 70%),
+    radial-gradient(ellipse 360px 280px at -10%  110%, rgba(96,165,250,0.07) 0%, transparent 70%);
+}
+.hero-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 100%, transparent 0%, black 100%);
+}
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--teal);
+  margin-bottom: 24px;
+}
+.eyebrow-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--teal);
+  box-shadow: 0 0 12px var(--teal-glow);
+  animation: pulse 2.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity: 1; box-shadow: 0 0 12px var(--teal-glow); }
+  50%      { opacity: 0.6; box-shadow: 0 0 4px var(--teal-glow); }
+}
+h1 {
+  font-family: var(--serif);
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin-bottom: 20px;
+  max-width: 16ch;
+}
+h1 em { font-style: italic; color: var(--teal); }
+.dek {
+  font-size: 1.06rem;
+  color: var(--soft);
+  max-width: 58ch;
+  line-height: 1.82;
+  margin-bottom: 32px;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tag {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  background: rgba(255,255,255,0.03);
+}
+
+/* ── TOC ──────────────────────────────────────────────── */
+.toc {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--teal);
+  border-radius: 0 14px 14px 0;
+  padding: 22px 26px;
+  margin: 3px 0 0;
+}
+.toc-label {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--teal);
+  margin-bottom: 12px;
+}
+.toc ol {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 24px;
+}
+.toc li { font-size: 0.9rem; color: var(--soft); }
+.toc a { color: var(--soft); text-decoration: none; }
+.toc a:hover { color: var(--teal); }
+
+/* ── ARTICLE ──────────────────────────────────────────── */
+article {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 52px 60px 64px;
+  margin-top: 20px;
+}
+
+h2 {
+  font-family: var(--serif);
+  font-size: 1.9rem;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 56px 0 16px;
+  color: #f0ece4;
+}
+h2:first-child { margin-top: 0; }
+h3 {
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin: 28px 0 10px;
+}
+p { color: var(--soft); font-size: 1.02rem; margin-bottom: 16px; }
+p:last-child { margin-bottom: 0; }
+p strong { color: var(--ink); font-weight: 600; }
+ul, ol { margin: 10px 0 18px 22px; color: var(--soft); }
+li { margin: 7px 0; font-size: 1rem; }
+li strong { color: var(--ink); }
+
+/* ── CODE ─────────────────────────────────────────────── */
+code {
+  font-family: var(--mono);
+  font-size: 0.875em;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 5px;
+  padding: 1px 6px;
+  color: var(--teal);
+}
+pre {
+  font-family: var(--mono);
+  background: #060810;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 22px;
+  overflow-x: auto;
+  margin: 18px 0 22px;
+  font-size: 0.88rem;
+  line-height: 1.68;
+}
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #a5d8c8;
+}
+
+/* ── CALLOUT ──────────────────────────────────────────── */
+.callout {
+  border-left: 3px solid var(--teal);
+  background: var(--teal-dim);
+  border-radius: 0 12px 12px 0;
+  padding: 18px 22px;
+  margin: 22px 0;
+}
+.callout p { color: #c8ece7; font-size: 1.01rem; }
+.callout.amber { border-left-color: var(--amber); background: var(--amber-dim); }
+.callout.amber p { color: #f5dfa0; }
+.callout.coral { border-left-color: var(--coral); background: var(--coral-dim); }
+.callout.coral p { color: #f9bfc8; }
+
+/* ── DIAGRAM WRAPPER ──────────────────────────────────── */
+.diagram {
+  margin: 28px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #06080e;
+}
+.diagram-cap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.diagram-cap::before {
+  content: '';
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--blue);
+  opacity: 0.7;
+}
+.diagram svg { display: block; width: 100%; }
+
+/* ── GRID TILES ───────────────────────────────────────── */
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 20px 0;
+}
+.tile {
+  padding: 18px 20px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.tile-head {
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.tile-head.teal   { color: var(--teal); }
+.tile-head.blue   { color: var(--blue); }
+.tile-head.amber  { color: var(--amber); }
+.tile-head.coral  { color: var(--coral); }
+.tile-head.violet { color: var(--violet); }
+.tile p { font-size: 0.94rem; }
+
+/* ── STAT ROW ─────────────────────────────────────────── */
+.stat-row {
+  display: flex;
+  gap: 14px;
+  margin: 22px 0;
+}
+.stat-card {
+  flex: 1;
+  padding: 18px 20px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  text-align: center;
+}
+.stat-num {
+  font-family: var(--serif);
+  font-size: 2.1rem;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.stat-label { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+
+/* ── PRIORITY LISTS ───────────────────────────────────── */
+.priority-list { list-style: none; margin: 14px 0 20px; padding: 0; }
+.priority-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 6px;
+  font-size: 0.96rem;
+  color: var(--soft);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+}
+.priority-list li .num {
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  margin-top: 2px;
+}
+.priority-list.teal  li .num { background: var(--teal-dim);   color: var(--teal);   border: 1px solid rgba(45,212,191,0.3); }
+.priority-list.amber li .num { background: var(--amber-dim);  color: var(--amber);  border: 1px solid rgba(251,191,36,0.3); }
+
+/* ── DIVIDER ──────────────────────────────────────────── */
+.rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border2) 30%, var(--border2) 70%, transparent);
+  margin: 44px 0;
+}
+
+/* ── FOOTER ───────────────────────────────────────────── */
+.footer-note {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.site-footer {
+  max-width: 900px;
+  margin: 22px auto 0;
+  padding: 0 24px 24px;
+}
+
+.site-footer-inner {
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.site-footer-inner a {
+  color: var(--soft);
+  text-decoration: none;
+}
+
+@media (max-width: 700px) {
+  .hero { padding: 36px 24px; }
+  article { padding: 32px 22px 44px; }
+  .grid2, .stat-row { grid-template-columns: 1fr; flex-direction: column; }
+  .toc ol { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="site-topbar">
+  <div class="site-topbar-inner">
+    <a class="site-brand" href="/index.html">MANISH AI</a>
+    <a class="site-back" href="/writings.html">Back to writings</a>
+  </div>
+</div>
+<main class="page">
+
+<!-- ══════════ HERO ══════════ -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-grid"></div>
+  <div class="eyebrow"><span class="eyebrow-dot"></span> AI Memory Systems · Deep Dive</div>
+  <h1>KV Cache Is a <em>Memory System</em></h1>
+  <p class="dek">
+    Attention indexing, VRAM, HBM, huge pages, TLB pressure, and pinned memory—
+    explained from first principles for anyone building or reasoning about modern inference stacks.
+  </p>
+  <div class="meta">
+    <span class="tag">KV cache</span>
+    <span class="tag">attention indexing</span>
+    <span class="tag">VRAM · HBM</span>
+    <span class="tag">huge pages · TLB</span>
+    <span class="tag">pinned memory</span>
+    <span class="tag">CPU &amp; GPU inference</span>
+  </div>
+</section>
+
+<!-- ══════════ TOC ══════════ -->
+<nav class="toc" aria-label="Contents">
+  <div class="toc-label">Contents</div>
+  <ol>
+    <li><a href="#s1">Where KV comes from</a></li>
+    <li><a href="#s2">Attention indexing</a></li>
+    <li><a href="#s3">VRAM vs HBM</a></li>
+    <li><a href="#s4">CPU inference</a></li>
+    <li><a href="#s5">Huge pages &amp; TLB</a></li>
+    <li><a href="#s6">Linux page sizes</a></li>
+    <li><a href="#s7">Pinned memory</a></li>
+    <li><a href="#s8">When pinning matters</a></li>
+    <li><a href="#s9">Optimization order</a></li>
+    <li><a href="#s10">The big picture</a></li>
+  </ol>
+</nav>
+
+<!-- ══════════ ARTICLE ══════════ -->
+<article>
+
+<!-- INTRO -->
+<p>
+  A surprising number of inference discussions blur together three very different layers:
+  <strong>model semantics</strong>, <strong>runtime layout</strong>, and <strong>hardware memory behavior</strong>.
+  That is why phrases like "the model attends to earlier tokens" are correct but incomplete. They
+  describe what the model is doing conceptually, but not how the serving stack actually finds,
+  stores, and retrieves the state that makes that attention possible.
+</p>
+<p>
+  The missing piece is that the KV cache is not just "some memory." It is a structured, growing,
+  repeatedly accessed inference-state object that imposes real constraints on layout, translation
+  overhead, locality, and data movement. Once you see it that way, a long chain of things starts
+  making more sense.
+</p>
+
+<div class="callout">
+  <p><strong>Core thesis:</strong> KV cache is not merely a tensor allocation. It is a memory-system
+  problem with implications for layout, indexing, translation overhead, locality, page size,
+  and data movement policy.</p>
+</div>
+
+<!-- ════ S1: WHERE KV COMES FROM ════ -->
+<h2 id="s1">Start with the transformer: where KV comes from</h2>
+
+<p>
+  In a transformer layer the model takes an input representation and produces three projections:
+  <code>Q</code> (query), <code>K</code> (key), and <code>V</code> (value).
+  During <strong>prefill</strong>, every prompt token flows through every layer in parallel.
+  The K and V tensors from that pass are written into the KV cache so they never need to be recomputed.
+</p>
+<p>
+  During <strong>decode</strong>, the model generates exactly one token per step.
+  For each new token, every layer computes a fresh <code>Q</code>, reads back all previously cached
+  <code>K</code> and <code>V</code> entries via attention, and then <em>appends</em> the new token's
+  K and V to the layer's cache. This continues until an EOS token or a length limit.
+</p>
+
+<!-- Diagram: KV growth anatomy -->
+<div class="diagram">
+  <div class="diagram-cap">KV cache growth — per-layer anatomy</div>
+  <svg viewBox="0 0 820 310" xmlns="http://www.w3.org/2000/svg" role="img">
+    <title>KV cache per-layer anatomy</title>
+    <desc>Shows tokens flowing through transformer layers and accumulating K,V entries in each layer's cache</desc>
+    <!-- background rows for layers -->
+    <rect x="16" y="44" width="788" height="52" rx="8" fill="rgba(45,212,191,0.05)" stroke="rgba(45,212,191,0.12)" stroke-width="0.5"/>
+    <rect x="16" y="102" width="788" height="52" rx="8" fill="rgba(96,165,250,0.05)" stroke="rgba(96,165,250,0.12)" stroke-width="0.5"/>
+    <rect x="16" y="160" width="788" height="52" rx="8" fill="rgba(167,139,250,0.05)" stroke="rgba(167,139,250,0.12)" stroke-width="0.5"/>
+    <!-- layer labels -->
+    <text x="26" y="75"  font-family="JetBrains Mono,monospace" font-size="11" fill="rgba(45,212,191,0.7)">Layer 0</text>
+    <text x="26" y="133" font-family="JetBrains Mono,monospace" font-size="11" fill="rgba(96,165,250,0.7)">Layer 1</text>
+    <text x="26" y="191" font-family="JetBrains Mono,monospace" font-size="11" fill="rgba(167,139,250,0.7)">Layer 2</text>
+    <!-- Token blocks — prefill (blue) -->
+    <!-- Layer 0: tokens T1-T6 prefill KV slots -->
+    <g>
+      <rect x="90"  y="54" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="109" y="75" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="134" y="54" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="153" y="75" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="178" y="54" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="197" y="75" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="222" y="54" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="241" y="75" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="266" y="54" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="285" y="75" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="310" y="54" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="329" y="75" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+    </g>
+    <!-- Decode tokens (teal) grow right -->
+    <rect x="354" y="54" width="38" height="32" rx="5" fill="rgba(45,212,191,0.2)" stroke="rgba(45,212,191,0.5)" stroke-width="1"/>
+    <text x="373" y="75" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.9)">K,V</text>
+    <rect x="398" y="54" width="38" height="32" rx="5" fill="rgba(45,212,191,0.2)" stroke="rgba(45,212,191,0.5)" stroke-width="1"/>
+    <text x="417" y="75" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.9)">K,V</text>
+    <rect x="442" y="54" width="38" height="32" rx="5" fill="rgba(45,212,191,0.2)" stroke="rgba(45,212,191,0.5)" stroke-width="1"/>
+    <text x="461" y="75" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.9)">K,V</text>
+    <!-- ellipsis -->
+    <text x="496" y="75" font-family="JetBrains Mono,monospace" font-size="14" fill="rgba(45,212,191,0.4)">···</text>
+
+    <!-- Layer 1 — same pattern -->
+    <g>
+      <rect x="90"  y="112" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="109" y="133" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="134" y="112" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="153" y="133" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="178" y="112" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="197" y="133" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="222" y="112" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="241" y="133" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="266" y="112" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="285" y="133" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="310" y="112" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="329" y="133" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+    </g>
+    <rect x="354" y="112" width="38" height="32" rx="5" fill="rgba(45,212,191,0.2)" stroke="rgba(45,212,191,0.5)" stroke-width="1"/>
+    <text x="373" y="133" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.9)">K,V</text>
+    <rect x="398" y="112" width="38" height="32" rx="5" fill="rgba(45,212,191,0.2)" stroke="rgba(45,212,191,0.5)" stroke-width="1"/>
+    <text x="417" y="133" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.9)">K,V</text>
+    <rect x="442" y="112" width="38" height="32" rx="5" fill="rgba(45,212,191,0.2)" stroke="rgba(45,212,191,0.5)" stroke-width="1"/>
+    <text x="461" y="133" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.9)">K,V</text>
+    <text x="496" y="133" font-family="JetBrains Mono,monospace" font-size="14" fill="rgba(45,212,191,0.4)">···</text>
+
+    <!-- Layer 2 -->
+    <g>
+      <rect x="90"  y="170" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="109" y="191" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="134" y="170" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="153" y="191" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="178" y="170" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="197" y="191" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="222" y="170" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="241" y="191" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="266" y="170" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="285" y="191" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+      <rect x="310" y="170" width="38" height="32" rx="5" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.35)" stroke-width="0.5"/>
+      <text x="329" y="191" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.85)">K,V</text>
+    </g>
+    <rect x="354" y="170" width="38" height="32" rx="5" fill="rgba(45,212,191,0.2)" stroke="rgba(45,212,191,0.5)" stroke-width="1"/>
+    <text x="373" y="191" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.9)">K,V</text>
+    <rect x="398" y="170" width="38" height="32" rx="5" fill="rgba(45,212,191,0.2)" stroke="rgba(45,212,191,0.5)" stroke-width="1"/>
+    <text x="417" y="191" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.9)">K,V</text>
+    <rect x="442" y="170" width="38" height="32" rx="5" fill="rgba(45,212,191,0.2)" stroke="rgba(45,212,191,0.5)" stroke-width="1"/>
+    <text x="461" y="191" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.9)">K,V</text>
+    <text x="496" y="191" font-family="JetBrains Mono,monospace" font-size="14" fill="rgba(45,212,191,0.4)">···</text>
+
+    <!-- Legend -->
+    <rect x="540" y="140" width="14" height="14" rx="3" fill="rgba(96,165,250,0.18)" stroke="rgba(96,165,250,0.4)" stroke-width="0.5"/>
+    <text x="560" y="152" font-family="Syne,sans-serif" font-size="11" fill="rgba(107,114,128,0.9)">Prefill KV (static)</text>
+    <rect x="540" y="162" width="14" height="14" rx="3" fill="rgba(45,212,191,0.2)" stroke="rgba(45,212,191,0.5)" stroke-width="1"/>
+    <text x="560" y="174" font-family="Syne,sans-serif" font-size="11" fill="rgba(107,114,128,0.9)">Decode KV (appended)</text>
+
+    <!-- x-axis label -->
+    <text x="90"  y="240" font-family="Syne,sans-serif" font-size="11" fill="rgba(107,114,128,0.6)">T=0</text>
+    <text x="310" y="240" font-family="Syne,sans-serif" font-size="11" fill="rgba(107,114,128,0.6)">T=5 (end prefill)</text>
+    <text x="442" y="240" font-family="Syne,sans-serif" font-size="11" fill="rgba(107,114,128,0.6)">T=8</text>
+    <line x1="88" y1="230" x2="520" y2="230" stroke="rgba(107,114,128,0.2)" stroke-width="0.5"/>
+
+    <!-- growth formula -->
+    <text x="540" y="76" font-family="JetBrains Mono,monospace" font-size="10.5" fill="rgba(251,191,36,0.8)">KV size =</text>
+    <text x="540" y="94" font-family="JetBrains Mono,monospace" font-size="10.5" fill="rgba(251,191,36,0.6)">  T × L × H × d_head × 2</text>
+    <text x="540" y="112" font-family="JetBrains Mono,monospace" font-size="10.5" fill="rgba(107,114,128,0.55)">  × dtype_bytes</text>
+    <text x="540" y="130" font-family="JetBrains Mono,monospace" font-size="9"   fill="rgba(107,114,128,0.4)">T=tokens L=layers H=heads</text>
+
+    <!-- caption -->
+    <text x="410" y="268" text-anchor="middle" font-family="Syne,sans-serif" font-size="11" fill="rgba(107,114,128,0.5)">Every decode step appends K,V entries to all L layer caches simultaneously</text>
+  </svg>
+</div>
+
+<p>
+  This matters because there is no single "the KV cache"—there are <strong>L independent layer caches</strong>,
+  each growing in lockstep. For a 32-layer model running a 4K-token context at fp16 with 32 heads of dimension 128,
+  the KV cache already occupies roughly 4K × 32 × 32 × 128 × 2 × 2 bytes ≈ <strong>2 GB</strong> of memory.
+  At 32K tokens that becomes 16 GB—and that is a single request.
+</p>
+
+<div class="stat-row">
+  <div class="stat-card">
+    <div class="stat-num" style="color:var(--blue)">4 K</div>
+    <div class="stat-label">tokens × 32 layers × fp16<br>≈ 2 GB KV per session</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="color:var(--amber)">32 K</div>
+    <div class="stat-label">tokens (long context)<br>≈ 16 GB KV per session</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="color:var(--coral)">×N</div>
+    <div class="stat-label">concurrent sessions<br>multiply all of the above</div>
+  </div>
+</div>
+
+<!-- ════ S2: ATTENTION INDEXING ════ -->
+<h2 id="s2">What attention indexing actually means</h2>
+
+<p>
+  At the abstract model level, "attention" sounds simple: a new token's query looks back at every
+  earlier key and value and computes a weighted sum. But a serving system cannot operate on that
+  abstraction. It has to answer a far more concrete question on every decode step:
+</p>
+
+<pre><code>for request R, layer L, head-group H, token position T:
+  → where are the K and V bytes stored right now?
+  → in which buffer, at which offset, on which device?</code></pre>
+
+<p>
+  That lookup problem—mapping logical sequence position to physical storage location—is what
+  people mean by <strong>attention indexing</strong>. It is the runtime's bookkeeping system, and it is not trivial.
+</p>
+
+<div class="grid2">
+  <div class="tile">
+    <div class="tile-head blue">Logical address</div>
+    <p>Request ID, layer ID, token position, head group, block ID. This is the model-serving view of what we need.</p>
+  </div>
+  <div class="tile">
+    <div class="tile-head teal">Physical location</div>
+    <p>Buffer pointer, block offset, device allocation, host spill slot, or arena region. This is where the bytes live.</p>
+  </div>
+</div>
+
+<p>
+  In a naive flat-tensor implementation, indexing is pure arithmetic over a contiguous stride layout.
+  But production serving systems use more sophisticated structures because naive layouts create problems
+  at scale: fragmentation, wasted capacity, and inability to share prefixes across requests.
+</p>
+
+<!-- Diagram: paged KV block table -->
+<div class="diagram">
+  <div class="diagram-cap">Paged KV cache — block table lookup</div>
+  <svg viewBox="0 0 820 280" xmlns="http://www.w3.org/2000/svg" role="img">
+    <title>Paged KV block table</title>
+    <desc>Logical sequence positions mapped through a block table to physical KV blocks in memory</desc>
+    <!-- Left: logical sequence -->
+    <text x="30" y="32" font-family="Syne,sans-serif" font-size="11" font-weight="700" fill="rgba(96,165,250,0.8)" letter-spacing="0.08em">LOGICAL SEQUENCE</text>
+    <!-- token slots -->
+    <g>
+      <rect x="16" y="44" width="152" height="32" rx="6" fill="rgba(96,165,250,0.1)" stroke="rgba(96,165,250,0.2)" stroke-width="0.5"/>
+      <text x="92" y="65" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.75)">T[0..15]  block 0</text>
+      <rect x="16" y="82" width="152" height="32" rx="6" fill="rgba(96,165,250,0.1)" stroke="rgba(96,165,250,0.2)" stroke-width="0.5"/>
+      <text x="92" y="103" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.75)">T[16..31] block 1</text>
+      <rect x="16" y="120" width="152" height="32" rx="6" fill="rgba(96,165,250,0.1)" stroke="rgba(96,165,250,0.2)" stroke-width="0.5"/>
+      <text x="92" y="141" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(96,165,250,0.75)">T[32..47] block 2</text>
+      <rect x="16" y="158" width="152" height="32" rx="6" fill="rgba(45,212,191,0.12)" stroke="rgba(45,212,191,0.3)" stroke-width="0.5"/>
+      <text x="92" y="179" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.75)">T[48..51] block 3 ←</text>
+    </g>
+
+    <!-- Arrow to block table -->
+    <line x1="170" y1="110" x2="236" y2="110" stroke="rgba(107,114,128,0.35)" stroke-width="1" marker-end="url(#arr-kv)"/>
+
+    <!-- Middle: block table -->
+    <text x="248" y="32" font-family="Syne,sans-serif" font-size="11" font-weight="700" fill="rgba(251,191,36,0.8)" letter-spacing="0.08em">BLOCK TABLE</text>
+    <rect x="238" y="44" width="148" height="156" rx="10" fill="rgba(251,191,36,0.05)" stroke="rgba(251,191,36,0.2)" stroke-width="0.5"/>
+    <!-- table rows -->
+    <line x1="238" y1="84" x2="386" y2="84" stroke="rgba(107,114,128,0.15)" stroke-width="0.5"/>
+    <line x1="238" y1="124" x2="386" y2="124" stroke="rgba(107,114,128,0.15)" stroke-width="0.5"/>
+    <line x1="238" y1="164" x2="386" y2="164" stroke="rgba(107,114,128,0.15)" stroke-width="0.5"/>
+    <line x1="312" y1="44"  x2="312" y2="200" stroke="rgba(107,114,128,0.15)" stroke-width="0.5"/>
+    <text x="265" y="60" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(107,114,128,0.6)">logical</text>
+    <text x="355" y="60" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(107,114,128,0.6)">phys slot</text>
+    <text x="265" y="100" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(251,191,36,0.75)">blk 0</text>
+    <text x="355" y="100" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(251,191,36,0.75)">slot 7</text>
+    <text x="265" y="140" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(251,191,36,0.75)">blk 1</text>
+    <text x="355" y="140" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(251,191,36,0.75)">slot 2</text>
+    <text x="265" y="180" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(251,191,36,0.75)">blk 2</text>
+    <text x="355" y="180" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(251,191,36,0.75)">slot 14</text>
+    <text x="265" y="220" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.75)">blk 3</text>
+    <text x="355" y="220" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.75)">slot 1</text>
+
+    <!-- Arrow to physical blocks -->
+    <line x1="388" y1="110" x2="454" y2="110" stroke="rgba(107,114,128,0.35)" stroke-width="1" marker-end="url(#arr-kv)"/>
+
+    <!-- Right: physical KV pool -->
+    <text x="466" y="32" font-family="Syne,sans-serif" font-size="11" font-weight="700" fill="rgba(45,212,191,0.8)" letter-spacing="0.08em">PHYSICAL KV POOL</text>
+    <rect x="456" y="44" width="340" height="196" rx="10" fill="rgba(45,212,191,0.03)" stroke="rgba(45,212,191,0.15)" stroke-width="0.5"/>
+
+    <!-- physical slots, some used some free -->
+    <!-- slot 1 (active decode) -->
+    <rect x="468" y="56" width="148" height="28" rx="5" fill="rgba(45,212,191,0.15)" stroke="rgba(45,212,191,0.4)" stroke-width="0.5"/>
+    <text x="542" y="74" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(45,212,191,0.85)">slot 1 · blk 3 (R0,L*,T48-51)</text>
+    <!-- slot 2 -->
+    <rect x="468" y="90" width="148" height="28" rx="5" fill="rgba(96,165,250,0.12)" stroke="rgba(96,165,250,0.3)" stroke-width="0.5"/>
+    <text x="542" y="108" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(96,165,250,0.75)">slot 2 · blk 1 (R0,L*,T16-31)</text>
+    <!-- slot 3 free -->
+    <rect x="468" y="124" width="148" height="28" rx="5" fill="rgba(107,114,128,0.05)" stroke="rgba(107,114,128,0.15)" stroke-width="0.5" stroke-dasharray="3 2"/>
+    <text x="542" y="142" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(107,114,128,0.4)">slot 3 · free</text>
+    <!-- slot 4 free -->
+    <rect x="468" y="158" width="148" height="28" rx="5" fill="rgba(107,114,128,0.05)" stroke="rgba(107,114,128,0.15)" stroke-width="0.5" stroke-dasharray="3 2"/>
+    <text x="542" y="176" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(107,114,128,0.4)">slot 4 · free</text>
+    <!-- slot 5 req 1 -->
+    <rect x="468" y="192" width="148" height="28" rx="5" fill="rgba(167,139,250,0.12)" stroke="rgba(167,139,250,0.3)" stroke-width="0.5"/>
+    <text x="542" y="210" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(167,139,250,0.75)">slot 5 · R1 shared prefix</text>
+
+    <!-- right column slots -->
+    <rect x="626" y="56" width="156" height="28" rx="5" fill="rgba(107,114,128,0.05)" stroke="rgba(107,114,128,0.15)" stroke-width="0.5" stroke-dasharray="3 2"/>
+    <text x="704" y="74" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(107,114,128,0.4)">slot 6 · free</text>
+    <rect x="626" y="90" width="156" height="28" rx="5" fill="rgba(96,165,250,0.12)" stroke="rgba(96,165,250,0.3)" stroke-width="0.5"/>
+    <text x="704" y="108" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(96,165,250,0.75)">slot 7 · blk 0 (R0,L*,T0-15)</text>
+    <rect x="626" y="124" width="156" height="28" rx="5" fill="rgba(107,114,128,0.05)" stroke="rgba(107,114,128,0.15)" stroke-width="0.5" stroke-dasharray="3 2"/>
+    <text x="704" y="142" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(107,114,128,0.4)">slot 8 · free</text>
+    <rect x="626" y="158" width="156" height="28" rx="5" fill="rgba(251,113,133,0.12)" stroke="rgba(251,113,133,0.3)" stroke-width="0.5"/>
+    <text x="704" y="176" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(251,113,133,0.75)">slot 9 · R2 blk 0</text>
+    <rect x="626" y="192" width="156" height="28" rx="5" fill="rgba(96,165,250,0.12)" stroke="rgba(96,165,250,0.3)" stroke-width="0.5"/>
+    <text x="704" y="210" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(96,165,250,0.75)">slot 14 · blk 2 (R0,L*,T32-47)</text>
+
+    <!-- note: non-contiguous allocation -->
+    <text x="410" y="258" text-anchor="middle" font-family="Syne,sans-serif" font-size="11" fill="rgba(107,114,128,0.5)">Logical sequence blocks need not be physically contiguous — the block table decouples them</text>
+
+    <defs>
+      <marker id="arr-kv" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="rgba(107,114,128,0.5)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+  </svg>
+</div>
+
+<div class="callout">
+  <p>A good mental model: the operating system gives you the building. The runtime decides
+  that <em>"request 17, layer 22, token block 5"</em> is in shelf C, rack 9, bin 4.
+  Attention indexing is the shelf/bin lookup logic, not the land deed.</p>
+</div>
+
+<p>
+  Paged allocation, popularized by vLLM, eliminates the need to pre-reserve contiguous memory proportional
+  to the maximum sequence length. Blocks are allocated lazily and can be shared across requests that
+  share a common prefix—a significant win for chat systems with shared system prompts.
+</p>
+
+<!-- ════ S3: VRAM vs HBM ════ -->
+<h2 id="s3">What GPU VRAM actually is — and what HBM is</h2>
+
+<p>
+  A lot of people hear "VRAM" and "HBM" and treat them as synonyms or as competing things.
+  They are neither. <strong>VRAM is the role. HBM is one physical implementation of that role.</strong>
+</p>
+
+<!-- Diagram: memory hierarchy for GPU -->
+<div class="diagram">
+  <div class="diagram-cap">GPU accelerator — memory hierarchy</div>
+  <svg viewBox="0 0 820 240" xmlns="http://www.w3.org/2000/svg" role="img">
+    <title>GPU memory hierarchy</title>
+    <desc>Nested diagram showing on-die SRAM, HBM package memory, and system RAM with bandwidth annotations</desc>
+    <!-- System RAM outermost -->
+    <rect x="12" y="16" width="796" height="210" rx="14" fill="rgba(107,114,128,0.05)" stroke="rgba(107,114,128,0.2)" stroke-width="0.5"/>
+    <text x="28" y="40" font-family="Syne,sans-serif" font-size="11" font-weight="700" fill="rgba(107,114,128,0.65)" letter-spacing="0.08em">SYSTEM RAM  (host)</text>
+    <text x="28" y="56" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(107,114,128,0.4)">32–512 GB DDR5  ·  ~150 GB/s  ·  CPU-local  ·  KV spill / host buffers</text>
+
+    <!-- GPU package -->
+    <rect x="220" y="72" width="564" height="140" rx="12" fill="rgba(96,165,250,0.05)" stroke="rgba(96,165,250,0.2)" stroke-width="0.5"/>
+    <text x="238" y="96" font-family="Syne,sans-serif" font-size="11" font-weight="700" fill="rgba(96,165,250,0.7)" letter-spacing="0.08em">GPU / ACCELERATOR PACKAGE</text>
+
+    <!-- HBM -->
+    <rect x="238" y="108" width="200" height="90" rx="10" fill="rgba(45,212,191,0.07)" stroke="rgba(45,212,191,0.25)" stroke-width="0.5"/>
+    <text x="338" y="130" text-anchor="middle" font-family="Syne,sans-serif" font-size="11" font-weight="700" fill="rgba(45,212,191,0.8)" letter-spacing="0.08em">HBM  (VRAM role)</text>
+    <text x="338" y="148" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(45,212,191,0.5)">16–192 GB</text>
+    <text x="338" y="164" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(45,212,191,0.5)">1–4 TB/s BW</text>
+    <text x="338" y="180" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(45,212,191,0.5)">off-die but on-package</text>
+
+    <!-- On-die SRAM -->
+    <rect x="464" y="108" width="294" height="90" rx="10" fill="rgba(251,191,36,0.07)" stroke="rgba(251,191,36,0.25)" stroke-width="0.5"/>
+    <text x="611" y="130" text-anchor="middle" font-family="Syne,sans-serif" font-size="11" font-weight="700" fill="rgba(251,191,36,0.8)" letter-spacing="0.08em">ON-DIE SRAM  (L-cache / SMEM)</text>
+    <text x="611" y="148" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(251,191,36,0.5)">10–256 MB (per chip)</text>
+    <text x="611" y="164" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(251,191,36,0.5)">~10+ TB/s BW, tiny</text>
+    <text x="611" y="180" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(251,191,36,0.5)">hottest local working set</text>
+
+    <!-- PCIe arrow between host and GPU -->
+    <line x1="218" y1="160" x2="118" y2="160" stroke="rgba(251,113,133,0.5)" stroke-width="1.5" marker-end="url(#arr-kv)" marker-start="url(#arr-kv-r)"/>
+    <text x="168" y="150" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(251,113,133,0.7)">PCIe/NVLink</text>
+    <text x="168" y="170" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(251,113,133,0.5)">~100 GB/s</text>
+
+    <defs>
+      <marker id="arr-kv-r" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M8 1L2 5L8 9" fill="none" stroke="rgba(251,113,133,0.6)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+  </svg>
+</div>
+
+<div class="grid2">
+  <div class="tile">
+    <div class="tile-head teal">On-die SRAM</div>
+    <p>Small, extremely fast, physically on the logic die. Used for the hottest local working set during kernel execution—think shared memory in CUDA. Not where KV typically lives.</p>
+  </div>
+  <div class="tile">
+    <div class="tile-head blue">HBM (high-bandwidth memory)</div>
+    <p>Off-die but on-package, very high bandwidth, much larger than SRAM. This is the main VRAM tier in modern AI accelerators. KV cache, weights, and activations all live here during GPU inference.</p>
+  </div>
+</div>
+
+<p>
+  So when someone says "this GPU has 80 GB of HBM," they are describing its main high-performance
+  VRAM pool. That memory is not inside the logic die, but it is part of the accelerator's local
+  memory domain in the packaging and runtime sense. The logic die and HBM stacks are wired together
+  through a wide, short interconnect—often a silicon interposer—delivering bandwidth that system RAM
+  cannot match.
+</p>
+
+<!-- ════ S4: CPU INFERENCE ════ -->
+<h2 id="s4">Why CPU inference sees the problem differently</h2>
+
+<p>
+  In CPU-only agentic AI systems on x86 or ARM, there is no separate HBM pool. The KV cache lives
+  in ordinary system RAM. The CPU reads it through the normal cache hierarchy:
+  L1 → L2 → L3 → DRAM. Every decode step re-reads a large portion of the model weights
+  <em>and</em> the full KV cache through that same hierarchy—completely different physics from a GPU.
+</p>
+
+<!-- Diagram: CPU memory path for decode -->
+<div class="diagram">
+  <div class="diagram-cap">CPU decode — memory access path per token step</div>
+  <svg viewBox="0 0 820 200" xmlns="http://www.w3.org/2000/svg" role="img">
+    <title>CPU decode memory path</title>
+    <desc>Flow showing compute core reading from L1, L2, L3, then DRAM for weights and KV cache</desc>
+    <!-- Core box -->
+    <rect x="16" y="60" width="110" height="80" rx="10" fill="rgba(251,191,36,0.1)" stroke="rgba(251,191,36,0.3)" stroke-width="0.5"/>
+    <text x="71" y="95" text-anchor="middle" font-family="Syne,sans-serif" font-size="11" font-weight="700" fill="rgba(251,191,36,0.85)">CPU Core</text>
+    <text x="71" y="112" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(251,191,36,0.5)">SIMD / AVX</text>
+    <!-- L1 -->
+    <rect x="154" y="70" width="96" height="60" rx="8" fill="rgba(45,212,191,0.1)" stroke="rgba(45,212,191,0.3)" stroke-width="0.5"/>
+    <text x="202" y="97" text-anchor="middle" font-family="Syne,sans-serif" font-size="10.5" font-weight="700" fill="rgba(45,212,191,0.85)">L1</text>
+    <text x="202" y="112" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(45,212,191,0.5)">~4 ns · 64KB</text>
+    <!-- L2 -->
+    <rect x="278" y="60" width="100" height="80" rx="8" fill="rgba(45,212,191,0.07)" stroke="rgba(45,212,191,0.2)" stroke-width="0.5"/>
+    <text x="328" y="97" text-anchor="middle" font-family="Syne,sans-serif" font-size="10.5" font-weight="700" fill="rgba(45,212,191,0.7)">L2</text>
+    <text x="328" y="112" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(45,212,191,0.45)">~10 ns · 2MB</text>
+    <!-- L3 -->
+    <rect x="406" y="44" width="116" height="112" rx="8" fill="rgba(96,165,250,0.07)" stroke="rgba(96,165,250,0.2)" stroke-width="0.5"/>
+    <text x="464" y="97" text-anchor="middle" font-family="Syne,sans-serif" font-size="10.5" font-weight="700" fill="rgba(96,165,250,0.7)">L3 (shared)</text>
+    <text x="464" y="115" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(96,165,250,0.45)">~30 ns · 64MB</text>
+    <!-- DRAM -->
+    <rect x="552" y="28" width="250" height="144" rx="10" fill="rgba(251,113,133,0.05)" stroke="rgba(251,113,133,0.2)" stroke-width="0.5"/>
+    <text x="677" y="60" text-anchor="middle" font-family="Syne,sans-serif" font-size="11" font-weight="700" fill="rgba(251,113,133,0.75)">System RAM (DRAM)</text>
+    <text x="677" y="80" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(251,113,133,0.5)">~100 ns · DDR5 ~96 GB/s</text>
+    <!-- KV box inside DRAM -->
+    <rect x="568" y="94" width="114" height="40" rx="7" fill="rgba(45,212,191,0.1)" stroke="rgba(45,212,191,0.25)" stroke-width="0.5"/>
+    <text x="625" y="117" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(45,212,191,0.75)">KV cache</text>
+    <!-- Weights box -->
+    <rect x="694" y="94" width="98" height="40" rx="7" fill="rgba(96,165,250,0.1)" stroke="rgba(96,165,250,0.25)" stroke-width="0.5"/>
+    <text x="743" y="117" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(96,165,250,0.75)">weights</text>
+
+    <!-- Arrows -->
+    <line x1="126" y1="100" x2="152" y2="100" stroke="rgba(45,212,191,0.4)" stroke-width="1" marker-end="url(#arr-cpu)"/>
+    <line x1="250" y1="100" x2="276" y2="100" stroke="rgba(45,212,191,0.3)" stroke-width="1" marker-end="url(#arr-cpu)"/>
+    <line x1="378" y1="100" x2="404" y2="100" stroke="rgba(96,165,250,0.3)" stroke-width="1" marker-end="url(#arr-cpu)"/>
+    <line x1="522" y1="100" x2="550" y2="100" stroke="rgba(251,113,133,0.45)" stroke-width="1.5" marker-end="url(#arr-cpu)"/>
+    <!-- miss labels above arrows -->
+    <text x="138" y="92" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(45,212,191,0.5)">hit</text>
+    <text x="264" y="92" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(45,212,191,0.45)">miss?</text>
+    <text x="392" y="92" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(96,165,250,0.45)">miss?</text>
+    <text x="536" y="92" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(251,113,133,0.7)">L3 MISS</text>
+
+    <text x="410" y="180" text-anchor="middle" font-family="Syne,sans-serif" font-size="11" fill="rgba(107,114,128,0.5)">KV + weights typically exceed L3; each decode step causes DRAM reads — this is why CPU decode is bandwidth-bound</text>
+
+    <defs>
+      <marker id="arr-cpu" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+  </svg>
+</div>
+
+<p>
+  This is why conversations about CPU inference drift toward huge pages, translation overhead,
+  NUMA locality, and memory residency rather than raw FLOP counts.
+  For a large model, <strong>the bottleneck is getting bytes from DRAM to the execution units</strong>,
+  not computing the arithmetic once the data arrives.
+</p>
+
+<!-- ════ S5: HUGE PAGES & TLB ════ -->
+<h2 id="s5">Huge pages are mostly about TLB reach, not magic speed</h2>
+
+<p>
+  Every virtual memory access the CPU makes must be translated into a physical address.
+  The Translation Lookaside Buffer (TLB) is a small hardware cache of recent translations.
+  When a translation is not in the TLB, the CPU must walk the page table in memory—a multi-step
+  process that can cost dozens of nanoseconds.
+</p>
+
+<!-- Diagram: TLB reach comparison -->
+<div class="diagram">
+  <div class="diagram-cap">TLB reach — 4 KB vs 2 MB vs 1 GB pages</div>
+  <svg viewBox="0 0 820 220" xmlns="http://www.w3.org/2000/svg" role="img">
+    <title>TLB reach comparison across page sizes</title>
+    <desc>Three side-by-side bars showing how many TLB entries are needed to cover a 2GB KV arena with different page sizes</desc>
+    <!-- 4KB scenario -->
+    <text x="130" y="34" text-anchor="middle" font-family="Syne,sans-serif" font-size="12" font-weight="700" fill="rgba(251,113,133,0.85)">4 KB pages</text>
+    <!-- bar representing ~512K mappings — show as solid fill + overflow arrow -->
+    <rect x="70" y="50" width="120" height="130" rx="6" fill="rgba(251,113,133,0.15)" stroke="rgba(251,113,133,0.35)" stroke-width="0.5"/>
+    <rect x="70" y="50" width="120" height="130" rx="6" fill="url(#fill-coral)"/>
+    <text x="130" y="108" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(251,113,133,0.85)">524,288</text>
+    <text x="130" y="124" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(251,113,133,0.85)">mappings</text>
+    <text x="130" y="142" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(251,113,133,0.55)">for 2 GB KV</text>
+    <!-- overflow indicator -->
+    <text x="130" y="196" text-anchor="middle" font-family="Syne,sans-serif" font-size="10" fill="rgba(251,113,133,0.55)">1000s of TLB misses/step</text>
+    <!-- TLB capacity line -->
+    <line x1="52" y1="62" x2="262" y2="62" stroke="rgba(251,191,36,0.4)" stroke-width="0.5" stroke-dasharray="4 3"/>
+    <text x="14" y="66" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(251,191,36,0.5)">TLB</text>
+    <text x="14" y="76" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(251,191,36,0.5)">cap.</text>
+
+    <!-- 2MB scenario -->
+    <text x="410" y="34" text-anchor="middle" font-family="Syne,sans-serif" font-size="12" font-weight="700" fill="rgba(251,191,36,0.85)">2 MB pages</text>
+    <rect x="350" y="118" width="120" height="62" rx="6" fill="rgba(251,191,36,0.15)" stroke="rgba(251,191,36,0.35)" stroke-width="0.5"/>
+    <text x="410" y="148" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(251,191,36,0.85)">1,024</text>
+    <text x="410" y="164" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(251,191,36,0.85)">mappings</text>
+    <text x="410" y="196" text-anchor="middle" font-family="Syne,sans-serif" font-size="10" fill="rgba(251,191,36,0.55)">few misses — fits in TLB</text>
+
+    <!-- 1GB scenario -->
+    <text x="690" y="34" text-anchor="middle" font-family="Syne,sans-serif" font-size="12" font-weight="700" fill="rgba(45,212,191,0.85)">1 GB pages</text>
+    <rect x="630" y="154" width="120" height="26" rx="6" fill="rgba(45,212,191,0.15)" stroke="rgba(45,212,191,0.35)" stroke-width="0.5"/>
+    <text x="690" y="170" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.85)">2 mappings</text>
+    <text x="690" y="196" text-anchor="middle" font-family="Syne,sans-serif" font-size="10" fill="rgba(45,212,191,0.55)">trivially in TLB</text>
+
+    <!-- shared TLB line -->
+    <line x1="52" y1="62" x2="770" y2="62" stroke="rgba(251,191,36,0.3)" stroke-width="0.5" stroke-dasharray="4 3"/>
+    <text x="52" y="214" text-anchor="middle" font-family="Syne,sans-serif" font-size="11" fill="rgba(107,114,128,0.5)">Workload: 2 GB KV arena  ·  Typical L2 TLB has 1,024–4,096 entries</text>
+
+    <defs>
+      <linearGradient id="fill-coral" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="rgba(251,113,133,0.4)"/>
+        <stop offset="100%" stop-color="rgba(251,113,133,0.1)"/>
+      </linearGradient>
+    </defs>
+  </svg>
+</div>
+
+<p>
+  The key concept is <strong>TLB reach</strong>: how much virtual address space the processor can cover
+  with the TLB entries it currently holds. With 4 KB pages, a 2 GB KV arena requires more than half a million
+  translation entries. Even the largest TLBs have only a few thousand entries. With 2 MB huge pages, the same
+  2 GB fits in just over a thousand entries—likely within TLB capacity.
+</p>
+
+<pre><code>4 KB pages  →  524,288 mappings  for 2 GB KV
+2 MB pages  →      1,024 mappings  for 2 GB KV   ← 512× fewer
+1 GB pages  →          2 mappings  for 2 GB KV   ← 262,144× fewer</code></pre>
+
+<div class="callout amber">
+  <p>The important correction: huge pages during steady-state decode are mostly about
+  <strong>translation efficiency</strong> (fewer TLB misses, fewer page-table walks),
+  not about making RAM itself faster or avoiding page faults.
+  The KV data is already resident. You are eliminating the overhead of <em>finding</em> it.</p>
+</div>
+
+<!-- ════ S6: LINUX PAGE SIZES ════ -->
+<h2 id="s6">Do all Linux inference systems use large pages?</h2>
+
+<p>
+  No—but many high-performance systems do, directly or indirectly. The picture differs across architectures:
+</p>
+
+<div class="grid2">
+  <div class="tile">
+    <div class="tile-head blue">x86 Linux</div>
+    <p><strong>4 KB</strong> base pages by default. Huge page support comes on top: <code>2 MB</code> via <code>CONFIG_HUGETLB_PAGE</code>, and <code>1 GB</code> where the hardware supports it. Transparent Huge Pages (THP) can auto-promote eligible regions. x86 does not support alternative base page sizes at compile time.</p>
+  </div>
+  <div class="tile">
+    <div class="tile-head violet">ARM64 Linux</div>
+    <p>More flexible at the kernel level. Can be compiled with <strong>4 KB, 16 KB, or 64 KB</strong> base pages. A 64 KB base page on ARM64 means ordinary allocations already have 16× the TLB reach of 4 KB x86—useful for mobile and server workloads without explicit huge pages.</p>
+  </div>
+</div>
+
+<p>
+  Production inference stacks often combine: a <code>hugetlbfs</code>-backed arena for the KV pool
+  (explicit 2 MB pages, pre-faulted), with ordinary 4 KB pages for everything else.
+  This gives the KV region maximum TLB efficiency without complicating the rest of the allocator.
+</p>
+
+<!-- ════ S7: PINNED MEMORY ════ -->
+<h2 id="s7">What pinned memory actually means</h2>
+
+<p>
+  Pinned memory is memory the operating system is told <em>not</em> to move or swap out.
+  It stays resident at a stable physical address, which is essential when a device wants to access
+  it directly through DMA—direct memory access without involving the CPU on every transfer.
+</p>
+
+<p>
+  The deeper reason pinning exists: DMA engines work with physical addresses.
+  If the OS is free to migrate or swap pages, the physical address backing a virtual mapping can change
+  between the moment a DMA transfer is programmed and the moment it completes.
+  Pinning prevents this. It says: "this physical page will not move until I say so."
+</p>
+
+<div class="callout coral">
+  <p>Pinned memory is not about making bytes intrinsically faster. It is about making a region
+  <strong>stable and directly accessible</strong> for hardware transfer paths that cannot tolerate
+  the OS re-paging or relocating memory under them.</p>
+</div>
+
+<!-- Diagram: pinned vs unpinned DMA -->
+<div class="diagram">
+  <div class="diagram-cap">DMA transfer — pinned vs unpinned memory</div>
+  <svg viewBox="0 0 820 230" xmlns="http://www.w3.org/2000/svg" role="img">
+    <title>DMA transfer pinned vs unpinned</title>
+    <desc>Two scenarios: left shows DMA succeeding with pinned memory, right shows DMA failing when OS migrates unpinned memory</desc>
+    <!-- LEFT: pinned (success) -->
+    <text x="200" y="28" text-anchor="middle" font-family="Syne,sans-serif" font-size="12" font-weight="700" fill="rgba(45,212,191,0.85)">Pinned — DMA succeeds</text>
+
+    <!-- CPU / virtual address -->
+    <rect x="20" y="44" width="130" height="50" rx="8" fill="rgba(45,212,191,0.08)" stroke="rgba(45,212,191,0.25)" stroke-width="0.5"/>
+    <text x="85" y="69" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.7)">VA 0xA000</text>
+    <text x="85" y="84" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(45,212,191,0.45)">→ PA 0x3C000 (pinned)</text>
+    <!-- Physical memory -->
+    <rect x="20" y="120" width="130" height="50" rx="8" fill="rgba(45,212,191,0.12)" stroke="rgba(45,212,191,0.35)" stroke-width="0.5"/>
+    <text x="85" y="145" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(45,212,191,0.85)">PA 0x3C000</text>
+    <text x="85" y="160" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(45,212,191,0.55)">KV buffer (locked)</text>
+    <!-- GPU -->
+    <rect x="230" y="70" width="120" height="100" rx="8" fill="rgba(96,165,250,0.08)" stroke="rgba(96,165,250,0.25)" stroke-width="0.5"/>
+    <text x="290" y="118" text-anchor="middle" font-family="Syne,sans-serif" font-size="11" font-weight="700" fill="rgba(96,165,250,0.75)">GPU / DMA</text>
+    <text x="290" y="136" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(96,165,250,0.5)">reads PA 0x3C000</text>
+    <!-- DMA arrow -->
+    <line x1="152" y1="145" x2="228" y2="145" stroke="rgba(45,212,191,0.6)" stroke-width="1.5" marker-end="url(#arr-pin)"/>
+    <!-- lock icon (simplified) -->
+    <rect x="68" y="107" width="34" height="10" rx="2" fill="rgba(45,212,191,0.2)" stroke="rgba(45,212,191,0.4)" stroke-width="0.5"/>
+    <rect x="74" y="100" width="22" height="10" rx="4" fill="none" stroke="rgba(45,212,191,0.4)" stroke-width="1"/>
+    <text x="85" y="200" text-anchor="middle" font-family="Syne,sans-serif" font-size="10" fill="rgba(45,212,191,0.55)">OS cannot move page</text>
+    <text x="200" y="218" text-anchor="middle" font-family="Syne,sans-serif" font-size="10" fill="rgba(45,212,191,0.7)">✓ Transfer completes correctly</text>
+
+    <!-- divider -->
+    <line x1="390" y1="24" x2="390" y2="212" stroke="rgba(107,114,128,0.15)" stroke-width="1" stroke-dasharray="4 3"/>
+
+    <!-- RIGHT: unpinned (problem) -->
+    <text x="610" y="28" text-anchor="middle" font-family="Syne,sans-serif" font-size="12" font-weight="700" fill="rgba(251,113,133,0.85)">Unpinned — OS may migrate</text>
+
+    <rect x="410" y="44" width="130" height="50" rx="8" fill="rgba(251,113,133,0.07)" stroke="rgba(251,113,133,0.2)" stroke-width="0.5"/>
+    <text x="475" y="69" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(251,113,133,0.65)">VA 0xB000</text>
+    <text x="475" y="84" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(251,113,133,0.4)">→ PA 0x7E000 (migrates!)</text>
+
+    <rect x="410" y="120" width="130" height="50" rx="8" fill="rgba(251,113,133,0.12)" stroke="rgba(251,113,133,0.3)" stroke-width="0.5" stroke-dasharray="4 3"/>
+    <text x="475" y="145" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(251,113,133,0.7)">PA 0x7E000</text>
+    <text x="475" y="160" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(251,113,133,0.45)">→ moved by OS!</text>
+
+    <rect x="620" y="70" width="120" height="100" rx="8" fill="rgba(96,165,250,0.08)" stroke="rgba(96,165,250,0.25)" stroke-width="0.5"/>
+    <text x="680" y="118" text-anchor="middle" font-family="Syne,sans-serif" font-size="11" font-weight="700" fill="rgba(96,165,250,0.75)">GPU / DMA</text>
+    <text x="680" y="136" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(96,165,250,0.5)">reads stale PA</text>
+
+    <line x1="542" y1="145" x2="618" y2="145" stroke="rgba(251,113,133,0.5)" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-pin-r)"/>
+    <text x="610" y="218" text-anchor="middle" font-family="Syne,sans-serif" font-size="10" fill="rgba(251,113,133,0.7)">✗ Reads wrong or stale data</text>
+
+    <defs>
+      <marker id="arr-pin" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="rgba(45,212,191,0.7)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+      <marker id="arr-pin-r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="rgba(251,113,133,0.7)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+  </svg>
+</div>
+
+<div class="grid2">
+  <div class="tile">
+    <div class="tile-head teal">Where pinned memory helps</div>
+    <ul>
+      <li>CPU ↔ GPU transfer buffers</li>
+      <li>Host-side staging for accelerators</li>
+      <li>Networking / RDMA buffers</li>
+      <li>Disaggregated-memory transfer paths</li>
+      <li>Multi-device DMA pipelines</li>
+    </ul>
+  </div>
+  <div class="tile">
+    <div class="tile-head coral">What pinned memory is not</div>
+    <ul>
+      <li>Not on-die SRAM</li>
+      <li>Not the same as a huge page</li>
+      <li>Not a CPU arithmetic speedup</li>
+      <li>Not a cache of any kind</li>
+      <li>Not automatically the first win on CPU-only systems</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ════ S8: WHEN PINNING MATTERS ════ -->
+<h2 id="s8">Where KV pinning becomes genuinely useful</h2>
+
+<p>
+  On a pure CPU-only agentic system, the CPU reads host RAM directly. Pinning does not change the memory
+  bandwidth available or the cache hierarchy behavior. The real questions for CPU KV are:
+  locality, NUMA alignment, page size, allocator fragmentation, and access regularity.
+</p>
+<p>
+  Pinning becomes more valuable the moment another device needs to DMA-access host-resident KV:
+</p>
+
+<div class="grid2">
+  <div class="tile">
+    <div class="tile-head blue">GPU with host-side KV spill</div>
+    <p>Hot KV lives in HBM; overflow or colder blocks spill to system RAM. If the GPU pulls spilled KV via DMA, pinned host memory stabilizes the transfer path and avoids re-pinning overhead on each access.</p>
+  </div>
+  <div class="tile">
+    <div class="tile-head violet">NPU / custom accelerators</div>
+    <p>Many inference cards use host RAM as a large backing tier. If the accelerator DMA-accesses that memory, pinned regions avoid physical address instability and enable safe async transfers.</p>
+  </div>
+  <div class="tile">
+    <div class="tile-head amber">Multi-device pipelines</div>
+    <p>When one device computes and another stages or transfers state, pinned buffers provide predictable DMA-visible regions that the runtime can safely schedule against.</p>
+  </div>
+  <div class="tile">
+    <div class="tile-head coral">RDMA / disaggregated memory</div>
+    <p>Zero-copy or RDMA-style flows require pinned host buffers. The remote NIC needs a stable physical address to initiate the transfer without CPU involvement.</p>
+  </div>
+</div>
+
+<!-- ════ S9: OPTIMIZATION ORDER ════ -->
+<h2 id="s9">So what should you optimize first?</h2>
+
+<p>The right optimization order depends entirely on where your KV cache lives and what accesses it:</p>
+
+<h3>CPU-only agentic systems</h3>
+<ul class="priority-list teal">
+  <li><span class="num">1</span>Good KV layout and arena allocation — eliminate fragmentation and poor strides</li>
+  <li><span class="num">2</span>NUMA locality — pin threads to the socket whose memory holds the KV</li>
+  <li><span class="num">3</span>Huge pages / TLB reach — 2 MB pages for the KV arena, pre-faulted</li>
+  <li><span class="num">4</span>Cache-friendly access patterns — block the attention kernel for L2/L3 reuse</li>
+  <li><span class="num">5</span>KV compression or quantization — INT8 KV halves memory bandwidth demand</li>
+  <li><span class="num">6</span>Pinning — only if residency guarantees or special transfer paths justify it</li>
+</ul>
+
+<h3>GPU / accelerator systems with host interaction</h3>
+<ul class="priority-list amber">
+  <li><span class="num">1</span>Device-local hot set placement — keep the working KV in HBM</li>
+  <li><span class="num">2</span>Host spill policy — decide eviction order intelligently (LRU, beam priority)</li>
+  <li><span class="num">3</span>Pinned transfer buffers — or pinned host KV regions for DMA-accessed spill</li>
+  <li><span class="num">4</span>Page size and translation strategy — 2 MB pages for host staging regions</li>
+  <li><span class="num">5</span>Runtime indexing and block mapping efficiency — minimize table lookup overhead</li>
+</ul>
+
+<div class="rule"></div>
+
+<!-- ════ S10: BIG PICTURE ════ -->
+<h2 id="s10">The big picture</h2>
+
+<p>
+  Once you connect all the pieces, the inference memory story becomes much clearer.
+  <strong>Attention indexing</strong> is the runtime's mapping problem—a bookkeeping system that converts
+  logical sequence positions into physical storage addresses.
+  <strong>VRAM</strong> is the memory role; <strong>HBM</strong> is one physical implementation of that role.
+  <strong>Huge pages</strong> help KV cache mostly by increasing TLB reach and reducing translation overhead—not
+  by making RAM itself faster.
+  <strong>Pinned memory</strong> matters most when host-resident KV or staging buffers need stable,
+  device-visible access paths for DMA.
+</p>
+
+<!-- Summary diagram -->
+<div class="diagram">
+  <div class="diagram-cap">Concept map — how everything connects</div>
+  <svg viewBox="0 0 820 260" xmlns="http://www.w3.org/2000/svg" role="img">
+    <title>KV cache memory systems concept map</title>
+    <desc>Central KV cache node connected to attention indexing, VRAM/HBM, TLB/huge pages, and pinned memory</desc>
+    <!-- Central node -->
+    <rect x="310" y="100" width="200" height="60" rx="12" fill="rgba(45,212,191,0.14)" stroke="rgba(45,212,191,0.45)" stroke-width="1"/>
+    <text x="410" y="127" text-anchor="middle" font-family="Playfair Display,serif" font-size="16" fill="rgba(45,212,191,0.95)">KV Cache</text>
+    <text x="410" y="148" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(45,212,191,0.55)">structured inference state</text>
+
+    <!-- Attention indexing — top left -->
+    <rect x="30" y="20" width="200" height="60" rx="10" fill="rgba(96,165,250,0.1)" stroke="rgba(96,165,250,0.3)" stroke-width="0.5"/>
+    <text x="130" y="47" text-anchor="middle" font-family="Syne,sans-serif" font-size="12" font-weight="700" fill="rgba(96,165,250,0.85)">Attention Indexing</text>
+    <text x="130" y="65" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(96,165,250,0.5)">logical → physical lookup</text>
+    <line x1="230" y1="50" x2="310" y2="115" stroke="rgba(96,165,250,0.3)" stroke-width="1" marker-end="url(#arr-map)" stroke-dasharray="4 3"/>
+
+    <!-- VRAM/HBM — top right -->
+    <rect x="590" y="20" width="200" height="60" rx="10" fill="rgba(251,191,36,0.1)" stroke="rgba(251,191,36,0.3)" stroke-width="0.5"/>
+    <text x="690" y="47" text-anchor="middle" font-family="Syne,sans-serif" font-size="12" font-weight="700" fill="rgba(251,191,36,0.85)">VRAM / HBM</text>
+    <text x="690" y="65" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(251,191,36,0.5)">role vs. physical impl.</text>
+    <line x1="590" y1="50" x2="510" y2="115" stroke="rgba(251,191,36,0.3)" stroke-width="1" marker-end="url(#arr-map)" stroke-dasharray="4 3"/>
+
+    <!-- Huge pages / TLB — bottom left -->
+    <rect x="30" y="180" width="200" height="60" rx="10" fill="rgba(167,139,250,0.1)" stroke="rgba(167,139,250,0.3)" stroke-width="0.5"/>
+    <text x="130" y="207" text-anchor="middle" font-family="Syne,sans-serif" font-size="12" font-weight="700" fill="rgba(167,139,250,0.85)">Huge Pages · TLB</text>
+    <text x="130" y="225" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(167,139,250,0.5)">translation efficiency</text>
+    <line x1="230" y1="210" x2="310" y2="145" stroke="rgba(167,139,250,0.3)" stroke-width="1" marker-end="url(#arr-map)" stroke-dasharray="4 3"/>
+
+    <!-- Pinned memory — bottom right -->
+    <rect x="590" y="180" width="200" height="60" rx="10" fill="rgba(251,113,133,0.1)" stroke="rgba(251,113,133,0.3)" stroke-width="0.5"/>
+    <text x="690" y="207" text-anchor="middle" font-family="Syne,sans-serif" font-size="12" font-weight="700" fill="rgba(251,113,133,0.85)">Pinned Memory</text>
+    <text x="690" y="225" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(251,113,133,0.5)">stable DMA access path</text>
+    <line x1="590" y1="210" x2="510" y2="145" stroke="rgba(251,113,133,0.3)" stroke-width="1" marker-end="url(#arr-map)" stroke-dasharray="4 3"/>
+
+    <defs>
+      <marker id="arr-map" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+  </svg>
+</div>
+
+<p>
+  The more you think about KV this way, the less it looks like a passive cache and the more it looks like
+  what it really is: <strong>a first-class memory system</strong> for autoregressive inference.
+  Each new capability—longer contexts, more concurrent sessions, larger models—hits this memory system
+  first. The teams that understand it as a systems problem, not just a tensor sizing question,
+  are the ones that will navigate those constraints most cleanly.
+</p>
+
+<p>
+  That is why a serious conversation about modern inference eventually stops being about
+  "how big is the model?" and becomes a more grounded systems conversation:
+</p>
+
+<ul>
+  <li>Where does the state live—device-local or host-resident?</li>
+  <li>How is it indexed—flat tensor or paged block table?</li>
+  <li>How many translation entries does the working set consume?</li>
+  <li>What is hot versus spillable? What is the eviction policy?</li>
+  <li>When does stability of a buffer matter more than flexibility?</li>
+  <li>How do data movement costs compound across steps and sessions?</li>
+</ul>
+
+<div class="footer-note">
+  This essay is part of a series on inference memory systems. A companion piece covers paged KV cache,
+  continuous batching, and prefix caching in production serving stacks.
+</div>
+</article>
+</main>
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <span>Writings · AI memory systems · KV cache</span>
+    <span>© 2026 <a href="/index.html">MANISH AI</a></span>
+  </div>
+</footer>
+</body>
+</html>
