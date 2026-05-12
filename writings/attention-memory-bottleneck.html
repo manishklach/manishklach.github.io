@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>The Next AI Bottleneck Isn't FLOPs. It's Attention Memory. | MANISH AI</title>
+  <meta name="description" content="A systems-level deep dive into KV cache growth, attention memory, and why the next AI architecture war is a memory war."/>
+  <meta name="keywords" content="attention memory, KV cache, AI inference memory bottleneck, flashattention, pagedattention, linear attention, CXL memory, LLM systems, MANISH AI"/>
+  <meta name="author" content="MANISH AI"/>
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+  <meta name="color-scheme" content="dark"/>
+  <link rel="canonical" href="https://manishklach.github.io/writings/attention-memory-bottleneck.html"/>
+  <meta property="og:type" content="article"/>
+  <meta property="og:title" content="The Next AI Bottleneck Isn't FLOPs. It's Attention Memory. | MANISH AI"/>
+  <meta property="og:description" content="A systems-level deep dive into KV cache growth, attention memory, and why the next AI architecture war is a memory war."/>
+  <meta property="og:url" content="https://manishklach.github.io/writings/attention-memory-bottleneck.html"/>
+  <meta property="og:site_name" content="MANISH AI"/>
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png"/>
+  <meta property="og:image:alt" content="The Next AI Bottleneck Isn't FLOPs. It's Attention Memory."/>
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:title" content="The Next AI Bottleneck Isn't FLOPs. It's Attention Memory. | MANISH AI"/>
+  <meta name="twitter:description" content="A systems-level deep dive into KV cache growth, attention memory, and why the next AI architecture war is a memory war."/>
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png"/>
+  <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+  <link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+  <link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+  <link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+  <script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800;900&family=DM+Mono:wght@400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&display=swap" rel="stylesheet"/>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "The Next AI Bottleneck Isn't FLOPs. It's Attention Memory.",
+    "description": "A systems-level deep dive into KV cache growth, attention memory, and why the next AI architecture war is a memory war.",
+    "url": "https://manishklach.github.io/writings/attention-memory-bottleneck.html",
+    "datePublished": "2026-05-12",
+    "dateModified": "2026-05-12",
+    "mainEntityOfPage": "https://manishklach.github.io/writings/attention-memory-bottleneck.html",
+    "inLanguage": "en",
+    "author": {
+      "@type": "Person",
+      "name": "MANISH AI",
+      "url": "https://manishklach.github.io/"
+    },
+    "publisher": {
+      "@type": "Person",
+      "name": "MANISH AI",
+      "url": "https://manishklach.github.io/"
+    }
+  }</script>
+  <style>
+    :root {
+      --bg:      #050912;
+      --surface: #090f1e;
+      --panel:   #0d1628;
+      --panel2:  #111e35;
+      --ink:     #f0f6ff;
+      --muted:   #8fa3be;
+      --dim:     #4a607c;
+      --line:    #1c2d45;
+      --sky:     #7dd3fc;
+      --violet:  #a78bfa;
+      --mint:    #34d399;
+      --amber:   #fbbf24;
+      --rose:    #fb7185;
+      --sky-glow: rgba(125,211,252,.15);
+      --violet-glow: rgba(167,139,250,.12);
+      --mint-glow: rgba(52,211,153,.10);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.72;
+      overflow-x: hidden;
+    }
+
+    /* ─── BACKGROUND ─────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 12% 6%,  rgba(125,211,252,.14), transparent),
+        radial-gradient(ellipse 50% 35% at 88% 12%, rgba(167,139,250,.12), transparent),
+        radial-gradient(ellipse 45% 50% at 50% 90%, rgba(52,211,153,.07),  transparent);
+    }
+
+    /* ─── NOISE GRAIN ─────────────────────────────────── */
+    body::after {
+      content: '';
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      opacity: .028;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px 120px; position: relative; z-index: 1; }
+
+    /* ─── PROGRESS BAR ─────────────────────────────────── */
+    #progress {
+      position: fixed; top: 0; left: 0; height: 3px; width: 0%;
+      background: linear-gradient(90deg, var(--sky), var(--violet));
+      z-index: 1000; transition: width .1s linear;
+    }
+
+    /* ─── NAV ──────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(5,9,18,.82);
+      backdrop-filter: blur(20px) saturate(1.5);
+      border-bottom: 1px solid var(--line);
+      padding: 0 28px;
+    }
+    .nav-inner {
+      max-width: 1180px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 56px;
+    }
+    .nav-logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 900; font-size: 14px;
+      color: var(--sky); letter-spacing: .04em; text-transform: uppercase;
+      text-decoration: none;
+    }
+    .nav-links { display: flex; gap: 8px; }
+    .nav-links a {
+      text-decoration: none; color: var(--muted);
+      font-size: 13px; font-weight: 500;
+      padding: 6px 12px; border-radius: 8px;
+      transition: color .2s, background .2s;
+    }
+    .nav-links a:hover { color: var(--ink); background: rgba(255,255,255,.06); }
+    .nav-links a[aria-current="page"] { color: var(--ink); background: rgba(255,255,255,.06); }
+
+    /* ─── HERO ─────────────────────────────────────────── */
+    .hero {
+      padding: 96px 0 56px;
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 48px; align-items: center;
+    }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: 'DM Mono', monospace;
+      font-size: 11px; font-weight: 500; letter-spacing: .18em;
+      text-transform: uppercase; color: var(--sky);
+      background: rgba(125,211,252,.08);
+      border: 1px solid rgba(125,211,252,.22);
+      padding: 6px 14px; border-radius: 999px;
+      margin-bottom: 28px;
+    }
+    .eyebrow::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--sky); animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(44px, 7.5vw, 88px);
+      line-height: .9; letter-spacing: -.05em;
+      font-weight: 900; margin-bottom: 28px;
+    }
+    h1 em { font-style: normal; color: var(--sky); }
+
+    .subtitle {
+      font-size: clamp(17px, 2vw, 21px);
+      color: var(--muted); line-height: 1.6;
+      max-width: 600px; margin-bottom: 36px;
+    }
+
+    .meta-row {
+      display: flex; align-items: center; gap: 20px;
+      color: var(--dim); font-size: 14px; margin-bottom: 32px;
+    }
+    .meta-row span { display: flex; align-items: center; gap: 6px; }
+    .meta-sep { width: 1px; height: 14px; background: var(--line); }
+
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill {
+      font-size: 12px; font-weight: 600; letter-spacing: .04em;
+      padding: 6px 13px; border-radius: 999px;
+      border: 1px solid rgba(125,211,252,.2);
+      background: rgba(125,211,252,.07);
+      color: #cef0ff;
+    }
+
+    /* ─── HERO CHART CARD ──────────────────────────────── */
+    .hero-card {
+      background: linear-gradient(145deg, rgba(13,22,40,.97), rgba(9,15,30,.92));
+      border: 1px solid rgba(148,163,184,.15);
+      border-radius: 26px;
+      padding: 24px;
+      box-shadow: 0 32px 80px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.04);
+      animation: floatCard 6s ease-in-out infinite;
+    }
+    @keyframes floatCard { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+
+    .card-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px; font-weight: 500; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--muted);
+      margin-bottom: 16px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .badge {
+      font-size: 11px; font-weight: 700;
+      padding: 3px 10px; border-radius: 999px;
+      background: var(--sky); color: #03111e;
+    }
+
+    /* ─── TOC ──────────────────────────────────────────── */
+    .toc {
+      display: grid; grid-template-columns: repeat(5,1fr); gap: 10px;
+      margin: 16px 0 64px;
+    }
+    .toc a {
+      display: flex; flex-direction: column; gap: 4px;
+      text-decoration: none; padding: 16px;
+      border-radius: 16px;
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--line);
+      transition: border-color .2s, background .2s, transform .2s;
+    }
+    .toc a:hover { background: rgba(125,211,252,.06); border-color: rgba(125,211,252,.3); transform: translateY(-2px); }
+    .toc-num { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--sky); font-weight: 500; }
+    .toc-label { font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.3; }
+
+    /* ─── SECTIONS ─────────────────────────────────────── */
+    section { margin: 72px 0; scroll-margin-top: 72px; }
+    .section-tag {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500;
+      letter-spacing: .16em; text-transform: uppercase;
+      color: var(--violet); margin-bottom: 16px;
+    }
+    h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(32px, 5vw, 56px);
+      line-height: 1.0; letter-spacing: -.04em;
+      font-weight: 800; margin-bottom: 20px;
+    }
+    h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 22px; letter-spacing: -.02em;
+      font-weight: 700; margin: 40px 0 12px; color: var(--ink);
+    }
+    p { color: var(--muted); font-size: 17.5px; margin: 14px 0; line-height: 1.75; }
+    p strong { color: var(--ink); font-weight: 600; }
+    .lead { font-size: 21px; color: #ccddf0; line-height: 1.65; }
+
+    /* ─── CARDS ────────────────────────────────────────── */
+    .card {
+      background: linear-gradient(160deg, rgba(13,22,40,.97), rgba(9,15,30,.9));
+      border: 1px solid rgba(148,163,184,.13);
+      border-radius: 22px;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0,0,0,.3);
+    }
+    .card-inner { padding: 28px; }
+    .diagram { padding: 22px; margin: 28px 0; }
+    svg { width: 100%; height: auto; display: block; }
+
+    /* ─── CALLOUT ──────────────────────────────────────── */
+    .callout {
+      padding: 24px 28px;
+      border-radius: 18px;
+      background: linear-gradient(110deg, rgba(125,211,252,.09), rgba(167,139,250,.07));
+      border: 1px solid rgba(125,211,252,.2);
+      margin: 28px 0;
+    }
+    .callout p { color: #d8ecff; font-size: 18px; margin: 0; }
+
+    .callout-warn {
+      background: linear-gradient(110deg, rgba(251,191,36,.08), rgba(251,113,133,.06));
+      border-color: rgba(251,191,36,.25);
+    }
+    .callout-warn p { color: #fde9a0; }
+
+    /* ─── BLOCKQUOTE ───────────────────────────────────── */
+    blockquote {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(22px, 3vw, 32px);
+      line-height: 1.2; letter-spacing: -.03em;
+      color: var(--ink); font-weight: 700;
+      border-left: 4px solid var(--sky);
+      padding-left: 24px; margin: 36px 0;
+    }
+
+    /* ─── EQUATION ─────────────────────────────────────── */
+    .equation {
+      font-family: 'DM Mono', monospace;
+      background: rgba(0,0,0,.5);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 20px 24px;
+      color: #dff6ff; font-size: 15px;
+      overflow-x: auto; margin: 20px 0;
+      line-height: 1.9;
+    }
+    .eq-comment { color: var(--dim); font-size: 13px; }
+
+    /* ─── GRID ─────────────────────────────────────────── */
+    .grid { display: grid; gap: 16px; }
+    .g2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .g3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .g4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+    .mini {
+      padding: 22px; border-radius: 18px;
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--line);
+    }
+    .mini h3 { margin-top: 0; font-size: 17px; }
+    .mini p  { font-size: 15px; margin: 6px 0 0; }
+    .mini .icon { font-size: 24px; margin-bottom: 12px; }
+
+    /* ─── STAT TILES ───────────────────────────────────── */
+    .stat-tile {
+      padding: 24px; border-radius: 18px;
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--line);
+      text-align: center;
+    }
+    .stat-num {
+      font-family: 'Syne', sans-serif;
+      font-size: 48px; font-weight: 900; letter-spacing: -.04em;
+      background: linear-gradient(135deg, var(--sky), var(--violet));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .stat-label { font-size: 14px; color: var(--muted); margin-top: 6px; }
+
+    /* ─── TABLE ────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; margin: 28px 0; }
+    table { width: 100%; border-collapse: collapse; min-width: 680px; font-size: 15px; }
+    th { background: rgba(125,211,252,.08); color: #daf3ff; padding: 14px 16px; text-align: left; font-size: 12px; font-family: 'DM Mono', monospace; letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,.1); }
+    td { padding: 14px 16px; color: var(--muted); border-bottom: 1px solid rgba(255,255,255,.05); vertical-align: top; }
+    td strong { color: var(--ink); }
+    tr:last-child td { border-bottom: none; }
+    .highlight-row td { background: rgba(125,211,252,.06); }
+
+    /* ─── COMPARE ARCH ─────────────────────────────────── */
+    .arch-compare {
+      display: grid; grid-template-columns: repeat(4,1fr); gap: 1px;
+      background: var(--line); border-radius: 18px; overflow: hidden;
+      margin: 28px 0;
+    }
+    .arch-col { background: var(--panel); padding: 20px 16px; }
+    .arch-head {
+      font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 800;
+      padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px;
+    }
+    .arch-item {
+      font-size: 13px; padding: 7px 0;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+      color: var(--muted);
+    }
+    .arch-item:last-child { border-bottom: none; }
+    .good { color: var(--mint); }
+    .bad  { color: var(--rose); }
+    .mid  { color: var(--amber); }
+
+    /* ─── FOOTER ───────────────────────────────────────── */
+    footer {
+      color: var(--dim); font-size: 14px;
+      border-top: 1px solid var(--line);
+      padding-top: 32px; margin-top: 80px;
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 12px;
+    }
+    footer a { color: var(--muted); text-decoration: none; }
+
+    /* ─── ANIMATED COUNTER ─────────────────────────────── */
+    .counter { font-family: 'Syne', sans-serif; font-weight: 900; }
+
+    /* ─── TIMELINE ─────────────────────────────────────── */
+    .timeline { position: relative; padding-left: 32px; margin: 28px 0; }
+    .timeline::before { content:''; position:absolute; left:8px; top:0; bottom:0; width:2px; background: linear-gradient(to bottom, var(--sky), var(--violet)); opacity:.3; }
+    .tl-item { position: relative; margin-bottom: 32px; }
+    .tl-dot { position:absolute; left:-28px; top:4px; width:12px; height:12px; border-radius:50%; background: var(--sky); box-shadow: 0 0 12px rgba(125,211,252,.5); }
+    .tl-year { font-family:'DM Mono',monospace; font-size:12px; color:var(--sky); font-weight:500; margin-bottom:4px; }
+    .tl-text { font-size:16px; color:var(--muted); }
+    .tl-text strong { color:var(--ink); }
+
+    /* ─── RESPONSIVE ───────────────────────────────────── */
+    @media (max-width:900px){
+      .hero, .g2, .g3, .g4, .arch-compare { grid-template-columns:1fr; }
+      .toc { grid-template-columns: repeat(2,1fr); }
+      h1 { font-size: 52px; }
+    }
+    @media (max-width:540px){
+      .toc { grid-template-columns: 1fr; }
+      nav .nav-links { display: none; }
+    }
+
+    /* ─── SCROLL REVEAL ────────────────────────────────── */
+    .reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s ease, transform .6s ease; }
+    .reveal.visible { opacity: 1; transform: none; }
+
+    /* ─── ANNOTATION ───────────────────────────────────── */
+    .annotation {
+      font-size: 13px; color: var(--dim); font-style: italic; margin-top: 10px; text-align: center;
+    }
+  </style>
+</head>
+<body>
+<div id="progress"></div>
+
+<nav>
+  <div class="nav-inner">
+    <a class="nav-logo" href="/index.html">MAN\SH AI</a>
+    <div class="nav-links">
+      <a href="/index.html">Home</a>
+      <a href="/writings.html" aria-current="page">Writings</a>
+      <a href="/patents.html">Patents</a>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap" data-pagefind-body>
+
+  <!-- ─── HERO ─────────────────────────────────────────────── -->
+  <header class="hero">
+    <div>
+      <div class="eyebrow">AI Systems · KV Cache · Memory Hierarchy</div>
+      <h1>The Next AI Bottleneck Isn't<br><em>FLOPs.</em><br>It's Attention Memory.</h1>
+      <p class="subtitle">A full-stack, systems-level deep dive into why KV cache growth is becoming the central constraint in large-model inference — and what the industry is doing to escape it.</p>
+      <div class="meta-row">
+        <span><time datetime="2026-05-12">May 12, 2026</time></span>
+        <div class="meta-sep"></div>
+        <span>⏱ 18 min read</span>
+        <div class="meta-sep"></div>
+        <span>📐 Systems depth: High</span>
+        <div class="meta-sep"></div>
+        <span>🎯 Infra · Research · Founders</span>
+      </div>
+      <div class="pill-row">
+        <span class="pill">KV Cache</span>
+        <span class="pill">Linear Attention</span>
+        <span class="pill">SSM / Mamba</span>
+        <span class="pill">PagedAttention</span>
+        <span class="pill">FlashAttention</span>
+        <span class="pill">GQA / MQA</span>
+        <span class="pill">CXL Memory</span>
+        <span class="pill">Retrieval-Augmented</span>
+      </div>
+    </div>
+    <div class="hero-card">
+      <div class="card-label">
+        <span>Inference Bottleneck Migration</span>
+        <span class="badge">FLOPs → Memory</span>
+      </div>
+      <svg viewBox="0 0 760 480" role="img" aria-label="Chart showing memory traffic overtaking raw compute as the dominant bottleneck at long context">
+        <defs>
+          <linearGradient id="skygrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#7dd3fc"/><stop offset="1" stop-color="#38bdf8"/>
+          </linearGradient>
+          <linearGradient id="rosegrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#f472b6"/><stop offset="1" stop-color="#fb7185"/>
+          </linearGradient>
+          <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <rect x="20" y="16" width="720" height="444" rx="20" fill="#070d1a" stroke="#1c2d45"/>
+        <!-- grid -->
+        <line x1="90" y1="60" x2="90" y2="390" stroke="#1c2d45" stroke-width="1.5"/>
+        <line x1="90" y1="390" x2="695" y2="390" stroke="#1c2d45" stroke-width="1.5"/>
+        <line x1="90" y1="318" x2="695" y2="318" stroke="#1c2d45" stroke-width="1" stroke-dasharray="4 6" opacity=".5"/>
+        <line x1="90" y1="246" x2="695" y2="246" stroke="#1c2d45" stroke-width="1" stroke-dasharray="4 6" opacity=".5"/>
+        <line x1="90" y1="174" x2="695" y2="174" stroke="#1c2d45" stroke-width="1" stroke-dasharray="4 6" opacity=".5"/>
+        <line x1="90" y1="102" x2="695" y2="102" stroke="#1c2d45" stroke-width="1" stroke-dasharray="4 6" opacity=".5"/>
+        <!-- y axis labels -->
+        <text x="78" y="394" fill="#4a607c" font-size="13" text-anchor="end">0</text>
+        <text x="78" y="322" fill="#4a607c" font-size="13" text-anchor="end">25</text>
+        <text x="78" y="250" fill="#4a607c" font-size="13" text-anchor="end">50</text>
+        <text x="78" y="178" fill="#4a607c" font-size="13" text-anchor="end">75</text>
+        <text x="78" y="106" fill="#4a607c" font-size="13" text-anchor="end">100</text>
+        <text x="38" y="250" fill="#4a607c" font-size="12" text-anchor="middle" transform="rotate(-90 38 250)">Bottleneck pressure (relative)</text>
+        <!-- x labels -->
+        <text x="100" y="410" fill="#4a607c" font-size="12">1K ctx</text>
+        <text x="240" y="410" fill="#4a607c" font-size="12">4K</text>
+        <text x="360" y="410" fill="#4a607c" font-size="12">16K</text>
+        <text x="490" y="410" fill="#4a607c" font-size="12">64K</text>
+        <text x="620" y="410" fill="#4a607c" font-size="12">256K</text>
+        <text x="390" y="432" fill="#4a607c" font-size="12" text-anchor="middle">Context length × Concurrency</text>
+        <!-- static weights line (flat high) -->
+        <path d="M100 140 C200 142, 350 144, 690 148" stroke="url(#skygrad)" stroke-width="5" fill="none" filter="url(#glow)" stroke-linecap="round"/>
+        <!-- KV cache line (rises steeply) -->
+        <path d="M100 375 C160 365, 240 335, 340 278 C430 226, 520 168, 690 96" stroke="url(#rosegrad)" stroke-width="5" fill="none" filter="url(#glow)" stroke-linecap="round"/>
+        <!-- fill under KV -->
+        <path d="M100 375 C160 365, 240 335, 340 278 C430 226, 520 168, 690 96 L690 390 L100 390 Z" fill="url(#rosegrad)" opacity=".06"/>
+        <!-- crossover annotation -->
+        <line x1="375" y1="80" x2="375" y2="390" stroke="#fbbf24" stroke-width="2.5" stroke-dasharray="8 8"/>
+        <rect x="300" y="72" width="148" height="36" rx="10" fill="rgba(251,191,36,.12)" stroke="rgba(251,191,36,.4)"/>
+        <text x="374" y="96" fill="#fde68a" font-size="13" font-weight="700" text-anchor="middle">economic crossover</text>
+        <!-- labels -->
+        <rect x="490" y="120" width="158" height="34" rx="9" fill="rgba(7,13,26,.85)" stroke="#1c2d45"/>
+        <text x="500" y="142" fill="#7dd3fc" font-size="14" font-weight="700">■</text>
+        <text x="518" y="143" fill="#a8bfd8" font-size="13">static model weights</text>
+        <rect x="490" y="162" width="170" height="34" rx="9" fill="rgba(7,13,26,.85)" stroke="#1c2d45"/>
+        <text x="500" y="184" fill="#fb7185" font-size="14" font-weight="700">■</text>
+        <text x="518" y="185" fill="#a8bfd8" font-size="13">dynamic KV cache</text>
+      </svg>
+    </div>
+  </header>
+
+  <!-- ─── TOC ─────────────────────────────────────────────── -->
+  <nav class="toc" aria-label="Table of contents">
+    <a href="#problem"><span class="toc-num">01</span><span class="toc-label">The KV Problem</span></a>
+    <a href="#math"><span class="toc-num">02</span><span class="toc-label">The Math Behind It</span></a>
+    <a href="#engineering"><span class="toc-num">03</span><span class="toc-label">Engineering Fixes</span></a>
+    <a href="#alternatives"><span class="toc-num">04</span><span class="toc-label">New Architectures</span></a>
+    <a href="#stack"><span class="toc-num">05</span><span class="toc-label">Full-Stack Impact</span></a>
+  </nav>
+
+  <!-- ─────────────────────────────────────────────────────── -->
+  <!-- SECTION 1: THE KV PROBLEM                             -->
+  <!-- ─────────────────────────────────────────────────────── -->
+  <section id="problem" class="reveal">
+    <div class="section-tag">§ 01 · The Problem</div>
+    <h2>The Uncomfortable Scaling Wall</h2>
+    <p class="lead">For a decade the AI story was seductively simple: more parameters, more data, more compute. Researchers scaled, things got better. But production inference is exposing a different, far more expensive constraint — <strong>the cost of remembering context</strong>.</p>
+    <p>In a transformer decoder, every generated token produces two vectors: a <strong>Key</strong> and a <strong>Value</strong>. These are written to the KV cache and held in GPU HBM so future tokens can attend back to the past. This isn't an implementation detail you can ignore — it is the live memory state of the conversation, and it grows continuously.</p>
+    <p>Weights are large, but weights are static during inference. You load them once, they sit on chip, done. The KV cache is fundamentally different. It grows with every new token, multiplies across every concurrent user, branches across every agentic loop, and must be accessible at memory-bus latency on every decode step.</p>
+
+    <div class="callout">
+      <p><strong>The key mental model:</strong> model weights are the static executable; KV cache is the dynamic working set. You can think of it like RAM vs a compiled binary — you only need one copy of the binary, but RAM grows with every process, thread, and session.</p>
+    </div>
+
+    <h3>The Numbers Are Brutal</h3>
+    <div class="grid g4" style="margin:28px 0;">
+      <div class="stat-tile reveal">
+        <div class="stat-num">~2.5 GiB</div>
+        <div class="stat-label">KV cache for a single 8K-token conversation on a 70B GQA model (FP16)</div>
+      </div>
+      <div class="stat-tile reveal">
+        <div class="stat-num">~80 GiB</div>
+        <div class="stat-label">KV cache for 32 concurrent users at 8K tokens — fills an H100 SXM alone</div>
+      </div>
+      <div class="stat-tile reveal">
+        <div class="stat-num">~320 GiB</div>
+        <div class="stat-label">KV cache for 32 users at 32K context — KV must now be sharded or offloaded</div>
+      </div>
+      <div class="stat-tile reveal">
+        <div class="stat-num">&gt;640 GiB</div>
+        <div class="stat-label">Agentic workload at 32K tokens with 64 active reasoning branches</div>
+      </div>
+    </div>
+    <p class="annotation">Illustrative estimates: ~80 layers, 8 KV heads, 128 head dim, 2 bytes/value (BF16), standard GQA. Multi-head attention can be 8–16× larger; MQA reduces it further.</p>
+
+    <div class="table-wrap card">
+      <div style="padding:22px 22px 0;">
+        <div class="card-label"><span>Illustrative KV Cache Sizes</span><span>70B-class GQA decoder · BF16 KV</span></div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Scenario</th><th>Context</th><th>Concurrency</th><th>Est. KV Cache</th><th>System implication</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Single chatbot turn</strong></td><td>2K tokens</td><td>1 user</td><td><strong>~640 MiB</strong></td><td>Trivial. Weights dominate.</td></tr>
+          <tr><td><strong>Long chat session</strong></td><td>8K tokens</td><td>1 user</td><td><strong>~2.5 GiB</strong></td><td>Manageable, but multiplies at batch scale.</td></tr>
+          <tr class="highlight-row"><td><strong>Production batch</strong></td><td>8K tokens</td><td>32 users</td><td><strong>~80 GiB</strong></td><td>KV alone can fill an H100 80GB. Weights must share space.</td></tr>
+          <tr><td><strong>Long-context assistant</strong></td><td>32K tokens</td><td>32 users</td><td><strong>~320 GiB</strong></td><td>Requires multi-GPU KV sharding or offload.</td></tr>
+          <tr class="highlight-row"><td><strong>Agentic workflow</strong></td><td>32K + branches</td><td>64 branches</td><td><strong>&gt;640 GiB</strong></td><td>Branches fork KV. Memory grows super-linearly with reasoning depth.</td></tr>
+          <tr><td><strong>1M context (frontier)</strong></td><td>1M tokens</td><td>8 users</td><td><strong>&gt;2 TiB</strong></td><td>Impossible in a single GPU's HBM. Requires offload, compression, or retrieval.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Growth Diagram -->
+    <div class="card diagram reveal">
+      <div class="card-label" style="padding:0 0 16px;"><span>KV Cache: Every Token Leaves Memory Behind</span><span>per layer · per user · per branch</span></div>
+      <svg viewBox="0 0 1000 400" role="img" aria-label="Each transformer layer creates K and V entries for every token, multiplied across depth">
+        <rect x="18" y="18" width="964" height="364" rx="24" fill="#07101f" stroke="#1c2d45"/>
+        <text x="60" y="64" fill="#eaf6ff" font-size="26" font-weight="800" font-family="Syne, sans-serif">Every token appends K + V to every layer</text>
+        <text x="60" y="92" fill="#8fa3be" font-size="15">Decode step N requires reading all prior tokens across all layers — O(N × layers) memory reads per token.</text>
+        <!-- Layer rows -->
+        <g transform="translate(60,130)">
+          <text x="0" y="-10" fill="#7dd3fc" font-size="14" font-weight="700" font-family="DM Mono, monospace">Layer 1</text>
+          <rect x="0"   y="0" width="68" height="40" rx="8" fill="#1e4a6a"/><text x="34" y="26" fill="#7dd3fc" font-size="11" text-anchor="middle">t₁</text>
+          <rect x="78"  y="0" width="68" height="40" rx="8" fill="#1e4a6a"/><text x="112" y="26" fill="#7dd3fc" font-size="11" text-anchor="middle">t₂</text>
+          <rect x="156" y="0" width="68" height="40" rx="8" fill="#1e4a6a"/><text x="190" y="26" fill="#7dd3fc" font-size="11" text-anchor="middle">t₃</text>
+          <rect x="234" y="0" width="68" height="40" rx="8" fill="#1e4a6a"/><text x="268" y="26" fill="#7dd3fc" font-size="11" text-anchor="middle">t₄</text>
+          <rect x="312" y="0" width="68" height="40" rx="8" fill="#1e4a6a"/><text x="346" y="26" fill="#7dd3fc" font-size="11" text-anchor="middle">t₅</text>
+          <rect x="390" y="0" width="68" height="40" rx="8" fill="#1e4a6a"/><text x="424" y="26" fill="#7dd3fc" font-size="11" text-anchor="middle">t₆</text>
+          <text x="480" y="26" fill="#4a607c" font-size="22">···</text>
+          <text x="550" y="26" fill="#8fa3be" font-size="14">K+V per token, this layer</text>
+        </g>
+        <g transform="translate(60,210)">
+          <text x="0" y="-10" fill="#a78bfa" font-size="14" font-weight="700" font-family="DM Mono, monospace">Layer 2</text>
+          <rect x="0"   y="0" width="68" height="40" rx="8" fill="#3b2a6e"/><text x="34" y="26" fill="#a78bfa" font-size="11" text-anchor="middle">t₁</text>
+          <rect x="78"  y="0" width="68" height="40" rx="8" fill="#3b2a6e"/><text x="112" y="26" fill="#a78bfa" font-size="11" text-anchor="middle">t₂</text>
+          <rect x="156" y="0" width="68" height="40" rx="8" fill="#3b2a6e"/><text x="190" y="26" fill="#a78bfa" font-size="11" text-anchor="middle">t₃</text>
+          <rect x="234" y="0" width="68" height="40" rx="8" fill="#3b2a6e"/><text x="268" y="26" fill="#a78bfa" font-size="11" text-anchor="middle">t₄</text>
+          <rect x="312" y="0" width="68" height="40" rx="8" fill="#3b2a6e"/><text x="346" y="26" fill="#a78bfa" font-size="11" text-anchor="middle">t₅</text>
+          <rect x="390" y="0" width="68" height="40" rx="8" fill="#3b2a6e"/><text x="424" y="26" fill="#a78bfa" font-size="11" text-anchor="middle">t₆</text>
+          <text x="480" y="26" fill="#4a607c" font-size="22">···</text>
+          <text x="550" y="26" fill="#8fa3be" font-size="14">identical sequence, new layer weights</text>
+        </g>
+        <g transform="translate(60,290)">
+          <text x="0" y="-10" fill="#fbbf24" font-size="14" font-weight="700" font-family="DM Mono, monospace">Layer N</text>
+          <rect x="0"   y="0" width="68" height="40" rx="8" fill="#5a3f05"/><text x="34" y="26" fill="#fbbf24" font-size="11" text-anchor="middle">t₁</text>
+          <rect x="78"  y="0" width="68" height="40" rx="8" fill="#5a3f05"/><text x="112" y="26" fill="#fbbf24" font-size="11" text-anchor="middle">t₂</text>
+          <rect x="156" y="0" width="68" height="40" rx="8" fill="#5a3f05"/><text x="190" y="26" fill="#fbbf24" font-size="11" text-anchor="middle">t₃</text>
+          <rect x="234" y="0" width="68" height="40" rx="8" fill="#5a3f05"/><text x="268" y="26" fill="#fbbf24" font-size="11" text-anchor="middle">t₄</text>
+          <rect x="312" y="0" width="68" height="40" rx="8" fill="#5a3f05"/><text x="346" y="26" fill="#fbbf24" font-size="11" text-anchor="middle">t₅</text>
+          <rect x="390" y="0" width="68" height="40" rx="8" fill="#5a3f05"/><text x="424" y="26" fill="#fbbf24" font-size="11" text-anchor="middle">t₆</text>
+          <text x="480" y="26" fill="#4a607c" font-size="22">···</text>
+          <text x="550" y="26" fill="#8fa3be" font-size="14">multiplied across full model depth</text>
+        </g>
+        <!-- bracket -->
+        <path d="M870 130 L900 130 L900 330 L870 330" stroke="#fb7185" stroke-width="3" fill="none"/>
+        <text x="912" y="218" fill="#fecdd3" font-size="13" font-weight="700">Total</text>
+        <text x="912" y="238" fill="#fecdd3" font-size="13" font-weight="700">KV Size</text>
+        <text x="912" y="258" fill="#8fa3be" font-size="12">L × N × d</text>
+      </svg>
+    </div>
+
+    <h3>Three Flavors of Pressure</h3>
+    <div class="grid g3">
+      <div class="mini reveal">
+        <div class="icon">💾</div>
+        <h3>Capacity Pressure</h3>
+        <p>KV state competes directly with model weights, activations, batching buffers, and runtime overhead inside scarce, expensive HBM. You can't simply buy your way out — an H100 SXM has 80GB, and that number isn't growing as fast as context windows.</p>
+      </div>
+      <div class="mini reveal">
+        <div class="icon">⚡</div>
+        <h3>Bandwidth Pressure</h3>
+        <p>Even when the KV fits, repeatedly reading it turns decode into a memory-bandwidth bottleneck rather than a tensor-core bottleneck. At 3.35 TB/s (H100 HBM3), you can saturate bandwidth long before you saturate FLOP capacity — leaving those $30K tensor cores idle.</p>
+      </div>
+      <div class="mini reveal">
+        <div class="icon">🗂</div>
+        <h3>Scheduling Pressure</h3>
+        <p>Serving systems must continuously decide what stays hot, what gets paged, what gets offloaded, and which requests can be batched without wrecking latency SLOs. This is a new, complex optimization problem that didn't exist in the compute-bound era.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────── -->
+  <!-- SECTION 2: THE MATH                                   -->
+  <!-- ─────────────────────────────────────────────────────── -->
+  <section id="math" class="reveal">
+    <div class="section-tag">§ 02 · The Math</div>
+    <h2>Why Standard Attention Creates This Problem</h2>
+    <p class="lead">The attention mechanism is one of the most beautiful ideas in modern machine learning. It is also, at scale, one of the most expensive memory operations ever deployed in production.</p>
+
+    <p>When a new token is generated, the model asks: "which prior tokens should I weight most heavily?" It answers by computing a dot product between the current query vector and every previously computed key vector, applying softmax, and mixing value vectors by those weights.</p>
+
+    <div class="equation">
+      Attention(Q, K, V) = softmax( QKᵀ / √d<sub>k</sub> ) · V<br><br>
+      <span class="eq-comment">
+      Where:<br>
+      &nbsp;&nbsp;Q  = query vector for current token [1 × d_k]<br>
+      &nbsp;&nbsp;K  = all prior key vectors [N × d_k]  ← grows with context<br>
+      &nbsp;&nbsp;V  = all prior value vectors [N × d_v] ← grows with context<br>
+      &nbsp;&nbsp;N  = sequence length (can be 1M+ at frontier)<br>
+      &nbsp;&nbsp;d_k = attention head dimension (typically 64–128)<br><br>
+      Memory per decode step = 2 × N × d_k × num_heads × num_layers × bytes_per_element
+      </span>
+    </div>
+
+    <p>That equation looks elegant. In systems terms, it means: <strong>to generate each new token, the inference engine must load all prior K and V vectors from memory</strong>. Every. Single. Step. There is no shortcut in vanilla attention — you cannot skip tokens, summarize them on the fly, or avoid the read. The past must be present.</p>
+
+    <div class="callout callout-warn">
+      <p><strong>The bandwidth trap:</strong> For a 70B model at 8K context, decoding a single token requires reading roughly <strong>~800MB of KV data</strong> per decode step. At H100's 3.35 TB/s HBM bandwidth, that's ~0.24ms of pure memory reads — before any compute. At 32K context, it's ~3.2ms per step, limiting you to ~312 tokens/sec theoretical max from bandwidth alone, regardless of FLOP capacity.</p>
+    </div>
+
+    <h3>The Quadratic Problem at Training vs. the Linear Problem at Inference</h3>
+    <p>There's a common confusion here worth untangling. Training attention is O(N²) in compute and memory — every token must attend to every other token, forming an N×N attention matrix. This is why long-context training was hard.</p>
+    <p>Inference is different. You only generate one token at a time, so the attention matrix becomes O(N) per decode step, not O(N²). <strong>But you pay O(N) in memory reads on every single step.</strong> For a 512-token generation at 32K context, that's 512 × 32K reads — effectively O(N×L) total memory bandwidth, where L is generation length.</p>
+
+    <div class="grid g2" style="margin:28px 0;">
+      <div class="mini">
+        <h3 style="color:var(--violet)">Training Cost</h3>
+        <p>O(N²) compute and memory for full attention matrix. This is why Flash Attention, ring attention, and sequence parallelism matter for training.</p>
+        <div class="equation" style="margin-top:16px;font-size:13px;">Training: O(N²·d) FLOPs per layer</div>
+      </div>
+      <div class="mini">
+        <h3 style="color:var(--rose)">Inference Cost</h3>
+        <p>O(N) memory reads per decode step. Simple, but brutal at scale — every generated token reads the entire history. Memory-bound, not compute-bound.</p>
+        <div class="equation" style="margin-top:16px;font-size:13px;">Decode: O(N·d·L) memory ops (L = generation length)</div>
+      </div>
+    </div>
+
+    <h3>KV Size Formula — Make It Concrete</h3>
+    <p>Here's the exact formula for how much memory the KV cache consumes:</p>
+    <div class="equation">
+      KV_bytes = 2 × L × N × H_kv × d_head × bytes_per_element<br><br>
+      <span class="eq-comment">
+      Where:<br>
+      &nbsp;&nbsp;2       = K tensor + V tensor<br>
+      &nbsp;&nbsp;L       = number of transformer layers (e.g., 80 for a 70B model)<br>
+      &nbsp;&nbsp;N       = sequence length (tokens in context)<br>
+      &nbsp;&nbsp;H_kv    = number of KV heads (8 for GQA-8, 1 for MQA, 64 for MHA)<br>
+      &nbsp;&nbsp;d_head  = head dimension (128 typical)<br>
+      &nbsp;&nbsp;bytes   = 2 for BF16/FP16, 1 for INT8, 0.5 for INT4<br><br>
+      Example (70B GQA-8, 32K ctx, BF16):<br>
+      &nbsp;&nbsp;= 2 × 80 × 32768 × 8 × 128 × 2 ≈ 10.7 GB
+      </span>
+    </div>
+
+    <!-- MHA vs GQA vs MQA diagram -->
+    <h3>MHA vs. GQA vs. MQA: The Head Sharing Spectrum</h3>
+    <p>One of the most impactful recent changes to production models has been reducing H_kv without sacrificing quality. This is the GQA/MQA story.</p>
+
+    <div class="card diagram reveal">
+      <div class="card-label"><span>KV Head Architectures</span><span>MHA → GQA → MQA</span></div>
+      <svg viewBox="0 0 1000 360" role="img" aria-label="Comparison of multi-head, grouped-query, and multi-query attention showing KV head sharing">
+        <rect x="18" y="18" width="964" height="324" rx="22" fill="#07101f" stroke="#1c2d45"/>
+
+        <!-- MHA column -->
+        <text x="120" y="60" fill="#eaf6ff" font-size="18" font-weight="800" text-anchor="middle" font-family="Syne, sans-serif">Multi-Head Attention</text>
+        <text x="120" y="82" fill="#8fa3be" font-size="12" text-anchor="middle">H_q = H_kv = 8</text>
+        <!-- Q heads -->
+        <rect x="46"  y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="82"  y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="118" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="154" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <text x="120" y="156" fill="#4a607c" font-size="12" text-anchor="middle">Q heads</text>
+        <!-- K/V heads (same count) -->
+        <rect x="46"  y="200" width="28" height="28" rx="6" fill="#fb7185" opacity=".8"/>
+        <rect x="82"  y="200" width="28" height="28" rx="6" fill="#fb7185" opacity=".8"/>
+        <rect x="118" y="200" width="28" height="28" rx="6" fill="#fb7185" opacity=".8"/>
+        <rect x="154" y="200" width="28" height="28" rx="6" fill="#fb7185" opacity=".8"/>
+        <text x="120" y="250" fill="#4a607c" font-size="12" text-anchor="middle">KV heads (×8)</text>
+        <text x="120" y="300" fill="#fb7185" font-size="13" font-weight="700" text-anchor="middle">KV = 100%</text>
+        <line x1="246" y1="100" x2="246" y2="320" stroke="#1c2d45" stroke-width="1"/>
+
+        <!-- GQA column -->
+        <text x="490" y="60" fill="#eaf6ff" font-size="18" font-weight="800" text-anchor="middle" font-family="Syne, sans-serif">Grouped-Query Attention</text>
+        <text x="490" y="82" fill="#8fa3be" font-size="12" text-anchor="middle">H_q = 8, H_kv = 2 (groups of 4)</text>
+        <rect x="358" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="394" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="430" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="466" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="502" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="538" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="574" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="610" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <!-- 2 KV heads shared -->
+        <rect x="412" y="200" width="28" height="28" rx="6" fill="#34d399" opacity=".9"/>
+        <rect x="538" y="200" width="28" height="28" rx="6" fill="#34d399" opacity=".9"/>
+        <!-- lines showing sharing -->
+        <line x1="372" y1="128" x2="426" y2="200" stroke="#34d399" stroke-width="1" opacity=".4"/>
+        <line x1="408" y1="128" x2="426" y2="200" stroke="#34d399" stroke-width="1" opacity=".4"/>
+        <line x1="444" y1="128" x2="426" y2="200" stroke="#34d399" stroke-width="1" opacity=".4"/>
+        <line x1="480" y1="128" x2="426" y2="200" stroke="#34d399" stroke-width="1" opacity=".4"/>
+        <line x1="516" y1="128" x2="552" y2="200" stroke="#34d399" stroke-width="1" opacity=".4"/>
+        <line x1="552" y1="128" x2="552" y2="200" stroke="#34d399" stroke-width="1" opacity=".4"/>
+        <line x1="588" y1="128" x2="552" y2="200" stroke="#34d399" stroke-width="1" opacity=".4"/>
+        <line x1="624" y1="128" x2="552" y2="200" stroke="#34d399" stroke-width="1" opacity=".4"/>
+        <text x="490" y="250" fill="#4a607c" font-size="12" text-anchor="middle">KV heads (×2 shared)</text>
+        <text x="490" y="300" fill="#34d399" font-size="13" font-weight="700" text-anchor="middle">KV = 25%   ✓</text>
+        <line x1="734" y1="100" x2="734" y2="320" stroke="#1c2d45" stroke-width="1"/>
+
+        <!-- MQA column -->
+        <text x="857" y="60" fill="#eaf6ff" font-size="18" font-weight="800" text-anchor="middle" font-family="Syne, sans-serif">Multi-Query Attention</text>
+        <text x="857" y="82" fill="#8fa3be" font-size="12" text-anchor="middle">H_q = 8, H_kv = 1</text>
+        <rect x="790" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="826" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="862" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="898" y="100" width="28" height="28" rx="6" fill="#3b82f6" opacity=".8"/>
+        <rect x="840" y="200" width="28" height="28" rx="6" fill="#fbbf24" opacity=".9"/>
+        <line x1="804" y1="128" x2="854" y2="200" stroke="#fbbf24" stroke-width="1" opacity=".4"/>
+        <line x1="840" y1="128" x2="854" y2="200" stroke="#fbbf24" stroke-width="1" opacity=".4"/>
+        <line x1="876" y1="128" x2="854" y2="200" stroke="#fbbf24" stroke-width="1" opacity=".4"/>
+        <line x1="912" y1="128" x2="854" y2="200" stroke="#fbbf24" stroke-width="1" opacity=".4"/>
+        <text x="857" y="250" fill="#4a607c" font-size="12" text-anchor="middle">1 KV head (fully shared)</text>
+        <text x="857" y="300" fill="#fbbf24" font-size="13" font-weight="700" text-anchor="middle">KV = 12.5%  ⚠ quality tradeoff</text>
+      </svg>
+      <p class="annotation" style="padding:0 22px 16px;">GQA (used in Llama 3, Mistral, Gemma) is now the dominant production choice — it cuts KV size by 4–8× with minimal quality loss. MQA is faster but shows more quality degradation at long context.</p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────── -->
+  <!-- SECTION 3: ENGINEERING FIXES                          -->
+  <!-- ─────────────────────────────────────────────────────── -->
+  <section id="engineering" class="reveal">
+    <div class="section-tag">§ 03 · Engineering Fixes</div>
+    <h2>What Engineers Did First: Optimize Within the Paradigm</h2>
+    <p class="lead">Before anyone redesigned attention itself, a generation of brilliant inference engineers found ways to make standard attention far more efficient. These optimizations are now table-stakes for any serious serving stack.</p>
+
+    <h3>FlashAttention: Rewrite the Memory Access Pattern</h3>
+    <p>FlashAttention (Dao et al., 2022, 2023) doesn't change the mathematical output of attention at all. It changes <em>how attention is computed</em> — specifically, how it interacts with the GPU memory hierarchy.</p>
+    <p>The key insight: instead of computing the full N×N attention matrix and writing it to HBM, FlashAttention tiles the computation into blocks that fit in SRAM (the fast on-chip cache). This dramatically reduces HBM reads and writes, which are the expensive operations.</p>
+
+    <div class="grid g2" style="margin:24px 0;">
+      <div class="mini">
+        <h3 style="color:var(--rose)">Standard Attention I/O</h3>
+        <p>Reads Q, K, V from HBM. Writes N×N attention matrix to HBM. Reads it back to apply softmax. Reads again to multiply with V. Total: O(N²) HBM reads/writes.</p>
+      </div>
+      <div class="mini">
+        <h3 style="color:var(--mint)">FlashAttention I/O</h3>
+        <p>Tiles Q, K, V into SRAM blocks. Computes incrementally. Never materializes full N×N matrix in HBM. Total: O(N) HBM reads/writes. 2–4× faster wall-clock on long sequences.</p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <p><strong>FlashAttention's contribution:</strong> It solved the training and prefill memory problem. But it does not fundamentally reduce how much <em>KV state</em> must exist and grow during decode. The KV cache remains, and still scales linearly with context and concurrency.</p>
+    </div>
+
+    <h3>PagedAttention: vLLM and the OS Insight</h3>
+    <p>The next major insight came not from ML research but from OS design. The vLLM team (Kwon et al., 2023) noticed that traditional KV cache management was like a pre-virtual-memory operating system: memory was allocated in large contiguous chunks, leading to massive fragmentation and waste.</p>
+    <p>PagedAttention maps non-contiguous physical memory blocks to logical KV pages — just like virtual memory pages in an OS. This allows:</p>
+    <div class="grid g3" style="margin:20px 0;">
+      <div class="mini"><h3>Prefix Sharing</h3><p>Requests sharing the same system prompt share physical KV pages. One copy in memory serves many users simultaneously.</p></div>
+      <div class="mini"><h3>Copy-on-Write Branching</h3><p>Agentic branches fork KV pages cheaply, copying only on modification. Tree-structured KV for beam search and reasoning trees.</p></div>
+      <div class="mini"><h3>Dynamic Allocation</h3><p>No pre-commitment to maximum sequence length. Pages are allocated and freed dynamically, cutting fragmentation from ~60% to near zero.</p></div>
+    </div>
+
+    <h3>Speculative Decoding: Amortize the Memory Reads</h3>
+    <p>Speculative decoding runs a small draft model to generate candidate tokens cheaply, then verifies them in parallel with the large model. The key insight for memory: you're amortizing the expensive KV read across multiple tokens per verification step, improving hardware utilization at long context.</p>
+
+    <!-- Timeline of engineering innovations -->
+    <h3>A Timeline of Production Attention Optimizations</h3>
+    <div class="timeline">
+      <div class="tl-item reveal">
+        <div class="tl-dot"></div>
+        <div class="tl-year">2017 → Attention Is All You Need</div>
+        <div class="tl-text"><strong>Transformer + KV cache introduced.</strong> Elegant, powerful, and unknowingly set the stage for a decade of memory pressure at scale.</div>
+      </div>
+      <div class="tl-item reveal">
+        <div class="tl-dot" style="background:var(--violet)"></div>
+        <div class="tl-year">2021 → Multi-Query Attention (Shazeer)</div>
+        <div class="tl-text"><strong>Sharing one KV head across all query heads.</strong> Cuts KV size by ~8×. First major architectural response to KV cost, at some quality cost.</div>
+      </div>
+      <div class="tl-item reveal">
+        <div class="tl-dot" style="background:var(--mint)"></div>
+        <div class="tl-year">2022 → FlashAttention v1 (Dao et al.)</div>
+        <div class="tl-text"><strong>IO-aware attention, 2–4× prefill speedup.</strong> Rewrites memory access patterns using tiling and SRAM. Now universal in training and prefill.</div>
+      </div>
+      <div class="tl-item reveal">
+        <div class="tl-dot" style="background:var(--amber)"></div>
+        <div class="tl-year">2023 → PagedAttention / vLLM (Kwon et al.)</div>
+        <div class="tl-text"><strong>Virtual memory for KV cache.</strong> Eliminates fragmentation, enables prefix sharing and CoW branching. Became the dominant open-source serving framework.</div>
+      </div>
+      <div class="tl-item reveal">
+        <div class="tl-dot" style="background:var(--rose)"></div>
+        <div class="tl-year">2023 → GQA (Ainslie et al.)</div>
+        <div class="tl-text"><strong>Grouped-Query Attention: the production sweet spot.</strong> K/V head groups of 4–8 cut cache by 4–8× with minimal quality degradation. Now default in Llama 3, Mistral, Gemma, and most frontier models.</div>
+      </div>
+      <div class="tl-item reveal">
+        <div class="tl-dot" style="background:var(--sky)"></div>
+        <div class="tl-year">2024–2025 → KV Quantization + Speculative Decoding at Scale</div>
+        <div class="tl-text"><strong>INT8/INT4 KV compression, draft models.</strong> Further halving or quartering cache size. Speculative decoding amortizes memory reads across tokens. Still additive optimizations on top of the same fundamental architecture.</div>
+      </div>
+    </div>
+
+    <div class="callout callout-warn">
+      <p><strong>The ceiling:</strong> All of these optimizations are improvements <em>within</em> the standard attention paradigm. They push the wall back. They don't remove it. KV cache still scales linearly with context length and concurrency. At million-token contexts and thousands of concurrent users, even a perfectly optimized transformer hits a physical memory limit. That's why the industry is now looking at changing attention itself.</p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────── -->
+  <!-- SECTION 4: NEW ARCHITECTURES                          -->
+  <!-- ─────────────────────────────────────────────────────── -->
+  <section id="alternatives" class="reveal">
+    <div class="section-tag">§ 04 · New Architectures</div>
+    <h2>What "Changing Attention Itself" Really Means</h2>
+    <p class="lead">It means escaping the assumption that the model must explicitly retain and attend to every previous token at full resolution. The question is: how do you change this without destroying model quality?</p>
+    <p>There are multiple paths being explored simultaneously. None are free. Each makes a different trade between accuracy, recall fidelity, hardware compatibility, training stability, and serving cost. The field is genuinely open.</p>
+
+    <!-- Architecture comparison table -->
+    <h3>The Landscape: An Honest Comparison</h3>
+    <div class="arch-compare reveal">
+      <div class="arch-col">
+        <div class="arch-head" style="color:var(--sky)">Standard Attention<br><span style="color:var(--muted);font-size:11px;font-weight:400;">Transformer (MHA/GQA)</span></div>
+        <div class="arch-item"><span class="good">✓</span> Maximum expressiveness</div>
+        <div class="arch-item"><span class="good">✓</span> Exact recall of any token</div>
+        <div class="arch-item"><span class="good">✓</span> Well-understood training dynamics</div>
+        <div class="arch-item"><span class="good">✓</span> Universal hardware support</div>
+        <div class="arch-item"><span class="bad">✗</span> O(N) memory per decode step</div>
+        <div class="arch-item"><span class="bad">✗</span> KV grows unboundedly</div>
+        <div class="arch-item"><span class="bad">✗</span> Bandwidth-bound at long ctx</div>
+      </div>
+      <div class="arch-col">
+        <div class="arch-head" style="color:var(--violet)">Linear Attention<br><span style="color:var(--muted);font-size:11px;font-weight:400;">RWKV, RetNet, GLA, etc.</span></div>
+        <div class="arch-item"><span class="good">✓</span> O(1) memory at inference</div>
+        <div class="arch-item"><span class="good">✓</span> Bounded KV state (fixed size)</div>
+        <div class="arch-item"><span class="good">✓</span> Predictable memory scaling</div>
+        <div class="arch-item"><span class="mid">~</span> Streaming-friendly</div>
+        <div class="arch-item"><span class="bad">✗</span> Approximate: may lose recall</div>
+        <div class="arch-item"><span class="bad">✗</span> Quality gap on retrieval tasks</div>
+        <div class="arch-item"><span class="bad">✗</span> Training harder to stabilize</div>
+      </div>
+      <div class="arch-col">
+        <div class="arch-head" style="color:var(--mint)">State Space Models<br><span style="color:var(--muted);font-size:11px;font-weight:400;">Mamba, Mamba-2, S4, etc.</span></div>
+        <div class="arch-item"><span class="good">✓</span> O(1) inference memory</div>
+        <div class="arch-item"><span class="good">✓</span> Streaming / sequential-native</div>
+        <div class="arch-item"><span class="good">✓</span> Strong on continuous signals</div>
+        <div class="arch-item"><span class="good">✓</span> Excellent for audio/genomics</div>
+        <div class="arch-item"><span class="mid">~</span> Competitive with transformers at 3B scale</div>
+        <div class="arch-item"><span class="bad">✗</span> Compressed state = lossy recall</div>
+        <div class="arch-item"><span class="bad">✗</span> Quality gap widens at scale for text</div>
+      </div>
+      <div class="arch-col">
+        <div class="arch-head" style="color:var(--amber)">Hybrid Architectures<br><span style="color:var(--muted);font-size:11px;font-weight:400;">Jamba, Zamba, Griffin, etc.</span></div>
+        <div class="arch-item"><span class="good">✓</span> Best of both worlds</div>
+        <div class="arch-item"><span class="good">✓</span> Full attention for critical layers</div>
+        <div class="arch-item"><span class="good">✓</span> SSM/linear for cheap layers</div>
+        <div class="arch-item"><span class="mid">~</span> Reduced KV vs pure transformer</div>
+        <div class="arch-item"><span class="mid">~</span> More complex training</div>
+        <div class="arch-item"><span class="bad">✗</span> Still accumulates some KV</div>
+        <div class="arch-item"><span class="bad">✗</span> Less hardware-optimized than pure paths</div>
+      </div>
+    </div>
+
+    <!-- Sliding window diagram -->
+    <h3>Sliding-Window Attention: The Bounded Working Set</h3>
+    <p>Sliding-window attention (used in Mistral's original architecture, Longformer, BigBird) keeps only the last W tokens in the active attention window. This creates a hard bound on KV residency: O(W) instead of O(N).</p>
+    <p>The tradeoff is clear: long-range dependencies can disappear unless complemented by summary tokens, periodic global attention layers, or retrieval. This is exactly the design in Mistral's architecture — most layers use sliding window, but occasional layers use full attention to pass long-range signal through.</p>
+
+    <div class="card diagram reveal">
+      <div class="card-label"><span>Sliding Window vs. Full Attention</span><span>bounded active memory</span></div>
+      <svg viewBox="0 0 1000 320" role="img" aria-label="Comparison of full attention (every token active) vs sliding window (only recent tokens active)">
+        <rect x="18" y="18" width="964" height="284" rx="22" fill="#07101f" stroke="#1c2d45"/>
+        <!-- Full attention side -->
+        <text x="120" y="55" fill="#eaf6ff" font-size="17" font-weight="800" text-anchor="middle" font-family="Syne, sans-serif">Full Attention</text>
+        <text x="120" y="75" fill="#8fa3be" font-size="12" text-anchor="middle">all prior tokens active</text>
+        <g transform="translate(44,100)">
+          <rect x="0"   y="0" width="32" height="32" rx="6" fill="#fb7185" opacity=".9"/>
+          <rect x="38"  y="0" width="32" height="32" rx="6" fill="#fb7185" opacity=".9"/>
+          <rect x="76"  y="0" width="32" height="32" rx="6" fill="#fb7185" opacity=".9"/>
+          <rect x="114" y="0" width="32" height="32" rx="6" fill="#fb7185" opacity=".9"/>
+          <rect x="152" y="0" width="32" height="32" rx="6" fill="#fb7185" opacity=".9"/>
+          <rect x="38"  y="60" fill="#4a607c" width="116" height="1"/>
+          <text x="76" y="80" fill="#4a607c" font-size="12" text-anchor="middle">all in KV cache</text>
+          <text x="76" y="148" fill="#fb7185" font-size="13" font-weight="700" text-anchor="middle">Memory: O(N)</text>
+          <text x="76" y="170" fill="#8fa3be" font-size="12" text-anchor="middle">grows forever</text>
+        </g>
+        <!-- divider -->
+        <line x1="290" y1="50" x2="290" y2="280" stroke="#1c2d45" stroke-width="1.5"/>
+
+        <!-- Sliding window side -->
+        <text x="640" y="55" fill="#eaf6ff" font-size="17" font-weight="800" text-anchor="middle" font-family="Syne, sans-serif">Sliding Window Attention</text>
+        <text x="640" y="75" fill="#8fa3be" font-size="12" text-anchor="middle">only last W tokens active in full resolution</text>
+        <g transform="translate(315,100)">
+          <!-- old tokens faded -->
+          <rect x="0"   y="0" width="32" height="32" rx="6" fill="#1c2d45" opacity=".5"/>
+          <rect x="38"  y="0" width="32" height="32" rx="6" fill="#1c2d45" opacity=".5"/>
+          <rect x="76"  y="0" width="32" height="32" rx="6" fill="#1c2d45" opacity=".5"/>
+          <text x="0"   y="22" fill="#4a607c" font-size="11" text-anchor="middle">old</text>
+          <text x="54"  y="22" fill="#4a607c" font-size="11" text-anchor="middle">old</text>
+          <!-- window bracket -->
+          <rect x="122" y="-12" width="224" height="54" rx="14" fill="none" stroke="#7dd3fc" stroke-width="2.5"/>
+          <!-- active tokens -->
+          <rect x="130" y="0" width="32" height="32" rx="6" fill="#7dd3fc"/>
+          <rect x="168" y="0" width="32" height="32" rx="6" fill="#7dd3fc"/>
+          <rect x="206" y="0" width="32" height="32" rx="6" fill="#7dd3fc"/>
+          <rect x="244" y="0" width="32" height="32" rx="6" fill="#7dd3fc"/>
+          <rect x="282" y="0" width="32" height="32" rx="6" fill="#34d399"/>
+          <text x="146" y="22" fill="#03111e" font-size="11" text-anchor="middle" font-weight="700">t₋₃</text>
+          <text x="184" y="22" fill="#03111e" font-size="11" text-anchor="middle" font-weight="700">t₋₂</text>
+          <text x="222" y="22" fill="#03111e" font-size="11" text-anchor="middle" font-weight="700">t₋₁</text>
+          <text x="260" y="22" fill="#03111e" font-size="11" text-anchor="middle" font-weight="700">t₀</text>
+          <text x="298" y="22" fill="#03111e" font-size="11" text-anchor="middle" font-weight="700">new</text>
+          <text x="0" y="80" fill="#4a607c" font-size="12">compressed/dropped</text>
+          <text x="234" y="80" fill="#7dd3fc" font-size="12">active window</text>
+          <text x="234" y="148" fill="#34d399" font-size="13" font-weight="700" text-anchor="middle">Memory: O(W)</text>
+          <text x="234" y="170" fill="#8fa3be" font-size="12" text-anchor="middle">bounded, predictable</text>
+        </g>
+      </svg>
+    </div>
+
+    <h3>State Space Models: Compress History Into a Fixed-Size State</h3>
+    <p>SSMs like the Mamba family take a fundamentally different approach. Instead of caching all prior tokens, the model distills its understanding of the past into a compact, fixed-size state vector that gets updated on each new token.</p>
+    <p>Think of it like the difference between a stenographer who writes down every word (transformers) and a person who takes notes and integrates new information into an existing mental model (SSMs). The mental model is limited — you won't recall verbatim text from three hours ago — but it's far more memory-efficient.</p>
+
+    <div class="grid g2" style="margin:24px 0;">
+      <div class="mini">
+        <h3>Transformer Decode</h3>
+        <div class="equation" style="font-size:13px;margin-top:12px;">
+          y_t = Attention(q_t, K_{1..t}, V_{1..t})<br>
+          <span class="eq-comment">KV grows: O(t) memory</span>
+        </div>
+      </div>
+      <div class="mini">
+        <h3>SSM / Mamba Decode</h3>
+        <div class="equation" style="font-size:13px;margin-top:12px;">
+          h_t = A·h_{t-1} + B·x_t<br>
+          y_t = C·h_t<br>
+          <span class="eq-comment">h is fixed size: O(1) memory</span>
+        </div>
+      </div>
+    </div>
+
+    <p>The systems intuition is powerful: SSMs become streaming engines. They read input, update a compact state, and carry it forward. No KV cache to grow. No bandwidth bottleneck from re-reading past tokens. The catch: that compressed state can lose information that full attention would have retained, particularly for tasks requiring verbatim retrieval or long-range needle-in-haystack recall.</p>
+
+    <h3>Hierarchical Attention: Memory With Levels</h3>
+    <p>Another path — arguably the most intellectually satisfying — is to build the model's memory with explicit levels, much like a CPU cache hierarchy.</p>
+    <div class="grid g4" style="margin:20px 0;">
+      <div class="mini" style="border-color:rgba(125,211,252,.3);">
+        <h3 style="color:var(--sky)">L1: Active Window</h3>
+        <p>Recent N tokens. Full KV resolution. Exact attention. Expensive but necessary for immediate coherence.</p>
+      </div>
+      <div class="mini" style="border-color:rgba(167,139,250,.3);">
+        <h3 style="color:var(--violet)">L2: Compressed Memory</h3>
+        <p>Older text collapsed into summary vectors, topic embeddings, or compressed latent blocks. Cheaper reads, some fidelity loss.</p>
+      </div>
+      <div class="mini" style="border-color:rgba(52,211,153,.3);">
+        <h3 style="color:var(--mint)">L3: Cold Storage</h3>
+        <p>Documents, prior conversations, long-term context. Lives off GPU in DRAM or SSD. Fetched only when needed.</p>
+      </div>
+      <div class="mini" style="border-color:rgba(251,191,36,.3);">
+        <h3 style="color:var(--amber)">Retrieval Path</h3>
+        <p>Semantic search over L3. The model queries what it needs, rather than keeping everything hot.</p>
+      </div>
+    </div>
+
+    <blockquote>"The future of attention may not be 'look at everything.' It may be 'remember selectively, compress aggressively, and retrieve precisely.'"</blockquote>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────── -->
+  <!-- SECTION 5: FULL-STACK IMPACT                          -->
+  <!-- ─────────────────────────────────────────────────────── -->
+  <section id="stack" class="reveal">
+    <div class="section-tag">§ 05 · Systems Impact</div>
+    <h2>The AI Stack Starts Looking Like a Memory System</h2>
+    <p class="lead">If attention changes, the entire hardware and software stack changes with it. This is where the infrastructure opportunity becomes enormous — and where the next decade of systems innovation will live.</p>
+
+    <p>Today we talk about "the model" as if intelligence lives in a single artifact. But modern long-context inference is already a distributed runtime, and this is only going to deepen:</p>
+
+    <div class="card diagram reveal">
+      <div class="card-label" style="padding: 0 0 16px;"><span>Future Inference Memory Hierarchy</span><span>not everything belongs in HBM</span></div>
+      <svg viewBox="0 0 1000 540" role="img" aria-label="Layered memory hierarchy for future AI inference from HBM to retrieval index">
+        <rect x="18" y="18" width="964" height="504" rx="26" fill="#07101f" stroke="#1c2d45"/>
+        <text x="60" y="66" fill="#eaf6ff" font-size="28" font-weight="900" font-family="Syne, sans-serif">Inference becomes a memory-hierarchy problem</text>
+        <text x="60" y="96" fill="#8fa3be" font-size="15">Exact, compressed, warm, cold, and retrieved memory — each tier with different latency, cost, and fidelity.</text>
+        <!-- Tier 1 -->
+        <rect x="60" y="128" width="800" height="72" rx="16" fill="rgba(125,211,252,.15)" stroke="rgba(125,211,252,.4)"/>
+        <text x="84" y="156" fill="#7dd3fc" font-size="14" font-weight="800" font-family="DM Mono, monospace">TIER 1 — HBM (GPU On-Device)</text>
+        <text x="84" y="178" fill="#8fa3be" font-size="14">Active KV blocks · current batch · model weights · activations  |  ~3 TB/s bandwidth · ~80–192 GB capacity</text>
+        <!-- Tier 2 -->
+        <rect x="88" y="224" width="744" height="72" rx="16" fill="rgba(167,139,250,.13)" stroke="rgba(167,139,250,.35)"/>
+        <text x="112" y="252" fill="#a78bfa" font-size="14" font-weight="800" font-family="DM Mono, monospace">TIER 2 — DRAM / CXL Pooled Memory</text>
+        <text x="112" y="274" fill="#8fa3be" font-size="14">Warm KV cache · compressed summaries · spill buffers · prefill cache  |  ~300 GB/s · TB scale · lower latency than NVMe</text>
+        <!-- Tier 3 -->
+        <rect x="116" y="320" width="688" height="72" rx="16" fill="rgba(52,211,153,.10)" stroke="rgba(52,211,153,.3)"/>
+        <text x="140" y="348" fill="#34d399" font-size="14" font-weight="800" font-family="DM Mono, monospace">TIER 3 — NVMe / Object Storage</text>
+        <text x="140" y="370" fill="#8fa3be" font-size="14">Cold memory · long-term documents · agent traces · audit logs  |  GB/s bandwidth · PB scale · high latency</text>
+        <!-- Tier 4 -->
+        <rect x="144" y="416" width="632" height="72" rx="16" fill="rgba(251,191,36,.09)" stroke="rgba(251,191,36,.28)"/>
+        <text x="168" y="444" fill="#fbbf24" font-size="14" font-weight="800" font-family="DM Mono, monospace">TIER 4 — Vector Index / Retrieval System</text>
+        <text x="168" y="466" fill="#8fa3be" font-size="14">Semantic memory · episodic recall · tool context · multi-agent shared memory  |  query-latency access</text>
+        <!-- arrows -->
+        <path d="M875 165 L875 228" stroke="#fb7185" stroke-width="3" marker-end="url(#arr)"/>
+        <path d="M875 261 L875 324" stroke="#fb7185" stroke-width="3" marker-end="url(#arr)"/>
+        <path d="M875 357 L875 420" stroke="#fb7185" stroke-width="3" marker-end="url(#arr)"/>
+        <text x="886" y="210" fill="#fecdd3" font-size="12" font-weight="700">KV</text>
+        <text x="886" y="296" fill="#fecdd3" font-size="12" font-weight="700">evict</text>
+        <text x="886" y="392" fill="#fecdd3" font-size="12" font-weight="700">archive</text>
+        <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#fb7185"/></marker></defs>
+      </svg>
+    </div>
+
+    <h3>CXL: The Memory Fabric That Changes the Equation</h3>
+    <p>CXL (Compute Express Link) is a relatively new interconnect standard that enables CPU and GPU to share a common memory pool with far lower latency than PCIe or network-attached storage. For AI inference, this is potentially transformative:</p>
+    <div class="grid g3" style="margin:20px 0;">
+      <div class="mini">
+        <h3>KV Cache Disaggregation</h3>
+        <p>Offload warm KV blocks to CXL-attached DRAM at near-HBM-latency. GPU HBM holds only the hottest blocks; the rest spill to a shared memory pool accessible by all GPUs in the rack.</p>
+      </div>
+      <div class="mini">
+        <h3>Elastic Memory Pools</h3>
+        <p>Multiple GPUs can share a CXL memory fabric, dynamically allocating KV capacity to whichever requests need it most. No more per-GPU waste from pre-committed context windows.</p>
+      </div>
+      <div class="mini">
+        <h3>Near-Memory Compute</h3>
+        <p>CXL memory modules with embedded processing can compress/decompress KV blocks on the fly, keeping raw throughput high without GPUs burning cycles on memory management.</p>
+      </div>
+    </div>
+
+    <h3>Prefill/Decode Disaggregation</h3>
+    <p>One of the most important recent architectural shifts in serving systems: separating the <em>prefill</em> phase (processing the input prompt) from the <em>decode</em> phase (generating output tokens). These two phases have completely different hardware profiles:</p>
+    <div class="grid g2" style="margin:20px 0;">
+      <div class="mini" style="border-left:3px solid var(--sky)">
+        <h3>Prefill Phase</h3>
+        <p>Compute-bound. Processes all prompt tokens in parallel. High FLOP utilization. Benefits from large batch sizes and tensor parallelism. Latency-sensitive (user is waiting).</p>
+      </div>
+      <div class="mini" style="border-left:3px solid var(--rose)">
+        <h3>Decode Phase</h3>
+        <p>Memory-bandwidth-bound. Generates one token at a time. Low FLOP utilization. Bottlenecked by KV reads. Benefits from batching many requests to amortize bandwidth costs.</p>
+      </div>
+    </div>
+    <p>Disaggregated serving (used in systems like DistServe, Mooncake) routes these phases to different hardware pools, improving overall cluster utilization and throughput dramatically.</p>
+
+    <div class="callout">
+      <p><strong>The intelligence is moving to the system:</strong> when the model stores state in a retrieval index instead of KV cache, intelligence is no longer purely inside the weights. Vector databases, memory managers, rerankers, and tool-routing layers become first-class parts of the intelligence stack. This has profound implications for model evaluation — a bad retrieval system makes a good model look dumb.</p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────── -->
+  <!-- SECTION 6: TAKEAWAYS                                  -->
+  <!-- ─────────────────────────────────────────────────────── -->
+  <section id="takeaways" class="reveal">
+    <div class="section-tag">§ 06 · Takeaways</div>
+    <h2>What This Means for You</h2>
+    <p class="lead">This is not just an academic architecture debate. The memory bottleneck has immediate, practical implications depending on where you sit in the AI stack.</p>
+
+    <div class="grid g3" style="margin:28px 0;">
+      <div class="mini" style="border-top:3px solid var(--sky)">
+        <h3>If you're an infra / serving engineer</h3>
+        <p>KV cache residency, fragmentation rates, prefill/decode separation, cache hit rates, and HBM bandwidth utilization are now <strong>first-class SLO inputs</strong> — as important as GPU utilization. Track them obsessively.</p>
+        <p>Evaluate PagedAttention-style serving, prefix caching, KV quantization (INT8/INT4 KV is often free in quality), and speculative decoding for your workloads now.</p>
+        <p>Watch CXL memory hardware. It could change your cluster design substantially within 2–3 years.</p>
+      </div>
+      <div class="mini" style="border-top:3px solid var(--violet)">
+        <h3>If you're fine-tuning or evaluating models</h3>
+        <p>Don't optimize only for benchmark accuracy. <strong>Evaluate serving cost at your actual context length distribution.</strong> A model that scores 2 points higher on benchmarks but uses 4× the KV memory may be the wrong choice for production.</p>
+        <p>Test long-context quality under KV quantization — some models degrade more than others at INT8 KV. Test with realistic concurrency, not single-request benchmarks.</p>
+      </div>
+      <div class="mini" style="border-top:3px solid var(--mint)">
+        <h3>If you're a founder or investor</h3>
+        <p>The opportunity is not just bigger models. <strong>Memory-aware runtimes, KV compression algorithms, CXL pooled memory hardware, prefix sharing systems, and inference orchestration</strong> are all areas where the problem is well-defined and the value is enormous.</p>
+        <p>Reasoning logs as cold memory: agent traces need to stay auditable, searchable, and replayable even after they leave HBM. That creates a new class of persistent AI memory infrastructure.</p>
+      </div>
+    </div>
+
+    <div class="callout" style="margin:40px 0;">
+      <p><strong>The meta-observation:</strong> the winners in the next phase of AI infrastructure may not simply be whoever has the best model. They may be whoever combines the best model architecture with the smartest memory orchestration. Training-time improvements and inference-time memory systems are becoming co-designed. The line between "the model" and "the system" is blurring.</p>
+    </div>
+
+    <h2 style="margin-top:60px;">Final Thought</h2>
+    <p>The first era of modern AI scaling was compute-centric. Bigger clusters, more FLOPs, faster chips. The next era may be memory-centric. Not memory in the philosophical sense — but literally, physically: where bytes live, how fast they move, and how intelligently they are organized.</p>
+    <p>Attention made transformers powerful because it gave them the ability to dynamically use any part of their context. That same mechanism is now becoming a scaling wall. KV cache growth, bandwidth saturation, context length explosion, and concurrency are jointly transforming inference into a <strong>memory-systems problem</strong>.</p>
+    <p>Changing attention itself — through linear kernels, state compression, retrieval augmentation, hierarchical memory, or hybrid architectures — is not just a model research topic. It is a full-stack infrastructure shift touching GPU design, HBM capacity, CXL fabrics, SmartNICs, KV schedulers, vector indices, and serving runtimes simultaneously.</p>
+
+    <blockquote>"The next breakthrough may not come from making models merely bigger. It may come from making memory smarter."</blockquote>
+
+    <div class="grid g3" style="margin-top:48px;">
+      <div class="mini" style="text-align:center;padding:28px;">
+        <div style="font-size:32px;margin-bottom:12px;">📐</div>
+        <h3 style="font-size:16px;">Go Deeper: Architecture</h3>
+        <p style="font-size:14px;">Mamba paper (Gu & Dao, 2023) · FlashAttention-2 · GQA paper · RetNet</p>
+      </div>
+      <div class="mini" style="text-align:center;padding:28px;">
+        <div style="font-size:32px;margin-bottom:12px;">⚙️</div>
+        <h3 style="font-size:16px;">Go Deeper: Systems</h3>
+        <p style="font-size:14px;">vLLM / PagedAttention · DistServe · Mooncake · SGLang · TensorRT-LLM</p>
+      </div>
+      <div class="mini" style="text-align:center;padding:28px;">
+        <div style="font-size:32px;margin-bottom:12px;">🔩</div>
+        <h3 style="font-size:16px;">Go Deeper: Hardware</h3>
+        <p style="font-size:14px;">CXL Consortium specs · HBM4 roadmap · Groq LPU architecture · Cerebras wafer-scale</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Written as a technical deep-dive. All KV size figures are illustrative estimates based on public model architecture parameters.</span>
+    <span><a href="/index.html">© 2026 MANISH AI. All rights reserved.</a></span>
+    <span><a href="/writings.html">← All writings</a> · AI Systems · Memory Architecture · Inference Engineering</span>
+  </footer>
+
+</main>
+
+<script>
+  // Progress bar
+  window.addEventListener('scroll', () => {
+    const el = document.getElementById('progress');
+    const pct = (window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100;
+    el.style.width = pct + '%';
+  });
+
+  // Scroll reveal
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
