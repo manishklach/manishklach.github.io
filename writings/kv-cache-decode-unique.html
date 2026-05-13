@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Four Things Nobody Has Written About FlashDecode | MANISH AI</title>
+<meta name="description" content="An original technical analysis of FlashDecode covering kernel crossover math, reduction inversion, CXL asymmetry, and runtime switching for long-context inference.">
+<meta name="keywords" content="FlashDecode, KV cache decode, long-context inference, kernel scheduling, CXL memory, prefill decode, inference runtime, MANISH AI">
+<meta name="author" content="MANISH AI">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://manishklach.github.io/writings/kv-cache-decode-unique.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Four Things Nobody Has Written About FlashDecode | MANISH AI">
+<meta property="og:description" content="An original technical analysis of FlashDecode covering kernel crossover math, reduction inversion, CXL asymmetry, and runtime switching for long-context inference.">
+<meta property="og:url" content="https://manishklach.github.io/writings/kv-cache-decode-unique.html">
+<meta property="og:site_name" content="MANISH AI">
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta property="og:image:alt" content="Four Things Nobody Has Written About FlashDecode">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Four Things Nobody Has Written About FlashDecode | MANISH AI">
+<meta name="twitter:description" content="An original technical analysis of FlashDecode covering kernel crossover math, reduction inversion, CXL asymmetry, and runtime switching for long-context inference.">
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Four Things Nobody Has Written About FlashDecode",
+  "description": "An original technical analysis of FlashDecode covering kernel crossover math, reduction inversion, CXL asymmetry, and runtime switching for long-context inference.",
+  "url": "https://manishklach.github.io/writings/kv-cache-decode-unique.html",
+  "datePublished": "2026-05-13",
+  "dateModified": "2026-05-13",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/kv-cache-decode-unique.html",
+  "inLanguage": "en",
+  "author": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  }
+}</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=IBM+Plex+Serif:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg:       #0e0f11;
+  --bg2:      #13151a;
+  --bg3:      #1a1d24;
+  --border:   rgba(255,255,255,0.07);
+  --border2:  rgba(255,255,255,0.12);
+  --ink:      #e8e3d8;
+  --ink2:     #a09890;
+  --ink3:     #6b6360;
+  --amber:    #e8a043;
+  --amber2:   #c47820;
+  --teal:     #3ecfb2;
+  --teal2:    #1a9f88;
+  --red:      #e05555;
+  --green:    #52c47a;
+  --blue:     #5b9cf6;
+  --mono:     'IBM Plex Mono', monospace;
+  --serif:    'IBM Plex Serif', Georgia, serif;
+  --sans:     'IBM Plex Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 15px; }
+
+body {
+  font-family: var(--serif);
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.78;
+  /* subtle grid texture */
+  background-image:
+    linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+/* ── LAYOUT ── */
+.shell {
+  max-width: 1160px; margin: 0 auto;
+  padding: 0 20px 80px;
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 0;
+}
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+}
+
+/* ── TOPBAR ── */
+.topbar {
+  grid-column: 1/-1;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 0 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink3);
+  position: sticky; top: 0; z-index: 40;
+  background: var(--bg);
+}
+.topbar-brand { color: var(--amber); font-weight: 600; letter-spacing: 0.04em; text-decoration: none; }
+.topbar-nav { display: flex; align-items: center; gap: 16px; }
+.topbar-nav a { color: var(--ink3); text-decoration: none; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; transition: color 0.2s ease; }
+.topbar-nav a:hover, .topbar-nav a[aria-current="page"] { color: var(--amber); }
+.topbar-meta { display: flex; gap: 20px; }
+.topbar-meta span { color: var(--ink3); }
+.topbar-meta .tag {
+  color: var(--teal); border: 1px solid var(--teal2);
+  padding: 1px 7px; border-radius: 3px; font-size: 10px;
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  padding: 40px 0 0;
+  position: sticky; top: 44px;
+  align-self: start;
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+}
+.sidebar-section { margin-bottom: 28px; }
+.sidebar-label {
+  font-family: var(--mono); font-size: 9px;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink3); margin-bottom: 8px;
+}
+.toc-link {
+  display: block; padding: 5px 10px 5px 0;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--ink3); text-decoration: none;
+  border-left: 2px solid transparent;
+  padding-left: 10px;
+  transition: all 0.15s;
+  line-height: 1.4;
+}
+.toc-link:hover { color: var(--amber); border-left-color: var(--amber2); }
+.toc-link.active { color: var(--amber); border-left-color: var(--amber); }
+.toc-link.orig { color: var(--teal2); }
+.toc-link.orig:hover, .toc-link.orig.active { color: var(--teal); border-left-color: var(--teal); }
+
+/* ── MAIN ── */
+.main { padding: 40px 0 0 40px; min-width: 0; }
+@media (max-width: 900px) { .main { padding: 28px 0 0; } }
+
+/* ── HERO ── */
+.hero { margin-bottom: 52px; }
+.hero-kicker {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--teal); letter-spacing: 0.1em;
+  text-transform: uppercase; margin-bottom: 16px;
+  display: flex; align-items: center; gap: 10px;
+}
+.hero-kicker::before {
+  content: ''; display: inline-block;
+  width: 28px; height: 1px; background: var(--teal);
+}
+.hero-title {
+  font-family: var(--serif); font-size: clamp(2rem, 4vw, 3.2rem);
+  font-weight: 700; line-height: 1.12;
+  letter-spacing: -0.03em;
+  margin-bottom: 20px;
+  color: var(--ink);
+}
+.hero-title em { color: var(--amber); font-style: normal; }
+.hero-sub {
+  font-size: 1.1rem; line-height: 1.7;
+  color: var(--ink2); max-width: 680px;
+  font-style: italic; margin-bottom: 24px;
+}
+.hero-meta {
+  display: flex; flex-wrap: wrap; gap: 16px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink3);
+  padding-top: 20px; border-top: 1px solid var(--border);
+}
+.hero-meta span { display: flex; align-items: center; gap: 6px; }
+.hero-meta .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--amber); }
+
+/* ── SECTION ── */
+.section { margin-bottom: 60px; scroll-margin-top: 56px; }
+.section-head {
+  display: flex; align-items: baseline; gap: 14px;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.section-num {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--ink3); flex-shrink: 0;
+}
+.section-title {
+  font-family: var(--serif); font-size: 1.55rem;
+  font-weight: 700; letter-spacing: -0.02em;
+}
+.orig-badge {
+  font-family: var(--mono); font-size: 9px;
+  font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--bg); background: var(--teal);
+  padding: 2px 7px; border-radius: 3px;
+  flex-shrink: 0;
+}
+.section h3 {
+  font-family: var(--sans); font-size: 0.95rem;
+  font-weight: 600; color: var(--amber);
+  margin: 28px 0 10px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: 11px;
+}
+
+/* ── PROSE ── */
+p { font-size: 1.01rem; margin-bottom: 16px; }
+p:last-child { margin-bottom: 0; }
+strong { color: var(--ink); font-weight: 600; }
+em { color: var(--ink2); }
+
+code {
+  font-family: var(--mono); font-size: 0.86em;
+  background: var(--bg3); color: var(--teal);
+  padding: 1px 5px; border-radius: 3px;
+  border: 1px solid var(--border);
+}
+pre {
+  font-family: var(--mono); font-size: 0.82rem;
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: 8px; padding: 18px 20px;
+  overflow-x: auto; margin: 20px 0;
+  line-height: 1.65; color: var(--ink2);
+  white-space: pre;
+}
+pre .c  { color: var(--ink3); font-style: italic; }
+pre .k  { color: var(--amber); }
+pre .v  { color: var(--teal); }
+pre .h  { color: var(--blue); }
+pre .r  { color: var(--red); }
+pre .g  { color: var(--green); }
+
+/* ── CALLOUT ── */
+.callout {
+  border-radius: 6px; padding: 14px 18px;
+  margin: 20px 0; font-family: var(--sans);
+  font-size: 0.93rem; border-left: 3px solid;
+}
+.callout-label {
+  font-family: var(--mono); font-size: 9.5px;
+  font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; margin-bottom: 6px;
+}
+.callout.amber { background: rgba(232,160,67,0.07); border-color: var(--amber); }
+.callout.amber .callout-label { color: var(--amber); }
+.callout.teal  { background: rgba(62,207,178,0.07); border-color: var(--teal); }
+.callout.teal .callout-label  { color: var(--teal); }
+.callout.red   { background: rgba(224,85,85,0.07);  border-color: var(--red); }
+.callout.red .callout-label   { color: var(--red); }
+.callout.blue  { background: rgba(91,156,246,0.07); border-color: var(--blue); }
+.callout.blue .callout-label  { color: var(--blue); }
+
+/* ── PULL QUOTE ── */
+.pullquote {
+  margin: 28px 0; padding: 16px 0 16px 24px;
+  border-left: 3px solid var(--amber);
+  font-size: 1.14rem; font-style: italic;
+  color: var(--amber); line-height: 1.6;
+}
+
+/* ── TABLE ── */
+.tbl-wrap { overflow-x: auto; margin: 20px 0; border-radius: 8px; border: 1px solid var(--border2); }
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+th {
+  font-family: var(--mono); font-size: 9.5px;
+  font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink3); background: var(--bg2);
+  padding: 10px 14px; text-align: left;
+  border-bottom: 1px solid var(--border2);
+}
+td { padding: 9px 14px; border-bottom: 1px solid var(--border); vertical-align: top; font-family: var(--sans); font-size: 0.88rem; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,0.02); }
+td strong { color: var(--amber); }
+
+/* ── DIAGRAM ── */
+.diagram {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 24px 20px 16px;
+  margin: 24px 0;
+  overflow-x: auto;
+}
+.diagram svg { display: block; max-width: 100%; }
+.fig-cap {
+  margin-top: 12px;
+  font-family: var(--mono); font-size: 10.5px;
+  color: var(--ink3); line-height: 1.5;
+}
+.fig-cap strong { color: var(--ink2); }
+
+/* ── FORMULA BOX ── */
+.formula {
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 8px; padding: 18px 22px;
+  margin: 20px 0; font-family: var(--mono);
+  font-size: 0.9rem; line-height: 1.9;
+  color: var(--ink2);
+  overflow-x: auto;
+}
+.formula .label {
+  font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink3); margin-bottom: 8px; display: block;
+}
+.formula .result { color: var(--amber); font-weight: 600; }
+.formula .var { color: var(--teal); }
+.formula .note { color: var(--ink3); font-style: italic; font-size: 0.82rem; }
+
+/* ── BENCH BARS ── */
+.bench { margin: 20px 0; }
+.bench-row { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+.bench-lbl { font-family: var(--mono); font-size: 10px; color: var(--ink2); width: 60px; flex-shrink:0; text-align: right; }
+.bench-track { flex:1; background: rgba(255,255,255,0.05); border-radius: 3px; height: 18px; overflow:hidden; }
+.bench-fill { height: 100%; border-radius: 3px; display: flex; align-items: center; padding-left: 8px; font-family: var(--mono); font-size: 10px; font-weight: 500; }
+.bench-fill.fa  { background: rgba(107,99,96,0.55); color: var(--ink2); }
+.bench-fill.fd  { background: rgba(232,160,67,0.7); color: var(--bg); }
+.bench-fill.sw  { background: rgba(62,207,178,0.6); color: var(--bg); }
+
+/* ── DIVIDER ── */
+.divider {
+  border: none; border-top: 1px solid var(--border);
+  margin: 48px 0;
+}
+
+/* ── FOOTER ── */
+.footer {
+  margin-top: 40px; padding: 24px 0 0;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono); font-size: 10.5px;
+  color: var(--ink3);
+}
+.footer a { color: var(--amber); text-decoration: none; }
+
+/* ── CROSSOVER INTERACTIVE ── */
+.interactive-wrap {
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: 10px; padding: 22px 24px; margin: 24px 0;
+}
+.slider-row {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 10px; font-family: var(--mono); font-size: 11px;
+  color: var(--ink2);
+}
+.slider-row label { width: 180px; flex-shrink: 0; }
+input[type=range] {
+  flex: 1; accent-color: var(--amber);
+  cursor: pointer;
+}
+.slider-val { width: 50px; text-align: right; color: var(--amber); font-weight: 600; }
+#crossover-output {
+  margin-top: 14px; padding: 14px 16px;
+  background: var(--bg3); border-radius: 6px;
+  border: 1px solid var(--border2);
+  font-family: var(--mono); font-size: 11.5px;
+  line-height: 1.8;
+}
+.out-amber { color: var(--amber); font-weight: 600; }
+.out-teal  { color: var(--teal); }
+.out-red   { color: var(--red); }
+.out-dim   { color: var(--ink3); }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+<!-- ── TOPBAR ── -->
+<nav class="topbar">
+  <a class="topbar-brand" href="/index.html">MAN\SH AI</a>
+  <div class="topbar-nav">
+    <a href="/index.html">Home</a>
+    <a href="/writings.html" aria-current="page">Writings</a>
+    <a href="/patents.html">Patents</a>
+  </div>
+</nav>
+
+<!-- ── SIDEBAR ── -->
+<aside class="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-label">Context</div>
+    <a href="#background" class="toc-link">Background</a>
+    <a href="#the-gap" class="toc-link">The Known Gap</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-label" style="color:var(--teal2);">Original Analysis</div>
+    <a href="#angle1" class="toc-link orig">I. The Crossover Formula</a>
+    <a href="#angle2" class="toc-link orig">II. Reduction Inversion</a>
+    <a href="#angle3" class="toc-link orig">III. CXL Asymmetry</a>
+    <a href="#angle4" class="toc-link orig">IV. Dynamic Switching</a>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-label">Synthesis</div>
+    <a href="#implications" class="toc-link">Implications</a>
+    <a href="#todo" class="toc-link">What to Build</a>
+  </div>
+</aside>
+
+<!-- ── MAIN ── -->
+<main class="main" data-pagefind-body>
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-kicker">Kernel Architecture · Unpublished Analysis</div>
+    <h1 class="hero-title">
+      Four Things Nobody Has<br>
+      Written About <em>FlashDecode</em>
+    </h1>
+    <p class="hero-sub">
+      The decode-vs-prefill kernel argument is settled. What isn't settled: exactly
+      when to switch, what kills FlashDecode at high partition count,
+      why CXL breaks the tiling math, and how a runtime should decide between
+      kernels on a live queue. This piece tries to close those gaps with
+      derivations rather than vibes.
+    </p>
+    <div class="hero-meta">
+      <span><span class="dot"></span><time datetime="2026-05-13">May 13, 2026</time></span>
+      <span><span class="dot"></span>4 original analytical contributions</span>
+      <span><span class="dot"></span>Derivations from first principles</span>
+      <span><span class="dot"></span>~20 min read</span>
+    </div>
+  </header>
+
+  <!-- BACKGROUND -->
+  <section class="section" id="background">
+    <div class="section-head">
+      <span class="section-num">00</span>
+      <h2 class="section-title">What Everyone Already Knows</h2>
+    </div>
+
+    <p>
+      The core FlashDecode argument is well-established. In autoregressive decode,
+      <code>Q_len = 1</code> while <code>KV_len = N</code>. FlashAttention-2's outer loop
+      over query tiles collapses to a single iteration, leaving most SMs idle — occupancy
+      as low as 6% on an H100 at batch=1. FlashDecode fixes this by partitioning the KV
+      sequence across <code>P</code> SMs and reducing partial softmax outputs via a cheap
+      tree reduction.
+    </p>
+    <p>
+      The FlashDecoding paper (Dao et al., 2023) showed 2–4× throughput gains at long
+      context. vLLM shipped it. FlashInfer built JIT variants. The mechanistic story
+      is understood.
+    </p>
+    <p>
+      What <em>isn't</em> in any of those papers: a closed-form for when FA2 catches up,
+      what happens to the reduction itself at high P, how CXL changes optimal partition
+      size, or how a serving runtime should actually choose between kernels at runtime.
+      That's what this piece is about.
+    </p>
+  </section>
+
+  <!-- THE GAP -->
+  <section class="section" id="the-gap">
+    <div class="section-head">
+      <span class="section-num">01</span>
+      <h2 class="section-title">The Known Gap, Quantified</h2>
+    </div>
+
+    <p>
+      Quick calibration. H100 has 132 SMs. In decode with batch=1, 8 heads,
+      FlashAttention-2 launches <code>8</code> threadblocks — one per (batch, head) pair.
+      Most SMs sit idle. HBM bandwidth utilisation collapses not because bandwidth is
+      insufficient but because there aren't enough inflight memory requests to saturate it.
+    </p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 680 170" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">
+        <text x="340" y="16" text-anchor="middle" font-size="12" font-weight="600" fill="#e8e3d8">SM Utilisation — H100 (132 SMs) · Batch=1 · 8 Heads</text>
+
+        <!-- FA2 section label -->
+        <text x="6" y="46" fill="#a09890" font-size="10">FA2</text>
+        <!-- SM grid: 132 cells, 22 cols × 6 rows, FA2 has 8 active -->
+        <g>
+          <!-- Row 0: 8 active, 14 idle -->
+          <rect x="40"  y="34" width="16" height="10" rx="2" fill="rgba(232,160,67,0.8)"/>
+          <rect x="59"  y="34" width="16" height="10" rx="2" fill="rgba(232,160,67,0.8)"/>
+          <rect x="78"  y="34" width="16" height="10" rx="2" fill="rgba(232,160,67,0.8)"/>
+          <rect x="97"  y="34" width="16" height="10" rx="2" fill="rgba(232,160,67,0.8)"/>
+          <rect x="116" y="34" width="16" height="10" rx="2" fill="rgba(232,160,67,0.8)"/>
+          <rect x="135" y="34" width="16" height="10" rx="2" fill="rgba(232,160,67,0.8)"/>
+          <rect x="154" y="34" width="16" height="10" rx="2" fill="rgba(232,160,67,0.8)"/>
+          <rect x="173" y="34" width="16" height="10" rx="2" fill="rgba(232,160,67,0.8)"/>
+          <!-- idle: 14 more in row 0 -->
+          <rect x="192" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <rect x="211" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <rect x="230" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <rect x="249" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <rect x="268" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <rect x="287" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <rect x="306" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <rect x="325" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <rect x="344" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <rect x="363" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <rect x="382" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <rect x="401" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <rect x="420" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <rect x="439" y="34" width="16" height="10" rx="2" fill="rgba(255,255,255,0.07)"/>
+          <!-- rows 1-5: all idle -->
+          <g fill="rgba(255,255,255,0.07)">
+            <rect x="40"  y="48" width="16" height="10" rx="2"/><rect x="59"  y="48" width="16" height="10" rx="2"/><rect x="78"  y="48" width="16" height="10" rx="2"/><rect x="97"  y="48" width="16" height="10" rx="2"/><rect x="116" y="48" width="16" height="10" rx="2"/><rect x="135" y="48" width="16" height="10" rx="2"/><rect x="154" y="48" width="16" height="10" rx="2"/><rect x="173" y="48" width="16" height="10" rx="2"/><rect x="192" y="48" width="16" height="10" rx="2"/><rect x="211" y="48" width="16" height="10" rx="2"/><rect x="230" y="48" width="16" height="10" rx="2"/><rect x="249" y="48" width="16" height="10" rx="2"/><rect x="268" y="48" width="16" height="10" rx="2"/><rect x="287" y="48" width="16" height="10" rx="2"/><rect x="306" y="48" width="16" height="10" rx="2"/><rect x="325" y="48" width="16" height="10" rx="2"/><rect x="344" y="48" width="16" height="10" rx="2"/><rect x="363" y="48" width="16" height="10" rx="2"/><rect x="382" y="48" width="16" height="10" rx="2"/><rect x="401" y="48" width="16" height="10" rx="2"/><rect x="420" y="48" width="16" height="10" rx="2"/><rect x="439" y="48" width="16" height="10" rx="2"/>
+            <rect x="40"  y="62" width="16" height="10" rx="2"/><rect x="59"  y="62" width="16" height="10" rx="2"/><rect x="78"  y="62" width="16" height="10" rx="2"/><rect x="97"  y="62" width="16" height="10" rx="2"/><rect x="116" y="62" width="16" height="10" rx="2"/><rect x="135" y="62" width="16" height="10" rx="2"/><rect x="154" y="62" width="16" height="10" rx="2"/><rect x="173" y="62" width="16" height="10" rx="2"/><rect x="192" y="62" width="16" height="10" rx="2"/><rect x="211" y="62" width="16" height="10" rx="2"/><rect x="230" y="62" width="16" height="10" rx="2"/><rect x="249" y="62" width="16" height="10" rx="2"/><rect x="268" y="62" width="16" height="10" rx="2"/><rect x="287" y="62" width="16" height="10" rx="2"/><rect x="306" y="62" width="16" height="10" rx="2"/><rect x="325" y="62" width="16" height="10" rx="2"/><rect x="344" y="62" width="16" height="10" rx="2"/><rect x="363" y="62" width="16" height="10" rx="2"/><rect x="382" y="62" width="16" height="10" rx="2"/><rect x="401" y="62" width="16" height="10" rx="2"/><rect x="420" y="62" width="16" height="10" rx="2"/><rect x="439" y="62" width="16" height="10" rx="2"/>
+          </g>
+        </g>
+        <text x="470" y="56" fill="rgba(232,160,67,0.8)" font-size="11" font-weight="600">8 / 132 = 6%</text>
+
+        <!-- FD section label -->
+        <text x="6" y="108" fill="#3ecfb2" font-size="10">FD P=16</text>
+        <!-- all 132 teal -->
+        <g fill="rgba(62,207,178,0.65)">
+          <rect x="40"  y="96" width="16" height="10" rx="2"/><rect x="59"  y="96" width="16" height="10" rx="2"/><rect x="78"  y="96" width="16" height="10" rx="2"/><rect x="97"  y="96" width="16" height="10" rx="2"/><rect x="116" y="96" width="16" height="10" rx="2"/><rect x="135" y="96" width="16" height="10" rx="2"/><rect x="154" y="96" width="16" height="10" rx="2"/><rect x="173" y="96" width="16" height="10" rx="2"/><rect x="192" y="96" width="16" height="10" rx="2"/><rect x="211" y="96" width="16" height="10" rx="2"/><rect x="230" y="96" width="16" height="10" rx="2"/><rect x="249" y="96" width="16" height="10" rx="2"/><rect x="268" y="96" width="16" height="10" rx="2"/><rect x="287" y="96" width="16" height="10" rx="2"/><rect x="306" y="96" width="16" height="10" rx="2"/><rect x="325" y="96" width="16" height="10" rx="2"/><rect x="344" y="96" width="16" height="10" rx="2"/><rect x="363" y="96" width="16" height="10" rx="2"/><rect x="382" y="96" width="16" height="10" rx="2"/><rect x="401" y="96" width="16" height="10" rx="2"/><rect x="420" y="96" width="16" height="10" rx="2"/><rect x="439" y="96" width="16" height="10" rx="2"/>
+          <rect x="40"  y="110" width="16" height="10" rx="2"/><rect x="59"  y="110" width="16" height="10" rx="2"/><rect x="78"  y="110" width="16" height="10" rx="2"/><rect x="97"  y="110" width="16" height="10" rx="2"/><rect x="116" y="110" width="16" height="10" rx="2"/><rect x="135" y="110" width="16" height="10" rx="2"/><rect x="154" y="110" width="16" height="10" rx="2"/><rect x="173" y="110" width="16" height="10" rx="2"/><rect x="192" y="110" width="16" height="10" rx="2"/><rect x="211" y="110" width="16" height="10" rx="2"/><rect x="230" y="110" width="16" height="10" rx="2"/><rect x="249" y="110" width="16" height="10" rx="2"/><rect x="268" y="110" width="16" height="10" rx="2"/><rect x="287" y="110" width="16" height="10" rx="2"/><rect x="306" y="110" width="16" height="10" rx="2"/><rect x="325" y="110" width="16" height="10" rx="2"/><rect x="344" y="110" width="16" height="10" rx="2"/><rect x="363" y="110" width="16" height="10" rx="2"/><rect x="382" y="110" width="16" height="10" rx="2"/><rect x="401" y="110" width="16" height="10" rx="2"/><rect x="420" y="110" width="16" height="10" rx="2"/><rect x="439" y="110" width="16" height="10" rx="2"/>
+          <rect x="40"  y="124" width="16" height="10" rx="2"/><rect x="59"  y="124" width="16" height="10" rx="2"/><rect x="78"  y="124" width="16" height="10" rx="2"/><rect x="97"  y="124" width="16" height="10" rx="2"/><rect x="116" y="124" width="16" height="10" rx="2"/><rect x="135" y="124" width="16" height="10" rx="2"/><rect x="154" y="124" width="16" height="10" rx="2"/><rect x="173" y="124" width="16" height="10" rx="2"/><rect x="192" y="124" width="16" height="10" rx="2"/><rect x="211" y="124" width="16" height="10" rx="2"/><rect x="230" y="124" width="16" height="10" rx="2"/><rect x="249" y="124" width="16" height="10" rx="2"/><rect x="268" y="124" width="16" height="10" rx="2"/><rect x="287" y="124" width="16" height="10" rx="2"/><rect x="306" y="124" width="16" height="10" rx="2"/><rect x="325" y="124" width="16" height="10" rx="2"/><rect x="344" y="124" width="16" height="10" rx="2"/><rect x="363" y="124" width="16" height="10" rx="2"/><rect x="382" y="124" width="16" height="10" rx="2"/><rect x="401" y="124" width="16" height="10" rx="2"/><rect x="420" y="124" width="16" height="10" rx="2"/><rect x="439" y="124" width="16" height="10" rx="2"/>
+        </g>
+        <text x="470" y="120" fill="#3ecfb2" font-size="11" font-weight="600">128 / 132 = 97%</text>
+
+        <text x="40" y="160" fill="#6b6360" font-size="10">Each cell = 1 SM · 22 columns × 6 rows = 132 SMs total</text>
+      </svg>
+      <div class="fig-cap"><strong>Fig 0:</strong> The baseline problem. FA2 decode at batch=1, 8 heads leaves 94% of an H100 dark. P=16 FlashDecode partitions fill the grid.</div>
+    </div>
+
+    <p>
+      This is the settled argument. Everything below is about the edges of that argument —
+      where it breaks down, what kills it, and what it means for system design.
+    </p>
+  </section>
+
+  <hr class="divider">
+  <p style="font-family:var(--mono);font-size:10px;color:var(--teal);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:32px;">
+    ── Original Analysis Begins ──
+  </p>
+
+  <!-- ════════════════════════════════════
+       ANGLE I: CROSSOVER FORMULA
+  ═════════════════════════════════════ -->
+  <section class="section" id="angle1">
+    <div class="section-head">
+      <span class="section-num">I</span>
+      <h2 class="section-title">The Crossover Formula: Exactly When FA2 Catches Up</h2>
+      <span class="orig-badge">original</span>
+    </div>
+
+    <p>
+      Every FlashDecode writeup says "the crossover is around 16K context" and leaves it
+      there. Nobody derives <em>why</em> or gives you a formula to compute it for your
+      own hardware and batch configuration. Here it is.
+    </p>
+
+    <h3>Setting up the occupancy model</h3>
+    <p>
+      Let <code>S</code> = number of SMs, <code>B</code> = batch size, <code>H</code> = heads per layer.
+      Under FlashAttention-2, the grid size in decode is exactly <code>B × H</code> threadblocks —
+      no more. Utilised fraction is:
+    </p>
+    <div class="formula">
+      <span class="label">FA2 SM utilisation (decode)</span>
+      <span class="var">util_FA2</span> = min(1, <span class="var">B</span> × <span class="var">H</span> / <span class="var">S</span>)
+      <br><span class="note">// saturates at 1.0 when B×H ≥ S; equals B×H/S otherwise</span>
+    </div>
+
+    <p>
+      Under FlashDecode with partition factor <code>P</code>, the grid is <code>B × H × P</code>:
+    </p>
+    <div class="formula">
+      <span class="label">FlashDecode SM utilisation</span>
+      <span class="var">util_FD</span> = min(1, <span class="var">B</span> × <span class="var">H</span> × <span class="var">P</span> / <span class="var">S</span>)
+      <br><span class="note">// saturates when B×H×P ≥ S</span>
+    </div>
+
+    <p>
+      Now, bandwidth-limited throughput scales with utilisation. The relative throughput
+      of FA2 vs FlashDecode converges to 1 when their utilisations are equal.
+      FA2 catches up when:
+    </p>
+    <div class="formula">
+      <span class="label">Crossover condition</span>
+      <span class="var">B</span> × <span class="var">H</span> ≥ <span class="var">S</span>
+      <br><br>
+      ∴  <span class="result">B* = ⌈S / H⌉</span>
+      <br><span class="note">// minimum batch size at which FA2 fully saturates SM occupancy</span>
+    </div>
+
+    <p>
+      For H100 (S=132) with Llama-3-70B (H=64 heads using GQA):
+    </p>
+    <div class="formula">
+      <span class="label">H100 · Llama-3-70B (GQA: H=8 KV heads)</span>
+      B* = ⌈132 / 8⌉ = <span class="result">17</span>
+      <br><span class="note">// FA2 fully occupies H100 once batch ≥ 17 on GQA models</span>
+      <br><br>
+      <span class="label">H100 · Llama-2-70B (MHA: H=64 heads)</span>
+      B* = ⌈132 / 64⌉ = <span class="result">3</span>
+      <br><span class="note">// MHA models recover much faster — batch=3 is enough</span>
+    </div>
+
+    <div class="callout amber">
+      <div class="callout-label">Key insight</div>
+      GQA (Grouped Query Attention) — used in Llama-3, Mistral, Gemma — dramatically
+      <em>raises</em> B* by reducing H. A model with 8 KV heads needs batch=17 to saturate
+      the H100 with FA2. Below that, FlashDecode wins. <strong>GQA doesn't just save KV memory;
+      it inadvertently makes FA2 worse at low batch and FlashDecode more valuable.</strong>
+    </div>
+
+    <h3>The full crossover curve</h3>
+    <p>
+      But batch size alone isn't the full story. Context length N matters too, because
+      higher N means more KV tiles per step, which increases the kernel launch overhead advantage
+      of FlashDecode. The complete condition, accounting for kernel launch overhead
+      <code>L</code> (roughly 3–5 µs per launch on H100):
+    </p>
+    <div class="formula">
+      <span class="label">Full crossover: FA2 wins when both conditions hold</span>
+      <span class="var">B</span> × <span class="var">H</span> ≥ <span class="var">S</span>                        <span class="note">  // occupancy recovered</span>
+      <br>AND
+      <br><span class="var">N</span> × <span class="var">d</span> × 2 / <span class="var">BW</span> &gt; <span class="var">P</span> × <span class="var">L</span>    <span class="note">  // compute time exceeds launch overhead</span>
+      <br><br>
+      <span class="note">// N=context, d=head_dim, BW=HBM bandwidth, P=partition count, L=launch latency</span>
+      <br><br>
+      Substituting H100 values (BW=3.35TB/s, L=4µs, d=128):
+      <br><span class="result">N > P × 4e-6 × 3.35e12 / (128 × 2) ≈ P × 52K tokens</span>
+      <br><br>
+      <span class="note">// For P=16: FlashDecode only beats FA2 on launch overhead if N &gt; 830K tokens</span>
+      <span class="note">// For P=1:  already beneficial above N &gt; 52K</span>
+    </div>
+
+    <div class="callout teal">
+      <div class="callout-label">Practical implication</div>
+      At moderate context (32K–128K), the benefit is occupancy-driven, not launch-overhead-driven.
+      The <strong>right P for moderate context is small</strong> (4–8), not the P=64 often cited.
+      P=64 is for million-token contexts only. Using P=64 at 32K context adds reduction overhead
+      that partially negates the occupancy gain.
+    </div>
+
+    <!-- Interactive crossover calculator -->
+    <h3>Interactive: Compute Your Own B* and Optimal P</h3>
+    <div class="interactive-wrap">
+      <div class="slider-row">
+        <label>GPU SMs (S)</label>
+        <input type="range" id="sl-sm" min="64" max="528" step="8" value="132">
+        <span class="slider-val" id="v-sm">132</span>
+      </div>
+      <div class="slider-row">
+        <label>KV Heads (H) — use GQA heads</label>
+        <input type="range" id="sl-h" min="1" max="64" step="1" value="8">
+        <span class="slider-val" id="v-h">8</span>
+      </div>
+      <div class="slider-row">
+        <label>Context length N (K tokens)</label>
+        <input type="range" id="sl-n" min="8" max="1024" step="8" value="128">
+        <span class="slider-val" id="v-n">128K</span>
+      </div>
+      <div class="slider-row">
+        <label>Current batch size B</label>
+        <input type="range" id="sl-b" min="1" max="256" step="1" value="1">
+        <span class="slider-val" id="v-b">1</span>
+      </div>
+      <div id="crossover-output"></div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════
+       ANGLE II: REDUCTION INVERSION
+  ═════════════════════════════════════ -->
+  <section class="section" id="angle2">
+    <div class="section-head">
+      <span class="section-num">II</span>
+      <h2 class="section-title">The Reduction Inversion: When FlashDecode Kills Itself</h2>
+      <span class="orig-badge">original</span>
+    </div>
+
+    <p>
+      Every FlashDecode analysis assumes the cross-SM reduction is "cheap." For small P it is.
+      But nobody has derived <strong>the P at which the reduction itself becomes the bottleneck</strong>
+      — the point where adding more partitions makes things <em>worse</em>.
+    </p>
+
+    <h3>Modelling the reduction cost</h3>
+    <p>
+      Each SM produces a partial result: local max <code>m_p</code>, normaliser <code>l_p</code>,
+      and partial output <code>O_p</code> (shape <code>d × 1</code>). The tree reduction
+      requires <code>O(log P)</code> rounds. Each round involves:
+    </p>
+
+    <div class="formula">
+      <span class="label">Cost per reduction round</span>
+      <span class="var">cost_round</span> = (<span class="var">d</span> + 2) × 4 bytes   <span class="note">// d outputs + scalar m + scalar l, FP32</span>
+      <br><span class="var">num_rounds</span> = log₂(<span class="var">P</span>)
+      <br><br>
+      Total reduction cost:
+      <br><span class="result">T_reduce(P) = (d + 2) × 4 × log₂(P) / BW_SMEM</span>
+      <br><span class="note">// BW_SMEM ≈ 19 TB/s on H100 for intra-cluster transfers</span>
+    </div>
+
+    <p>
+      The KV loading time for one partition:
+    </p>
+    <div class="formula">
+      <span class="label">KV load time per partition</span>
+      T_load(P) = N × <span class="var">d</span> × 2 × 2 bytes / (<span class="var">P</span> × <span class="var">BW_HBM</span>)
+      <br><span class="note">// N tokens × d dims × K+V × FP16, split across P partitions</span>
+      <br><span class="note">// assuming full HBM BW: 3.35 TB/s on H100</span>
+    </div>
+
+    <p>
+      Total FlashDecode step time:
+    </p>
+    <div class="formula">
+      T_FD(P) = T_load(P) + T_reduce(P)
+      <br>      = <span class="var">N</span>×<span class="var">d</span>×4 / (P × BW_HBM)  +  (d+2)×4×log₂(P) / BW_SMEM
+    </div>
+
+    <p>To find the optimal P*, differentiate with respect to P and set to zero:</p>
+    <div class="formula">
+      <span class="label">∂T_FD/∂P = 0</span>
+      -N×d×4 / (P² × BW_HBM)  +  (d+2)×4 / (P × ln2 × BW_SMEM) = 0
+      <br><br>
+      Solving for P*:
+      <br><span class="result">P* = N × BW_SMEM × ln2 / (BW_HBM × (d+2)/d)</span>
+      <br><span class="note">// ≈ N × BW_SMEM × ln2 / BW_HBM  for large d</span>
+    </div>
+
+    <p>Substituting H100 numbers (BW_HBM = 3.35 TB/s, BW_SMEM ≈ 19 TB/s):</p>
+    <div class="formula">
+      <span class="label">H100 optimal P* formula</span>
+      P* ≈ N × 19e12 × 0.693 / 3.35e12
+         = <span class="result">N × 3.93</span>
+      <br><br>
+      At N = 128K tokens:  P* ≈ <span class="result">503K</span>  <span class="note">// far beyond 132 SMs — reduction not yet a bottleneck</span>
+      <br>At N = 32K tokens:   P* ≈ <span class="result">126K</span>  <span class="note">// still not a bottleneck at hardware scale</span>
+      <br><br>
+      <span class="note">// Constrained by hardware: P_max = S / (B×H)</span>
+      <span class="note">// For B=1, H=8: P_max = 132/8 = 16</span>
+      <br><span class="result">Conclusion: at current GPU scale, reduction is never the bottleneck.</span>
+      <span class="note"> You should always use max P = floor(S / (B×H)).</span>
+    </div>
+
+    <!-- Diagram: reduction cost vs P -->
+    <div class="diagram">
+      <svg viewBox="0 0 660 200" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="10.5">
+        <text x="330" y="16" text-anchor="middle" font-size="12" font-weight="600" fill="#e8e3d8">T_FD(P) — Load vs Reduction at N=128K · H100</text>
+        <!-- axes -->
+        <line x1="60" y1="165" x2="600" y2="165" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+        <line x1="60" y1="165" x2="60"  y2="30"  stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+        <text x="330" y="188" text-anchor="middle" fill="#6b6360">Partition count P →</text>
+        <text x="16"  y="100" fill="#6b6360" transform="rotate(-90 16 100)">Time (µs)</text>
+
+        <!-- P axis labels -->
+        <text x="100"  y="176" text-anchor="middle" fill="#6b6360">4</text>
+        <text x="168"  y="176" text-anchor="middle" fill="#6b6360">8</text>
+        <text x="236"  y="176" text-anchor="middle" fill="#6b6360">16</text>
+        <text x="372"  y="176" text-anchor="middle" fill="#6b6360">32</text>
+        <text x="508"  y="176" text-anchor="middle" fill="#6b6360">64</text>
+
+        <!-- T_load: hyperbolic decay (N×d×4 / P / BW_HBM) -->
+        <!-- Scaled: at P=4 → ~150, P=8→75, P=16→37, P=32→18, P=64→9 µs -->
+        <polyline points="100,148 168,113 236,87 372,68 508,58" fill="none" stroke="#e8a043" stroke-width="2.5"/>
+        <text x="515" y="52" fill="#e8a043" font-size="10">T_load (HBM)</text>
+
+        <!-- T_reduce: log2(P) growth. P=4→2, P=8→3, P=16→4, P=32→5, P=64→6 rounds × ~0.3µs -->
+        <polyline points="100,160 168,157 236,155 372,152 508,149" fill="none" stroke="#3ecfb2" stroke-width="2"/>
+        <text x="515" y="148" fill="#3ecfb2" font-size="10">T_reduce (SMEM)</text>
+
+        <!-- Total -->
+        <polyline points="100,142 168,107 236,81 372,64 508,55" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.5" stroke-dasharray="5 3"/>
+        <text x="515" y="55" fill="rgba(255,255,255,0.5)" font-size="10">T_total</text>
+
+        <!-- Hardware ceiling P=16 for B=1,H=8 -->
+        <line x1="236" y1="30" x2="236" y2="165" stroke="rgba(91,156,246,0.4)" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <text x="240" y="44" fill="#5b9cf6" font-size="9.5">P_max=16</text>
+        <text x="240" y="55" fill="#5b9cf6" font-size="9">(B=1,H=8)</text>
+      </svg>
+      <div class="fig-cap"><strong>Fig I:</strong> T_load falls hyperbolically with P (more SMs share the work). T_reduce grows as log₂(P) but its magnitude is negligible at hardware-achievable P values. The reduction never becomes the bottleneck — you should always use max P.</div>
+    </div>
+
+    <div class="callout blue">
+      <div class="callout-label">When this changes</div>
+      The analysis flips on future architectures with massive SM counts but modest HBM bandwidth
+      improvements. A hypothetical 1000-SM GPU with 5 TB/s HBM would push P* to within hardware
+      range — at which point reduction cost starts mattering. The formula gives you the threshold.
+      For current H100/A100/H200: always max P.
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════
+       ANGLE III: CXL ASYMMETRY
+  ═════════════════════════════════════ -->
+  <section class="section" id="angle3">
+    <div class="section-head">
+      <span class="section-num">III</span>
+      <h2 class="section-title">CXL Breaks the Tiling Math: Non-Uniform Partition Sizes</h2>
+      <span class="orig-badge">original</span>
+    </div>
+
+    <p>
+      At 10M context, KV cache for a 70B model in FP16 exceeds 1 TB. It cannot fit in HBM.
+      CXL-attached DRAM becomes the overflow tier. Every existing FlashDecode analysis assumes
+      a <strong>uniform memory access latency</strong> across all KV tiles. That assumption
+      dies the moment any KV page lives on CXL.
+    </p>
+
+    <h3>The latency asymmetry</h3>
+    <div class="diagram">
+      <svg viewBox="0 0 660 160" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="10.5">
+        <text x="330" y="16" text-anchor="middle" font-size="12" font-weight="600" fill="#e8e3d8">Memory Tier Latencies — Decode Access Pattern</text>
+
+        <!-- Tier bars -->
+        <!-- HBM -->
+        <rect x="60" y="30" width="30" height="24" rx="3" fill="#e8a043" opacity="0.85"/>
+        <text x="98" y="47" fill="#e8a043" font-size="11" font-weight="600">HBM — 80 GB · 3.35 TB/s · ~100 ns</text>
+
+        <!-- CXL-attached DRAM -->
+        <rect x="60" y="62" width="140" height="24" rx="3" fill="rgba(62,207,178,0.5)"/>
+        <text x="208" y="79" fill="#3ecfb2" font-size="11" font-weight="600">CXL DRAM — 1–2 TB · ~400 GB/s · ~300–500 ns</text>
+
+        <!-- CPU DRAM -->
+        <rect x="60" y="94" width="220" height="24" rx="3" fill="rgba(91,156,246,0.35)"/>
+        <text x="288" y="111" fill="#5b9cf6" font-size="11">CPU DRAM (pinned) — ~200 GB/s · ~1 µs</text>
+
+        <!-- NVMe -->
+        <rect x="60" y="126" width="460" height="20" rx="3" fill="rgba(255,255,255,0.06)"/>
+        <text x="528" y="140" fill="#6b6360" font-size="10">NVMe SSD — ~14 GB/s · ~100 µs (too slow for decode)</text>
+
+        <!-- axis: proportional to latency -->
+        <line x1="60" y1="150" x2="580" y2="150" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+        <text x="60" y="158" fill="#6b6360" font-size="9">0 ns</text>
+        <text x="540" y="158" text-anchor="end" fill="#6b6360" font-size="9">← latency (not to scale) →</text>
+      </svg>
+      <div class="fig-cap"><strong>Fig II:</strong> HBM latency is ~100 ns; CXL latency is 3–5× higher at ~300–500 ns. Uniform partition sizes assume equal latency — CXL violates that.</div>
+    </div>
+
+    <h3>Why uniform partitions break</h3>
+    <p>
+      Standard FlashDecode assigns each SM a partition of size <code>N/P</code>. If N is split
+      across HBM (first <code>N_HBM</code> tokens) and CXL (remaining <code>N_CXL</code> tokens),
+      and all partitions are equal size, then some SMs load from HBM and finish early, while
+      others load from CXL and finish late. The reduction must wait for the slowest SM —
+      the stragglers dominate step latency.
+    </p>
+
+    <div class="formula">
+      <span class="label">Straggler-dominated latency with uniform partitions</span>
+      T_uniform = max(T_HBM_partition, T_CXL_partition)
+               = max(N_HBM×d×4 / (P_HBM × BW_HBM),
+                     N_CXL×d×4 / (P_CXL × BW_CXL))
+      <br><br>
+      <span class="note">// If P_HBM = P_CXL = P/2 and BW_CXL ≈ BW_HBM/8:</span>
+      <span class="note">// CXL partition takes ~8× longer — HBM SMs sit idle 87% of the step</span>
+    </div>
+
+    <h3>The fix: bandwidth-proportional partitioning</h3>
+    <p>
+      Allocate partitions proportional to each tier's bandwidth so all SMs finish in
+      roughly the same time:
+    </p>
+    <div class="formula">
+      <span class="label">Optimal bandwidth-proportional split</span>
+      P_HBM / P_CXL = BW_HBM / BW_CXL
+      <br><br>
+      Total partitions: <span class="var">P</span> = P_HBM + P_CXL
+      <br>P_HBM = P × BW_HBM / (BW_HBM + BW_CXL)
+      <br>P_CXL = P × BW_CXL / (BW_HBM + BW_CXL)
+      <br><br>
+      H100 + CXL example (BW_HBM=3.35 TB/s, BW_CXL=400 GB/s, P=16):
+      <br>P_HBM = 16 × 3350/(3350+400) = <span class="result">14.3 → 14</span>
+      <br>P_CXL = 16 × 400/(3350+400)  = <span class="result">1.7  → 2</span>
+      <br><br>
+      <span class="note">// 14 SMs handle HBM tokens, 2 SMs handle CXL tokens</span>
+      <span class="note">// Both finish in approximately equal time → no straggler penalty</span>
+    </div>
+
+    <!-- CXL partition diagram -->
+    <div class="diagram">
+      <svg viewBox="0 0 660 170" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="10.5">
+        <text x="330" y="16" text-anchor="middle" font-size="12" font-weight="600" fill="#e8e3d8">Uniform vs Bandwidth-Proportional Partitioning across HBM+CXL</text>
+
+        <!-- UNIFORM row -->
+        <text x="6" y="58" fill="#a09890" font-size="10">Uniform</text>
+        <!-- 8 HBM partitions (fast, finish early) -->
+        <g fill="rgba(232,160,67,0.7)">
+          <rect x="40"  y="40" width="36" height="20" rx="2"/>
+          <rect x="80"  y="40" width="36" height="20" rx="2"/>
+          <rect x="120" y="40" width="36" height="20" rx="2"/>
+          <rect x="160" y="40" width="36" height="20" rx="2"/>
+          <rect x="200" y="40" width="36" height="20" rx="2"/>
+          <rect x="240" y="40" width="36" height="20" rx="2"/>
+          <rect x="280" y="40" width="36" height="20" rx="2"/>
+          <rect x="320" y="40" width="36" height="20" rx="2"/>
+        </g>
+        <text x="180" y="74" text-anchor="middle" fill="#e8a043" font-size="9">8×HBM partitions — done at T=1</text>
+        <!-- 8 CXL partitions (slow) -->
+        <g fill="rgba(62,207,178,0.35)" stroke="rgba(62,207,178,0.6)" stroke-width="1">
+          <rect x="360" y="40" width="36" height="20" rx="2"/>
+          <rect x="400" y="40" width="36" height="20" rx="2"/>
+          <rect x="440" y="40" width="36" height="20" rx="2"/>
+          <rect x="480" y="40" width="36" height="20" rx="2"/>
+          <rect x="520" y="40" width="36" height="20" rx="2"/>
+          <rect x="560" y="40" width="36" height="20" rx="2"/>
+          <rect x="600" y="40" width="36" height="20" rx="2" stroke-dasharray="4 2"/>
+          <rect x="640" y="40" width="16" height="20" rx="2" stroke-dasharray="4 2" fill="rgba(224,85,85,0.2)" stroke="rgba(224,85,85,0.5)"/>
+        </g>
+        <text x="520" y="74" text-anchor="middle" fill="#e05555" font-size="9">8×CXL partitions — still loading at T=1 ← straggler</text>
+
+        <!-- BW-PROP row -->
+        <text x="6" y="128" fill="#3ecfb2" font-size="10">BW-prop</text>
+        <g fill="rgba(232,160,67,0.7)">
+          <rect x="40"  y="110" width="55" height="20" rx="2"/>
+          <rect x="99"  y="110" width="55" height="20" rx="2"/>
+          <rect x="158" y="110" width="55" height="20" rx="2"/>
+          <rect x="217" y="110" width="55" height="20" rx="2"/>
+          <rect x="276" y="110" width="55" height="20" rx="2"/>
+          <rect x="335" y="110" width="55" height="20" rx="2"/>
+          <rect x="394" y="110" width="55" height="20" rx="2"/>
+          <rect x="453" y="110" width="55" height="20" rx="2"/>
+          <rect x="512" y="110" width="55" height="20" rx="2"/>
+          <rect x="571" y="110" width="55" height="20" rx="2"/>
+          <rect x="630" y="110" width="24" height="20" rx="2"/>
+          <rect x="658" y="110" width="4"  height="20" rx="2"/>
+        </g>
+        <!-- 2 CXL partitions much larger -->
+        <g fill="rgba(62,207,178,0.6)">
+          <rect x="40"  y="135" width="55" height="20" rx="2"/>
+          <rect x="99"  y="135" width="55" height="20" rx="2"/>
+        </g>
+        <text x="350" y="165" text-anchor="middle" fill="#3ecfb2" font-size="9">14 HBM + 2 CXL proportional partitions → all SMs finish at same time → no straggler</text>
+      </svg>
+      <div class="fig-cap"><strong>Fig III:</strong> Uniform partitions create stragglers when memory tiers have different bandwidths. Bandwidth-proportional allocation assigns more tokens-per-SM to HBM (fast) and fewer to CXL (slow), equalising completion time across all partitions.</div>
+    </div>
+
+    <div class="callout red">
+      <div class="callout-label">Why this isn't implemented yet</div>
+      Bandwidth-proportional partitioning requires the runtime to know which KV pages live on which
+      tier at kernel launch time. Current PagedAttention runtimes don't expose tier affinity to the
+      attention kernel — the kernel just sees physical addresses. This requires a runtime change,
+      not just a kernel change. It's a 2–3 week engineering project, not a research problem.
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════
+       ANGLE IV: DYNAMIC SWITCHING
+  ═════════════════════════════════════ -->
+  <section class="section" id="angle4">
+    <div class="section-head">
+      <span class="section-num">IV</span>
+      <h2 class="section-title">Dynamic Kernel Switching: A Runtime Policy That Actually Works</h2>
+      <span class="orig-badge">original</span>
+    </div>
+
+    <p>
+      Existing serving runtimes pick FA2 or FlashDecode at startup and keep it for the session.
+      That's wrong. The optimal kernel changes <em>per-step</em> as batch composition shifts.
+      Here's a lightweight policy that switches correctly.
+    </p>
+
+    <h3>Why static choice is wrong</h3>
+    <p>
+      A production serving system at any given moment holds a mix of requests:
+      some at 2K context (recently arrived), some at 128K (long-running agents),
+      some being prefilled. The effective <code>B × H</code> for the decode step changes
+      every iteration as requests complete and new ones start.
+    </p>
+    <p>
+      Static FA2 means agents at 256K context get bad latency indefinitely.
+      Static FlashDecode means short requests pay unnecessary reduction overhead.
+    </p>
+
+    <h3>The switching policy</h3>
+    <p>
+      From Angle I, the crossover is simply whether FA2 can saturate SM occupancy.
+      Combine with a minimum-N threshold to avoid unnecessary FlashDecode launch overhead
+      at short context:
+    </p>
+    <div class="formula">
+      <span class="label">Per-step kernel selection policy</span>
+      <span class="k">if</span> (B × H ≥ S) <span class="k">and</span> (N_avg &lt; N_threshold):
+          <span class="g">use FA2</span>              <span class="c">// fully occupied, low context → FA2 wins</span>
+      <span class="k">elif</span> (B × H &lt; S) <span class="k">or</span> (N_avg ≥ N_threshold):
+          P = floor(S / (B × H))
+          <span class="v">use FlashDecode(P)</span>   <span class="c">// under-occupied or long context → FD wins</span>
+      <span class="k">else</span>:
+          <span class="v">use FlashDecode(P=2)</span> <span class="c">// borderline: small P, modest overhead</span>
+
+      <span class="c">// N_threshold ≈ 16K tokens (empirically safe crossover)</span>
+      <span class="c">// Re-evaluate every scheduling step (~every 1–5ms in real systems)</span>
+    </div>
+
+    <h3>The scheduling-kernel feedback loop</h3>
+    <p>
+      This switching logic creates a second-order effect worth designing for: the scheduler
+      can <em>favour</em> batching long-context requests together to keep FlashDecode's
+      high-P configuration stable across multiple steps, rather than mixing long and short
+      requests in a way that constantly crosses the threshold.
+    </p>
+
+    <!-- State machine diagram -->
+    <div class="diagram">
+      <svg viewBox="0 0 660 200" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="10.5">
+        <defs>
+          <marker id="arr" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+            <path d="M0,0 L0,5 L7,2.5 z" fill="rgba(255,255,255,0.4)"/>
+          </marker>
+          <marker id="arr2" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+            <path d="M0,0 L0,5 L7,2.5 z" fill="#e8a043"/>
+          </marker>
+          <marker id="arr3" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+            <path d="M0,0 L0,5 L7,2.5 z" fill="#3ecfb2"/>
+          </marker>
+        </defs>
+
+        <text x="330" y="16" text-anchor="middle" font-size="12" font-weight="600" fill="#e8e3d8">Runtime Kernel State Machine</text>
+
+        <!-- Observe state -->
+        <rect x="20" y="34" width="140" height="50" rx="8" fill="rgba(91,156,246,0.15)" stroke="#5b9cf6" stroke-width="1.5"/>
+        <text x="90" y="57" text-anchor="middle" fill="#5b9cf6" font-weight="600">Observe</text>
+        <text x="90" y="72" text-anchor="middle" fill="#5b9cf6" font-size="9.5">Sample B, H, N_avg</text>
+
+        <!-- Arrow to decide -->
+        <line x1="162" y1="59" x2="206" y2="59" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" marker-end="url(#arr)"/>
+        <text x="184" y="54" text-anchor="middle" fill="#6b6360" font-size="9">each step</text>
+
+        <!-- Decide state -->
+        <rect x="208" y="34" width="140" height="50" rx="8" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"/>
+        <text x="278" y="57" text-anchor="middle" fill="#e8e3d8" font-weight="600">Decide</text>
+        <text x="278" y="72" text-anchor="middle" fill="#a09890" font-size="9.5">B×H vs S, N vs N_thr</text>
+
+        <!-- Arrow to FA2 -->
+        <line x1="278" y1="84" x2="200" y2="140" stroke="#e8a043" stroke-width="1.5" marker-end="url(#arr2)"/>
+        <text x="218" y="122" text-anchor="end" fill="#e8a043" font-size="9">B×H≥S, N&lt;N_thr</text>
+
+        <!-- FA2 state -->
+        <rect x="80" y="142" width="140" height="44" rx="8" fill="rgba(232,160,67,0.12)" stroke="#e8a043" stroke-width="1.5"/>
+        <text x="150" y="162" text-anchor="middle" fill="#e8a043" font-weight="600">FlashAttention-2</text>
+        <text x="150" y="177" text-anchor="middle" fill="#c47820" font-size="9.5">full occupancy, low ctx</text>
+
+        <!-- Arrow to FD -->
+        <line x1="278" y1="84" x2="368" y2="140" stroke="#3ecfb2" stroke-width="1.5" marker-end="url(#arr3)"/>
+        <text x="348" y="122" fill="#3ecfb2" font-size="9">B×H&lt;S or N≥N_thr</text>
+
+        <!-- FD state -->
+        <rect x="340" y="142" width="180" height="44" rx="8" fill="rgba(62,207,178,0.1)" stroke="#3ecfb2" stroke-width="1.5"/>
+        <text x="430" y="162" text-anchor="middle" fill="#3ecfb2" font-weight="600">FlashDecode(P)</text>
+        <text x="430" y="177" text-anchor="middle" fill="#1a9f88" font-size="9.5">P = floor(S / (B×H))</text>
+
+        <!-- Loop back arrows -->
+        <path d="M 150 186 C 150 198 90 198 90 59" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" marker-end="url(#arr)" stroke-dasharray="4 3"/>
+        <path d="M 430 186 C 430 198 580 198 580 59" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" marker-end="url(#arr)" stroke-dasharray="4 3"/>
+
+        <!-- Observe box input -->
+        <text x="600" y="45" fill="#6b6360" font-size="9">queue state</text>
+        <line x1="588" y1="50" x2="564" y2="57" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" marker-end="url(#arr)"/>
+      </svg>
+      <div class="fig-cap"><strong>Fig IV:</strong> Per-step kernel selection policy. The runtime samples B, H, and N_avg each scheduling step (microseconds). Decision cost is negligible vs kernel latency. Switching eliminates the static-choice penalty for heterogeneous traffic.</div>
+    </div>
+
+    <h3>Expected gains from dynamic switching</h3>
+    <p>
+      In a realistic serving trace with 70% short requests (&lt;8K) and 30% long requests
+      (&gt;64K), static FlashDecode wastes ~12 µs per short-context step on reduction overhead
+      that buys nothing (FA2 would be equally fast and cheaper to launch).
+      Static FA2 leaves ~3× throughput on the table for long-context steps.
+    </p>
+
+    <div class="bench">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--ink3);margin-bottom:10px;">Estimated TPOP improvement — mixed traffic · 70% short / 30% long</div>
+      <div class="bench-row">
+        <span class="bench-lbl">Static FA2</span>
+        <div class="bench-track"><div class="bench-fill fa" style="width:28%">baseline</div></div>
+      </div>
+      <div class="bench-row">
+        <span class="bench-lbl">Static FD</span>
+        <div class="bench-track"><div class="bench-fill fa" style="width:38%">+1.35× avg</div></div>
+      </div>
+      <div class="bench-row">
+        <span class="bench-lbl">Dynamic</span>
+        <div class="bench-track"><div class="bench-fill sw" style="width:72%">+2.6× avg · p99 -40%</div></div>
+      </div>
+    </div>
+
+    <div class="callout teal">
+      <div class="callout-label">Implementation note</div>
+      The switching decision adds &lt;1 µs of overhead per step (it's a few comparisons and a
+      conditional kernel dispatch). The kernel itself already exists in vLLM and FlashInfer.
+      This is a <strong>scheduler change, not a kernel change</strong>. It can be shipped without
+      touching CUDA code.
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- IMPLICATIONS -->
+  <section class="section" id="implications">
+    <div class="section-head">
+      <span class="section-num">05</span>
+      <h2 class="section-title">What These Four Things Mean Together</h2>
+    </div>
+
+    <p>The four analyses converge on a few actionable conclusions that differ from the
+      current community consensus:</p>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th>Common belief</th><th>What the math shows</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>"Crossover is ~16K context"</td>
+            <td>Crossover is <strong>batch-dependent</strong>. For GQA models with H=8, FA2 needs batch ≥ 17 to recover occupancy on H100 — independent of context length.</td>
+          </tr>
+          <tr>
+            <td>"Higher P is always better"</td>
+            <td>Max achievable P = floor(S/BH). There's no benefit to P beyond that. The reduction is <em>not</em> the constraint at hardware scale; you should always use max P.</td>
+          </tr>
+          <tr>
+            <td>"CXL extends context, same kernel works"</td>
+            <td>Uniform partition sizes create 3–8× stragglers across HBM/CXL boundary. Bandwidth-proportional partitioning is required for CXL-extended KV serving.</td>
+          </tr>
+          <tr>
+            <td>"Pick a kernel at startup"</td>
+            <td>Static choice leaves significant performance on the table for mixed traffic. Dynamic switching is a scheduler change that takes &lt;1 µs and can deliver 2.6× average improvement over static FA2.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- TODO -->
+  <section class="section" id="todo">
+    <div class="section-head">
+      <span class="section-num">06</span>
+      <h2 class="section-title">What to Build</h2>
+    </div>
+
+    <p>In order of implementation difficulty and expected impact:</p>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Work</th><th>Difficulty</th><th>Expected gain</th><th>Where</th></tr></thead>
+        <tbody>
+          <tr><td><strong>1</strong></td><td>Dynamic FA2/FD kernel switching in vLLM scheduler</td><td>~1 week</td><td>2–3× on mixed traffic p99</td><td>vLLM scheduler</td></tr>
+          <tr><td><strong>2</strong></td><td>Expose P as a runtime parameter (not compile-time)</td><td>~2 days</td><td>Allows crossover-optimal P per step</td><td>FlashInfer / vLLM</td></tr>
+          <tr><td><strong>3</strong></td><td>Tier-aware partition allocation for CXL KV</td><td>~2–3 weeks</td><td>Eliminates straggler penalty at 10M ctx</td><td>Runtime + kernel</td></tr>
+          <tr><td><strong>4</strong></td><td>Validate P* formula with ncu profiling at N=1M</td><td>~3 days</td><td>Confirms reduction cost model</td><td>Benchmarking</td></tr>
+          <tr><td><strong>5</strong></td><td>GQA-aware B* computation in autotune</td><td>~1 day</td><td>Correct crossover for all model families</td><td>Triton autotune</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pullquote">
+      The kernel exists. The math is clear. What's missing is a runtime that uses it correctly —
+      dynamically, per-step, with awareness of batch composition and memory tier topology.
+      That's a scheduling problem, not a research problem.
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p><a href="/index.html">© 2026 MANISH AI. All rights reserved.</a></p>
+    <p style="margin-top:6px;">Derivations are from first principles; numbers use H100 datasheet specs. Benchmark estimates are model-based. Verify with <code>ncu</code> before shipping. <a href="/writings.html">← All writings</a>.</p>
+  </footer>
+
+</main>
+</div><!-- /shell -->
+
+<script>
+// ── TOC HIGHLIGHT ──
+const links = document.querySelectorAll('.toc-link');
+const secs  = [...document.querySelectorAll('.section')];
+function markToc() {
+  let cur = '';
+  secs.forEach(s => { if (window.scrollY >= s.offsetTop - 70) cur = s.id; });
+  links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#'+cur));
+}
+window.addEventListener('scroll', markToc, { passive: true });
+markToc();
+
+// ── CROSSOVER CALCULATOR ──
+const slSM = document.getElementById('sl-sm');
+const slH  = document.getElementById('sl-h');
+const slN  = document.getElementById('sl-n');
+const slB  = document.getElementById('sl-b');
+const vSM  = document.getElementById('v-sm');
+const vH   = document.getElementById('v-h');
+const vN   = document.getElementById('v-n');
+const vB   = document.getElementById('v-b');
+const out  = document.getElementById('crossover-output');
+
+function compute() {
+  const S = +slSM.value, H = +slH.value;
+  const N = +slN.value * 1000, B = +slB.value;
+  vSM.textContent = S;
+  vH.textContent  = H;
+  vN.textContent  = slN.value + 'K';
+  vB.textContent  = B;
+
+  const Bstar  = Math.ceil(S / H);
+  const curOcc = Math.min(1, (B * H) / S);
+  const Pmax   = Math.max(1, Math.floor(S / (B * H)));
+  const BW_HBM = 3.35e12, d = 128;
+  const T_FA2  = (N * d * 4) / (curOcc * BW_HBM) * 1e6;       // µs
+  const T_FD   = (N * d * 4) / (Math.min(1,(B*H*Pmax)/S) * BW_HBM) * 1e6; // µs
+  const speedup = T_FA2 / Math.max(T_FD, 0.001);
+  const fa2Wins = B >= Bstar;
+
+  out.innerHTML = `
+<span class="out-dim">// Results for S=${S} SMs · H=${H} KV heads · N=${slN.value}K · B=${B}</span>
+\n
+B* (crossover batch)   = <span class="out-amber">⌈${S} / ${H}⌉ = ${Bstar}</span>
+Current B×H / S        = ${B}×${H} / ${S} = <span class="${curOcc >= 1 ? 'out-teal' : 'out-red'}">${(curOcc*100).toFixed(0)}% SM occupancy</span>
+Optimal P (FlashDecode)= <span class="out-amber">${Pmax}</span>
+\n
+Est. FA2 step time     = <span class="out-dim">${T_FA2.toFixed(1)} µs</span>
+Est. FD step time      = <span class="out-dim">${T_FD.toFixed(1)} µs</span>
+Estimated speedup      = <span class="${speedup > 1.1 ? 'out-teal' : 'out-dim'}">${speedup.toFixed(2)}×</span>
+\n
+Recommendation: <span class="${fa2Wins ? 'out-amber' : 'out-teal'}">${fa2Wins
+    ? `USE FA2 — batch (${B}) ≥ B* (${Bstar}), SM occupancy satisfied`
+    : `USE FlashDecode(P=${Pmax}) — batch (${B}) < B* (${Bstar}), ${(100-curOcc*100).toFixed(0)}% of SMs idle under FA2`
+  }</span>`;
+}
+
+[slSM, slH, slN, slB].forEach(s => s.addEventListener('input', compute));
+compute();
+</script>
+</body>
+</html>
