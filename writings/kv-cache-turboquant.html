@@ -1,0 +1,1465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KV Cache, Transformer Memory, and Why TurboQuant Matters | MANISH AI</title>
+  <meta name="description" content="A deep technical essay on KV cache growth, transformer memory pressure, TurboQuant, tiled attention, outliers, and why long-context inference is increasingly a memory systems problem.">
+  <meta name="keywords" content="KV cache, TurboQuant, transformer memory, attention memory, long context inference, tiled attention, PagedAttention, FlashAttention, AI inference systems, MANISH AI">
+  <meta name="author" content="MANISH AI">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="canonical" href="https://manishklach.github.io/writings/kv-cache-turboquant.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="KV Cache, Transformer Memory, and Why TurboQuant Matters | MANISH AI">
+  <meta property="og:description" content="A deep technical essay on KV cache growth, transformer memory pressure, TurboQuant, tiled attention, outliers, and why long-context inference is increasingly a memory systems problem.">
+  <meta property="og:url" content="https://manishklach.github.io/writings/kv-cache-turboquant.html">
+  <meta property="og:site_name" content="MANISH AI">
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
+  <meta property="og:image:alt" content="KV Cache, Transformer Memory, and Why TurboQuant Matters">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="KV Cache, Transformer Memory, and Why TurboQuant Matters | MANISH AI">
+  <meta name="twitter:description" content="A deep technical essay on KV cache growth, transformer memory pressure, TurboQuant, tiled attention, outliers, and why long-context inference is increasingly a memory systems problem.">
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+  <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+  <link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+  <link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+  <link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+  <script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "KV Cache, Transformer Memory, and Why TurboQuant Matters",
+    "description": "A deep technical essay on KV cache growth, transformer memory pressure, TurboQuant, tiled attention, outliers, and why long-context inference is increasingly a memory systems problem.",
+    "url": "https://manishklach.github.io/writings/kv-cache-turboquant.html",
+    "datePublished": "2026-05-13",
+    "dateModified": "2026-05-13",
+    "mainEntityOfPage": "https://manishklach.github.io/writings/kv-cache-turboquant.html",
+    "inLanguage": "en",
+    "author": {
+      "@type": "Person",
+      "name": "MANISH AI",
+      "url": "https://manishklach.github.io/"
+    },
+    "publisher": {
+      "@type": "Person",
+      "name": "MANISH AI",
+      "url": "https://manishklach.github.io/"
+    }
+  }</script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+    :root {
+      --bg: #f4efe7;
+      --panel: rgba(255, 252, 247, 0.93);
+      --panel-strong: #fffdfa;
+      --ink: #171311;
+      --muted: #665f57;
+      --accent: #0f5f68;
+      --accent-2: #9b4d2f;
+      --accent-3: #3b5998;
+      --accent-soft: #dceff1;
+      --green: #2d6a4f;
+      --green-soft: #d8f3dc;
+      --red: #8b2e2e;
+      --red-soft: #fce4e4;
+      --amber: #7a5200;
+      --amber-soft: #fef3cd;
+      --line: #ddd2c4;
+      --code: #f3ece3;
+      --shadow: 0 18px 42px rgba(23, 19, 17, 0.08);
+    }
+
+    html.dark {
+      --bg: #0b1016;
+      --panel: rgba(14, 20, 28, 0.92);
+      --panel-strong: #121a24;
+      --ink: #edf3fa;
+      --muted: #a7b4c3;
+      --accent: #79d5df;
+      --accent-2: #f1a37f;
+      --accent-3: #8bb2ff;
+      --accent-soft: #173843;
+      --green: #8cd6ac;
+      --green-soft: #173427;
+      --red: #f29b9b;
+      --red-soft: #3c1d1d;
+      --amber: #f0c46c;
+      --amber-soft: #3d2f12;
+      --line: #273140;
+      --code: #111923;
+      --shadow: 0 18px 42px rgba(0, 0, 0, 0.36);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Lora", Georgia, serif;
+      line-height: 1.78;
+      background:
+        radial-gradient(circle at top left, #eef8f8 0, transparent 24%),
+        radial-gradient(circle at top right, #f9efe4 0, transparent 26%),
+        linear-gradient(180deg, #f9f5ee 0%, var(--bg) 100%);
+    }
+
+    html.dark body {
+      background:
+        radial-gradient(circle at top left, rgba(62, 118, 129, 0.18) 0, transparent 24%),
+        radial-gradient(circle at top right, rgba(110, 78, 57, 0.14) 0, transparent 26%),
+        linear-gradient(180deg, #0d131b 0%, var(--bg) 100%);
+    }
+
+    .site-nav {
+      max-width: 1060px; margin: 0 auto; padding: 24px 20px 0;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    }
+    .site-logo {
+      color: var(--accent); text-decoration: none; font-family: "DM Sans", sans-serif;
+      font-size: 0.95rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    }
+    .site-links {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .site-links a, .theme-toggle {
+      border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+      text-decoration: none; border-radius: 999px; padding: 8px 12px;
+      font-family: "DM Sans", sans-serif; font-size: 0.84rem; font-weight: 600;
+      transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+    .site-links a:hover, .site-links a[aria-current="page"], .theme-toggle:hover {
+      color: var(--ink); background: var(--panel-strong); border-color: var(--accent);
+    }
+    .theme-toggle { cursor: pointer; }
+
+    .page { max-width: 1060px; margin: 0 auto; padding: 40px 20px 80px; }
+
+    .hero, .toc, .section, .pullquote, .footer-card {
+      background: var(--panel);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: 44px 42px 36px;
+      margin-bottom: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -60px -80px auto;
+      width: 280px; height: 280px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(15,95,104,0.13) 0, rgba(15,95,104,0) 70%);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      margin-bottom: 12px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: "DM Sans", sans-serif;
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3 { margin: 0 0 14px; line-height: 1.14; }
+    h1 {
+      max-width: 860px;
+      font-size: clamp(2.2rem, 5vw, 3.8rem);
+      letter-spacing: -0.03em;
+      font-weight: 700;
+    }
+    h2 { font-size: 1.72rem; letter-spacing: -0.02em; font-weight: 700; }
+    h3 { font-size: 1.06rem; color: var(--accent-2); margin-top: 22px; font-family: "DM Sans", sans-serif; font-weight: 600; }
+
+    p { margin: 0 0 16px; font-size: 1.04rem; }
+    .lede { max-width: 800px; font-size: 1.18rem; color: var(--muted); font-style: italic; }
+
+    .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+    .meta span {
+      padding: 7px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.72);
+      color: var(--muted);
+      font-family: "DM Sans", sans-serif;
+      font-size: 0.9rem;
+    }
+
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 28px; }
+    .card {
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.68);
+      border: 1px solid var(--line);
+    }
+    .card-title {
+      display: block; margin-bottom: 8px;
+      color: var(--accent); font-family: "DM Sans", sans-serif;
+      font-size: 0.82rem; font-weight: 700;
+      letter-spacing: 0.07em; text-transform: uppercase;
+    }
+    .card p { margin: 0; font-size: 0.98rem; }
+
+    .toc, .section, .footer-card { padding: 28px 32px; margin-bottom: 18px; }
+
+    .toc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 18px; }
+    .toc a { color: var(--accent); text-decoration: none; font-family: "DM Sans", sans-serif; font-size: 0.97rem; }
+    .toc a:hover { text-decoration: underline; }
+
+    .pullquote {
+      padding: 26px 30px; margin: 18px 0;
+      background: linear-gradient(135deg, #fbf8f1 0%, #f4fbfb 100%);
+      border-left: 4px solid var(--accent);
+    }
+    .pullquote p { margin: 0; font-size: 1.2rem; font-style: italic; }
+
+    ul, ol { margin: 8px 0 16px 22px; padding: 0; }
+    li { margin: 8px 0; font-size: 1.02rem; }
+
+    code, pre { font-family: "DM Mono", "Courier New", monospace; }
+    code { padding: 2px 5px; border-radius: 6px; background: var(--code); font-size: 0.91em; }
+    pre {
+      margin: 16px 0 18px;
+      padding: 16px 20px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--code);
+      overflow-x: auto;
+      font-size: 0.93rem;
+      line-height: 1.68;
+      white-space: pre-wrap;
+    }
+
+    table {
+      width: 100%; border-collapse: collapse; margin: 16px 0 18px;
+      background: var(--panel-strong); border-radius: 14px; overflow: hidden;
+    }
+    th, td {
+      padding: 11px 14px; border-bottom: 1px solid var(--line);
+      text-align: left; vertical-align: top; font-size: 0.97rem;
+    }
+    th {
+      background: #f6efe6; font-family: "DM Sans", sans-serif;
+      font-size: 0.87rem; letter-spacing: 0.05em;
+      text-transform: uppercase; color: var(--accent-2); font-weight: 600;
+    }
+    tr:last-child td { border-bottom: none; }
+
+    .diagram {
+      margin: 18px 0;
+      padding: 20px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #fffdf9 0%, #f7f2e8 100%);
+      overflow-x: auto;
+    }
+    .diagram svg { display: block; max-width: 100%; }
+
+    .callout {
+      padding: 14px 18px; margin: 16px 0 18px;
+      border-radius: 14px; background: #f7fbfb; border: 1px solid #cfe3e5;
+    }
+    .callout strong { color: var(--accent); }
+
+    .callout.green { background: var(--green-soft); border-color: #b7dfbf; }
+    .callout.green strong { color: var(--green); }
+    .callout.amber { background: var(--amber-soft); border-color: #f0d080; }
+    .callout.amber strong { color: var(--amber); }
+    .callout.red { background: var(--red-soft); border-color: #e8b4b4; }
+    .callout.red strong { color: var(--red); }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0; }
+    @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .pill {
+      padding: 5px 12px; border-radius: 999px;
+      font-family: "DM Sans", sans-serif; font-size: 0.85rem; font-weight: 600;
+      border: 1px solid;
+    }
+    .pill.green { background: var(--green-soft); color: var(--green); border-color: #b7dfbf; }
+    .pill.red { background: var(--red-soft); color: var(--red); border-color: #e8b4b4; }
+    .pill.amber { background: var(--amber-soft); color: var(--amber); border-color: #f0d080; }
+    .pill.blue { background: #e8eef8; color: var(--accent-3); border-color: #c0cff0; }
+
+    .new-badge {
+      display: inline-block; padding: 2px 8px; margin-left: 8px;
+      border-radius: 999px; background: var(--accent-soft);
+      color: var(--accent); font-family: "DM Sans", sans-serif;
+      font-size: 0.75rem; font-weight: 700; vertical-align: middle;
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+
+    .footer-card { text-align: center; }
+    .footer-card p { color: var(--muted); margin-bottom: 10px; }
+    .download-note {
+      display: inline-block; padding: 8px 14px; border-radius: 999px;
+      background: var(--accent-soft); color: var(--accent);
+      font-family: "DM Sans", sans-serif; font-size: 0.9rem; font-weight: 700;
+    }
+    .footer-links {
+      margin-top: 18px; display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;
+      font-family: "DM Sans", sans-serif; font-size: 0.92rem;
+    }
+    .footer-links a { color: var(--accent); text-decoration: none; }
+    .footer-links a:hover { text-decoration: underline; }
+
+    @media (max-width: 720px) {
+      .site-nav { padding: 16px 14px 0; }
+      .site-links { gap: 8px; }
+      .site-links a, .theme-toggle { padding: 7px 10px; font-size: 0.78rem; }
+      .page { padding: 18px 14px 48px; }
+      .hero, .toc, .section, .footer-card { padding: 22px 18px; }
+      .pullquote { padding: 18px 20px; }
+      h2 { font-size: 1.46rem; }
+    }
+    @media print {
+      body { background: #fff; }
+      .hero, .toc, .section, .pullquote, .footer-card { box-shadow: none; backdrop-filter: none; }
+    }
+  </style>
+</head>
+<body>
+<nav class="site-nav" aria-label="Site">
+  <a class="site-logo" href="/index.html">MAN\SH AI</a>
+  <div class="site-links">
+    <a href="/index.html">Home</a>
+    <a href="/writings.html" aria-current="page">Writings</a>
+    <a href="/patents.html">Patents</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle theme">Dark mode</button>
+  </div>
+</nav>
+<main class="page" data-pagefind-body>
+
+  <!-- ===== HERO ===== -->
+  <section class="hero">
+    <div class="eyebrow">Long-Form Technical Deep-Dive · v2</div>
+    <h1>KV Cache, Transformer Memory, and Why TurboQuant Matters</h1>
+    <p class="lede">
+      The KV cache is one of the most important objects in transformer inference — the model's running memory of
+      prior tokens, the reason long-context serving is expensive, and the exact place where techniques like
+      TurboQuant unlock major gains. This updated edition adds tiled-attention diagrams, outlier handling,
+      hardware co-design, a method comparison, and a GPU-utilization tie-in.
+    </p>
+    <div class="meta">
+      <span><time datetime="2026-05-13">May 13, 2026</time> · 19 min read</span>
+      <span>Topics: Transformers · KV Cache · Inference Systems · Quantization</span>
+      <span>Audience: Engineers, AI infra builders, curious practitioners</span>
+      <span>v2 — expanded edition with diagrams</span>
+    </div>
+    <div class="cards">
+      <article class="card">
+        <span class="card-title">Core Object</span>
+        <p>The KV cache stores attention state for every token at every layer — growing linearly with context length.</p>
+      </article>
+      <article class="card">
+        <span class="card-title">Core Problem</span>
+        <p>Memory traffic and cache size explode faster than most people expect, becoming the dominant inference bottleneck.</p>
+      </article>
+      <article class="card">
+        <span class="card-title">Core Opportunity</span>
+        <p>Dense, regular, tensor-shaped KV data is unusually compression-friendly — if you can fuse decompression with attention.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ===== TOC ===== -->
+  <section class="toc">
+    <h2>In This Post</h2>
+    <div class="toc-grid">
+      <a href="#what-is-kv">1. What the KV cache stores</a>
+      <a href="#tensor-shape">2. Understanding [layer][token][head][dim]</a>
+      <a href="#attention-flow">3. What happens during attention</a>
+      <a href="#why-large">4. Why the cache gets huge</a>
+      <a href="#physical-layout">5. How it lives in GPU memory</a>
+      <a href="#compression">6. Why compression is promising</a>
+      <a href="#quantization">7. Quantization basics</a>
+      <a href="#outliers">8. The outlier problem ✦ new</a>
+      <a href="#flash-paged">9. FlashAttention and PagedAttention</a>
+      <a href="#tiled-attention">10. Tiled attention — deep dive ✦ new</a>
+      <a href="#turboquant">11. Where TurboQuant fits</a>
+      <a href="#adv-disadv">12. TurboQuant — pros and cons ✦ new</a>
+      <a href="#other-methods">13. Other methods compared ✦ new</a>
+      <a href="#hardware-codesign">14. Hardware-software co-design ✦ new</a>
+      <a href="#tradeoffs">15. The real tradeoffs</a>
+      <a href="#decompression">16. Why full decompression loses</a>
+      <a href="#gpu-util">17. GPU utilisation tie-in ✦ new</a>
+      <a href="#future">18. Where this is heading</a>
+    </div>
+  </section>
+
+  <section class="pullquote">
+    <p>
+      The KV cache is not some side detail of transformer inference. It is the model's live memory, and
+      increasingly the performance battle is about how efficiently we store it, move it, and read it back
+      during attention — all while the GPU waits.
+    </p>
+  </section>
+
+  <!-- ===== 1 ===== -->
+  <section class="section" id="what-is-kv">
+    <h2>What the KV Cache Actually Stores</h2>
+    <p>
+      For every token a transformer processes, each layer produces a <strong>Key</strong> vector and a
+      <strong>Value</strong> vector. Those vectors are needed later when future tokens attend back over
+      earlier ones, so the model stores them rather than recomputing from scratch.
+    </p>
+    <p>That stored memory is the <strong>KV cache</strong>. In compact notation:</p>
+    <pre>[layer][token][head][dim]</pre>
+    <div class="callout">
+      <strong>KV cache = remembered attention state for every token at every layer.</strong>
+      If the model has seen thousands of tokens, every new token may need to compare itself against a
+      very large set of previously stored keys, then blend the corresponding values. That is why KV
+      state becomes so central to inference cost.
+    </div>
+  </section>
+
+  <!-- ===== 2 ===== -->
+  <section class="section" id="tensor-shape">
+    <h2>Understanding <code>[layer][token][head][dim]</code></h2>
+    <p>The KV cache is a four-dimensional tensor. Each axis has a clean meaning:</p>
+    <table>
+      <thead><tr><th>Dimension</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>layer</code></td><td>Which transformer layer produced this representation</td></tr>
+        <tr><td><code>token</code></td><td>Which position in the sequence</td></tr>
+        <tr><td><code>head</code></td><td>Which attention head inside that layer</td></tr>
+        <tr><td><code>dim</code></td><td>Which numerical component inside the head vector</td></tr>
+      </tbody>
+    </table>
+    <p>A toy example: 2 layers, 4 tokens, 2 heads, head-dim = 3 gives:</p>
+    <pre>K[2][4][2][3]   → 2 × 4 × 2 × 3 = 48 key values</pre>
+    <p>
+      At real scale (80 layers, 128 K tokens, 128 heads, head-dim 128) the numbers become intimidating
+      quickly — which is exactly the subject of Section 4.
+    </p>
+  </section>
+
+  <!-- ===== 3 ===== -->
+  <section class="section" id="attention-flow">
+    <h2>What Happens During Attention</h2>
+    <p>
+      When a new token is generated, each head computes a Query vector <code>Q</code> and compares it
+      against every stored Key:
+    </p>
+    <pre>scores = softmax( Q · Kᵀ / √d )
+output  = scores · V</pre>
+    <p>
+      The dot products determine which earlier tokens matter most; the softmax-weighted sum of Values
+      is what the head actually outputs. Multiple heads let different subspaces specialise — syntax,
+      long-range references, entity tracking, code structure, and so on.
+    </p>
+  </section>
+
+  <!-- ===== 4 ===== -->
+  <section class="section" id="why-large">
+    <h2>Why the KV Cache Gets Huge So Quickly</h2>
+    <p>Scale the numbers to a large production model:</p>
+    <table>
+      <thead><tr><th>Parameter</th><th>Example Value</th></tr></thead>
+      <tbody>
+        <tr><td>Layers</td><td>80</td></tr>
+        <tr><td>Tokens (context)</td><td>128 K</td></tr>
+        <tr><td>Heads</td><td>128</td></tr>
+        <tr><td>Head dimension</td><td>128</td></tr>
+      </tbody>
+    </table>
+    <pre>Keys alone: 80 × 128,000 × 128 × 128 = ~167 billion elements
+At FP16 (2 bytes each): ~334 GB  — just keys, one request</pre>
+    <p>
+      That does not include Values (same size again), model weights, activations, or other requests
+      sharing the GPU. This is why the KV cache dominates memory budgets for long-context serving.
+    </p>
+  </section>
+
+  <!-- ===== 5 ===== -->
+  <section class="section" id="physical-layout">
+    <h2>How It Is Stored Physically on GPUs</h2>
+    <p>
+      The KV cache is not stored as nested arrays. Internally it becomes flat, contiguous GPU memory
+      because that is what hardware prefers.
+    </p>
+    <pre>offset = (((layer × num_tokens + token) × num_heads + head) × head_dim) + dim</pre>
+    <ul>
+      <li>Contiguous memory allows GPUs to coalesce sequential reads into single transactions.</li>
+      <li>Regular structure enables vectorised kernels and prefetching.</li>
+      <li>Predictable layout is essential for large-scale DMA from HBM to compute units.</li>
+    </ul>
+  </section>
+
+  <!-- ===== 6 ===== -->
+  <section class="section" id="compression">
+    <h2>Why KV Cache Compression Is So Attractive</h2>
+    <p>
+      KV cache is a near-ideal systems target: dense, contiguous, highly regular, and tensor-shaped.
+      That makes it far more compressible than pointer-heavy structures like trees or hash maps.
+    </p>
+    <table>
+      <thead><tr><th>Property</th><th>Why It Helps Compression</th></tr></thead>
+      <tbody>
+        <tr><td>Contiguous layout</td><td>Sequential access and vectorised processing</td></tr>
+        <tr><td>Fixed-size vectors</td><td>Predictable packing and unpacking</td></tr>
+        <tr><td>Floating-point tensors</td><td>Natural quantisation target</td></tr>
+        <tr><td>Repeated structure</td><td>SIMD and GPU kernel friendly</td></tr>
+        <tr><td>Large blocks</td><td>Efficient for DMA and tiled execution</td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <strong>The catch:</strong> attention repeatedly reads the KV cache during generation.
+      Compression only wins if decompression stays cheaper than moving the original bytes.
+    </div>
+  </section>
+
+  <!-- ===== 7 ===== -->
+  <section class="section" id="quantization">
+    <h2>The Simplest Compression Strategy: Quantization</h2>
+    <p>
+      Most practical KV compression is not ZIP-style. It is simpler and more useful:
+      <strong>store the cache in lower numeric precision</strong>.
+    </p>
+    <table>
+      <thead><tr><th>Format</th><th>Bytes per value</th><th>vs FP16</th></tr></thead>
+      <tbody>
+        <tr><td>FP16</td><td>2</td><td>1×</td></tr>
+        <tr><td>FP8</td><td>1</td><td>2× smaller</td></tr>
+        <tr><td>INT8</td><td>1</td><td>2× smaller</td></tr>
+        <tr><td>INT4</td><td>0.5</td><td>4× smaller</td></tr>
+        <tr><td>INT2 (experimental)</td><td>0.25</td><td>8× smaller</td></tr>
+      </tbody>
+    </table>
+    <pre>FP16 → INT4  ≈ 4× memory reduction</pre>
+    <p>
+      Attention is surprisingly tolerant of quantisation noise — especially for older, less frequently
+      attended tokens. That has pushed systems toward mixed-precision KV strategies:
+    </p>
+    <pre>Recent tokens    → FP16
+Older tokens     → INT8
+Very old tokens  → INT4</pre>
+  </section>
+
+  <!-- ===== 8 — NEW ===== -->
+  <section class="section" id="outliers">
+    <h2>The Outlier Problem — and How to Handle It <span class="new-badge">New</span></h2>
+    <p>
+      Quantisation looks clean in theory. In practice, KV tensors contain <strong>high-magnitude outliers</strong>
+      that wreck naive uniform quantisation. These appear most prominently in:
+    </p>
+    <ul>
+      <li><strong>Attention sinks</strong> — the first few tokens (often <code>&lt;BOS&gt;</code> or punctuation)
+          accumulate disproportionately large attention scores and correspondingly large Key magnitudes.</li>
+      <li><strong>Specific channels</strong> — certain feature dimensions consistently produce outliers
+          across all tokens in a layer.</li>
+      <li><strong>Specific heads</strong> — some attention heads are intrinsically higher-magnitude than others.</li>
+    </ul>
+
+    <div class="diagram">
+      <!-- Outlier visualisation SVG -->
+      <svg viewBox="0 0 700 160" xmlns="http://www.w3.org/2000/svg" font-family="DM Sans, sans-serif">
+        <defs>
+          <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#0f5f68" stop-opacity="0.85"/>
+            <stop offset="100%" stop-color="#0f5f68" stop-opacity="0.35"/>
+          </linearGradient>
+          <linearGradient id="outlierGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#9b4d2f" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#9b4d2f" stop-opacity="0.4"/>
+          </linearGradient>
+        </defs>
+        <!-- title -->
+        <text x="350" y="18" text-anchor="middle" font-size="12" font-weight="600" fill="#665f57">Key vector magnitudes across a single token — outlier channels circled</text>
+        <!-- baseline -->
+        <line x1="30" y1="130" x2="670" y2="130" stroke="#ddd2c4" stroke-width="1"/>
+        <!-- bars representing channel magnitudes — normal -->
+        <g fill="url(#barGrad)">
+          <rect x="40"  y="110" width="10" height="20"/>
+          <rect x="55"  y="105" width="10" height="25"/>
+          <rect x="70"  y="115" width="10" height="15"/>
+          <rect x="85"  y="108" width="10" height="22"/>
+          <rect x="100" y="112" width="10" height="18"/>
+          <rect x="115" y="107" width="10" height="23"/>
+          <rect x="130" y="113" width="10" height="17"/>
+          <rect x="145" y="106" width="10" height="24"/>
+          <rect x="160" y="111" width="10" height="19"/>
+          <rect x="175" y="116" width="10" height="14"/>
+          <rect x="190" y="109" width="10" height="21"/>
+          <rect x="205" y="114" width="10" height="16"/>
+          <rect x="220" y="107" width="10" height="23"/>
+          <rect x="235" y="112" width="10" height="18"/>
+          <rect x="250" y="110" width="10" height="20"/>
+          <rect x="265" y="115" width="10" height="15"/>
+          <rect x="280" y="108" width="10" height="22"/>
+          <rect x="295" y="113" width="10" height="17"/>
+          <rect x="310" y="116" width="10" height="14"/>
+          <rect x="325" y="109" width="10" height="21"/>
+          <!-- GAP: outlier at 340 -->
+          <rect x="370" y="111" width="10" height="19"/>
+          <rect x="385" y="106" width="10" height="24"/>
+          <rect x="400" y="114" width="10" height="16"/>
+          <rect x="415" y="110" width="10" height="20"/>
+          <rect x="430" y="107" width="10" height="23"/>
+          <rect x="445" y="115" width="10" height="15"/>
+          <rect x="460" y="112" width="10" height="18"/>
+          <rect x="475" y="108" width="10" height="22"/>
+          <rect x="490" y="113" width="10" height="17"/>
+          <rect x="505" y="116" width="10" height="14"/>
+          <rect x="520" y="109" width="10" height="21"/>
+          <rect x="535" y="114" width="10" height="16"/>
+          <rect x="550" y="111" width="10" height="19"/>
+          <rect x="565" y="107" width="10" height="23"/>
+          <rect x="580" y="115" width="10" height="15"/>
+          <rect x="595" y="110" width="10" height="20"/>
+          <rect x="610" y="113" width="10" height="17"/>
+          <rect x="625" y="108" width="10" height="22"/>
+          <rect x="640" y="116" width="10" height="14"/>
+          <rect x="655" y="112" width="10" height="18"/>
+        </g>
+        <!-- outlier bar -->
+        <rect x="340" y="38" width="14" height="92" fill="url(#outlierGrad)"/>
+        <!-- outlier circle -->
+        <circle cx="347" cy="42" r="18" fill="none" stroke="#9b4d2f" stroke-width="2" stroke-dasharray="4 2"/>
+        <text x="347" y="28" text-anchor="middle" font-size="10.5" fill="#9b4d2f" font-weight="600">outlier channel</text>
+        <!-- annotation for normal range -->
+        <text x="210" y="148" text-anchor="middle" font-size="10" fill="#665f57">normal range ≈ 0.5–2.0</text>
+        <!-- annotation for outlier -->
+        <text x="400" y="148" text-anchor="middle" font-size="10" fill="#9b4d2f">outlier can be 10–100×</text>
+      </svg>
+    </div>
+
+    <p>
+      When you apply a <strong>single global scale factor</strong> to compress an entire tensor,
+      the outlier forces a wide numerical range. Normal values get crammed into just a few quantisation
+      bins, destroying precision where you actually need it.
+    </p>
+
+    <h3>Per-Channel and Per-Head Quantisation</h3>
+    <p>
+      The fix is to apply <strong>separate scale factors per channel, per head, or per token group</strong>,
+      so that outlier channels get their own range and normal channels retain fine-grained resolution.
+    </p>
+    <div class="two-col">
+      <div class="callout green">
+        <strong>Per-channel quantisation</strong><br>
+        One scale per feature dimension (channel). Outlier channels are scaled independently. ~1 extra
+        byte per channel per token for the scale — low overhead, large accuracy gain.
+      </div>
+      <div class="callout green">
+        <strong>Per-head quantisation</strong><br>
+        One scale per attention head. Coarser than per-channel but cheaper storage. Works especially
+        well when entire heads show consistently different magnitude distributions.
+      </div>
+    </div>
+    <p>
+      TurboQuant-style systems typically pair aggressive low-bit storage with per-channel or per-group
+      scale factors stored alongside the compressed cache. The scale factors themselves are small
+      (often FP16 or even FP8) and add modest overhead relative to the compression gains.
+    </p>
+    <div class="callout amber">
+      <strong>Watch for attention sinks:</strong> token position 0 often behaves like a "dump" for
+      attention weight — its Key vector can have extreme magnitudes. Some systems keep the first few
+      tokens in full FP16 and only compress the rest.
+    </div>
+  </section>
+
+  <!-- ===== 9 ===== -->
+  <section class="section" id="flash-paged">
+    <h2>Where FlashAttention and PagedAttention Fit In</h2>
+    <p>
+      These two ideas solve different problems and are often confused. It helps to be precise.
+    </p>
+    <table>
+      <thead><tr><th>System</th><th>Main Job</th><th>Why It Matters</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>FlashAttention</td>
+          <td>Make attention computation IO-efficient with tiled execution</td>
+          <td>Reduces wasteful HBM traffic by keeping working sets local to fast SRAM</td>
+        </tr>
+        <tr>
+          <td>PagedAttention</td>
+          <td>Manage KV cache storage like virtual memory pages</td>
+          <td>Reduces fragmentation and improves utilisation under high concurrency</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>FlashAttention is about compute locality</h3>
+    <p>
+      Naive attention materialises a large intermediate score matrix and repeatedly bounces data
+      through HBM. FlashAttention computes attention in tiles that fit into fast on-chip SRAM.
+    </p>
+    <pre>Q tile
+↓
+load K/V tile
+↓
+compute partial attention in SRAM / registers
+↓
+accumulate result into running softmax
+↓
+advance to next tile</pre>
+    <p>
+      The key insight is that the softmax normalisation can be computed incrementally — you never
+      need the entire row of scores in memory at once.
+    </p>
+
+    <h3>PagedAttention is about KV cache management</h3>
+    <p>
+      Different requests grow to different lengths, batches change dynamically, and contexts need
+      to be allocated, extended, and sometimes shared (e.g., for prefix caching). PagedAttention
+      treats KV as fixed-size blocks — like OS virtual memory pages — rather than demanding one
+      contiguous buffer per sequence. That reduces fragmentation and improves reuse.
+    </p>
+    <div class="callout">
+      <strong>FlashAttention</strong> optimises how attention is computed.&nbsp;
+      <strong>PagedAttention</strong> optimises how KV cache is stored and managed.
+      TurboQuant-style systems need both: paging to manage fragmentation, tiling to fuse
+      decompression with attention.
+    </div>
+  </section>
+
+  <!-- ===== 10 — NEW DEEP DIVE ===== -->
+  <section class="section" id="tiled-attention">
+    <h2>Tiled Attention — A Deep Dive <span class="new-badge">New</span></h2>
+    <p>
+      Tiling is the single most important idea enabling efficient compressed-KV attention. Let's
+      go deeper than the standard summary.
+    </p>
+
+    <h3>Why tiling exists: the memory-bandwidth wall</h3>
+    <p>
+      An A100 GPU has ~2 TB/s of HBM bandwidth but can perform ~312 TFLOPS of FP16 compute. For
+      a large KV cache, a naive attention pass spends most of its time <em>waiting for memory</em>,
+      not computing. The arithmetic intensity of naive attention is too low — you move a lot of bytes
+      to do very little math.
+    </p>
+    <p>
+      On-chip SRAM (shared memory) is ~20× faster than HBM but tiny (~192 KB per SM on an A100).
+      Tiling is the strategy that lets a kernel exploit that fast memory despite its small size.
+    </p>
+
+    <!-- Tiled attention diagram -->
+    <div class="diagram">
+      <svg viewBox="0 0 700 310" xmlns="http://www.w3.org/2000/svg" font-family="DM Sans, sans-serif" font-size="11.5">
+        <defs>
+          <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#0f5f68"/>
+          </marker>
+          <marker id="arr2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#9b4d2f"/>
+          </marker>
+          <marker id="arr3" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#2d6a4f"/>
+          </marker>
+        </defs>
+
+        <!-- Title -->
+        <text x="350" y="20" text-anchor="middle" font-weight="700" font-size="13" fill="#171311">Tiled Attention: Data Flow Through the Memory Hierarchy</text>
+
+        <!-- HBM block -->
+        <rect x="30" y="40" width="180" height="220" rx="12" fill="#f3ece3" stroke="#ddd2c4" stroke-width="1.5"/>
+        <text x="120" y="60" text-anchor="middle" font-weight="700" font-size="12" fill="#665f57">HBM (off-chip, ~2 TB/s)</text>
+        <!-- KV tiles inside HBM -->
+        <rect x="48" y="72"  width="144" height="32" rx="6" fill="#dceff1" stroke="#0f5f68" stroke-width="1"/>
+        <text x="120" y="91" text-anchor="middle" fill="#0f5f68" font-weight="600">K tile 0  (compressed)</text>
+        <rect x="48" y="110" width="144" height="32" rx="6" fill="#dceff1" stroke="#0f5f68" stroke-width="1"/>
+        <text x="120" y="129" text-anchor="middle" fill="#0f5f68" font-weight="600">K tile 1  (compressed)</text>
+        <rect x="48" y="148" width="144" height="32" rx="6" fill="#ffe8d8" stroke="#9b4d2f" stroke-width="1"/>
+        <text x="120" y="167" text-anchor="middle" fill="#9b4d2f" font-weight="600">V tile 0  (compressed)</text>
+        <rect x="48" y="186" width="144" height="32" rx="6" fill="#ffe8d8" stroke="#9b4d2f" stroke-width="1"/>
+        <text x="120" y="205" text-anchor="middle" fill="#9b4d2f" font-weight="600">V tile 1  (compressed)</text>
+        <rect x="48" y="224" width="144" height="24" rx="6" fill="#e8f5e9" stroke="#2d6a4f" stroke-width="1"/>
+        <text x="120" y="240" text-anchor="middle" fill="#2d6a4f" font-weight="600">Q (query — full prec.)</text>
+
+        <!-- Arrow HBM -> SRAM -->
+        <line x1="214" y1="155" x2="278" y2="155" stroke="#0f5f68" stroke-width="2" marker-end="url(#arr)"/>
+        <text x="246" y="146" text-anchor="middle" fill="#0f5f68" font-size="10">load tile</text>
+
+        <!-- SRAM block -->
+        <rect x="280" y="40" width="180" height="220" rx="12" fill="#f7fbfb" stroke="#cfe3e5" stroke-width="1.5"/>
+        <text x="370" y="60" text-anchor="middle" font-weight="700" font-size="12" fill="#665f57">SRAM (~192 KB, ~20× faster)</text>
+        <!-- Decompression -->
+        <rect x="298" y="72" width="144" height="34" rx="6" fill="#dceff1" stroke="#0f5f68" stroke-width="1.5"/>
+        <text x="370" y="86"  text-anchor="middle" fill="#0f5f68" font-weight="600">unpack bitfields</text>
+        <text x="370" y="100" text-anchor="middle" fill="#0f5f68">apply scale / correction</text>
+        <!-- temp K/V -->
+        <rect x="298" y="114" width="144" height="28" rx="6" fill="#dceff1" stroke="#0f5f68" stroke-width="1" stroke-dasharray="4 2"/>
+        <text x="370" y="132" text-anchor="middle" fill="#0f5f68">K tile — FP16 (temp)</text>
+        <rect x="298" y="148" width="144" height="28" rx="6" fill="#ffe8d8" stroke="#9b4d2f" stroke-width="1" stroke-dasharray="4 2"/>
+        <text x="370" y="166" text-anchor="middle" fill="#9b4d2f">V tile — FP16 (temp)</text>
+        <!-- compute -->
+        <rect x="298" y="184" width="144" height="28" rx="6" fill="#e8f5e9" stroke="#2d6a4f" stroke-width="1.5"/>
+        <text x="370" y="202" text-anchor="middle" fill="#2d6a4f" font-weight="600">QKᵀ scores</text>
+        <rect x="298" y="218" width="144" height="28" rx="6" fill="#e8f5e9" stroke="#2d6a4f" stroke-width="1.5"/>
+        <text x="370" y="236" text-anchor="middle" fill="#2d6a4f" font-weight="600">weighted V sum</text>
+        <!-- discard label -->
+        <text x="370" y="272" text-anchor="middle" font-size="10.5" fill="#9b4d2f" font-style="italic">temp tile discarded after use</text>
+        <line x1="370" y1="247" x2="370" y2="264" stroke="#9b4d2f" stroke-width="1.5" stroke-dasharray="3 2" marker-end="url(#arr2)"/>
+
+        <!-- Arrow SRAM -> Output -->
+        <line x1="464" y1="155" x2="528" y2="155" stroke="#2d6a4f" stroke-width="2" marker-end="url(#arr3)"/>
+        <text x="496" y="146" text-anchor="middle" fill="#2d6a4f" font-size="10">accumulate</text>
+
+        <!-- Output block -->
+        <rect x="530" y="100" width="140" height="110" rx="12" fill="#e8f5e9" stroke="#2d6a4f" stroke-width="1.5"/>
+        <text x="600" y="122" text-anchor="middle" font-weight="700" font-size="12" fill="#2d6a4f">Output (HBM)</text>
+        <text x="600" y="142" text-anchor="middle" font-size="10.5" fill="#2d6a4f">partial sums</text>
+        <text x="600" y="158" text-anchor="middle" font-size="10.5" fill="#2d6a4f">accumulated</text>
+        <text x="600" y="174" text-anchor="middle" font-size="10.5" fill="#2d6a4f">across all tiles</text>
+        <text x="600" y="195" text-anchor="middle" font-size="10" fill="#665f57" font-style="italic">written once</text>
+
+        <!-- Loop arrow under HBM -->
+        <path d="M 120 268 C 120 290 370 290 370 268" fill="none" stroke="#665f57" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr)"/>
+        <text x="245" y="302" text-anchor="middle" font-size="10.5" fill="#665f57">repeat for each tile in the KV sequence</text>
+      </svg>
+    </div>
+
+    <h3>The tiling loop spelled out</h3>
+    <pre>for each Q tile (block of query vectors):
+    running_sum  = 0
+    running_max  = -∞
+
+    for each KV tile in the sequence:
+        load compressed K and V tile from HBM       ← only this tile
+        unpack into SRAM / registers                ← temporary, local
+        apply per-channel scale factors
+        compute partial scores: S = Q · Kᵀ / √d
+        update online softmax (running_max, running_sum)
+        accumulate weighted V into output
+        discard decompressed tile                   ← never lives in HBM
+
+    write final output tile to HBM                  ← once per Q tile</pre>
+
+    <h3>Tile size: the core engineering constraint</h3>
+    <p>
+      The tile size is not arbitrary. It must satisfy a hard constraint: the temporary decompressed
+      K and V vectors, plus the query vectors and accumulators, must fit in the available SRAM budget
+      of one Streaming Multiprocessor.
+    </p>
+    <div class="two-col">
+      <div class="callout red">
+        <strong>Tile too large:</strong> spills to L2 or HBM registers, stalls execution, and
+        destroys the bandwidth savings.
+      </div>
+      <div class="callout red">
+        <strong>Tile too small:</strong> launch overhead dominates, warp occupancy drops, and
+        compute efficiency falls.
+      </div>
+    </div>
+    <p>
+      The optimal tile size depends on the SRAM budget, the number of active warps, the number of
+      heads, the head dimension, and — crucially with compressed KV — the expansion factor of the
+      decompression step. INT4 → FP16 doubles the byte count in SRAM, so you can only fit half as
+      many tokens in the same budget. That is why compressed-KV kernels require careful re-tuning
+      of tile shapes and often use smaller tiles than their FP16 equivalents.
+    </p>
+
+    <h3>Online softmax: the algorithmic enabler</h3>
+    <p>
+      The reason tiling works across the sequence dimension (not just the batch or head dimension)
+      is the <strong>online softmax</strong> trick from Milakov &amp; Gimelshein (2018), formalised
+      and popularised by the FlashAttention papers. The key identity is:
+    </p>
+    <pre>softmax(x)_i = exp(x_i - max(x)) / Σ exp(x_j - max(x))</pre>
+    <p>
+      You can update both <code>max(x)</code> and the normalisation constant <code>Σ</code>
+      incrementally as new tiles arrive, without ever storing the full score row. This makes the
+      memory footprint of the attention kernel O(tile_size) rather than O(sequence_length).
+    </p>
+  </section>
+
+  <!-- ===== 11 ===== -->
+  <section class="section" id="turboquant">
+    <h2>Where TurboQuant Fits</h2>
+    <p>
+      TurboQuant attacks a very specific bottleneck extremely well: KV cache bandwidth and storage
+      during decode-phase inference. It is a systems optimisation, not just a compression trick.
+    </p>
+    <p>
+      A useful layered view:
+    </p>
+    <pre>FlashAttention      → optimises how attention is computed (tiled execution)
+PagedAttention      → optimises how KV is stored and allocated (block management)
+TurboQuant          → optimises how many bytes those blocks contain (low-bit KV)
+                       ↑ sits on top of both, benefits from both</pre>
+    <p>
+      The appeal is clear. If you can shrink keys and values aggressively while preserving benchmark
+      quality, you unlock:
+    </p>
+    <div class="pill-row">
+      <span class="pill green">Larger context windows</span>
+      <span class="pill green">Higher concurrency</span>
+      <span class="pill green">Less HBM pressure</span>
+      <span class="pill green">Better decode throughput</span>
+      <span class="pill green">Lower serving cost per token</span>
+    </div>
+  </section>
+
+  <!-- ===== 12 — NEW ===== -->
+  <section class="section" id="adv-disadv">
+    <h2>TurboQuant — Advantages and Disadvantages <span class="new-badge">New</span></h2>
+
+    <h3>Advantages</h3>
+    <table>
+      <thead><tr><th>Advantage</th><th>Detail</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Memory bandwidth reduction</strong></td>
+          <td>INT4 KV cuts bytes transferred per attention step by ~4×, which directly translates to
+              higher throughput on memory-bandwidth-limited decode workloads.</td>
+        </tr>
+        <tr>
+          <td><strong>Larger effective batch size</strong></td>
+          <td>Smaller KV footprint means more concurrent requests fit in HBM, improving GPU utilisation
+              under bursty agentic traffic.</td>
+        </tr>
+        <tr>
+          <td><strong>Longer context windows</strong></td>
+          <td>A 4× memory reduction roughly allows 4× longer contexts for the same GPU memory budget,
+              enabling 128 K → 512 K context without additional hardware.</td>
+        </tr>
+        <tr>
+          <td><strong>Compatible with paging</strong></td>
+          <td>Compressed KV pages are structurally identical to uncompressed ones — just smaller.
+              PagedAttention systems need minimal changes to page compressed blocks.</td>
+        </tr>
+        <tr>
+          <td><strong>Benchmark accuracy</strong></td>
+          <td>Several TurboQuant-family systems report near-lossless quality on standard language
+              benchmarks with INT4 KV, especially with per-channel scales.</td>
+        </tr>
+        <tr>
+          <td><strong>Workload-targeted</strong></td>
+          <td>KV cache is a well-scoped optimisation target. Unlike weight quantisation, KV
+              quantisation does not affect prefill compute paths.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Disadvantages</h3>
+    <table>
+      <thead><tr><th>Disadvantage</th><th>Why It Matters</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Dequantisation overhead</strong></td>
+          <td>Every attention tile must unpack bits and apply scale factors. On memory-compute-balanced
+              workloads (short context, high batch), this overhead can negate gains.</td>
+        </tr>
+        <tr>
+          <td><strong>Kernel complexity</strong></td>
+          <td>Fused compress-decompress-attention kernels are significantly harder to write, validate,
+              and maintain than standard FlashAttention kernels. Correctness bugs can be subtle.</td>
+        </tr>
+        <tr>
+          <td><strong>"Zero accuracy loss" is benchmark-scoped</strong></td>
+          <td>Softmax can amplify small perturbations nonlinearly. Benchmark success ≠ lossless.
+              Adversarial inputs or tasks that depend on precise score ratios may degrade.</td>
+        </tr>
+        <tr>
+          <td><strong>Outlier sensitivity</strong></td>
+          <td>Without per-channel scales, a single high-magnitude channel forces a wide quantisation
+              range and crushes precision everywhere else. Proper outlier handling adds metadata storage
+              and complicates kernels further.</td>
+        </tr>
+        <tr>
+          <td><strong>Prefill not helped</strong></td>
+          <td>The prefill (prompt processing) phase is typically compute-bound, not bandwidth-bound.
+              TurboQuant only improves the decode phase, where memory bandwidth dominates.</td>
+        </tr>
+        <tr>
+          <td><strong>Tile size re-tuning required</strong></td>
+          <td>INT4 → FP16 expansion inside SRAM changes the effective tile size that fits in shared
+              memory. Existing FlashAttention tile configs are not reusable without adjustment.</td>
+        </tr>
+        <tr>
+          <td><strong>Does not help training</strong></td>
+          <td>Inference-only: training still faces activations, gradients, and optimizer state.
+              This is a targeted inference win, not a universal memory solution.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ===== 13 — NEW ===== -->
+  <section class="section" id="other-methods">
+    <h2>Comparing KV Compression Methods <span class="new-badge">New</span></h2>
+    <p>
+      TurboQuant is not the only approach to KV memory reduction. The landscape includes several
+      complementary or competing strategies, each with different tradeoffs.
+    </p>
+
+    <!-- Landscape diagram -->
+    <div class="diagram">
+      <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" font-family="DM Sans, sans-serif" font-size="11">
+        <text x="350" y="18" text-anchor="middle" font-weight="700" font-size="13" fill="#171311">KV Compression Strategy Landscape</text>
+        <!-- Axis lines -->
+        <line x1="60" y1="170" x2="660" y2="170" stroke="#ddd2c4" stroke-width="1.5"/>
+        <line x1="60" y1="170" x2="60"  y2="40"  stroke="#ddd2c4" stroke-width="1.5"/>
+        <text x="360" y="193" text-anchor="middle" fill="#665f57" font-size="10.5">→ Compression aggressiveness</text>
+        <text x="22"  y="110" text-anchor="middle" fill="#665f57" font-size="10.5" transform="rotate(-90 22 110)">→ Accuracy preserved</text>
+
+        <!-- Method bubbles -->
+        <!-- FP8 KV -->
+        <circle cx="150" cy="60"  r="28" fill="#dceff1" stroke="#0f5f68" stroke-width="1.5"/>
+        <text x="150" y="56"  text-anchor="middle" fill="#0f5f68" font-weight="600">FP8</text>
+        <text x="150" y="70"  text-anchor="middle" fill="#0f5f68">KV</text>
+
+        <!-- INT8 KV (KIVI-style) -->
+        <circle cx="270" cy="75"  r="30" fill="#e8eef8" stroke="#3b5998" stroke-width="1.5"/>
+        <text x="270" y="71"  text-anchor="middle" fill="#3b5998" font-weight="600">INT8</text>
+        <text x="270" y="86"  text-anchor="middle" fill="#3b5998">(KIVI)</text>
+
+        <!-- TurboQuant INT4 -->
+        <circle cx="430" cy="82"  r="34" fill="#ffe8d8" stroke="#9b4d2f" stroke-width="2"/>
+        <text x="430" y="76"  text-anchor="middle" fill="#9b4d2f" font-weight="700">TurboQuant</text>
+        <text x="430" y="91"  text-anchor="middle" fill="#9b4d2f">INT4 + scales</text>
+
+        <!-- KVQuant -->
+        <circle cx="530" cy="100" r="26" fill="#f3ece3" stroke="#665f57" stroke-width="1.5"/>
+        <text x="530" y="97"  text-anchor="middle" fill="#665f57" font-weight="600">KVQuant</text>
+        <text x="530" y="111" text-anchor="middle" fill="#665f57">NF4/INT2</text>
+
+        <!-- SnapKV / token eviction -->
+        <circle cx="610" cy="125" r="28" fill="#d8f3dc" stroke="#2d6a4f" stroke-width="1.5"/>
+        <text x="610" y="121" text-anchor="middle" fill="#2d6a4f" font-weight="600">SnapKV</text>
+        <text x="610" y="136" text-anchor="middle" fill="#2d6a4f">eviction</text>
+      </svg>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Method</th>
+          <th>Strategy</th>
+          <th>Compression</th>
+          <th>Key Strength</th>
+          <th>Key Weakness</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>FP8 KV</strong></td>
+          <td>Lower-precision storage (1 byte)</td>
+          <td>2× vs FP16</td>
+          <td>Simplest to implement; native hardware support on H100 / Blackwell</td>
+          <td>Modest gain; outlier sensitivity still present</td>
+        </tr>
+        <tr>
+          <td><strong>KIVI (INT8)</strong></td>
+          <td>Per-channel INT8 with residual</td>
+          <td>2× vs FP16</td>
+          <td>Strong accuracy; low kernel complexity; residual correction for outliers</td>
+          <td>2× is modest vs 4× INT4; residual adds memory</td>
+        </tr>
+        <tr>
+          <td><strong>TurboQuant (INT4)</strong></td>
+          <td>Low-bit per-group quant + tiled decompress</td>
+          <td>4× vs FP16</td>
+          <td>Excellent bandwidth savings; fused decompress-attention kernel</td>
+          <td>Kernel complexity; tile re-tuning needed; outlier handling required</td>
+        </tr>
+        <tr>
+          <td><strong>KVQuant (NF4/INT2)</strong></td>
+          <td>Learned non-uniform quantisation (NF4) or aggressive INT2</td>
+          <td>4–8× vs FP16</td>
+          <td>Best compression ratio; NF4 adapts to KV distributions</td>
+          <td>Higher accuracy risk at INT2; complex calibration</td>
+        </tr>
+        <tr>
+          <td><strong>SnapKV / H2O (Eviction)</strong></td>
+          <td>Drop low-salience tokens from the cache entirely</td>
+          <td>Variable (task-dependent)</td>
+          <td>Can be combined with quantisation; semantic rather than numeric compression</td>
+          <td>Irreversible; risky for tasks requiring exact token recall</td>
+        </tr>
+        <tr>
+          <td><strong>GQA / MQA (Architecture)</strong></td>
+          <td>Share K/V across multiple query heads</td>
+          <td>8–32× on cache size</td>
+          <td>Zero quantisation noise; done at model design time</td>
+          <td>Requires retraining; not applicable to existing models</td>
+        </tr>
+        <tr>
+          <td><strong>Learned Summarisation</strong></td>
+          <td>Compress old context into learned memory objects</td>
+          <td>Potentially unbounded</td>
+          <td>Handles arbitrarily long contexts; semantic lossiness can be acceptable</td>
+          <td>Experimental; significant accuracy risk on long-recall tasks</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <strong>Practical combinations:</strong> Production systems often stack multiple strategies —
+      e.g., GQA to reduce heads, then INT4 quantisation to reduce per-head precision, then eviction
+      to prune very old tokens. Each layer of optimisation is roughly multiplicative on memory savings.
+    </div>
+  </section>
+
+  <!-- ===== 14 — NEW ===== -->
+  <section class="section" id="hardware-codesign">
+    <h2>Hardware-Software Co-Design <span class="new-badge">New</span></h2>
+    <p>
+      Quantisation used to be a purely software trick applied on top of general-purpose hardware.
+      That assumption is no longer valid. With NVIDIA Blackwell (GB200, B100) and AMD MI300X,
+      <strong>low-bit arithmetic is first-class silicon</strong>.
+    </p>
+
+    <h3>Blackwell's FP4 and FP8 engines</h3>
+    <p>
+      Blackwell introduces native FP4 tensor core support. This fundamentally changes the
+      TurboQuant math: instead of INT4 values being unpacked into FP16 before the matrix multiply,
+      the multiply-accumulate can happen directly on FP4 operands. The practical implications:
+    </p>
+    <div class="two-col">
+      <div class="callout green">
+        <strong>FP4 directly in tensor cores</strong><br>
+        No explicit unpack step before GEMM. The dequantisation can be fused into the hardware
+        pipeline rather than burning shader arithmetic. Effective throughput for KV attention
+        roughly doubles versus software INT4.
+      </div>
+      <div class="callout green">
+        <strong>FP8 for KV write-back</strong><br>
+        Writing freshly computed K/V vectors back to cache in FP8 (rather than FP16) halves
+        the store bandwidth. Combined with FP4 reads, the net KV bandwidth saving approaches 8×
+        vs a naive FP16 baseline.
+      </div>
+    </div>
+
+    <!-- Hardware co-design diagram -->
+    <div class="diagram">
+      <svg viewBox="0 0 700 170" xmlns="http://www.w3.org/2000/svg" font-family="DM Sans, sans-serif" font-size="11">
+        <defs>
+          <marker id="arr4" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#665f57"/>
+          </marker>
+        </defs>
+        <text x="350" y="18" text-anchor="middle" font-weight="700" font-size="13" fill="#171311">KV Quantisation: Software-only vs Hardware-native Pipeline</text>
+
+        <!-- Software-only row -->
+        <text x="12" y="70" fill="#9b4d2f" font-weight="600" font-size="10.5">Software</text>
+        <text x="12" y="83" fill="#9b4d2f" font-size="10">(pre-Blackwell)</text>
+        <rect x="80"  y="52" width="100" height="34" rx="8" fill="#ffe8d8" stroke="#9b4d2f" stroke-width="1.2"/>
+        <text x="130" y="68" text-anchor="middle" fill="#9b4d2f" font-weight="600">Load INT4</text>
+        <text x="130" y="81" text-anchor="middle" fill="#9b4d2f">from HBM</text>
+        <line x1="184" y1="69" x2="208" y2="69" stroke="#665f57" stroke-width="1.5" marker-end="url(#arr4)"/>
+        <rect x="210" y="52" width="110" height="34" rx="8" fill="#ffe8d8" stroke="#9b4d2f" stroke-width="1.2"/>
+        <text x="265" y="68" text-anchor="middle" fill="#9b4d2f" font-weight="600">Unpack INT4</text>
+        <text x="265" y="81" text-anchor="middle" fill="#9b4d2f">→ FP16 (shader)</text>
+        <line x1="324" y1="69" x2="348" y2="69" stroke="#665f57" stroke-width="1.5" marker-end="url(#arr4)"/>
+        <rect x="350" y="52" width="110" height="34" rx="8" fill="#ffe8d8" stroke="#9b4d2f" stroke-width="1.2"/>
+        <text x="405" y="68" text-anchor="middle" fill="#9b4d2f" font-weight="600">FP16 GEMM</text>
+        <text x="405" y="81" text-anchor="middle" fill="#9b4d2f">in tensor cores</text>
+        <line x1="464" y1="69" x2="488" y2="69" stroke="#665f57" stroke-width="1.5" marker-end="url(#arr4)"/>
+        <rect x="490" y="52" width="110" height="34" rx="8" fill="#ffe8d8" stroke="#9b4d2f" stroke-width="1.2"/>
+        <text x="545" y="68" text-anchor="middle" fill="#9b4d2f" font-weight="600">Write FP16</text>
+        <text x="545" y="81" text-anchor="middle" fill="#9b4d2f">to output</text>
+
+        <!-- Hardware-native row -->
+        <text x="12" y="128" fill="#2d6a4f" font-weight="600" font-size="10.5">Hardware</text>
+        <text x="12" y="141" fill="#2d6a4f" font-size="10">(Blackwell)</text>
+        <rect x="80"  y="110" width="100" height="34" rx="8" fill="#d8f3dc" stroke="#2d6a4f" stroke-width="1.2"/>
+        <text x="130" y="126" text-anchor="middle" fill="#2d6a4f" font-weight="600">Load FP4</text>
+        <text x="130" y="139" text-anchor="middle" fill="#2d6a4f">from HBM</text>
+        <line x1="184" y1="127" x2="348" y2="127" stroke="#2d6a4f" stroke-width="1.5" marker-end="url(#arr3)"/>
+        <text x="265" y="120" text-anchor="middle" fill="#2d6a4f" font-size="10">fused in tensor core</text>
+        <rect x="350" y="110" width="110" height="34" rx="8" fill="#d8f3dc" stroke="#2d6a4f" stroke-width="1.2"/>
+        <text x="405" y="126" text-anchor="middle" fill="#2d6a4f" font-weight="600">FP4 GEMM</text>
+        <text x="405" y="139" text-anchor="middle" fill="#2d6a4f">native hardware</text>
+        <line x1="464" y1="127" x2="488" y2="127" stroke="#2d6a4f" stroke-width="1.5" marker-end="url(#arr3)"/>
+        <rect x="490" y="110" width="110" height="34" rx="8" fill="#d8f3dc" stroke="#2d6a4f" stroke-width="1.2"/>
+        <text x="545" y="126" text-anchor="middle" fill="#2d6a4f" font-weight="600">Write FP8</text>
+        <text x="545" y="139" text-anchor="middle" fill="#2d6a4f">to cache</text>
+
+        <!-- Labels -->
+        <text x="620" y="73" fill="#9b4d2f" font-size="10">3 separate steps</text>
+        <text x="620" y="131" fill="#2d6a4f" font-size="10">1 fused step</text>
+      </svg>
+    </div>
+
+    <h3>CXL and memory disaggregation</h3>
+    <p>
+      Beyond the GPU die itself, a second architectural shift is underway: <strong>Compute Express
+      Link (CXL)</strong> allows KV cache pages to live in host DRAM and be directly accessed by
+      the GPU without explicit CPU involvement. Combined with NVLink fabrics, this enables
+      multi-GPU KV sharing — one server's KV cache can be read by a different GPU handling a
+      different request batch.
+    </p>
+    <p>
+      This turns KV quantisation into a <em>system-level</em> optimisation: compressed INT4 pages
+      are not just smaller in HBM; they are also cheaper to transfer across CXL links, reducing
+      the bandwidth tax on disaggregated inference architectures.
+    </p>
+
+    <h3>Implications for kernel design</h3>
+    <p>
+      When the hardware natively handles FP4/FP8 arithmetic, the software stack needs to change too:
+    </p>
+    <ul>
+      <li>Quantisation granularity must align with tensor core tile requirements (typically multiples of 16 or 32 elements per group).</li>
+      <li>Scale factors must be stored in formats the hardware can consume directly, not just software-readable FP32.</li>
+      <li>Compiler passes (PTX, SASS) must recognise and fuse the decompress-GEMM pattern to avoid extra register traffic.</li>
+    </ul>
+    <div class="callout amber">
+      <strong>Bottom line:</strong> On pre-Blackwell hardware, TurboQuant is a software trade — you burn shader cycles to save bandwidth. On Blackwell, the trade nearly disappears because the hardware does both natively. Optimising for one generation's silicon may not carry forward unchanged.
+    </div>
+  </section>
+
+  <!-- ===== 15 ===== -->
+  <section class="section" id="tradeoffs">
+    <h2>The Real Tradeoffs Behind TurboQuant-Style Systems</h2>
+    <p>
+      The big story is not "compression good." The real story is that compression shifts cost from
+      memory movement into kernel sophistication, quantisation logic, and runtime scheduling.
+    </p>
+    <table>
+      <thead><tr><th>Benefit</th><th>What You Pay For It</th></tr></thead>
+      <tbody>
+        <tr><td>Less memory footprint</td><td>More packing and unpacking logic; scale metadata storage</td></tr>
+        <tr><td>Lower bandwidth demand</td><td>Dequantisation overhead; outlier handling</td></tr>
+        <tr><td>Larger contexts</td><td>More complex scheduling, paging, and tile re-tuning</td></tr>
+        <tr><td>Higher concurrency</td><td>More sophisticated runtime and compiler behavior</td></tr>
+        <tr><td>HW-native efficiency (Blackwell)</td><td>Precision format must match tensor core requirements</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ===== 16 ===== -->
+  <section class="section" id="decompression">
+    <h2>Why Fully Decompressing Back Into HBM Defeats the Point</h2>
+    <p>
+      One of the deepest practical questions is whether the cache must be fully restored into global
+      memory before attention can use it. If yes, most of the gain disappears:
+    </p>
+    <pre>Bad pipeline:
+load compressed KV → decompress entire KV → store in HBM → run attention
+(doubles bandwidth; negates compression)</pre>
+    <pre>Better pipeline:
+load compressed chunk → dequantize tiny tile in SRAM/registers
+→ immediately use in attention math → discard temporary</pre>
+    <p>
+      The decompressed KV never exists as one giant persistent tensor. Small pieces are staged in
+      SRAM or register files, used immediately, then thrown away.
+    </p>
+
+    <h3>Why SRAM is the critical staging area</h3>
+    <pre>HBM:             large, ~2 TB/s bandwidth, far from compute
+L2 cache:        intermediate, ~20 TB/s, shared across SMs
+SRAM/shared mem: small (~192 KB/SM), ~80 TB/s, private to SM
+Registers:       fastest (~80+ TB/s effective), per-thread, extremely limited</pre>
+
+    <h3>The tiled decompress loop</h3>
+    <pre>for each KV tile:
+    load packed low-bit KV from HBM
+    unpack bitfields
+    apply per-channel scales / corrections
+    place temporary vectors in SRAM or registers
+    run QKᵀ and weighted-V math
+    discard temporary tile
+    → continue to next tile</pre>
+
+    <p>
+      The tile size is chosen so the temporary decompressed working set fits the SM's SRAM budget.
+      That sizing problem — accounting for INT4 → FP16 expansion — is one of the central engineering
+      challenges in compressed-KV kernels.
+    </p>
+
+    <h3>How PagedAttention connects</h3>
+    <p>
+      PagedAttention manages the global cache organisation (which blocks live where), while tiled
+      decompression manages the local compute path (how each block is consumed). They are
+      complementary layers of the same stack.
+    </p>
+    <div class="diagram">
+      <svg viewBox="0 0 700 90" xmlns="http://www.w3.org/2000/svg" font-family="DM Sans, sans-serif" font-size="11">
+        <defs>
+          <marker id="arr5" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#0f5f68"/>
+          </marker>
+        </defs>
+        <rect x="20"  y="20" width="120" height="48" rx="10" fill="#dceff1" stroke="#0f5f68" stroke-width="1.5"/>
+        <text x="80"  y="42" text-anchor="middle" fill="#0f5f68" font-weight="600">Compressed KV</text>
+        <text x="80"  y="58" text-anchor="middle" fill="#0f5f68">in HBM pages</text>
+        <line x1="144" y1="44" x2="168" y2="44" stroke="#0f5f68" stroke-width="1.8" marker-end="url(#arr5)"/>
+        <rect x="170" y="20" width="120" height="48" rx="10" fill="#dceff1" stroke="#0f5f68" stroke-width="1.5"/>
+        <text x="230" y="42" text-anchor="middle" fill="#0f5f68" font-weight="600">Load packed</text>
+        <text x="230" y="58" text-anchor="middle" fill="#0f5f68">page / tile</text>
+        <line x1="294" y1="44" x2="318" y2="44" stroke="#0f5f68" stroke-width="1.8" marker-end="url(#arr5)"/>
+        <rect x="320" y="20" width="140" height="48" rx="10" fill="#f7fbfb" stroke="#cfe3e5" stroke-width="1.5"/>
+        <text x="390" y="42" text-anchor="middle" fill="#0f5f68" font-weight="600">Dequantize</text>
+        <text x="390" y="58" text-anchor="middle" fill="#665f57">into SRAM / registers</text>
+        <line x1="464" y1="44" x2="488" y2="44" stroke="#0f5f68" stroke-width="1.8" marker-end="url(#arr5)"/>
+        <rect x="490" y="20" width="120" height="48" rx="10" fill="#e8f5e9" stroke="#2d6a4f" stroke-width="1.5"/>
+        <text x="550" y="42" text-anchor="middle" fill="#2d6a4f" font-weight="600">Tiled attention</text>
+        <text x="550" y="58" text-anchor="middle" fill="#2d6a4f">→ discard tile</text>
+        <line x1="614" y1="44" x2="638" y2="44" stroke="#0f5f68" stroke-width="1.8" marker-end="url(#arr5)"/>
+        <rect x="640" y="28" width="50" height="32" rx="8" fill="#e8f5e9" stroke="#2d6a4f" stroke-width="1.2"/>
+        <text x="665" y="48" text-anchor="middle" fill="#2d6a4f" font-weight="700">Out</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ===== 17 — NEW ===== -->
+  <section class="section" id="gpu-util">
+    <h2>GPU Utilisation — The Hidden Culprit <span class="new-badge">New</span></h2>
+    <p>
+      Engineers monitoring inference infrastructure often notice that GPU utilisation numbers (SM
+      active %, MFU, or hardware performance counter readings) tell a confusing story: the GPU
+      appears underloaded even during heavy traffic. KV-cache-related bottlenecks are a
+      frequent — and frequently overlooked — root cause.
+    </p>
+
+    <h3>KV fragmentation causes stall bubbles</h3>
+    <p>
+      In a PagedAttention-style system, the KV cache is divided into fixed-size blocks. As requests
+      arrive, grow, and complete, blocks become allocated and freed in non-sequential patterns.
+      If the block allocator runs out of contiguous free regions — or if the eviction policy is
+      too aggressive — the scheduler stalls waiting for space, leaving SMs idle.
+    </p>
+    <p>
+      Tools like <code>gpu-low-util-monitor</code> will surface this as a sustained gap between
+      hardware capability and observed throughput. The SM utilisation counter may read 35–50% while
+      the workload seems theoretically heavier, precisely because attention steps are blocked waiting
+      for KV allocation, not because the model is computationally light.
+    </p>
+
+    <h3>Dequantisation stalls under INT4</h3>
+    <p>
+      A second, subtler pattern appears when INT4 KV kernels are deployed without careful tile tuning.
+      If the decompression step spills from registers into shared memory — or worse, into L2 — the
+      kernel's arithmetic pipeline stalls, dropping SM utilisation even though the GPU is nominally
+      "running attention." This manifests as low MFU (model FLOP utilisation), not as a scheduling
+      issue. The hardware is occupied but not computing useful work.
+    </p>
+
+    <div class="callout amber">
+      <strong>Diagnostic pattern:</strong> if you observe low GPU utilisation during agentic
+      workloads with long contexts, check for (a) KV allocation fragmentation in the block manager,
+      (b) dequantisation kernel register spills via <code>ncu</code>, and (c) whether the batch
+      scheduler is padding short sequences with empty KV blocks to maintain alignment.
+    </div>
+
+    <h3>How compression changes the utilisation profile</h3>
+    <p>
+      Counterintuitively, adding INT4 KV compression can <em>increase</em> measured GPU utilisation
+      — not because the kernel runs faster per step, but because fewer HBM stalls mean more time
+      actually computing. On memory-bandwidth-limited workloads the GPU transitions from
+      "waiting for bytes" to "actually multiplying," which shows up as higher SM occupancy in
+      profiling tools.
+    </p>
+  </section>
+
+  <!-- ===== 18 ===== -->
+  <section class="section" id="future">
+    <h2>Where This Is Heading Next</h2>
+    <p>
+      Current KV compression is powerful, but still relatively early. Several directions look
+      especially important.
+    </p>
+
+    <h3>Semantic compression</h3>
+    <p>
+      Not all tokens matter equally. Low-value filler tokens could be compressed far more aggressively
+      than critical reasoning spans, named entities, or code structure. This requires
+      attention-aware importance scoring at write time — expensive, but increasingly tractable.
+    </p>
+
+    <h3>Attention-aware precision assignment</h3>
+    <p>
+      Frequently attended tokens stay high precision; low-salience tokens get downgraded. This turns
+      the KV cache into an adaptive memory system that mirrors the model's own attention distribution.
+    </p>
+
+    <h3>Hierarchical KV tiers</h3>
+    <p>
+      Once you think about the KV cache as a tiered memory system, transformer inference starts to
+      look remarkably like OS storage hierarchy design:
+    </p>
+    <pre>SRAM (on-chip)   → active tile, FP16, sub-microsecond access
+HBM              → hot KV cache, FP8,  ~microsecond
+DRAM / CXL       → warm KV, INT4,  ~tens of microseconds
+NVMe SSD         → cold / summarised memory, token-level eviction</pre>
+    <p>
+      A useful mental model: HBM is your desk (immediate work), DRAM is your room
+      (accessible with a few steps), SSD is a storage locker (archived, but retrievable
+      with some latency). The engineering challenge is managing eviction and retrieval
+      policies across these tiers without introducing unacceptable decode latency spikes.
+    </p>
+
+    <h3>Learned compression</h3>
+    <p>
+      The most ambitious direction is to stop storing every old token literally. Instead, future
+      systems may store compressed semantic state, learned summaries, or dynamically maintained
+      memory objects — analogous to how humans compress past context into high-level abstractions
+      rather than verbatim recall.
+    </p>
+
+    <h3>Hardware-software co-evolution</h3>
+    <p>
+      As Blackwell and future generations standardise FP4/FP8 tensor cores, quantisation will
+      increasingly be specified in terms of hardware tile formats rather than abstract bit widths.
+      The design space for TurboQuant-style systems will shift from "how do we avoid the unpack
+      penalty" to "which precision format aligns best with the hardware's native data path."
+    </p>
+  </section>
+
+  <section class="pullquote">
+    <p>
+      The central question is no longer just whether we can compress the KV cache. It is whether
+      we can compress it without making attention more expensive than the bytes we saved — and
+      whether the silicon itself will eventually make that tradeoff disappear.
+    </p>
+  </section>
+
+  <section class="footer-card">
+    <h2>Closing Thought</h2>
+    <p>
+      KV cache sits at the intersection of model architecture, GPU kernels, compiler strategy,
+      and memory systems — which is exactly why it has become one of the most important
+      battlegrounds in modern inference engineering. The field is moving fast: FP8 engines in
+      production today, FP4 native hardware shipping now, and CXL disaggregation on the near horizon.
+      Every layer of the stack — quantisation granularity, tiling strategy, hardware precision
+      format, and memory tier policy — is being redesigned in parallel.
+    </p>
+    <div class="download-note">v2 — kv-cache-turboquant-blog-v2.html</div>
+    <div class="footer-links">
+      <a href="/writings.html">← All writings</a>
+      <a href="/index.html">© 2026 MANISH AI. All rights reserved.</a>
+    </div>
+  </section>
+
+</main>
+<script>
+  (() => {
+    const key = 'theme';
+    const root = document.documentElement;
+    const toggle = document.getElementById('theme-toggle');
+    const apply = (theme) => {
+      root.classList.toggle('dark', theme === 'dark');
+      toggle.textContent = theme === 'dark' ? 'Light mode' : 'Dark mode';
+      toggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+    };
+    const saved = localStorage.getItem(key);
+    const preferred = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    apply(preferred);
+    toggle.addEventListener('click', () => {
+      const next = root.classList.contains('dark') ? 'light' : 'dark';
+      localStorage.setItem(key, next);
+      apply(next);
+    });
+  })();
+</script>
+</body>
+</html>
