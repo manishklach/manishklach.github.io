@@ -1,0 +1,1240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Compiler Becomes the Memory Scheduler | MANISH AI</title>
+<meta name="description" content="Why runtime dynamism is becoming too expensive for AI inference, and how compilers are evolving into full memory traffic planners: DMA scheduling, tensor placement, graph capture, and deterministic execution windows.">
+<meta name="keywords" content="compiler memory scheduler, AI compiler, DMA scheduling, tensor placement, CUDA Graphs, XLA, MLIR, deterministic inference, memory hierarchy, MANISH AI">
+<meta name="author" content="MANISH AI">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://manishklach.github.io/writings/compiler-memory-scheduler.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="The Compiler Becomes the Memory Scheduler | MANISH AI">
+<meta property="og:description" content="Why runtime dynamism is becoming too expensive for AI inference, and how compilers are evolving into full memory traffic planners: DMA scheduling, tensor placement, graph capture, and deterministic execution windows.">
+<meta property="og:url" content="https://manishklach.github.io/writings/compiler-memory-scheduler.html">
+<meta property="og:site_name" content="MANISH AI">
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
+<meta property="og:image:alt" content="The Compiler Becomes the Memory Scheduler">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Compiler Becomes the Memory Scheduler | MANISH AI">
+<meta name="twitter:description" content="Why runtime dynamism is becoming too expensive for AI inference, and how compilers are evolving into full memory traffic planners: DMA scheduling, tensor placement, graph capture, and deterministic execution windows.">
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;1,300&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,600;0,700;1,300&display=swap" rel="stylesheet">
+<script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "The Compiler Becomes the Memory Scheduler",
+  "description": "Why runtime dynamism is becoming too expensive for AI inference, and how compilers are evolving into full memory traffic planners: DMA scheduling, tensor placement, graph capture, and deterministic execution windows.",
+  "url": "https://manishklach.github.io/writings/compiler-memory-scheduler.html",
+  "datePublished": "2026-05-13",
+  "dateModified": "2026-05-13",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/compiler-memory-scheduler.html",
+  "inLanguage": "en",
+  "author": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  }
+}</script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+:root {
+  --bg:       #050709;
+  --bg2:      #090d12;
+  --bg3:      #0e141b;
+  --border:   rgba(255,255,255,0.07);
+  --border2:  rgba(255,255,255,0.12);
+  --ink:      #dde8f5;
+  --ink2:     #8fa8c4;
+  --ink3:     #4d6880;
+  --cyan:     #41e0d0;
+  --lime:     #9fe870;
+  --amber:    #f0b840;
+  --rose:     #f06880;
+  --violet:   #9878f8;
+  --cyan-d:   rgba(65,224,208,0.08);
+  --lime-d:   rgba(159,232,112,0.08);
+  --amber-d:  rgba(240,184,64,0.08);
+  --rose-d:   rgba(240,104,128,0.08);
+  --mono:     'IBM Plex Mono', 'Courier New', monospace;
+  --sans:     'IBM Plex Sans', system-ui, sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.72;
+  font-weight: 300;
+}
+
+/* ── LAYOUT ── */
+.wrap { max-width: 980px; margin: 0 auto; padding: 0 28px; }
+.wrap-wide { max-width: 1100px; margin: 0 auto; padding: 0 28px; }
+
+/* ── TOPBAR ── */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(5,7,9,0.94);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 28px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.topbar-name { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cyan); font-family: var(--mono); text-decoration: none; }
+.topbar-nav { display: flex; align-items: center; gap: 18px; }
+.topbar-nav a { font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink3); text-decoration: none; transition: color 0.2s ease; font-family: var(--mono); }
+.topbar-nav a:hover, .topbar-nav a[aria-current="page"] { color: var(--cyan); }
+
+/* ── HERO ── */
+.hero { padding: 80px 0 56px; border-bottom: 1px solid var(--border); }
+.hero-tag {
+  font-family: var(--mono);
+  font-size: 12px; font-weight: 400; letter-spacing: 0.12em;
+  color: var(--cyan); margin-bottom: 28px;
+  display: flex; align-items: center; gap: 14px;
+}
+.hero-tag::before { content: '//'; opacity: 0.5; }
+.hero-title {
+  font-size: clamp(34px, 5.5vw, 68px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: #eef4ff;
+  margin-bottom: 26px;
+}
+.hero-title .hl { color: var(--cyan); }
+.hero-sub {
+  font-size: 19px; font-weight: 300; color: var(--ink2);
+  max-width: 700px; line-height: 1.6; margin-bottom: 48px;
+}
+.hero-meta {
+  display: flex; flex-wrap: wrap; gap: 24px;
+  font-family: var(--mono); font-size: 12px; color: var(--ink3);
+  border-top: 1px solid var(--border); padding-top: 22px;
+}
+.hero-meta span { display: flex; align-items: center; gap: 8px; }
+.hero-meta span::before { content: '—'; color: var(--cyan); opacity: 0.5; }
+
+/* ── STAT STRIP ── */
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr));
+  gap: 1px; background: var(--border);
+  border: 1px solid var(--border); border-radius: 10px;
+  overflow: hidden; margin: 40px 0;
+}
+.stat { background: var(--bg2); padding: 22px 20px; }
+.stat-n { font-family: var(--mono); font-size: 26px; font-weight: 500; color: var(--cyan); line-height: 1; margin-bottom: 8px; letter-spacing: -0.02em; }
+.stat-l { font-size: 12px; color: var(--ink3); line-height: 1.45; }
+
+/* ── TOC ── */
+.toc { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: 8px; margin: 0 0 64px; }
+.toc-a {
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 12px 14px; font-size: 13px; color: var(--ink2);
+  text-decoration: none; display: flex; align-items: center; gap: 10px;
+  transition: border-color 0.18s, color 0.18s;
+  font-family: var(--mono);
+}
+.toc-a:hover { border-color: var(--cyan); color: var(--cyan); }
+.toc-n { color: var(--cyan); font-size: 11px; min-width: 22px; }
+
+/* ── SECTIONS ── */
+.sec { margin-bottom: 88px; scroll-margin-top: 56px; }
+.sec-label {
+  font-family: var(--mono); font-size: 11px; font-weight: 400;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink3);
+  margin-bottom: 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.sec-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+h2 {
+  font-size: clamp(24px, 3.5vw, 42px); font-weight: 700;
+  line-height: 1.1; letter-spacing: -0.025em; color: #eef4ff;
+  margin-bottom: 22px;
+}
+h2 .hl { color: var(--cyan); }
+h2 .hl2 { color: var(--lime); }
+h2 .hl3 { color: var(--amber); }
+h3 { font-size: 17px; font-weight: 600; color: #dde8f5; margin: 28px 0 10px; letter-spacing: -0.01em; }
+p { color: var(--ink2); margin-bottom: 18px; }
+p:last-child { margin-bottom: 0; }
+strong { color: var(--ink); font-weight: 600; }
+.lead { font-size: 19px; color: #c0d4e8; font-weight: 300; line-height: 1.6; margin-bottom: 22px; }
+
+/* ── CODE ── */
+pre {
+  background: #02050a;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 22px;
+  font-family: var(--mono);
+  font-size: 13px; line-height: 1.75;
+  color: #a8c8e0;
+  overflow-x: auto; margin: 22px 0;
+}
+pre .c  { color: var(--ink3); font-style: italic; }
+pre .t  { color: var(--cyan); }
+pre .l  { color: var(--lime); }
+pre .a  { color: var(--amber); }
+pre .r  { color: var(--rose); }
+pre .v  { color: var(--violet); }
+pre .w  { color: #dde8f5; }
+code { font-family: var(--mono); font-size: 13px; background: rgba(255,255,255,0.06); color: var(--cyan); padding: 2px 6px; border-radius: 4px; }
+
+/* ── DIAGRAMS ── */
+.diagram {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 28px 22px 18px;
+  margin: 28px 0;
+  overflow-x: auto;
+}
+.diagram svg { display: block; width: 100%; height: auto; }
+.diagram-cap {
+  font-size: 13px; color: var(--ink3); margin-top: 14px;
+  padding-top: 12px; border-top: 1px solid var(--border);
+  font-family: var(--mono); font-style: normal;
+}
+
+/* ── CALLOUTS ── */
+.callout {
+  border-left: 3px solid var(--cyan);
+  background: var(--cyan-d);
+  border-radius: 0 8px 8px 0;
+  padding: 18px 22px; margin: 26px 0;
+}
+.callout.lime   { border-color: var(--lime);   background: var(--lime-d); }
+.callout.amber  { border-color: var(--amber);  background: var(--amber-d); }
+.callout.rose   { border-color: var(--rose);   background: var(--rose-d); }
+.callout-lbl {
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--cyan); margin-bottom: 7px;
+}
+.callout.lime  .callout-lbl { color: var(--lime); }
+.callout.amber .callout-lbl { color: var(--amber); }
+.callout.rose  .callout-lbl { color: var(--rose); }
+.callout p { margin: 0; font-size: 15px; }
+
+/* ── PULL QUOTE ── */
+.pull {
+  border-top: 1px solid var(--border2);
+  border-bottom: 1px solid var(--border2);
+  padding: 28px 0; margin: 44px 0;
+}
+.pull p {
+  font-size: 20px; font-weight: 400; color: #c8ddf0;
+  line-height: 1.5; margin: 0; letter-spacing: -0.01em;
+}
+.pull p em { color: var(--cyan); font-style: normal; font-weight: 600; }
+
+/* ── GRIDS ── */
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 22px 0; }
+.g3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin: 22px 0; }
+.g4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin: 22px 0; }
+.card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px;
+}
+.card h3 { margin-top: 0; font-size: 14px; }
+.card p  { font-size: 14px; }
+.card-t  { border-top: 2px solid var(--cyan); }
+.card-l  { border-top: 2px solid var(--lime); }
+.card-a  { border-top: 2px solid var(--amber); }
+.card-r  { border-top: 2px solid var(--rose); }
+.card-v  { border-top: 2px solid var(--violet); }
+.card-lbl { font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink3); margin-bottom: 8px; }
+
+/* ── TABLE ── */
+.tbl { overflow-x: auto; margin: 24px 0; border-radius: 8px; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; }
+th {
+  background: var(--bg3); color: var(--ink); font-size: 11px;
+  font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 12px 16px; text-align: left; white-space: nowrap;
+  font-family: var(--mono);
+}
+td { padding: 12px 16px; border-top: 1px solid var(--border); color: var(--ink2); font-size: 14px; vertical-align: top; }
+tr:hover td { background: rgba(255,255,255,0.02); }
+.badge {
+  display: inline-block; font-family: var(--mono); font-size: 10px;
+  font-weight: 500; padding: 2px 8px; border-radius: 4px; white-space: nowrap;
+}
+.bt { background: var(--cyan-d); color: var(--cyan); }
+.bl { background: var(--lime-d); color: var(--lime); }
+.ba { background: var(--amber-d); color: var(--amber); }
+.br { background: var(--rose-d); color: var(--rose); }
+
+/* ── FOOTER ── */
+.footer {
+  border-top: 1px solid var(--border); padding: 40px 0 80px;
+  color: var(--ink3); font-size: 13px; font-family: var(--mono);
+}
+.footer-g { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); gap: 32px; margin-bottom: 32px; }
+.footer-g h4 { font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink3); margin-bottom: 12px; }
+.footer-g ul { list-style: none; }
+.footer-g li { margin-bottom: 8px; }
+.footer-g a { color: var(--ink2); text-decoration: none; }
+.footer-g a:hover { color: var(--cyan); }
+
+@media (max-width: 680px) {
+  .g2, .g3, .g4 { grid-template-columns: 1fr; }
+  .wrap, .wrap-wide { padding: 0 16px; }
+  .topbar { padding: 12px 16px; }
+  .topbar-nav { gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+}
+</style>
+</head>
+<body>
+
+<nav class="topbar">
+  <a class="topbar-name" href="/index.html">MAN\SH AI</a>
+  <div class="topbar-nav">
+    <a href="/index.html">Home</a>
+    <a href="/writings.html" aria-current="page">Writings</a>
+    <a href="/patents.html">Patents</a>
+  </div>
+</nav>
+
+<main class="wrap" data-pagefind-body>
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-tag">compiler theory · memory systems · deterministic inference</div>
+  <h1 class="hero-title">The Compiler Becomes<br>the <span class="hl">Memory Scheduler</span></h1>
+  <p class="hero-sub">Runtime dynamism is becoming too expensive for AI inference at scale. The next generation of AI compilers will not just optimize computation — they will pre-plan every byte's journey through the memory hierarchy before execution begins.</p>
+  <div class="hero-meta">
+    <span><time datetime="2026-05-13">May 13, 2026</time></span>
+    <span>12 sections</span>
+    <span>~22 min read</span>
+    <span>DMA · CUDA Graphs · XLA/MLIR · tensor liveness · determinism</span>
+  </div>
+</header>
+
+<!-- STATS -->
+<div class="stats">
+  <div class="stat"><div class="stat-n">~10 μs</div><div class="stat-l">CUDA kernel launch overhead (CPU path, per launch)</div></div>
+  <div class="stat"><div class="stat-n">&lt;1 μs</div><div class="stat-l">CUDA graph replay latency (after capture)</div></div>
+  <div class="stat"><div class="stat-n">60–80%</div><div class="stat-l">Wall-clock time that can be memory traffic, not GEMM</div></div>
+  <div class="stat"><div class="stat-n">32–48</div><div class="stat-l">Transformer layers each needing weight + KV staging</div></div>
+  <div class="stat"><div class="stat-n">O(n²)</div><div class="stat-l">How synchronization overhead scales with reactive allocation</div></div>
+</div>
+
+<!-- TOC -->
+<nav class="toc" aria-label="Table of contents">
+  <a class="toc-a" href="#old-assumption"><span class="toc-n">01</span>The assumption breaking</a>
+  <a class="toc-a" href="#real-problem"><span class="toc-n">02</span>Memory traffic is the problem</a>
+  <a class="toc-a" href="#why-expensive"><span class="toc-n">03</span>Why runtime is expensive</a>
+  <a class="toc-a" href="#static-planning"><span class="toc-n">04</span>Static execution planning</a>
+  <a class="toc-a" href="#liveness"><span class="toc-n">05</span>Tensor liveness analysis</a>
+  <a class="toc-a" href="#dma-schedule"><span class="toc-n">06</span>Compiler-scheduled DMA</a>
+  <a class="toc-a" href="#graph-capture"><span class="toc-n">07</span>Graph capture (CUDA/XLA)</a>
+  <a class="toc-a" href="#bounded"><span class="toc-n">08</span>Bounded buffers</a>
+  <a class="toc-a" href="#determinism"><span class="toc-n">09</span>Deterministic windows</a>
+  <a class="toc-a" href="#compiler-pipeline"><span class="toc-n">10</span>The compiler pipeline</a>
+  <a class="toc-a" href="#hardware"><span class="toc-n">11</span>Hardware implications</a>
+  <a class="toc-a" href="#cluster"><span class="toc-n">12</span>Cluster-level scheduling</a>
+</nav>
+
+<!-- ══════════════════════════════════════ -->
+<!-- S1 -->
+<!-- ══════════════════════════════════════ -->
+<section class="sec" id="old-assumption">
+  <div class="sec-label">Section 01</div>
+  <h2>The old assumption <span class="hl">is breaking</span></h2>
+  <p class="lead">For decades, the compute stack was built on a comfortable foundation: the runtime can decide things dynamically, and that's fine. Dynamic allocation, dynamic scheduling, dynamic dispatch, dynamic paging.</p>
+  <p>This worked because CPUs were balanced systems — memory access was slow relative to compute, but predictably so. Workloads were irregular and bursty, so static planning was often impossible. Latency budgets were forgiving. The runtime had time to think.</p>
+
+  <div class="callout rose">
+    <div class="callout-lbl">The breaking point</div>
+    <p>AI inference changes all three assumptions simultaneously. Memory bandwidth is now the binding constraint, not compute. Workloads run billions of near-identical iterations. Latency budgets have collapsed to sub-millisecond SLAs. The runtime no longer has time to think.</p>
+  </div>
+
+  <p>The result is a quiet revolution in how AI systems are compiled, scheduled, and executed. Not in the math — that's still GEMM on tensors. But in the orchestration layer underneath. The compiler is evolving from a code generator into a <strong>memory traffic planner</strong>, and the implications reach from kernel scheduling all the way to cluster topology.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 760 200" role="img">
+      <title>The shift from runtime-dynamic to compiler-planned execution</title>
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+      <!-- Old world -->
+      <rect x="30" y="28" width="290" height="144" rx="8" fill="rgba(240,104,128,0.06)" stroke="rgba(240,104,128,0.25)" stroke-width="0.5"/>
+      <text x="175" y="52" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="12" font-weight="600" fill="#f06880">Runtime-Dynamic World</text>
+      <text x="54" y="80"  font-family="'IBM Plex Mono',monospace" font-size="12" fill="#4d6880">allocate_now()</text>
+      <text x="54" y="100" font-family="'IBM Plex Mono',monospace" font-size="12" fill="#4d6880">copy_when_missing()</text>
+      <text x="54" y="120" font-family="'IBM Plex Mono',monospace" font-size="12" fill="#4d6880">page_on_fault()</text>
+      <text x="54" y="140" font-family="'IBM Plex Mono',monospace" font-size="12" fill="#4d6880">fence_when_needed()</text>
+      <text x="54" y="160" font-family="'IBM Plex Mono',monospace" font-size="12" fill="#f06880">→ discovers stalls after blocking</text>
+
+      <!-- Arrow -->
+      <line x1="340" y1="100" x2="400" y2="100" stroke="rgba(65,224,208,0.6)" stroke-width="2" marker-end="url(#ar)"/>
+      <text x="370" y="90" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#41e0d0">compile-time</text>
+      <text x="370" y="113" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#41e0d0">planning</text>
+
+      <!-- New world -->
+      <rect x="410" y="28" width="320" height="144" rx="8" fill="rgba(65,224,208,0.06)" stroke="rgba(65,224,208,0.3)" stroke-width="0.5"/>
+      <text x="570" y="52" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="12" font-weight="600" fill="#41e0d0">Compiler-Planned World</text>
+      <text x="430" y="80"  font-family="'IBM Plex Mono',monospace" font-size="12" fill="#8fa8c4">static_placement(tensor, tier)</text>
+      <text x="430" y="100" font-family="'IBM Plex Mono',monospace" font-size="12" fill="#8fa8c4">schedule_dma(t=N-2, src, dst)</text>
+      <text x="430" y="120" font-family="'IBM Plex Mono',monospace" font-size="12" fill="#8fa8c4">precomputed_fence(F1, F2)</text>
+      <text x="430" y="140" font-family="'IBM Plex Mono',monospace" font-size="12" fill="#8fa8c4">bounded_slot(id, release=t)</text>
+      <text x="430" y="160" font-family="'IBM Plex Mono',monospace" font-size="12" fill="#41e0d0">→ eliminates stalls before they occur</text>
+    </svg>
+    <div class="diagram-cap">// The core shift: from reactive runtime decisions to precomputed memory traffic plans emitted by the compiler.</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════ -->
+<!-- S2 -->
+<!-- ══════════════════════════════════════ -->
+<section class="sec" id="real-problem">
+  <div class="sec-label">Section 02</div>
+  <h2>The real problem is <span class="hl2">memory traffic</span></h2>
+  <p class="lead">The industry still measures AI hardware in teraFLOPs. The actual bottleneck in production inference systems is increasingly something different: how fast bytes move, not how fast multiplications happen.</p>
+
+  <p>Step through a single transformer decode iteration on a large model and list what must happen before the matrix multiply can start:</p>
+
+  <pre><span class="c"># One transformer decode step — the unglamorous full picture</span>
+
+<span class="t">1. Prefetch weights for layer N+1</span>         <span class="c"># from HBM or CXL</span>
+<span class="a">2. DMA KV cache block for this request</span>     <span class="c"># from DRAM or CXL pool</span>
+<span class="l">3. Stage activations from previous layer</span>   <span class="c"># HBM → compute cache</span>
+<span class="v">4. Wait on synchronization fences</span>          <span class="c"># stream ordering</span>
+<span class="w">5. ⚡ GEMM / attention compute</span>             <span class="c"># the part everyone counts</span>
+<span class="a">6. Write new KV entries back</span>               <span class="c"># to HBM / CXL</span>
+<span class="t">7. Stream output tokens</span>                    <span class="c"># to decode buffer</span>
+<span class="c"># Steps 1–4 and 6–7 are memory traffic. Step 5 is compute.</span></pre>
+
+  <div class="diagram">
+    <svg viewBox="0 0 760 240" role="img">
+      <title>Inference wall-time breakdown: memory traffic vs compute</title>
+      <!-- Timeline -->
+      <rect x="30" y="20" width="700" height="190" rx="8" fill="rgba(9,13,18,0.8)" stroke="rgba(255,255,255,0.07)" stroke-width="0.5"/>
+      <text x="50" y="46" font-family="'IBM Plex Mono',monospace" font-size="12" font-weight="600" fill="#dde8f5">wall-clock time per decode step</text>
+      <!-- Rows -->
+      <text x="48" y="80" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">DMA engine</text>
+      <text x="48" y="116" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">GPU compute</text>
+      <text x="48" y="152" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">sync / fences</text>
+      <text x="48" y="188" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">writeback</text>
+      <!-- DMA bar -->
+      <rect x="158" y="64"  width="380" height="24" rx="5" fill="rgba(159,232,112,0.2)" stroke="rgba(159,232,112,0.5)" stroke-width="0.5"/>
+      <text x="168" y="81" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#9fe870">prefetch weights + KV blocks (often 60–80% of step time)</text>
+      <!-- Compute bar — shorter, offset -->
+      <rect x="380" y="100" width="130" height="24" rx="5" fill="rgba(65,224,208,0.2)" stroke="rgba(65,224,208,0.5)" stroke-width="0.5"/>
+      <text x="390" y="117" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#41e0d0">GEMM/attn</text>
+      <!-- Sync bar -->
+      <rect x="340" y="136" width="80" height="24" rx="5" fill="rgba(240,184,64,0.2)" stroke="rgba(240,184,64,0.5)" stroke-width="0.5"/>
+      <text x="350" y="153" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#f0b840">fences</text>
+      <!-- Writeback -->
+      <rect x="516" y="172" width="140" height="24" rx="5" fill="rgba(159,232,112,0.15)" stroke="rgba(159,232,112,0.3)" stroke-width="0.5"/>
+      <text x="526" y="189" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#9fe870">KV writeback</text>
+      <!-- Time axis -->
+      <line x1="158" y1="206" x2="700" y2="206" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+      <text x="158" y="218" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">t=0</text>
+      <text x="692" y="218" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880" text-anchor="end">t=T</text>
+    </svg>
+    <div class="diagram-cap">// The GPU compute window (GEMM/attention) is often a minority of wall time. The rest is orchestration: DMA, prefetch, sync, writeback.</div>
+  </div>
+
+  <div class="callout">
+    <div class="callout-lbl">The arithmetic roofline is not the problem</div>
+    <p>A model can be entirely arithmetic-bound in isolation on one layer — and still be memory-bound system-wide across all layers, because the <em>coordination</em> between layers costs more than the computation inside them.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════ -->
+<!-- S3 -->
+<!-- ══════════════════════════════════════ -->
+<section class="sec" id="why-expensive">
+  <div class="sec-label">Section 03</div>
+  <h2>Why runtime dynamism <span class="hl3">gets expensive</span></h2>
+
+  <p>Traditional runtimes make decisions just-in-time. This is fine when decisions are cheap and errors are recoverable. In AI inference at scale, both conditions fail.</p>
+
+  <div class="g2">
+    <div class="card card-r">
+      <div class="card-lbl">Reactive runtime</div>
+      <h3>The pipeline stalls, then recovers</h3>
+      <pre style="margin:0;font-size:12px;"><span class="r">kernel starts</span>
+<span class="r">dependency missing</span>
+runtime detects miss
+launch DMA
+<span class="r">stall waiting</span>
+DMA completes
+<span class="w">resume</span>
+<span class="c"># detection + dispatch = 10–50μs</span></pre>
+      <p style="margin-top:12px;font-size:13px;">The pipeline <em>blocks</em> on discovering the miss. The cost is not just the DMA time — it includes detection latency and dispatch latency.</p>
+    </div>
+    <div class="card card-t">
+      <div class="card-lbl">Compiler-planned</div>
+      <h3>Traffic is always ahead of compute</h3>
+      <pre style="margin:0;font-size:12px;"><span class="c"># compiler emitted at build time:</span>
+<span class="t">t=N-2: DMA weights_L9 → HBM_slot4</span>
+<span class="t">t=N-2: DMA kv_block42 → HBM_kv0</span>
+<span class="t">t=N-1: fence(DMA_9, DMA_kv)</span>
+<span class="t">t=N:   exec attention_L9</span>
+<span class="c"># GPU never sees an empty pipeline</span></pre>
+      <p style="margin-top:12px;font-size:13px;">DMA is issued 2 steps early. By the time compute arrives at L9, the data is already there. Zero stall time.</p>
+    </div>
+  </div>
+
+  <p>Beyond individual stalls, runtime dynamism has systemic costs that compound:</p>
+
+  <div class="g3">
+    <div class="card">
+      <div class="card-lbl">Cost 1</div>
+      <h3>Allocator fragmentation</h3>
+      <p>Dynamic malloc/free fragments the HBM pool over time, causing increasingly expensive allocation searches and potential out-of-memory despite available space.</p>
+    </div>
+    <div class="card">
+      <div class="card-lbl">Cost 2</div>
+      <h3>Synchronization overhead</h3>
+      <p>Reactive fences and stream waits add per-operation overhead. At thousands of micro-operations per second, O(n) sync cost per handoff compounds to milliseconds.</p>
+    </div>
+    <div class="card">
+      <div class="card-lbl">Cost 3</div>
+      <h3>CPU-side scheduling</h3>
+      <p>Each kernel launch requires a CPU call (~10μs host overhead). For models with thousands of operations per forward pass, this alone adds ~10ms — entirely avoidable with graph capture.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════ -->
+<!-- S4 -->
+<!-- ══════════════════════════════════════ -->
+<section class="sec" id="static-planning">
+  <div class="sec-label">Section 04</div>
+  <h2>Static execution <span class="hl">planning</span></h2>
+  <p class="lead">The key insight is simple: if the computation graph is mostly known before execution begins, memory movement can be planned before execution begins.</p>
+  <p>This is not a new idea in computing. It's the same principle that transformed compilers from interpreters to ahead-of-time code generators. The question is what "known ahead of time" means for AI inference — and the answer is: more than most people assume.</p>
+  <p>At inference time, the model architecture is fixed. The layer sequence is fixed. The tensor shapes are fixed (for a given batch/context size). What changes is the data — the token values, the KV cache contents. But the <em>movement pattern</em> of that data through the memory hierarchy is almost entirely static. The compiler can plan it.</p>
+
+  <div class="tbl">
+    <table>
+      <thead>
+        <tr><th>Layer</th><th>Old runtime behavior</th><th>Compiler-planned behavior</th><th>Savings</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Memory allocation</strong></td>
+          <td>Dynamic malloc/free per tensor</td>
+          <td>Static placement via liveness analysis</td>
+          <td><span class="badge bt">no fragmentation</span></td>
+        </tr>
+        <tr>
+          <td><strong>Tensor movement</strong></td>
+          <td>DMA triggered on cache miss</td>
+          <td>DMA issued N steps before needed</td>
+          <td><span class="badge bl">zero stall</span></td>
+        </tr>
+        <tr>
+          <td><strong>Synchronization</strong></td>
+          <td>Runtime fences on every handoff</td>
+          <td>Precomputed producer–consumer barriers</td>
+          <td><span class="badge bt">minimal fence overhead</span></td>
+        </tr>
+        <tr>
+          <td><strong>Kernel launches</strong></td>
+          <td>CPU-driven per launch (~10 μs each)</td>
+          <td>Captured graph, replayed from GPU</td>
+          <td><span class="badge bl">10–100× lower launch latency</span></td>
+        </tr>
+        <tr>
+          <td><strong>Memory tiering</strong></td>
+          <td>Page on demand</td>
+          <td>Compile-time residency plan per tier</td>
+          <td><span class="badge ba">no page faults</span></td>
+        </tr>
+        <tr>
+          <td><strong>Buffer reuse</strong></td>
+          <td>Independent allocations per op</td>
+          <td>Overlapping lifetime → shared slots</td>
+          <td><span class="badge bt">lower peak HBM usage</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════ -->
+<!-- S5 -->
+<!-- ══════════════════════════════════════ -->
+<section class="sec" id="liveness">
+  <div class="sec-label">Section 05</div>
+  <h2>Tensor liveness analysis: <span class="hl2">register allocation for memory</span></h2>
+  <p>The deepest idea in compiler-controlled memory management is that it is structurally identical to register allocation — one of the most studied problems in compiler theory. Registers are a finite, fast resource. HBM slots are a finite, fast resource. The algorithm for assigning variables to registers is the same algorithm for assigning tensors to HBM slots.</p>
+
+  <p><strong>Liveness analysis</strong> determines the exact time interval during which each tensor must be in memory — its <em>live range</em>. Two tensors with non-overlapping live ranges can share the same physical memory slot, even if they're logically different buffers.</p>
+
+  <pre><span class="c"># Liveness analysis: the core compiler primitive</span>
+
+<span class="w">class TensorLifetime:</span>
+    name:   <span class="t">str</span>
+    size:   <span class="t">int</span>    <span class="c"># bytes</span>
+    born:   <span class="t">int</span>    <span class="c"># step when first written</span>
+    dies:   <span class="t">int</span>    <span class="c"># step after last read</span>
+    tier:   <span class="t">str</span>    <span class="c"># HBM | DRAM | CXL | SSD</span>
+
+<span class="w">def can_alias(a: TensorLifetime, b: TensorLifetime) -> bool:</span>
+    <span class="c"># a dies before b is born → same slot is safe</span>
+    <span class="w">return</span> a.dies <= b.born <span class="w">or</span> b.dies <= a.born
+
+<span class="c"># Example graph: 32-layer transformer decode step</span>
+lifetimes = [
+    TensorLifetime(<span class="l">"weights_L7"</span>,  size=<span class="a">512_MB</span>, born=<span class="a">0</span>,  dies=<span class="a">2</span>,  tier=<span class="t">"HBM"</span>),
+    TensorLifetime(<span class="l">"weights_L8"</span>,  size=<span class="a">512_MB</span>, born=<span class="a">2</span>,  dies=<span class="a">4</span>,  tier=<span class="t">"HBM"</span>),
+    TensorLifetime(<span class="l">"attn_tmp_L7"</span>, size=<span class="a">64_MB</span>,  born=<span class="a">1</span>,  dies=<span class="a">2</span>,  tier=<span class="t">"HBM"</span>),
+    TensorLifetime(<span class="l">"attn_tmp_L8"</span>, size=<span class="a">64_MB</span>,  born=<span class="a">3</span>,  dies=<span class="a">4</span>,  tier=<span class="t">"HBM"</span>),
+    TensorLifetime(<span class="l">"mlp_tmp_L7"</span>,  size=<span class="a">64_MB</span>,  born=<span class="a">2</span>,  dies=<span class="a">3</span>,  tier=<span class="t">"HBM"</span>),
+]
+
+<span class="c"># Result: attn_tmp_L7, attn_tmp_L8, mlp_tmp_L7 can share one 64 MB slot</span>
+<span class="c">#         weights_L7 and weights_L8 can share one 512 MB slot</span>
+<span class="c"># Peak HBM: 512+64 MB instead of 512+512+64+64+64 MB</span></pre>
+
+  <div class="diagram">
+    <svg viewBox="0 0 760 290" role="img">
+      <title>Tensor lifetime diagram showing buffer reuse opportunities</title>
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+      <!-- Grid lines (time steps) -->
+      <g stroke="rgba(255,255,255,0.04)" stroke-width="0.5">
+        <line x1="230" y1="24" x2="230" y2="260"/>
+        <line x1="310" y1="24" x2="310" y2="260"/>
+        <line x1="390" y1="24" x2="390" y2="260"/>
+        <line x1="470" y1="24" x2="470" y2="260"/>
+        <line x1="550" y1="24" x2="550" y2="260"/>
+        <line x1="630" y1="24" x2="630" y2="260"/>
+        <line x1="710" y1="24" x2="710" y2="260"/>
+      </g>
+      <!-- Tensor rows -->
+      <!-- weights_L7: born=0 (t=150) dies=2 (t=310) -->
+      <text x="148" y="60" text-anchor="end" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">weights_L7</text>
+      <rect x="150" y="44" width="160" height="24" rx="5" fill="rgba(65,224,208,0.2)" stroke="rgba(65,224,208,0.5)" stroke-width="0.5"/>
+      <text x="158" y="61" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#41e0d0">512 MB · HBM</text>
+
+      <!-- weights_L8: born=2 dies=4 -->
+      <text x="148" y="100" text-anchor="end" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">weights_L8</text>
+      <rect x="310" y="84" width="160" height="24" rx="5" fill="rgba(65,224,208,0.2)" stroke="rgba(65,224,208,0.5)" stroke-width="0.5"/>
+      <text x="318" y="101" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#41e0d0">512 MB · HBM</text>
+
+      <!-- Alias bracket for weights -->
+      <line x1="150" y1="34" x2="470" y2="34" stroke="rgba(65,224,208,0.35)" stroke-width="1" stroke-dasharray="4 3"/>
+      <text x="310" y="28" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#41e0d0">← can share one 512 MB HBM slot →</text>
+
+      <!-- attn_tmp_L7: born=1 dies=2 -->
+      <text x="148" y="144" text-anchor="end" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">attn_tmp_L7</text>
+      <rect x="230" y="128" width="80" height="24" rx="5" fill="rgba(159,232,112,0.2)" stroke="rgba(159,232,112,0.5)" stroke-width="0.5"/>
+      <text x="238" y="145" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#9fe870">64 MB</text>
+
+      <!-- mlp_tmp_L7: born=2 dies=3 -->
+      <text x="148" y="184" text-anchor="end" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">mlp_tmp_L7</text>
+      <rect x="310" y="168" width="80" height="24" rx="5" fill="rgba(159,232,112,0.2)" stroke="rgba(159,232,112,0.5)" stroke-width="0.5"/>
+      <text x="318" y="185" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#9fe870">64 MB</text>
+
+      <!-- attn_tmp_L8: born=3 dies=4 -->
+      <text x="148" y="224" text-anchor="end" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">attn_tmp_L8</text>
+      <rect x="390" y="208" width="80" height="24" rx="5" fill="rgba(159,232,112,0.2)" stroke="rgba(159,232,112,0.5)" stroke-width="0.5"/>
+      <text x="398" y="225" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#9fe870">64 MB</text>
+
+      <!-- Alias bracket for tmps -->
+      <path d="M230 258 H470" stroke="rgba(159,232,112,0.35)" stroke-width="1" stroke-dasharray="4 3"/>
+      <text x="350" y="275" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#9fe870">all three 64 MB tmps share one slot → 192 MB → 64 MB</text>
+
+      <!-- Time axis -->
+      <g font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880" text-anchor="middle">
+        <text x="150" y="278">t0</text>
+        <text x="230" y="278">t1</text>
+        <text x="310" y="278">t2</text>
+        <text x="390" y="278">t3</text>
+        <text x="470" y="278">t4</text>
+        <text x="550" y="278">t5</text>
+      </g>
+    </svg>
+    <div class="diagram-cap">// Liveness analysis: non-overlapping lifetimes → shared physical slots. This is register allocation, applied to HBM. Peak memory drops from 1216 MB to 576 MB (52% reduction) for this example.</div>
+  </div>
+
+  <p>This technique is not theoretical — <strong>XLA</strong> (Google's compiler for TPU/GPU) has used buffer assignment via liveness analysis since 2017. <strong>TVM</strong> applies it across heterogeneous memory tiers. <strong>MLIR</strong>'s buffer placement passes generalize it to the multi-level IR ecosystem. What's changing is the scope: these techniques are now being extended to multi-device, multi-tier memory hierarchies including HBM, DRAM, CXL pools, and NVMe.</p>
+</section>
+
+<!-- ══════════════════════════════════════ -->
+<!-- S6 -->
+<!-- ══════════════════════════════════════ -->
+<section class="sec" id="dma-schedule">
+  <div class="sec-label">Section 06</div>
+  <h2>Compiler-scheduled <span class="hl">DMA</span></h2>
+  <p>DMA scheduling is where memory planning becomes a hardware–software contract. The compiler doesn't just decide <em>where</em> data lives — it decides <em>when</em> the DMA engine should move it, relative to the compute timeline.</p>
+  <p>Modern DMA controllers accept <strong>descriptor chains</strong>: pre-built lists of transfer operations with fence dependencies. The compiler can emit these chains as a static artifact, requiring minimal runtime intervention to execute.</p>
+
+  <pre><span class="c">// Compiler-emitted DMA descriptor chain (C struct style)</span>
+<span class="w">struct dma_desc {</span>
+    <span class="t">uint64_t</span> src_addr;          <span class="c">// physical or CXL address</span>
+    <span class="t">uint64_t</span> dst_addr;          <span class="c">// HBM slot address</span>
+    <span class="t">uint32_t</span> bytes;
+    <span class="t">uint16_t</span> stream_id;         <span class="c">// which DMA engine handles this</span>
+    <span class="t">uint16_t</span> dep_fence;         <span class="c">// wait for this fence before starting</span>
+    <span class="t">uint16_t</span> comp_fence;        <span class="c">// signal this fence on completion</span>
+<span class="w">};</span>
+
+<span class="c">// Emitted by compiler for one decode window:</span>
+desc[0] = { CXL_WEIGHTS_L9,  HBM_SLOT_A, 512_MB, S0, NONE, F1 }
+desc[1] = { DRAM_KV_BLOCK42, HBM_KV_0,    64_MB, S1, NONE, F2 }
+desc[2] = { EXEC: ATTENTION_L8,        wait=[],       sig=F3 }
+desc[3] = { EXEC: ATTENTION_L9,        wait=[F1,F2]       }
+desc[4] = { RELEASE: HBM_SLOT_A,       after=F3           }</pre>
+
+  <div class="diagram">
+    <svg viewBox="0 0 760 230" role="img">
+      <title>DMA and compute overlap timeline</title>
+      <defs>
+        <marker id="ar3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+      <!-- WITHOUT overlap: top -->
+      <text x="30" y="30" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">without DMA scheduling</text>
+      <rect x="30" y="38"  width="120" height="26" rx="5" fill="rgba(65,224,208,0.12)" stroke="rgba(65,224,208,0.3)" stroke-width="0.5"/>
+      <text x="38" y="56" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#41e0d0">DMA weights L9</text>
+      <rect x="158" y="38" width="80"  height="26" rx="5" fill="rgba(159,232,112,0.12)" stroke="rgba(159,232,112,0.3)" stroke-width="0.5"/>
+      <text x="166" y="56" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#9fe870">attn L8</text>
+      <rect x="246" y="38" width="120" height="26" rx="5" fill="rgba(65,224,208,0.12)" stroke="rgba(65,224,208,0.3)" stroke-width="0.5"/>
+      <text x="254" y="56" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#41e0d0">DMA KV block 42</text>
+      <rect x="374" y="38" width="90"  height="26" rx="5" fill="rgba(159,232,112,0.12)" stroke="rgba(159,232,112,0.3)" stroke-width="0.5"/>
+      <text x="382" y="56" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#9fe870">attn L9</text>
+      <!-- total time brace -->
+      <line x1="30" y1="74" x2="464" y2="74" stroke="rgba(240,104,128,0.5)" stroke-width="1" marker-end="url(#ar3)" marker-start="url(#ar3)"/>
+      <text x="247" y="88" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#f06880">total: DMA_L9 + attn_L8 + DMA_KV + attn_L9 (sequential)</text>
+
+      <!-- WITH overlap: bottom -->
+      <text x="30" y="120" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">with compiler-scheduled DMA (overlap)</text>
+
+      <!-- DMA row -->
+      <text x="28" y="144" text-anchor="end" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">DMA</text>
+      <rect x="30" y="130" width="120" height="22" rx="4" fill="rgba(65,224,208,0.2)" stroke="rgba(65,224,208,0.4)" stroke-width="0.5"/>
+      <text x="38" y="146" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#41e0d0">DMA weights L9</text>
+      <rect x="160" y="130" width="80"  height="22" rx="4" fill="rgba(65,224,208,0.15)" stroke="rgba(65,224,208,0.3)" stroke-width="0.5"/>
+      <text x="168" y="146" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#41e0d0">DMA KV block</text>
+      <!-- Compute row -->
+      <text x="28" y="178" text-anchor="end" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">GPU</text>
+      <rect x="80"  y="162" width="80" height="22" rx="4" fill="rgba(159,232,112,0.2)" stroke="rgba(159,232,112,0.4)" stroke-width="0.5"/>
+      <text x="88" y="178" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#9fe870">attn L8</text>
+      <rect x="248" y="162" width="90" height="22" rx="4" fill="rgba(159,232,112,0.2)" stroke="rgba(159,232,112,0.4)" stroke-width="0.5"/>
+      <text x="256" y="178" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#9fe870">attn L9</text>
+      <!-- fence arrows -->
+      <line x1="148" y1="152" x2="200" y2="160" stroke="rgba(240,184,64,0.7)" stroke-width="1" stroke-dasharray="3 2" marker-end="url(#ar3)"/>
+      <line x1="238" y1="152" x2="248" y2="160" stroke="rgba(240,184,64,0.7)" stroke-width="1" stroke-dasharray="3 2" marker-end="url(#ar3)"/>
+      <text x="170" y="200" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#f0b840">F1: weights ready     F2: KV ready (fence deps)</text>
+      <!-- total time brace -->
+      <line x1="30" y1="210" x2="340" y2="210" stroke="rgba(159,232,112,0.5)" stroke-width="1" marker-end="url(#ar3)" marker-start="url(#ar3)"/>
+      <text x="185" y="224" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#9fe870">total: ≈ max(DMA, compute) — not sum</text>
+    </svg>
+    <div class="diagram-cap">// Overlap converts sequential time (sum) into parallel time (max). The compiler makes this possible by issuing DMA before the compute that needs it.</div>
+  </div>
+
+  <p>This is directly implemented in production systems. NVIDIA's <strong>cudaMemcpyAsync</strong> with explicit stream ordering is the low-level primitive. <strong>CUDA Graphs</strong> capture the dependency graph. Higher-level frameworks like <strong>Triton</strong> and <strong>FlashAttention</strong> use pipelining primitives to overlap loads and compute within a single kernel. The frontier is pushing this principle from single-kernel scope to whole-graph, multi-device scope.</p>
+</section>
+
+<!-- ══════════════════════════════════════ -->
+<!-- S7 -->
+<!-- ══════════════════════════════════════ -->
+<section class="sec" id="graph-capture">
+  <div class="sec-label">Section 07</div>
+  <h2>Graph capture: <span class="hl2">the first visible step</span></h2>
+  <p><strong>CUDA Graphs</strong> are the clearest production sign of this transition already underway. Instead of launching kernels one by one from the CPU — incurring ~10 μs host overhead per launch — a workload is captured once and replayed from GPU memory.</p>
+
+  <div class="g2">
+    <div class="card card-r">
+      <div class="card-lbl">Dynamic kernel launch (old)</div>
+      <pre style="margin:0;font-size:12px;padding:14px;"><span class="c"># CPU launches every kernel individually</span>
+<span class="w">for</span> token <span class="w">in</span> tokens:
+  <span class="v">launch</span>(q_proj, x)        <span class="c"># ~10μs</span>
+  <span class="v">launch</span>(k_proj, x)        <span class="c"># ~10μs</span>
+  <span class="v">launch</span>(v_proj, x)        <span class="c"># ~10μs</span>
+  <span class="v">launch</span>(attn, q, k, v)   <span class="c"># ~10μs</span>
+  <span class="v">launch</span>(mlp, y)           <span class="c"># ~10μs</span>
+  <span class="c"># 50μs CPU overhead per token</span>
+  <span class="c"># 100 tokens → 5ms wasted CPU time</span></pre>
+    </div>
+    <div class="card card-t">
+      <div class="card-lbl">CUDA Graph replay (new)</div>
+      <pre style="margin:0;font-size:12px;padding:14px;"><span class="c"># Capture once:</span>
+<span class="t">graph</span> = cuda.capture(decode_step)
+
+<span class="c"># Replay per token (GPU-side, no CPU):</span>
+<span class="w">for</span> token <span class="w">in</span> tokens:
+  <span class="t">graph</span>.replay(input_ptr,
+               output_ptr)
+  <span class="c"># ~0.5μs total overhead</span>
+  <span class="c"># 100 tokens → 50μs</span>
+  <span class="c"># 100× lower launch latency</span></pre>
+    </div>
+  </div>
+
+  <div class="diagram">
+    <svg viewBox="0 0 760 190" role="img">
+      <title>CUDA Graph capture vs dynamic launch latency comparison</title>
+      <!-- Dynamic row -->
+      <text x="30" y="32" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">dynamic launch (per token, 5 kernels)</text>
+      <!-- 5 CPU calls -->
+      <rect x="30"  y="40" width="80" height="28" rx="4" fill="rgba(240,104,128,0.15)" stroke="rgba(240,104,128,0.4)" stroke-width="0.5"/>
+      <rect x="116" y="40" width="80" height="28" rx="4" fill="rgba(240,104,128,0.15)" stroke="rgba(240,104,128,0.4)" stroke-width="0.5"/>
+      <rect x="202" y="40" width="80" height="28" rx="4" fill="rgba(240,104,128,0.15)" stroke="rgba(240,104,128,0.4)" stroke-width="0.5"/>
+      <rect x="288" y="40" width="80" height="28" rx="4" fill="rgba(240,104,128,0.15)" stroke="rgba(240,104,128,0.4)" stroke-width="0.5"/>
+      <rect x="374" y="40" width="80" height="28" rx="4" fill="rgba(240,104,128,0.15)" stroke="rgba(240,104,128,0.4)" stroke-width="0.5"/>
+      <text x="70"  y="59" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#f06880">CPU→GPU</text>
+      <text x="156" y="59" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#f06880">CPU→GPU</text>
+      <text x="242" y="59" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#f06880">CPU→GPU</text>
+      <text x="328" y="59" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#f06880">CPU→GPU</text>
+      <text x="414" y="59" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#f06880">CPU→GPU</text>
+      <text x="480" y="59" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#f06880">≈ 50 μs overhead</text>
+
+      <!-- Graph replay row -->
+      <text x="30" y="108" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">CUDA graph replay (same 5 kernels)</text>
+      <rect x="30" y="116" width="12" height="28" rx="3" fill="rgba(65,224,208,0.2)" stroke="rgba(65,224,208,0.5)" stroke-width="0.5"/>
+      <text x="50" y="134" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#41e0d0">replay node → GPU executes entire graph internally</text>
+      <text x="480" y="134" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#41e0d0">≈ 0.5 μs overhead</text>
+
+      <!-- Comparison -->
+      <text x="380" y="175" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#9fe870">100× reduction in kernel launch overhead — and this is just the first step</text>
+    </svg>
+    <div class="diagram-cap">// CUDA Graphs eliminate the CPU-to-GPU dispatch round-trip for every kernel. Replay issues the full graph from GPU memory in ~0.5μs vs ~10μs per launch.</div>
+  </div>
+
+  <p>But graph capture is a necessary stepping stone, not the destination. The deeper shift is: <strong>graph capture + tensor placement + DMA scheduling + bounded buffer reuse</strong>. CUDA Graphs give you the replay primitive. Liveness analysis gives you the placement plan. The compiler's job is to produce all three together.</p>
+
+  <p>This is what <strong>XLA</strong> does end-to-end for TPU workloads — the compilation step produces buffer assignments, DMA schedules, and kernel graphs as a single artifact. The runtime is nearly vestigial: it just executes the plan. The compiler made all the decisions.</p>
+</section>
+
+<!-- ══════════════════════════════════════ -->
+<!-- S8 -->
+<!-- ══════════════════════════════════════ -->
+<section class="sec" id="bounded">
+  <div class="sec-label">Section 08</div>
+  <h2>Bounded buffers: <span class="hl3">inference as a ring pipeline</span></h2>
+  <p>One of the most elegant properties of compiler-planned execution is that it enables <strong>bounded memory use</strong>. Instead of a runtime that grows, fragments, and occasionally panics with OOM, the compiler computes the maximum peak memory needed — provably — and allocates it up front as a fixed pool with named slots.</p>
+
+  <p>This is structurally identical to how network interface cards manage packet queues: a fixed ring buffer, where slots cycle through <code>empty → owned → complete → empty</code> with no dynamic allocation.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 760 270" role="img">
+      <title>Bounded buffer ring diagram for inference execution</title>
+      <defs>
+        <marker id="ar4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+      <!-- Ring circle (conceptual) -->
+      <circle cx="380" cy="138" r="90" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+      <!-- 8 slot arcs / boxes -->
+      <!-- slot 0 — FREE -->
+      <rect x="402" y="38" width="70" height="36" rx="6" fill="rgba(159,232,112,0.12)" stroke="rgba(159,232,112,0.4)" stroke-width="0.5"/>
+      <text x="437" y="56" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" font-weight="500" fill="#9fe870">slot 0</text>
+      <text x="437" y="68" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#4d6880">FREE</text>
+      <!-- slot 1 — FILLING (DMA in progress) -->
+      <rect x="472" y="76" width="78" height="36" rx="6" fill="rgba(65,224,208,0.15)" stroke="rgba(65,224,208,0.5)" stroke-width="0.5"/>
+      <text x="511" y="94" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" font-weight="500" fill="#41e0d0">slot 1</text>
+      <text x="511" y="106" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#41e0d0">DMA active</text>
+      <!-- slot 2 — COMPUTE -->
+      <rect x="492" y="148" width="76" height="36" rx="6" fill="rgba(65,224,208,0.2)" stroke="rgba(65,224,208,0.6)" stroke-width="0.8"/>
+      <text x="530" y="166" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" font-weight="500" fill="#41e0d0">slot 2</text>
+      <text x="530" y="178" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#41e0d0">→ COMPUTE</text>
+      <!-- slot 3 — WRITEBACK -->
+      <rect x="452" y="210" width="76" height="36" rx="6" fill="rgba(240,184,64,0.12)" stroke="rgba(240,184,64,0.4)" stroke-width="0.5"/>
+      <text x="490" y="228" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" font-weight="500" fill="#f0b840">slot 3</text>
+      <text x="490" y="240" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#f0b840">writeback</text>
+      <!-- slot 4 — FREE -->
+      <rect x="356" y="222" width="68" height="36" rx="6" fill="rgba(159,232,112,0.08)" stroke="rgba(159,232,112,0.25)" stroke-width="0.5"/>
+      <text x="390" y="240" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">slot 4 FREE</text>
+      <!-- slot 5 — FREE -->
+      <rect x="268" y="212" width="68" height="36" rx="6" fill="rgba(159,232,112,0.08)" stroke="rgba(159,232,112,0.25)" stroke-width="0.5"/>
+      <text x="302" y="230" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">slot 5 FREE</text>
+      <!-- slot 6 — FREE -->
+      <rect x="210" y="154" width="68" height="36" rx="6" fill="rgba(159,232,112,0.08)" stroke="rgba(159,232,112,0.25)" stroke-width="0.5"/>
+      <text x="244" y="172" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">slot 6 FREE</text>
+      <!-- slot 7 — FREE -->
+      <rect x="212" y="80" width="68" height="36" rx="6" fill="rgba(159,232,112,0.08)" stroke="rgba(159,232,112,0.25)" stroke-width="0.5"/>
+      <text x="246" y="98" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">slot 7 FREE</text>
+      <!-- Rotation arrow -->
+      <path d="M375 46 Q340 36 312 56" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" marker-end="url(#ar4)"/>
+      <text x="380" y="138" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">N bounded</text>
+      <text x="380" y="153" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">HBM slots</text>
+      <text x="380" y="168" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">fixed size, cycling</text>
+      <!-- Caption line -->
+      <text x="380" y="262" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">compiler determines N at build time — no runtime allocator, no fragmentation, no OOM surprises</text>
+    </svg>
+    <div class="diagram-cap">// Bounded buffer ring: N slots, each cycling through FREE → DMA_ACTIVE → COMPUTE → WRITEBACK → FREE. The compiler knows N statically. No dynamic allocator is needed.</div>
+  </div>
+
+  <pre><span class="c"># What the compiler produces</span>
+<span class="w">HBM_POOL</span> = [
+    Slot(id=<span class="a">0</span>, size=<span class="a">512_MB</span>, tier=<span class="t">"HBM"</span>),   <span class="c"># weights double-buffer A</span>
+    Slot(id=<span class="a">1</span>, size=<span class="a">512_MB</span>, tier=<span class="t">"HBM"</span>),   <span class="c"># weights double-buffer B</span>
+    Slot(id=<span class="a">2</span>, size=<span class="a">64_MB</span>,  tier=<span class="t">"HBM"</span>),   <span class="c"># attention temp</span>
+    Slot(id=<span class="a">3</span>, size=<span class="a">256_MB</span>, tier=<span class="t">"HBM"</span>),   <span class="c"># KV active window</span>
+    Slot(id=<span class="a">4</span>, size=<span class="a">256_MB</span>, tier=<span class="t">"HBM"</span>),   <span class="c"># KV prefetch window</span>
+]
+<span class="c"># total HBM committed: 1600 MB — known at compile time, guaranteed sufficient</span>
+<span class="c"># runtime never calls malloc()</span></pre>
+
+  <p>This has a second-order benefit beyond avoiding fragmentation: it makes the memory footprint <strong>statically verifiable</strong>. A safety-critical deployment can prove at compile time that the model will never exceed its memory budget — no runtime surprises.</p>
+</section>
+
+<!-- ══════════════════════════════════════ -->
+<!-- S9 -->
+<!-- ══════════════════════════════════════ -->
+<section class="sec" id="determinism">
+  <div class="sec-label">Section 09</div>
+  <h2>Deterministic <span class="hl3">execution windows</span></h2>
+  <p>Determinism is not an academic nicety — it is an operational requirement for production AI systems. Non-deterministic memory movement creates tail latency, and tail latency in AI inference compounds across batches, agent loops, and service tiers in ways that are difficult to debug and expensive to provision for.</p>
+
+  <div class="tbl">
+    <table>
+      <thead>
+        <tr><th>Property</th><th>Dynamic runtime</th><th>Compiler-planned determinism</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Latency profile</strong></td>
+          <td>p50 good, p99 painful — driven by allocator and page-fault jitter</td>
+          <td>Bounded by compile-time worst-case analysis</td>
+        </tr>
+        <tr>
+          <td><strong>Memory footprint</strong></td>
+          <td>Grows over time due to fragmentation</td>
+          <td>Fixed by compiler allocation plan</td>
+        </tr>
+        <tr>
+          <td><strong>DMA timing</strong></td>
+          <td>Reactive — triggered by misses</td>
+          <td>Scheduled — issued N steps early</td>
+        </tr>
+        <tr>
+          <td><strong>Debuggability</strong></td>
+          <td>Latency spikes are hard to reproduce</td>
+          <td>Execution is replayable from descriptor log</td>
+        </tr>
+        <tr>
+          <td><strong>Safety certification</strong></td>
+          <td>Runtime behaviour cannot be fully pre-verified</td>
+          <td>Static analysis possible over compiled plan</td>
+        </tr>
+        <tr>
+          <td><strong>SLA provisioning</strong></td>
+          <td>Must over-provision for p99 headroom</td>
+          <td>Provision for known max, not statistical estimate</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout amber">
+    <div class="callout-lbl">Why tail latency matters more than average latency</div>
+    <p>In a 32-step agentic loop where each step has p99 latency 2× above p50, the probability of hitting at least one high-latency step is <code>1 - 0.99^32 ≈ 27%</code>. Nearly one in three agent sessions hits a tail event. Compiler-planned determinism attacks this by compressing the gap between p50 and p99.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════ -->
+<!-- S10 -->
+<!-- ══════════════════════════════════════ -->
+<section class="sec" id="compiler-pipeline">
+  <div class="sec-label">Section 10</div>
+  <h2>The full <span class="hl">compiler pipeline</span></h2>
+  <p>Putting the pieces together: a memory-aware AI compiler takes a model graph and produces not one but <em>three</em> artifacts — a compute graph, a memory traffic plan, and a synchronization schedule. These three together constitute the "deterministic execution plan" that a thin runtime can execute with minimal improvisation.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 760 330" role="img">
+      <title>Compiler pipeline: from model graph to deterministic execution plan</title>
+      <defs>
+        <marker id="ar5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+      <!-- Input -->
+      <rect x="30" y="30" width="120" height="60" rx="7" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.12)" stroke-width="0.5"/>
+      <text x="90" y="56" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="12" font-weight="600" fill="#dde8f5">Model graph</text>
+      <text x="90" y="74" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">ops + shapes</text>
+      <line x1="150" y1="60" x2="192" y2="60" stroke="rgba(65,224,208,0.5)" stroke-width="1.5" marker-end="url(#ar5)"/>
+
+      <!-- Pass 1: Liveness -->
+      <rect x="194" y="30" width="120" height="60" rx="7" fill="rgba(65,224,208,0.07)" stroke="rgba(65,224,208,0.3)" stroke-width="0.5"/>
+      <text x="254" y="52" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#41e0d0">Liveness</text>
+      <text x="254" y="68" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">tensor lifetimes</text>
+      <text x="254" y="82" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">alias candidates</text>
+      <line x1="314" y1="60" x2="356" y2="60" stroke="rgba(65,224,208,0.5)" stroke-width="1.5" marker-end="url(#ar5)"/>
+
+      <!-- Pass 2: Placement -->
+      <rect x="358" y="30" width="120" height="60" rx="7" fill="rgba(159,232,112,0.07)" stroke="rgba(159,232,112,0.3)" stroke-width="0.5"/>
+      <text x="418" y="52" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#9fe870">Placement</text>
+      <text x="418" y="68" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">HBM/DRAM/CXL</text>
+      <text x="418" y="82" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">slot assignment</text>
+      <line x1="478" y1="60" x2="520" y2="60" stroke="rgba(65,224,208,0.5)" stroke-width="1.5" marker-end="url(#ar5)"/>
+
+      <!-- Pass 3: DMA schedule -->
+      <rect x="522" y="30" width="120" height="60" rx="7" fill="rgba(240,184,64,0.07)" stroke="rgba(240,184,64,0.3)" stroke-width="0.5"/>
+      <text x="582" y="52" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#f0b840">DMA sched</text>
+      <text x="582" y="68" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">descriptor chain</text>
+      <text x="582" y="82" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">overlap windows</text>
+      <line x1="642" y1="60" x2="684" y2="60" stroke="rgba(65,224,208,0.5)" stroke-width="1.5" marker-end="url(#ar5)"/>
+
+      <!-- Pass 4: Graph capture -->
+      <rect x="686" y="30" width="50" height="60" rx="7" fill="rgba(152,120,248,0.07)" stroke="rgba(152,120,248,0.3)" stroke-width="0.5"/>
+      <text x="711" y="56" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" font-weight="600" fill="#9878f8">Graph</text>
+      <text x="711" y="70" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#4d6880">capture</text>
+
+      <!-- Output artifacts -->
+      <text x="380" y="130" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">compiler produces three artifacts:</text>
+
+      <rect x="60" y="148" width="190" height="70" rx="7" fill="rgba(65,224,208,0.07)" stroke="rgba(65,224,208,0.3)" stroke-width="0.5"/>
+      <text x="155" y="170" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#41e0d0">Compute graph</text>
+      <text x="155" y="188" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">kernels + dep graph</text>
+      <text x="155" y="206" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">CUDA graph artifact</text>
+
+      <rect x="285" y="148" width="190" height="70" rx="7" fill="rgba(159,232,112,0.07)" stroke="rgba(159,232,112,0.3)" stroke-width="0.5"/>
+      <text x="380" y="170" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#9fe870">Memory plan</text>
+      <text x="380" y="188" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">slot assignments</text>
+      <text x="380" y="206" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">tier residency map</text>
+
+      <rect x="510" y="148" width="190" height="70" rx="7" fill="rgba(240,184,64,0.07)" stroke="rgba(240,184,64,0.3)" stroke-width="0.5"/>
+      <text x="605" y="170" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#f0b840">Traffic schedule</text>
+      <text x="605" y="188" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">DMA descriptor chain</text>
+      <text x="605" y="206" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">fence dependency graph</text>
+
+      <!-- Merge to runtime -->
+      <line x1="155" y1="218" x2="380" y2="268" stroke="rgba(255,255,255,0.15)" stroke-width="1" marker-end="url(#ar5)"/>
+      <line x1="380" y1="218" x2="380" y2="268" stroke="rgba(255,255,255,0.15)" stroke-width="1" marker-end="url(#ar5)"/>
+      <line x1="605" y1="218" x2="380" y2="268" stroke="rgba(255,255,255,0.15)" stroke-width="1" marker-end="url(#ar5)"/>
+
+      <rect x="260" y="270" width="240" height="44" rx="7" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.12)" stroke-width="0.5"/>
+      <text x="380" y="290" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#dde8f5">Thin deterministic runtime</text>
+      <text x="380" y="306" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">executes the plan, makes no decisions</text>
+    </svg>
+    <div class="diagram-cap">// The compiler is no longer a kernel emitter. It is a system planner: liveness analysis → placement → DMA schedule → graph capture → one deterministic artifact the runtime just executes.</div>
+  </div>
+
+  <p>This is the architecture of <strong>XLA</strong> on TPUs today. The TPU runtime is deliberately thin — it executes the compiled plan and does almost nothing else. The insight is that a rich runtime is not a feature; it is deferred compilation, with all the associated unpredictability. Moving those decisions into the compiler makes them auditable, optimizable, and deterministic.</p>
+</section>
+
+<!-- ══════════════════════════════════════ -->
+<!-- S11 -->
+<!-- ══════════════════════════════════════ -->
+<section class="sec" id="hardware">
+  <div class="sec-label">Section 11</div>
+  <h2>Hardware <span class="hl2">must cooperate</span></h2>
+  <p>Compiler-controlled execution is only possible when hardware exposes the right interfaces. If the compiler emits a DMA schedule but the hardware has no mechanism to accept and hold that schedule, the optimization is unreachable. This is why the compiler story is inseparable from the hardware roadmap.</p>
+
+  <div class="g2">
+    <div class="card card-t">
+      <div class="card-lbl">What compilers need from hardware</div>
+      <h3>Explicit control surfaces</h3>
+      <p>Programmable DMA engines that accept descriptor chains. Memory-tier visibility (HBM vs DRAM vs CXL). Compiler-addressable prefetch units. Named synchronization fences. Graph replay primitives. Residency hint interfaces.</p>
+    </div>
+    <div class="card card-l">
+      <div class="card-lbl">What hardware gains in return</div>
+      <h3>Predictable workloads</h3>
+      <p>If the compiler tells the DMA engine what it will need 2 steps in advance, the DMA engine can optimize for throughput rather than latency. Hardware power management improves. Interconnect utilization smooths. Memory controller queuing reduces.</p>
+    </div>
+  </div>
+
+  <div class="g4">
+    <div class="card">
+      <div class="card-lbl">CXL</div>
+      <h3>Memory pooling</h3>
+      <p>CXL.mem gives the compiler a named, coherent third tier between HBM and network storage. Placement decisions become concrete.</p>
+    </div>
+    <div class="card">
+      <div class="card-lbl">CUDA Graphs</div>
+      <h3>Graph replay</h3>
+      <p>The GPU executes a pre-built kernel dependency graph. The CPU is removed from the hot path entirely.</p>
+    </div>
+    <div class="card">
+      <div class="card-lbl">SmartNICs</div>
+      <h3>DMA offload</h3>
+      <p>A SmartNIC that accepts DMA descriptor chains from a compiler artifact can move tensors between nodes without CPU mediation.</p>
+    </div>
+    <div class="card">
+      <div class="card-lbl">GPUDirect</div>
+      <h3>SSD → HBM</h3>
+      <p>GPUDirect Storage closes the gap between the cold storage tier and HBM, enabling compiler-planned overflow to NVMe.</p>
+    </div>
+  </div>
+
+  <div class="callout lime">
+    <div class="callout-lbl">The convergence</div>
+    <p>CXL, SmartNICs, GPUDirect Storage, NVLink, and CUDA Graphs are not independent hardware stories. They are the hardware primitives that compiler-controlled memory scheduling requires. Each one exposes a control surface the compiler can target. The compiler is the integrating layer above them.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════ -->
+<!-- S12 -->
+<!-- ══════════════════════════════════════ -->
+<section class="sec" id="cluster">
+  <div class="sec-label">Section 12 — The Frontier</div>
+  <h2>Cluster-level <span class="hl">distributed traffic control</span></h2>
+  <p class="lead">The most ambitious extension of compiler-planned execution is not one GPU — it is one compiler plan across an entire inference cluster, treating the multi-node system as a single scheduled pipeline.</p>
+
+  <p>A cluster-level compiler would produce a plan that answers questions no single-device compiler ever needs to ask:</p>
+
+  <pre><span class="c"># Conceptual cluster execution plan — window 17</span>
+<span class="w">window_17:</span>
+  <span class="t">gpu0.exec:</span>    attention_layer_21
+  <span class="t">gpu1.dma:</span>     kv_block_104 → gpu0.hbm.slot7   <span class="c"># NVLink</span>
+  <span class="t">nic0.route:</span>   activations_rank3 → gpu2          <span class="c"># IB/RoCE</span>
+  <span class="t">cxl.prefetch:</span> weights_layer_22 → gpu0.near_mem  <span class="c"># CXL.mem</span>
+  <span class="t">fence:</span>        wait(kv_block_104, weights_layer_22)
+  <span class="t">release:</span>      gpu0.hbm.slot2
+
+<span class="w">window_18:</span>
+  <span class="t">gpu0.exec:</span>    attention_layer_22              <span class="c"># all deps guaranteed ready</span>
+  <span class="t">gpu2.dma:</span>     kv_block_105 → gpu2.hbm.slot3
+  <span class="c"># ...</span></pre>
+
+  <div class="diagram">
+    <svg viewBox="0 0 760 280" role="img">
+      <title>Cluster-level compiler plan: compiler as distributed traffic controller</title>
+      <defs>
+        <marker id="ar6" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+      <!-- Compiler box at top -->
+      <rect x="270" y="20" width="220" height="52" rx="8" fill="rgba(65,224,208,0.08)" stroke="rgba(65,224,208,0.4)" stroke-width="0.8"/>
+      <text x="380" y="44" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="13" font-weight="600" fill="#41e0d0">Cluster Compiler</text>
+      <text x="380" y="62" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" fill="#4d6880">global traffic controller</text>
+
+      <!-- Plan artifacts -->
+      <line x1="380" y1="72" x2="130" y2="120" stroke="rgba(65,224,208,0.35)" stroke-width="1" marker-end="url(#ar6)"/>
+      <line x1="380" y1="72" x2="260" y2="120" stroke="rgba(65,224,208,0.35)" stroke-width="1" marker-end="url(#ar6)"/>
+      <line x1="380" y1="72" x2="380" y2="120" stroke="rgba(65,224,208,0.35)" stroke-width="1" marker-end="url(#ar6)"/>
+      <line x1="380" y1="72" x2="500" y2="120" stroke="rgba(65,224,208,0.35)" stroke-width="1" marker-end="url(#ar6)"/>
+      <line x1="380" y1="72" x2="630" y2="120" stroke="rgba(65,224,208,0.35)" stroke-width="1" marker-end="url(#ar6)"/>
+
+      <!-- Device nodes -->
+      <rect x="65"  y="122" width="130" height="50" rx="6" fill="var(--bg2)" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+      <text x="130" y="144" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#dde8f5">GPU 0</text>
+      <text x="130" y="160" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#4d6880">compute plan</text>
+
+      <rect x="200" y="122" width="130" height="50" rx="6" fill="var(--bg2)" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+      <text x="265" y="144" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#dde8f5">GPU 1</text>
+      <text x="265" y="160" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#4d6880">DMA plan</text>
+
+      <rect x="315" y="122" width="130" height="50" rx="6" fill="var(--bg2)" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+      <text x="380" y="144" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#dde8f5">SmartNIC</text>
+      <text x="380" y="160" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#4d6880">routing plan</text>
+
+      <rect x="432" y="122" width="136" height="50" rx="6" fill="var(--bg2)" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+      <text x="500" y="144" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#dde8f5">CXL pool</text>
+      <text x="500" y="160" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#4d6880">prefetch plan</text>
+
+      <rect x="570" y="122" width="125" height="50" rx="6" fill="var(--bg2)" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+      <text x="632" y="144" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#dde8f5">Fences</text>
+      <text x="632" y="160" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#4d6880">sync schedule</text>
+
+      <!-- Result -->
+      <text x="380" y="222" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">all devices execute their fragment of the plan independently</text>
+      <text x="380" y="240" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" fill="#4d6880">fences are the only coordination point</text>
+      <rect x="170" y="252" width="420" height="22" rx="5" fill="rgba(65,224,208,0.07)" stroke="rgba(65,224,208,0.25)" stroke-width="0.5"/>
+      <text x="380" y="268" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="600" fill="#41e0d0">compiler = distributed traffic controller</text>
+    </svg>
+    <div class="diagram-cap">// The cluster-level compiler produces a per-device fragment of a global execution plan. Each device executes its fragment independently; the fence schedule coordinates the seams.</div>
+  </div>
+
+  <p>This is not science fiction — it is a natural extension of what XLA already does for TPU pods, where a single compilation pass produces a globally coordinated execution plan for hundreds of chips. The open question is how far this extends: to heterogeneous clusters with GPUs, CXL memory, SmartNICs, and multiple storage tiers, all coordinated by a single compiler artifact.</p>
+
+  <div class="pull">
+    <p>The AI compiler of 2020 was a <em>graph optimizer.</em> The AI compiler of 2025 is a <em>memory traffic planner.</em> The AI compiler of 2027 may be a <em>distributed traffic controller</em> — producing deterministic execution plans for the entire inference fleet, not just one chip.</p>
+  </div>
+</section>
+
+<!-- FINAL THOUGHT -->
+<section class="sec" style="padding-bottom:0;">
+  <div class="sec-label">Final Thought</div>
+  <h2>The new objective function</h2>
+  <p>The old compiler objective was to minimize instruction count. Reduce branches, pack computations, vectorize loops. These are still relevant but they are no longer the binding constraint in AI inference.</p>
+  <p>The new objective is: <strong>minimize unnecessary memory movement while guaranteeing throughput and latency bounds.</strong> That means the compiler must reason about bytes, not just operations. It must reason about time, not just transformation. It must reason across multiple memory tiers, multiple devices, and multiple concurrent sessions simultaneously.</p>
+
+  <div class="callout">
+    <div class="callout-lbl">The thesis in one sentence</div>
+    <p>The future AI stack will not be defined by who computes fastest — it will be defined by who moves memory most intelligently. And the compiler is becoming the system that makes that intelligence possible.</p>
+  </div>
+
+  <div class="g3" style="margin-top:32px;">
+    <div class="card card-t">
+      <div class="card-lbl">Then</div>
+      <h3>Code generator</h3>
+      <p>Transforms ops → kernels. Optimizes instruction sequences. Output: executable binary.</p>
+    </div>
+    <div class="card card-l">
+      <div class="card-lbl">Now</div>
+      <h3>Memory planner</h3>
+      <p>Liveness + placement + DMA schedule + graph capture. Output: deterministic execution plan.</p>
+    </div>
+    <div class="card card-a">
+      <div class="card-lbl">Next</div>
+      <h3>Traffic controller</h3>
+      <p>Cluster-wide orchestration across GPUs, CXL, SmartNICs, storage. Output: distributed plan for all devices.</p>
+    </div>
+  </div>
+</section>
+
+</main><!-- /wrap -->
+
+<!-- FOOTER -->
+<div class="wrap">
+<footer class="footer">
+  <div class="footer-g">
+    <div>
+      <h4>Compiler frameworks</h4>
+      <ul>
+        <li><a href="https://openxla.org/">XLA / OpenXLA — openxla.org</a></li>
+        <li><a href="https://mlir.llvm.org/">MLIR — mlir.llvm.org</a></li>
+        <li><a href="https://tvm.apache.org/">Apache TVM</a></li>
+        <li><a href="https://triton-lang.org/">Triton — triton-lang.org</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Runtime primitives</h4>
+      <ul>
+        <li>CUDA Graphs — NVIDIA developer docs</li>
+        <li>cuDSS / cuSPARSELt — sparse+structured pruning</li>
+        <li>GPUDirect Storage — NVIDIA GDS guide</li>
+        <li>cudaMemcpyAsync / stream ordering</li>
+      </ul>
+    </div>
+    <div>
+      <h4>Further reading</h4>
+      <ul>
+        <li>Hennessy & Patterson — Computer Architecture, 6th ed. (memory hierarchy)</li>
+        <li>vLLM — PagedAttention (SOSP 2023)</li>
+        <li>FlashAttention-2 — tiling + IO-aware GEMM</li>
+        <li>Mooncake — KV cache disaggregation (2024)</li>
+      </ul>
+    </div>
+  </div>
+  <p><a href="/index.html">© 2026 MANISH AI. All rights reserved.</a></p>
+  <p><a href="/writings.html">← All writings</a> · AI compiler · DMA scheduling · tensor liveness · CUDA Graphs · XLA · MLIR · deterministic inference · memory hierarchy · HBM · CXL</p>
+</footer>
+</div>
+
+</body>
+</html>
