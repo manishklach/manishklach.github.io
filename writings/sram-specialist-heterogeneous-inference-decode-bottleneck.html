@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SRAM as the Specialist: Heterogeneous Inference and the Decode Bottleneck | MANISH AI</title>
+<meta name="description" content="A deep technical essay on why SRAM-heavy accelerators fit decode-side FFN and MoE paths, and how heterogeneous inference reframes the AI chip memory debate.">
+<meta name="keywords" content="SRAM inference, heterogeneous inference, decode bottleneck, AI chips, FFN decode, MoE inference, HBM vs SRAM, Groq LPX, Vera Rubin, MANISH AI">
+<meta name="author" content="MANISH AI">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://manishklach.github.io/writings/sram-specialist-heterogeneous-inference-decode-bottleneck.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="SRAM as the Specialist: Heterogeneous Inference and the Decode Bottleneck | MANISH AI">
+<meta property="og:description" content="A deep technical essay on why SRAM-heavy accelerators fit decode-side FFN and MoE paths, and how heterogeneous inference reframes the AI chip memory debate.">
+<meta property="og:url" content="https://manishklach.github.io/writings/sram-specialist-heterogeneous-inference-decode-bottleneck.html">
+<meta property="og:site_name" content="MANISH AI">
+<meta property="og:image" content="https://manishklach.github.io/og/sram-specialist-heterogeneous-inference-decode-bottleneck.png">
+<meta property="og:image:alt" content="SRAM as the Specialist: Heterogeneous Inference and the Decode Bottleneck">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="SRAM as the Specialist: Heterogeneous Inference and the Decode Bottleneck | MANISH AI">
+<meta name="twitter:description" content="A deep technical essay on why SRAM-heavy accelerators fit decode-side FFN and MoE paths, and how heterogeneous inference reframes the AI chip memory debate.">
+<meta name="twitter:image" content="https://manishklach.github.io/og/sram-specialist-heterogeneous-inference-decode-bottleneck.png">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "SRAM as the Specialist: Heterogeneous Inference and the Decode Bottleneck",
+  "description": "A deep technical essay on why SRAM-heavy accelerators fit decode-side FFN and MoE paths, and how heterogeneous inference reframes the AI chip memory debate.",
+  "url": "https://manishklach.github.io/writings/sram-specialist-heterogeneous-inference-decode-bottleneck.html",
+  "datePublished": "2026-05-14",
+  "dateModified": "2026-05-14",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/sram-specialist-heterogeneous-inference-decode-bottleneck.html",
+  "inLanguage": "en",
+  "author": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  }
+}</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,400;1,9..144,600&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap');
+
+:root {
+  --bg:      #f2ede4;
+  --paper:   #fdfaf4;
+  --panel:   #fffcf7;
+  --ink:     #1a1714;
+  --ink2:    #3a342c;
+  --ink3:    #6b6258;
+  --teal:    #0b5e65;
+  --teal2:   #1a8a92;
+  --teal-bg: #e4f3f4;
+  --rust:    #8c4228;
+  --rust2:   #c4673a;
+  --rust-bg: #f9ece5;
+  --gold:    #7a5e10;
+  --gold-bg: #fdf3d0;
+  --green:   #1a6b48;
+  --green-bg:#dff2e8;
+  --red:     #8b2828;
+  --red-bg:  #fce8e8;
+  --line:    rgba(26,23,20,0.1);
+  --shadow:  0 2px 6px rgba(26,23,20,0.05), 0 10px 28px rgba(26,23,20,0.08);
+  --mono:    'JetBrains Mono', monospace;
+  --display: 'Fraunces', Georgia, serif;
+  --sans:    'DM Sans', system-ui, sans-serif;
+}
+
+html.dark {
+  --bg:      #10161c;
+  --paper:   #151d24;
+  --panel:   #1b252e;
+  --ink:     #edf2f6;
+  --ink2:    #c6d0d7;
+  --ink3:    #92a0ab;
+  --teal:    #8ad3d8;
+  --teal2:   #9de3e7;
+  --teal-bg: rgba(26,138,146,0.14);
+  --rust:    #e0a58c;
+  --rust2:   #f0b392;
+  --rust-bg: rgba(196,103,58,0.12);
+  --gold:    #d7bd6a;
+  --gold-bg: rgba(122,94,16,0.16);
+  --green:   #8dd6b0;
+  --green-bg:rgba(26,107,72,0.14);
+  --red:     #ea9a9a;
+  --red-bg:  rgba(139,40,40,0.16);
+  --line:    rgba(255,255,255,0.12);
+  --shadow:  0 2px 6px rgba(0,0,0,0.22), 0 10px 28px rgba(0,0,0,0.34);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;font-size:16px}
+
+body {
+  font-family: var(--display);
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.78;
+  background-image:
+    radial-gradient(ellipse at 0% 0%, rgba(11,94,101,0.07) 0, transparent 40%),
+    radial-gradient(ellipse at 100% 100%, rgba(140,66,40,0.06) 0, transparent 38%);
+  background-attachment: fixed;
+}
+html.dark body {
+  background-image:
+    radial-gradient(ellipse at 0% 0%, rgba(26,138,146,0.14) 0, transparent 40%),
+    radial-gradient(ellipse at 100% 100%, rgba(196,103,58,0.12) 0, transparent 38%);
+}
+
+/* ── LAYOUT ── */
+.page { max-width: 1140px; margin: 0 auto; padding: 32px 18px 72px; }
+.body-grid {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 276px;
+  gap: 20px;
+  align-items: start;
+}
+.main-col { min-width: 0; }
+@media(max-width:940px){ .body-grid{grid-template-columns:1fr} .sidebar{display:none} }
+
+/* ── TOPBAR ── */
+.topbar {
+  display:flex; align-items:center; justify-content:space-between; gap:18px;
+  padding:14px 18px; margin-bottom:20px;
+  border-radius:18px; background:var(--ink); box-shadow:var(--shadow);
+}
+.topbar-brand {
+  color:rgba(255,255,255,0.9); text-decoration:none; white-space:nowrap;
+  font-family:var(--sans); font-size:12px; font-weight:700;
+  letter-spacing:0.12em; text-transform:uppercase;
+}
+.topbar-nav {
+  display:flex; align-items:center; gap:14px; margin-left:auto;
+  font-family:var(--sans);
+}
+.topbar-nav a {
+  color:rgba(255,255,255,0.62); text-decoration:none;
+  font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;
+  transition:color 0.18s ease;
+}
+.topbar-nav a:hover,
+.topbar-nav a[aria-current="page"] { color:#fff; }
+.theme-toggle {
+  padding:7px 12px; border-radius:999px;
+  border:1px solid rgba(255,255,255,0.16);
+  background:transparent; color:rgba(255,255,255,0.78);
+  font-family:var(--sans); font-size:10px; font-weight:700;
+  letter-spacing:0.08em; text-transform:uppercase; cursor:pointer;
+  transition:color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+.theme-toggle:hover {
+  color:#fff; border-color:rgba(255,255,255,0.34); background:rgba(255,255,255,0.05);
+}
+.theme-toggle:focus-visible {
+  outline:2px solid var(--teal2);
+  outline-offset:2px;
+}
+@media(max-width:680px){
+  .topbar { flex-wrap:wrap; gap:10px; }
+  .topbar-nav { order:3; width:100%; margin-left:0; flex-wrap:wrap; }
+  .theme-toggle { margin-left:auto; }
+}
+
+/* ── CARDS ── */
+.card-base {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+}
+.hero    { padding: 44px 44px 36px; margin-bottom: 20px; position:relative; overflow:hidden; }
+.section { padding: 32px 36px; margin-bottom: 18px; }
+.sidebar-card { padding: 24px 22px; position: sticky; top: 20px; }
+
+.hero::after {
+  content:''; position:absolute; inset: auto -50px -50px auto;
+  width:240px; height:240px; border-radius:50%;
+  background: radial-gradient(circle, rgba(11,94,101,0.12), transparent 65%);
+  pointer-events:none;
+}
+
+@media(max-width:680px){ .hero,.section{padding:24px 20px} }
+
+/* ── TYPOGRAPHY ── */
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--sans); font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--teal); background: var(--teal-bg);
+  padding: 6px 12px; border-radius: 999px; margin-bottom: 18px;
+}
+.eyebrow::before { content:''; width:18px; height:1px; background:var(--teal); }
+
+h1 {
+  font-family: var(--display); font-weight: 900;
+  font-size: clamp(2.2rem, 5vw, 3.8rem);
+  line-height: 1.08; letter-spacing: -0.035em;
+  margin-bottom: 18px;
+}
+h1 em { color: var(--teal); font-style: italic; }
+.subtitle { font-size: 1.12rem; color: var(--ink3); max-width: 820px; line-height: 1.66; margin-bottom: 20px; }
+
+h2 {
+  font-family: var(--display); font-size: clamp(1.55rem, 3vw, 2rem);
+  font-weight: 700; line-height: 1.14; letter-spacing: -0.025em;
+  margin-bottom: 16px;
+}
+h3 {
+  font-family: var(--sans); font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--rust); margin: 26px 0 10px;
+}
+p { font-size: 1.03rem; margin-bottom: 16px; }
+p:last-child { margin-bottom: 0; }
+a { color: var(--teal); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+strong { font-weight: 600; }
+ul,ol { margin: 8px 0 16px 22px; }
+li { margin: 7px 0; font-size: 1rem; }
+code {
+  font-family: var(--mono); font-size: 0.86em;
+  background: rgba(26,23,20,0.06); border-radius: 5px;
+  padding: 1px 5px; color: var(--teal);
+}
+
+/* ── META PILLS ── */
+.meta { display:flex; flex-wrap:wrap; gap:8px; margin:18px 0; }
+.pill {
+  padding: 6px 12px; border-radius: 999px; font-family: var(--sans);
+  font-size: 11px; font-weight: 500;
+  background: rgba(255,255,255,0.7); border: 1px solid var(--line);
+  color: var(--ink3);
+}
+.pill.good { background: var(--green-bg); color: var(--green); border-color: rgba(26,107,72,0.2); font-weight: 700; }
+
+/* ── PULLQUOTE ── */
+.pullquote {
+  border-left: 4px solid var(--teal); padding: 14px 0 14px 22px;
+  margin: 24px 0; font-family: var(--display);
+  font-size: 1.2rem; font-style: italic;
+  color: var(--teal); line-height: 1.55;
+}
+
+/* ── CALLOUT ── */
+.callout {
+  border-radius: 14px; padding: 15px 18px;
+  margin: 18px 0; font-family: var(--sans); font-size: 0.95rem;
+  border-left: 4px solid;
+}
+.callout-label {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; margin-bottom: 5px;
+}
+.callout.teal  { background:var(--teal-bg);  border-color:var(--teal2); }
+.callout.teal .callout-label { color:var(--teal); }
+.callout.rust  { background:var(--rust-bg);  border-color:var(--rust2); }
+.callout.rust .callout-label { color:var(--rust); }
+.callout.gold  { background:var(--gold-bg);  border-color:var(--gold); }
+.callout.gold .callout-label { color:var(--gold); }
+.callout.green { background:var(--green-bg); border-color:var(--green); }
+.callout.green .callout-label { color:var(--green); }
+
+/* ── GRIDS ── */
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:14px 0; }
+.g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin:14px 0; }
+@media(max-width:680px){ .g2,.g3{grid-template-columns:1fr} }
+.info-card {
+  padding: 16px 18px; border-radius: 16px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg,#fff,#fdf9f3);
+}
+.info-card-label {
+  font-family: var(--sans); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.info-card p { font-size: 0.93rem; font-family: var(--sans); margin:0; }
+.info-card ul { font-size: 0.93rem; font-family: var(--sans); }
+
+/* ── TABLE ── */
+.tbl-wrap { overflow-x:auto; margin:16px 0; border:1px solid var(--line); border-radius:14px; }
+table { width:100%; border-collapse:collapse; min-width:540px; background:var(--panel); }
+th {
+  font-family:var(--sans); font-size:9.5px; font-weight:700;
+  letter-spacing:0.08em; text-transform:uppercase; color:var(--ink3);
+  background: rgba(26,23,20,0.03); padding:11px 14px; text-align:left;
+  border-bottom:1px solid var(--line);
+}
+td { padding:10px 14px; font-size:0.91rem; font-family:var(--sans); vertical-align:top; border-bottom:1px solid rgba(26,23,20,0.05); }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:rgba(11,94,101,0.025); }
+.fit-good { color:var(--green); font-weight:700; }
+.fit-mid  { color:var(--gold);  font-weight:700; }
+.fit-bad  { color:var(--red);   font-weight:700; }
+
+/* ── DIAGRAMS ── */
+.diagram {
+  background: linear-gradient(160deg, rgba(255,255,255,0.95), rgba(242,237,228,0.7));
+  border: 1px solid var(--line); border-radius: 16px;
+  padding: 24px 20px 14px; margin: 20px 0; overflow-x: auto;
+}
+.diagram svg { display:block; max-width:100%; }
+.fig-cap {
+  margin-top: 10px; font-family: var(--sans);
+  font-size: 11.5px; color: var(--ink3); line-height: 1.5;
+}
+.fig-cap strong { color: var(--ink2); }
+
+/* ── SIDEBAR ── */
+.sidebar-score { text-align:center; padding-bottom:18px; border-bottom:1px solid var(--line); margin-bottom:18px; }
+.score-num { font-family:var(--display); font-size:3.4rem; font-weight:900; color:var(--green); line-height:1; }
+.score-label { font-family:var(--sans); font-size:11px; color:var(--ink3); margin-top:4px; }
+.sidebar-toc { padding-top: 18px; }
+.toc-section-label {
+  font-family: var(--sans); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink3);
+  margin: 14px 0 6px;
+}
+.toc a {
+  display: block; padding: 5px 8px; border-radius: 8px;
+  font-family: var(--sans); font-size: 12px; color: var(--ink2);
+  text-decoration: none; border-left: 2px solid transparent;
+  transition: all 0.14s;
+}
+.toc a:hover, .toc a.active { background: var(--teal-bg); border-left-color: var(--teal); color: var(--teal); }
+.toc a.orig { color: var(--rust2); }
+.toc a.orig:hover, .toc a.orig.active { background: var(--rust-bg); border-left-color: var(--rust); color: var(--rust); }
+
+/* ── SECTION ANCHORS ── */
+.section-anchor { scroll-margin-top: 28px; }
+
+/* ── DECODE STEPPER (interactive) ── */
+.stepper {
+  background: var(--ink); border-radius: 16px;
+  padding: 24px; margin: 20px 0;
+  color: rgba(255,255,255,0.85);
+}
+.stepper-title { font-family:var(--sans); font-size:10.5px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:rgba(255,255,255,0.45); margin-bottom:16px; }
+.step-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+.step-tab {
+  padding: 6px 14px; border-radius: 999px;
+  font-family: var(--sans); font-size: 11.5px; font-weight: 600;
+  background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.55);
+  border: 1px solid rgba(255,255,255,0.1); cursor: pointer;
+  transition: all 0.15s;
+}
+.step-tab.active { background: var(--teal); color: #fff; border-color: var(--teal); }
+.step-content { display:none; }
+.step-content.active { display:block; }
+.step-body { font-family:var(--sans); font-size:0.93rem; line-height:1.7; color:rgba(255,255,255,0.75); }
+.step-kv { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
+.step-kv-item {
+  padding: 8px 14px; border-radius: 8px;
+  font-family: var(--mono); font-size: 11px;
+  border: 1px solid; flex-shrink: 0;
+}
+.kv-teal  { background:rgba(11,94,101,0.25); border-color:rgba(26,138,146,0.5); color:#7ee8ec; }
+.kv-rust  { background:rgba(140,66,40,0.25); border-color:rgba(196,103,58,0.5); color:#f4b088; }
+.kv-gold  { background:rgba(122,94,16,0.25); border-color:rgba(180,150,40,0.5); color:#f0d070; }
+.kv-green { background:rgba(26,107,72,0.25); border-color:rgba(40,160,100,0.5); color:#70d8a0; }
+.kv-dim   { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); color:rgba(255,255,255,0.4); }
+
+/* ── BW BARS ── */
+.bw-chart { margin:16px 0; }
+.bw-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.bw-label { font-family:var(--mono); font-size:10.5px; color:var(--ink2); width:130px; flex-shrink:0; text-align:right; }
+.bw-track { flex:1; background:rgba(26,23,20,0.07); border-radius:3px; height:20px; overflow:hidden; }
+.bw-fill  { height:100%; border-radius:3px; display:flex; align-items:center; padding-left:8px; font-family:var(--mono); font-size:10px; font-weight:500; }
+.bw-sram  { background:rgba(11,94,101,0.75); color:#fff; }
+.bw-hbm   { background:rgba(140,66,40,0.65); color:#fff; }
+.bw-dram  { background:rgba(26,23,20,0.3);   color:var(--ink2); }
+.bw-nvl   { background:rgba(122,94,16,0.6);  color:#fff; }
+
+/* ── SOURCES ── */
+.sources { border-top:1px solid var(--line); padding-top:28px; margin-top:52px; }
+.sources ol { font-family:var(--sans); }
+.sources li { font-size:0.9rem; }
+
+/* ── FOOTER ── */
+.page-footer { text-align:center; margin-top:32px; font-family:var(--sans); font-size:12px; color:var(--ink3); }
+.publish-footer {
+  display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;
+  margin-top:18px; padding-top:20px; border-top:1px solid var(--line);
+  font-family:var(--sans); font-size:0.93rem; color:var(--ink3);
+}
+.publish-footer a { color:var(--teal); text-decoration:none; }
+.publish-footer a:hover { text-decoration:underline; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="topbar">
+    <a class="topbar-brand" href="/index.html">MAN\SH AI</a>
+    <nav class="topbar-nav" aria-label="Primary">
+      <a href="/index.html">Home</a>
+      <a href="/writings.html" aria-current="page">Writings</a>
+      <a href="/patents.html">Patents</a>
+    </nav>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme" aria-pressed="false">Dark mode</button>
+  </div>
+
+  <!-- HERO -->
+  <header class="card-base hero">
+    <div class="eyebrow">AI Chips · Long-Form Industry Analysis</div>
+    <h1>The Specialist Chip:<br><em>SRAM, Heterogeneous Inference,</em><br>and the Decode Bottleneck</h1>
+    <p class="subtitle">
+      The next structural shift in AI hardware is not SRAM replacing HBM.
+      It is the realisation that LLM inference decomposes into distinct stages — and that each stage rewards
+      a different kind of silicon. SRAM-heavy accelerators are positioned to own the exact decode subpath
+      where conventional GPU stacks leave the most performance on the table.
+      This edition adds deep technical diagrams of decode and decode-FFN, plus an interactive step-through
+      of what actually happens each token generation step.
+    </p>
+    <div class="meta">
+      <span class="pill">Updated May 14, 2026</span>
+      <span class="pill">Focus: Decode architecture, SRAM, HBM, Groq, Cerebras, NVIDIA Rubin+LPX</span>
+      <span class="pill good">v2 — with full decode diagrams</span>
+    </div>
+  </header>
+
+  <!-- BODY GRID -->
+  <div class="body-grid">
+  <main class="main-col" data-pagefind-body>
+
+    <!-- PULLQUOTE -->
+    <div class="pullquote">
+      The next structural opportunity in AI chips is not SRAM replacing HBM. It is
+      <em>heterogeneous inference</em> — different chips doing different pieces of the generation loop —
+      with SRAM-heavy accelerators increasingly positioned to own the decode-side FFN and MoE path.
+    </div>
+
+    <!-- ══ 1 THESIS ══ -->
+    <section class="card-base section section-anchor" id="thesis">
+      <h2>The Thesis in One Sentence</h2>
+      <p>
+        SRAM-route AI chips are unlikely to win by doing full-stack LLM inference alone, but they can become
+        strategically powerful if they plug into mainstream GPU, TPU, or cloud-ASIC stacks as specialists for
+        the bandwidth-bound part of decode.
+      </p>
+      <p>
+        This is a narrower claim than "SRAM is the next universal memory tier for AI." It is also a more
+        credible one — it fits the physics of the hardware, the workload characteristics of transformer
+        inference, and the direction of current industry announcements.
+      </p>
+      <div class="callout teal">
+        <div class="callout-label">Why it matters now</div>
+        As of May 2026, this is no longer speculative. NVIDIA's Rubin + Groq 3 LPX product describes exactly
+        this division of labour in a mainstream platform. AWS and Cerebras describe a disaggregated Trainium +
+        Cerebras path. The thesis has product validation.
+      </div>
+    </section>
+
+    <!-- ══ 2 INFERENCE STAGES OVERVIEW ══ -->
+    <section class="card-base section section-anchor" id="workload">
+      <h2>Inference Is Not One Workload</h2>
+      <p>
+        The strongest arguments for heterogeneous inference start with a simple observation: a transformer
+        serving stack does not behave like one monolithic kernel. At the highest level, LLM inference has
+        three distinct stages with very different resource bottlenecks.
+      </p>
+
+      <div class="diagram">
+        <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg" font-family="DM Sans, sans-serif" font-size="11">
+          <defs>
+            <marker id="ar" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+              <path d="M0,0 L0,5 L7,2.5 z" fill="rgba(26,23,20,0.35)"/>
+            </marker>
+          </defs>
+          <text x="360" y="18" text-anchor="middle" font-size="13" font-weight="700" fill="#1a1714">Three Stages of LLM Inference</text>
+
+          <!-- Stage 1: Prefill -->
+          <rect x="20" y="34" width="200" height="120" rx="12" fill="rgba(26,23,20,0.04)" stroke="rgba(26,23,20,0.15)" stroke-width="1.5"/>
+          <text x="120" y="57" text-anchor="middle" font-weight="700" font-size="12" fill="#1a1714">Stage 1 · Prefill</text>
+          <text x="120" y="77" text-anchor="middle" fill="#6b6258" font-size="10.5">Process full prompt</text>
+          <text x="120" y="92" text-anchor="middle" fill="#6b6258" font-size="10.5">Q_len = N (big)</text>
+          <text x="120" y="112" text-anchor="middle" fill="#1a6b48" font-weight="600" font-size="10.5">Compute-bound</text>
+          <text x="120" y="128" text-anchor="middle" fill="#6b6258" font-size="10">Dense GEMM, high FLOPS</text>
+          <text x="120" y="144" text-anchor="middle" fill="rgba(139,40,40,0.7)" font-size="10">Poor SRAM fit</text>
+
+          <!-- Stage 2: Decode Attention -->
+          <rect x="260" y="34" width="200" height="120" rx="12" fill="rgba(11,94,101,0.06)" stroke="rgba(11,94,101,0.25)" stroke-width="1.5"/>
+          <text x="360" y="57" text-anchor="middle" font-weight="700" font-size="12" fill="#0b5e65">Stage 2 · Decode Attn</text>
+          <text x="360" y="77" text-anchor="middle" fill="#6b6258" font-size="10.5">1 token per step</text>
+          <text x="360" y="92" text-anchor="middle" fill="#6b6258" font-size="10.5">Q_len = 1 always</text>
+          <text x="360" y="112" text-anchor="middle" fill="#7a5e10" font-weight="600" font-size="10.5">BW + Capacity bound</text>
+          <text x="360" y="128" text-anchor="middle" fill="#6b6258" font-size="10">KV cache grows with N</text>
+          <text x="360" y="144" text-anchor="middle" fill="#7a5e10" font-size="10">Mixed SRAM fit</text>
+
+          <!-- Stage 3: Decode FFN -->
+          <rect x="500" y="34" width="200" height="120" rx="12" fill="rgba(11,94,101,0.12)" stroke="rgba(11,94,101,0.45)" stroke-width="2"/>
+          <text x="600" y="57" text-anchor="middle" font-weight="700" font-size="12" fill="#0b5e65">Stage 3 · Decode FFN</text>
+          <text x="600" y="77" text-anchor="middle" fill="#6b6258" font-size="10.5">1 token per step</text>
+          <text x="600" y="92" text-anchor="middle" fill="#6b6258" font-size="10.5">Weight streaming</text>
+          <text x="600" y="112" text-anchor="middle" fill="#0b5e65" font-weight="700" font-size="10.5">Memory-BW bound</text>
+          <text x="600" y="128" text-anchor="middle" fill="#6b6258" font-size="10">Fixed weight size, no KV</text>
+          <text x="600" y="144" text-anchor="middle" fill="#1a6b48" font-weight="600" font-size="10">Best SRAM fit ★</text>
+
+          <!-- Arrows -->
+          <line x1="222" y1="94" x2="257" y2="94" stroke="rgba(26,23,20,0.3)" stroke-width="1.5" marker-end="url(#ar)"/>
+          <line x1="462" y1="94" x2="497" y2="94" stroke="rgba(26,23,20,0.3)" stroke-width="1.5" marker-end="url(#ar)"/>
+
+          <!-- "Repeated N times" brace -->
+          <path d="M 254 168 L 254 180 L 720 180 L 720 168" fill="none" stroke="rgba(11,94,101,0.35)" stroke-width="1.5"/>
+          <text x="487" y="196" text-anchor="middle" fill="#0b5e65" font-size="10.5" font-weight="600">Repeated once per output token (up to thousands of times)</text>
+        </svg>
+        <div class="fig-cap"><strong>Fig 1:</strong> Inference stages have fundamentally different resource profiles. Prefill is compute-bound (dense GEMM). Decode Attention is bandwidth+capacity-bound (KV cache). Decode FFN is bandwidth-bound with a fixed weight footprint — the best fit for SRAM-heavy accelerators.</div>
+      </div>
+
+      <div class="g3">
+        <div class="info-card">
+          <div class="info-card-label" style="color:var(--ink3)">Stage 1 · Prefill</div>
+          <p>The model reads the entire prompt at once. Q_len = N so the attention matrix is large — many queries against many keys. Very compute-intensive. HBM-heavy GPUs dominate here.</p>
+        </div>
+        <div class="info-card">
+          <div class="info-card-label" style="color:var(--teal)">Stage 2 · Decode Attention</div>
+          <p>One token generated per step. Query length = 1. But the model must attend over the entire KV cache (all prior tokens). The KV cache grows with context and concurrent users — a capacity burden SRAM struggles with.</p>
+        </div>
+        <div class="info-card">
+          <div class="info-card-label" style="color:var(--teal)">Stage 3 · Decode FFN</div>
+          <p>After attention, each token passes through feed-forward layers. These stream model weights at high bandwidth — but the weight size is fixed (not growing with context), making SRAM's bandwidth advantage decisive.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 3 DECODE DEEP DIVE ══ -->
+    <section class="card-base section section-anchor" id="decode-deep">
+      <h2>Deep Dive: What Actually Happens in Decode</h2>
+      <p>
+        The "decode phase" is the part of inference most people interact with — it's the token-by-token
+        generation you see streaming out of ChatGPT or Claude. But what the hardware is doing each step
+        is more complex than "generate one word." Here is what happens inside one decode step.
+      </p>
+
+      <!-- Interactive stepper -->
+      <div class="stepper">
+        <div class="stepper-title">One Decode Step — Interactive Walkthrough</div>
+        <div class="step-tabs">
+          <button class="step-tab active" onclick="showStep(0)">1 · Input embedding</button>
+          <button class="step-tab" onclick="showStep(1)">2 · QKV projection</button>
+          <button class="step-tab" onclick="showStep(2)">3 · KV cache update</button>
+          <button class="step-tab" onclick="showStep(3)">4 · Attention scores</button>
+          <button class="step-tab" onclick="showStep(4)">5 · Value aggregation</button>
+          <button class="step-tab" onclick="showStep(5)">6 · FFN (the SRAM target)</button>
+          <button class="step-tab" onclick="showStep(6)">7 · Output sampling</button>
+        </div>
+
+        <div class="step-content active" id="step-0">
+          <div class="step-body">
+            <strong style="color:#fff">Input: the last generated token</strong><br><br>
+            The previous step produced a token ID (e.g., token 4821 = "the"). This integer is looked up in the
+            embedding table — a matrix of shape <code>[vocab_size × d_model]</code> — to produce a dense float vector.
+          </div>
+          <div class="step-kv">
+            <div class="step-kv-item kv-dim">Token ID: 4821</div>
+            <div class="step-kv-item kv-teal">Embedding lookup → [d_model=4096] vector</div>
+            <div class="step-kv-item kv-dim">dtype: BF16</div>
+          </div>
+        </div>
+
+        <div class="step-content" id="step-1">
+          <div class="step-body">
+            <strong style="color:#fff">QKV projections — three weight-stream GEMMs</strong><br><br>
+            The embedding vector is multiplied by three weight matrices (W_Q, W_K, W_V) to produce
+            Query, Key, and Value vectors for each attention head. These are the most compute-intensive
+            operations in decode — but since Q_len=1, they are matrix-vector products (GEMV), not matrix-matrix
+            products (GEMM). GEMV is almost entirely memory-bandwidth-bound, not compute-bound.
+          </div>
+          <div class="step-kv">
+            <div class="step-kv-item kv-teal">x · W_Q → Q [n_heads × head_dim]</div>
+            <div class="step-kv-item kv-rust">x · W_K → K [n_kv_heads × head_dim]</div>
+            <div class="step-kv-item kv-gold">x · W_V → V [n_kv_heads × head_dim]</div>
+            <div class="step-kv-item kv-dim">Memory-bandwidth bound (GEMV not GEMM)</div>
+          </div>
+        </div>
+
+        <div class="step-content" id="step-2">
+          <div class="step-body">
+            <strong style="color:#fff">KV cache write — this is why DRAM capacity matters</strong><br><br>
+            The newly computed Key and Value vectors are appended to the KV cache — the persistent memory
+            store of all prior tokens' K and V. This cache lives in HBM (or DRAM) because it grows with
+            context length. At 128K context with 80 layers: the KV cache alone can exceed 60–80 GB for
+            a 70B model in BF16. SRAM simply cannot hold this.
+          </div>
+          <div class="step-kv">
+            <div class="step-kv-item kv-rust">K[t] → append to K cache [seq_len × n_kv_heads × head_dim]</div>
+            <div class="step-kv-item kv-gold">V[t] → append to V cache [same]</div>
+            <div class="step-kv-item kv-dim">KV cache lives in HBM/DRAM — too large for SRAM</div>
+          </div>
+        </div>
+
+        <div class="step-content" id="step-3">
+          <div class="step-body">
+            <strong style="color:#fff">Attention scores — read the entire KV cache</strong><br><br>
+            For each head, compute dot products between the current Query and every Key in the KV cache.
+            This reads the entire KV cache from HBM — all prior token keys — to produce attention score logits.
+            This is the most memory-bandwidth-intensive step. Longer context → more bytes to read → slower.
+            This is why FlashAttention and FlashDecode exist: to tile this read efficiently.
+          </div>
+          <div class="step-kv">
+            <div class="step-kv-item kv-teal">scores = Q · K_cache^T  [1 × seq_len]</div>
+            <div class="step-kv-item kv-dim">Read entire K cache from HBM: O(N × d) bytes</div>
+            <div class="step-kv-item kv-rust">softmax(scores / √d_head)</div>
+          </div>
+        </div>
+
+        <div class="step-content" id="step-4">
+          <div class="step-body">
+            <strong style="color:#fff">Value aggregation — weighted sum of all past values</strong><br><br>
+            Multiply attention probabilities by the Value cache. This reads the entire V cache from HBM
+            and produces a single vector per head (the attended output). The result is projected back to
+            model dimension via W_O. Total HBM reads in attention: K_cache + V_cache + W_O weights.
+          </div>
+          <div class="step-kv">
+            <div class="step-kv-item kv-gold">output = attn_probs · V_cache  [1 × d_head]</div>
+            <div class="step-kv-item kv-dim">Read entire V cache from HBM: O(N × d) bytes</div>
+            <div class="step-kv-item kv-teal">concat heads → project via W_O → [d_model]</div>
+          </div>
+        </div>
+
+        <div class="step-content" id="step-5">
+          <div class="step-body">
+            <strong style="color:#fff">FFN — the SRAM target: streaming fixed weights</strong><br><br>
+            After attention, the vector passes through the Feed-Forward Network: two (or three in SwiGLU)
+            linear projections with a nonlinearity. These are again GEMV operations — streaming large weight
+            matrices to multiply against a single activation vector. Unlike the KV cache, the FFN weights are
+            <em>fixed in size</em> — they don't grow with context or batch size. This is the key insight:
+            SRAM's high bandwidth matters, and its limited capacity is not a bottleneck here.
+          </div>
+          <div class="step-kv">
+            <div class="step-kv-item kv-teal">h = SwiGLU(x · W_gate, x · W_up)  [d_ff=16384]</div>
+            <div class="step-kv-item kv-teal">out = h · W_down → [d_model]</div>
+            <div class="step-kv-item kv-green">FFN weight size FIXED — perfect for SRAM-resident weights</div>
+            <div class="step-kv-item kv-dim">W_gate + W_up + W_down ≈ 12×d_model×d_ff bytes</div>
+          </div>
+        </div>
+
+        <div class="step-content" id="step-6">
+          <div class="step-body">
+            <strong style="color:#fff">Output projection + sampling — produce next token</strong><br><br>
+            The output vector is projected to vocabulary logits via a weight matrix [d_model × vocab_size],
+            scaled by temperature, and sampled (greedy argmax, top-p, or top-k). The resulting token ID
+            becomes the input to the next decode step. The entire loop repeats until EOS or max length.
+          </div>
+          <div class="step-kv">
+            <div class="step-kv-item kv-teal">logits = output · W_lm_head  [vocab_size=128K]</div>
+            <div class="step-kv-item kv-rust">next_token = sample(softmax(logits / temp))</div>
+            <div class="step-kv-item kv-dim">→ goto step 1 for next token</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Full decode step diagram -->
+      <div class="diagram">
+        <svg viewBox="0 0 720 310" xmlns="http://www.w3.org/2000/svg" font-family="DM Sans, sans-serif" font-size="10.5">
+          <defs>
+            <marker id="ar1" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L0,5 L7,2.5 z" fill="rgba(26,23,20,0.4)"/></marker>
+            <marker id="ar2" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L0,5 L7,2.5 z" fill="#0b5e65"/></marker>
+            <marker id="ar3" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L0,5 L7,2.5 z" fill="#8c4228"/></marker>
+          </defs>
+
+          <text x="360" y="16" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1714">One Decode Step — Memory Access Pattern per Layer</text>
+
+          <!-- Token input -->
+          <rect x="8" y="30" width="80" height="36" rx="7" fill="rgba(26,23,20,0.06)" stroke="rgba(26,23,20,0.2)" stroke-width="1.2"/>
+          <text x="48" y="50" text-anchor="middle" fill="#1a1714" font-weight="600">Token</text>
+          <text x="48" y="62" text-anchor="middle" fill="#6b6258" font-size="9.5">embed</text>
+          <line x1="90" y1="48" x2="114" y2="48" stroke="rgba(26,23,20,0.3)" stroke-width="1.4" marker-end="url(#ar1)"/>
+
+          <!-- QKV projection box -->
+          <rect x="116" y="28" width="130" height="40" rx="7" fill="rgba(11,94,101,0.1)" stroke="rgba(11,94,101,0.35)" stroke-width="1.4"/>
+          <text x="181" y="46" text-anchor="middle" fill="#0b5e65" font-weight="600">QKV Projection</text>
+          <text x="181" y="60" text-anchor="middle" fill="#0b5e65" font-size="9.5">x·W_Q, x·W_K, x·W_V</text>
+          <text x="181" y="80" text-anchor="middle" fill="rgba(140,66,40,0.7)" font-size="9">← reads W_Q, W_K, W_V from HBM</text>
+
+          <!-- K/V cache write -->
+          <rect x="116" y="130" width="130" height="80" rx="7" fill="rgba(140,66,40,0.08)" stroke="rgba(140,66,40,0.3)" stroke-width="1.4"/>
+          <text x="181" y="152" text-anchor="middle" fill="#8c4228" font-weight="600">KV Cache (HBM)</text>
+          <text x="181" y="168" text-anchor="middle" fill="#6b6258" font-size="9.5">K[0..t], V[0..t]</text>
+          <text x="181" y="183" text-anchor="middle" fill="#8c4228" font-size="9">GROWS with context N</text>
+          <text x="181" y="197" text-anchor="middle" fill="#8c4228" font-size="9">Cannot fit in SRAM</text>
+          <line x1="181" y1="70" x2="181" y2="128" stroke="#8c4228" stroke-width="1.4" marker-end="url(#ar3)"/>
+          <text x="193" y="105" fill="#8c4228" font-size="9">append K[t], V[t]</text>
+
+          <!-- Arrow QKV → Attention -->
+          <line x1="248" y1="48" x2="280" y2="48" stroke="#0b5e65" stroke-width="1.4" marker-end="url(#ar2)"/>
+
+          <!-- Attention block -->
+          <rect x="282" y="28" width="150" height="40" rx="7" fill="rgba(11,94,101,0.12)" stroke="rgba(11,94,101,0.45)" stroke-width="1.6"/>
+          <text x="357" y="46" text-anchor="middle" fill="#0b5e65" font-weight="700">Attention</text>
+          <text x="357" y="60" text-anchor="middle" fill="#0b5e65" font-size="9.5">Q · K_cache^T → softmax → ·V_cache</text>
+          <text x="357" y="80" text-anchor="middle" fill="rgba(140,66,40,0.7)" font-size="9">← reads ENTIRE K+V cache from HBM each step</text>
+
+          <!-- KV cache → Attention read arrow -->
+          <line x1="248" y1="170" x2="357" y2="70" stroke="rgba(140,66,40,0.6)" stroke-width="1.2" stroke-dasharray="4 2" marker-end="url(#ar3)"/>
+          <text x="280" y="130" fill="rgba(140,66,40,0.7)" font-size="8.5" text-anchor="middle">read all K,V</text>
+
+          <!-- Attention → W_O -->
+          <line x1="434" y1="48" x2="466" y2="48" stroke="#0b5e65" stroke-width="1.4" marker-end="url(#ar2)"/>
+
+          <!-- Output proj -->
+          <rect x="468" y="28" width="110" height="40" rx="7" fill="rgba(11,94,101,0.08)" stroke="rgba(11,94,101,0.25)" stroke-width="1.2"/>
+          <text x="523" y="46" text-anchor="middle" fill="#0b5e65" font-weight="600">Output Proj</text>
+          <text x="523" y="60" text-anchor="middle" fill="#0b5e65" font-size="9.5">·W_O → residual add</text>
+          <text x="523" y="80" text-anchor="middle" fill="rgba(140,66,40,0.7)" font-size="9">← reads W_O from HBM</text>
+
+          <!-- Divider -->
+          <line x1="8" y1="110" x2="712" y2="110" stroke="rgba(26,23,20,0.08)" stroke-width="1" stroke-dasharray="4 3"/>
+          <text x="360" y="108" text-anchor="middle" fill="rgba(26,23,20,0.3)" font-size="9">─── FFN path below (the SRAM opportunity) ───</text>
+
+          <!-- FFN block -->
+          <rect x="282" y="130" width="150" height="80" rx="7" fill="rgba(11,94,101,0.18)" stroke="#0b5e65" stroke-width="2"/>
+          <text x="357" y="155" text-anchor="middle" fill="#0b5e65" font-weight="700" font-size="12">FFN / MoE</text>
+          <text x="357" y="172" text-anchor="middle" fill="#0b5e65" font-size="9.5">x·W_gate, x·W_up → SwiGLU</text>
+          <text x="357" y="186" text-anchor="middle" fill="#0b5e65" font-size="9.5">→ ·W_down</text>
+          <text x="357" y="204" text-anchor="middle" fill="#1a6b48" font-weight="600" font-size="9">FIXED weight size — SRAM target ★</text>
+
+          <!-- Residual connection from attn to FFN -->
+          <line x1="523" y1="70" x2="523" y2="170" stroke="rgba(11,94,101,0.3)" stroke-width="1" stroke-dasharray="3 2"/>
+          <line x1="523" y1="170" x2="434" y2="170" stroke="rgba(11,94,101,0.3)" stroke-width="1" marker-end="url(#ar2)" stroke-dasharray="3 2"/>
+          <text x="560" y="130" fill="rgba(11,94,101,0.5)" font-size="9">residual add</text>
+
+          <!-- FFN output -->
+          <line x1="434" y1="170" x2="466" y2="240" stroke="#0b5e65" stroke-width="1.4" marker-end="url(#ar2)"/>
+
+          <!-- Output sampling -->
+          <rect x="468" y="225" width="110" height="50" rx="7" fill="rgba(26,107,72,0.1)" stroke="rgba(26,107,72,0.35)" stroke-width="1.4"/>
+          <text x="523" y="247" text-anchor="middle" fill="#1a6b48" font-weight="600">LM Head</text>
+          <text x="523" y="261" text-anchor="middle" fill="#1a6b48" font-size="9.5">logits → sample</text>
+          <text x="523" y="272" text-anchor="middle" fill="#1a6b48" font-size="9">→ next token</text>
+
+          <!-- HBM/SRAM labels -->
+          <rect x="8" y="240" width="100" height="28" rx="6" fill="rgba(140,66,40,0.08)" stroke="rgba(140,66,40,0.2)" stroke-width="1"/>
+          <text x="58" y="257" text-anchor="middle" fill="#8c4228" font-size="9.5" font-weight="600">HBM reads:</text>
+          <text x="58" y="270" text-anchor="middle" fill="#8c4228" font-size="8.5">W_Q,K,V + KV cache</text>
+
+          <rect x="118" y="240" width="100" height="28" rx="6" fill="rgba(26,107,72,0.08)" stroke="rgba(26,107,72,0.2)" stroke-width="1"/>
+          <text x="168" y="257" text-anchor="middle" fill="#1a6b48" font-size="9.5" font-weight="600">SRAM target:</text>
+          <text x="168" y="270" text-anchor="middle" fill="#1a6b48" font-size="8.5">FFN weights (fixed)</text>
+        </svg>
+        <div class="fig-cap"><strong>Fig 2: One decode step — full data flow per layer.</strong> HBM is read for every weight matrix and the entire KV cache. The FFN weights (W_gate, W_up, W_down) are fixed size regardless of context length or batch, making them the natural SRAM residency target.</div>
+      </div>
+    </section>
+
+    <!-- ══ 4 DECODE FFN DEEP DIVE ══ -->
+    <section class="card-base section section-anchor" id="decode-ffn">
+      <h2>The Decode FFN: Why It's the SRAM Opportunity</h2>
+      <p>
+        Of all the operations in decode, the feed-forward network (FFN) layers are the most SRAM-friendly.
+        To understand why, you need to understand what the FFN does and what its memory footprint looks like.
+      </p>
+
+      <h3>What the FFN computes</h3>
+      <p>
+        Most modern transformers use a <strong>SwiGLU FFN</strong> (Llama, Mistral, Gemma, etc.):
+      </p>
+      <div style="background:var(--ink);border-radius:12px;padding:16px 20px;margin:14px 0;font-family:var(--mono);font-size:0.88rem;color:#e8ddd0;line-height:1.8;">
+        <span style="color:#7ee8ec">gate</span>  = x × W_gate    <span style="color:#5a5248">// [d_model → d_ff]  e.g. 4096 → 16384</span><br>
+        <span style="color:#7ee8ec">up</span>    = x × W_up      <span style="color:#5a5248">// [d_model → d_ff]</span><br>
+        <span style="color:#f4b088">hidden</span>= SiLU(gate) × up  <span style="color:#5a5248">// elementwise gating</span><br>
+        <span style="color:#70d8a0">out</span>   = hidden × W_down <span style="color:#5a5248">// [d_ff → d_model]  16384 → 4096</span>
+      </div>
+
+      <h3>The memory footprint is fixed — this is the key</h3>
+      <p>
+        The FFN has three weight matrices. For Llama-3-70B (d_model=8192, d_ff=28,672 per layer, 80 layers):
+      </p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Matrix</th><th>Shape</th><th>Size (BF16)</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>W_gate</code></td><td>8192 × 28672</td><td>471 MB per layer</td><td>Linear projection</td></tr>
+            <tr><td><code>W_up</code></td><td>8192 × 28672</td><td>471 MB per layer</td><td>Linear projection</td></tr>
+            <tr><td><code>W_down</code></td><td>28672 × 8192</td><td>471 MB per layer</td><td>Down projection</td></tr>
+            <tr><td colspan="2"><strong>Per layer total</strong></td><td><strong>~1.4 GB</strong></td><td>Fixed — does not grow with context or batch</td></tr>
+            <tr><td colspan="2"><strong>All 80 layers</strong></td><td><strong>~112 GB</strong></td><td>Full model FFN weight budget</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Each decode step must stream all 1.4 GB of FFN weights per layer through the compute unit.
+        The activation vector (just 8192 floats — 16 KB) is tiny. This is a near-perfect memory-bandwidth-bound
+        problem: minimal compute, maximal memory movement. The computation is essentially: "drag 1.4 GB across
+        the memory bus to multiply it against a 16 KB vector."
+      </p>
+
+      <div class="callout teal">
+        <div class="callout-label">Arithmetic intensity — why this screams for SRAM</div>
+        Arithmetic intensity = FLOPs / bytes. For an FFN GEMV: 2 × 8192 × 28672 FLOPs / (8192 × 28672 × 2 bytes)
+        = ~1 FLOP/byte. H100's peak ratio is ~300 FLOP/byte (BF16). We are using 0.3% of the available compute.
+        The only thing that matters is how fast you can move bytes.
+      </div>
+
+      <!-- Bandwidth comparison diagram -->
+      <div class="diagram">
+        <svg viewBox="0 0 720 230" xmlns="http://www.w3.org/2000/svg" font-family="DM Sans, sans-serif" font-size="11">
+          <text x="360" y="16" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1714">Memory Bandwidth — Why SRAM Wins FFN Decode</text>
+          <text x="360" y="32" text-anchor="middle" font-size="10.5" fill="#6b6258">Higher bandwidth = faster weight streaming = more tokens/second</text>
+
+          <!-- Bandwidth bars -->
+          <!-- SRAM on-chip -->
+          <rect x="8" y="46" width="704" height="26" rx="5" fill="rgba(11,94,101,0.75)"/>
+          <text x="14" y="64" fill="#fff" font-weight="600">On-chip SRAM (Groq/Cerebras)</text>
+          <text x="706" y="64" text-anchor="end" fill="#fff" font-weight="700">~20 TB/s</text>
+
+          <!-- H100 HBM3 -->
+          <rect x="8" y="78" width="445" height="26" rx="5" fill="rgba(140,66,40,0.7)"/>
+          <text x="14" y="96" fill="#fff" font-weight="600">H100 HBM3</text>
+          <text x="447" y="96" text-anchor="end" fill="#fff" font-weight="700">3.35 TB/s</text>
+
+          <!-- H200 HBM3e -->
+          <rect x="8" y="110" width="480" height="26" rx="5" fill="rgba(140,66,40,0.5)"/>
+          <text x="14" y="128" fill="#fff" font-weight="600">H200 HBM3e</text>
+          <text x="482" y="128" text-anchor="end" fill="#fff" font-weight="700">4.8 TB/s</text>
+
+          <!-- NVLink -->
+          <rect x="8" y="142" width="270" height="26" rx="5" fill="rgba(122,94,16,0.6)"/>
+          <text x="14" y="160" fill="#fff" font-weight="600">NVLink 4 (H100 inter-GPU)</text>
+          <text x="272" y="160" text-anchor="end" fill="#fff" font-weight="700">900 GB/s</text>
+
+          <!-- CPU DRAM -->
+          <rect x="8" y="174" width="120" height="26" rx="5" fill="rgba(26,23,20,0.25)"/>
+          <text x="14" y="192" fill="rgba(255,255,255,0.8)" font-weight="600">CPU DRAM (DDR5)</text>
+          <text x="122" y="192" text-anchor="end" fill="rgba(255,255,255,0.8)">300 GB/s</text>
+
+          <!-- Annotation -->
+          <line x1="447" y1="88" x2="447" y2="205" stroke="rgba(26,23,20,0.12)" stroke-width="1" stroke-dasharray="4 3"/>
+          <text x="452" y="210" fill="#6b6258" font-size="10">H100 HBM BW</text>
+
+          <!-- 6x label -->
+          <text x="590" y="93" fill="rgba(11,94,101,0.7)" font-size="10.5" font-weight="700">SRAM ≈ 6× HBM3</text>
+          <text x="590" y="107" fill="rgba(11,94,101,0.6)" font-size="9.5">→ 6× faster weight streaming</text>
+        </svg>
+        <div class="fig-cap"><strong>Fig 3: Memory bandwidth hierarchy.</strong> On-chip SRAM delivers ~20 TB/s vs H100 HBM3's 3.35 TB/s — roughly 6×. For FFN decode (which is almost entirely bandwidth-bound), this directly translates to ~6× faster weight streaming and therefore ~6× more tokens/second — before any other system effects.</div>
+      </div>
+
+      <h3>The fixed-weight advantage — why attention is harder</h3>
+      <p>
+        Attention also needs high bandwidth, but it has a problem SRAM cannot solve: the KV cache grows
+        linearly with context length and concurrently served batch size. For a 128K context window with
+        batch size 64 on Llama-3-70B:
+      </p>
+      <div class="g2">
+        <div class="info-card">
+          <div class="info-card-label" style="color:var(--rust)">KV Cache — grows unboundedly</div>
+          <p>128K tokens × 80 layers × 8 KV heads × 128 dims × 2 bytes × 2 (K+V) × 64 batch</p>
+          <p><strong style="color:var(--rust)">≈ 2.1 TB</strong> — cannot fit in any current SRAM</p>
+        </div>
+        <div class="info-card">
+          <div class="info-card-label" style="color:var(--teal)">FFN Weights — always fixed</div>
+          <p>80 layers × 3 matrices × 8192 × 28672 × 2 bytes</p>
+          <p><strong style="color:var(--teal)">≈ 112 GB</strong> — fixed regardless of context or batch</p>
+          <p style="color:var(--green);font-weight:600;margin-top:6px">Cerebras CS-3: 44 GB on-chip. Can hold ~40% of FFN weights resident.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 5 MoE ══ -->
+    <section class="card-base section section-anchor" id="moe">
+      <h2>MoE Makes the FFN Argument Even Stronger</h2>
+      <p>
+        Mixture-of-Experts (MoE) models like Mixtral 8×7B, DeepSeek-V3, and GPT-4 (speculated) use
+        conditional routing: each token is sent to only 2–4 of N expert FFN blocks, not all of them.
+        This makes the FFN-as-SRAM-target argument substantially stronger.
+      </p>
+      <div class="diagram">
+        <svg viewBox="0 0 720 190" xmlns="http://www.w3.org/2000/svg" font-family="DM Sans, sans-serif" font-size="11">
+          <defs>
+            <marker id="arMoe" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L0,5 L7,2.5 z" fill="#0b5e65"/></marker>
+            <marker id="arMoeDim" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L0,5 L7,2.5 z" fill="rgba(26,23,20,0.2)"/></marker>
+          </defs>
+          <text x="360" y="15" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1714">MoE Routing — Only Active Experts Need Bandwidth</text>
+
+          <!-- Token input -->
+          <rect x="18" y="70" width="90" height="40" rx="8" fill="rgba(11,94,101,0.1)" stroke="rgba(11,94,101,0.3)" stroke-width="1.4"/>
+          <text x="63" y="86" text-anchor="middle" fill="#0b5e65" font-weight="600">Token</text>
+          <text x="63" y="102" text-anchor="middle" fill="#0b5e65" font-size="9.5">embedding</text>
+          <line x1="110" y1="90" x2="136" y2="90" stroke="#0b5e65" stroke-width="1.4" marker-end="url(#arMoe)"/>
+
+          <!-- Router -->
+          <rect x="138" y="68" width="90" height="44" rx="8" fill="rgba(122,94,16,0.12)" stroke="rgba(122,94,16,0.4)" stroke-width="1.4"/>
+          <text x="183" y="86" text-anchor="middle" fill="#7a5e10" font-weight="600">Router</text>
+          <text x="183" y="101" text-anchor="middle" fill="#7a5e10" font-size="9.5">top-2 experts</text>
+
+          <!-- Expert blocks -->
+          <!-- Active experts (teal) -->
+          <rect x="280" y="28" width="100" height="38" rx="7" fill="rgba(11,94,101,0.18)" stroke="#0b5e65" stroke-width="1.8"/>
+          <text x="330" y="48" text-anchor="middle" fill="#0b5e65" font-weight="700">Expert 2</text>
+          <text x="330" y="62" text-anchor="middle" fill="#0b5e65" font-size="9">ACTIVE ★</text>
+
+          <rect x="280" y="76" width="100" height="38" rx="7" fill="rgba(11,94,101,0.18)" stroke="#0b5e65" stroke-width="1.8"/>
+          <text x="330" y="96" text-anchor="middle" fill="#0b5e65" font-weight="700">Expert 5</text>
+          <text x="330" y="110" text-anchor="middle" fill="#0b5e65" font-size="9">ACTIVE ★</text>
+
+          <!-- Inactive experts (dim) -->
+          <rect x="280" y="124" width="100" height="24" rx="5" fill="rgba(26,23,20,0.04)" stroke="rgba(26,23,20,0.1)" stroke-width="1"/>
+          <text x="330" y="140" text-anchor="middle" fill="rgba(26,23,20,0.3)" font-size="9.5">Expert 1 (idle)</text>
+          <rect x="280" y="152" width="100" height="24" rx="5" fill="rgba(26,23,20,0.04)" stroke="rgba(26,23,20,0.1)" stroke-width="1"/>
+          <text x="330" y="168" text-anchor="middle" fill="rgba(26,23,20,0.3)" font-size="9.5">Expert 3 (idle)</text>
+
+          <!-- Router arrows -->
+          <line x1="230" y1="82" x2="278" y2="48" stroke="#0b5e65" stroke-width="1.4" marker-end="url(#arMoe)"/>
+          <line x1="230" y1="98" x2="278" y2="95" stroke="#0b5e65" stroke-width="1.4" marker-end="url(#arMoe)"/>
+          <line x1="230" y1="100" x2="278" y2="136" stroke="rgba(26,23,20,0.15)" stroke-width="1" marker-end="url(#arMoeDim)"/>
+          <line x1="230" y1="100" x2="278" y2="163" stroke="rgba(26,23,20,0.15)" stroke-width="1" marker-end="url(#arMoeDim)"/>
+
+          <!-- Output combine -->
+          <rect x="440" y="55" width="100" height="60" rx="8" fill="rgba(26,107,72,0.1)" stroke="rgba(26,107,72,0.3)" stroke-width="1.4"/>
+          <text x="490" y="78" text-anchor="middle" fill="#1a6b48" font-weight="600">Combine</text>
+          <text x="490" y="94" text-anchor="middle" fill="#1a6b48" font-size="9.5">weighted sum</text>
+          <text x="490" y="107" text-anchor="middle" fill="#1a6b48" font-size="9">of active experts</text>
+          <line x1="382" y1="48"  x2="438" y2="72"  stroke="#0b5e65" stroke-width="1.4" marker-end="url(#arMoe)"/>
+          <line x1="382" y1="95"  x2="438" y2="88"  stroke="#0b5e65" stroke-width="1.4" marker-end="url(#arMoe)"/>
+          <line x1="542" y1="85"  x2="580" y2="85"  stroke="#1a6b48" stroke-width="1.4" marker-end="url(#arMoe)"/>
+          <rect x="582" y="68" width="90" height="36" rx="7" fill="rgba(26,107,72,0.08)" stroke="rgba(26,107,72,0.25)" stroke-width="1.2"/>
+          <text x="627" y="86" text-anchor="middle" fill="#1a6b48" font-weight="600">Output</text>
+          <text x="627" y="100" text-anchor="middle" fill="#1a6b48" font-size="9">→ next layer</text>
+
+          <!-- BW annotation -->
+          <text x="330" y="188" text-anchor="middle" fill="#0b5e65" font-size="10.5" font-weight="600">Only 2/N experts need bandwidth per token → SRAM can hold the hot experts resident</text>
+        </svg>
+        <div class="fig-cap"><strong>Fig 4: MoE routing.</strong> For any given token, only 2 of N experts are active. In a sufficiently small MoE model, all experts can fit in on-chip SRAM. Even for larger MoE models, the most frequently accessed experts (hot experts) can be kept resident in SRAM, dramatically reducing HBM reads.</div>
+      </div>
+      <p>
+        This is the scenario where SRAM becomes truly decisive: a MoE model with experts small enough to fit
+        on-chip (or at least the hot subset), running decode where each token only routes to 2 of 64 experts.
+        The SRAM chip serves those experts with ~20 TB/s local bandwidth while an HBM-heavy GPU handles
+        attention and any cold-expert loads.
+      </p>
+    </section>
+
+    <!-- ══ 6 SRAM TRADEOFF ══ -->
+    <section class="card-base section section-anchor" id="sram-tradeoff">
+      <h2>The SRAM Tradeoff Is Clear</h2>
+      <p>
+        SRAM-heavy chips make a very explicit bargain with physics and economics.
+        They use expensive on-chip memory to deliver exceptional local bandwidth and low latency —
+        but they do not scale capacity as gracefully as HBM-based systems.
+      </p>
+      <div class="g2">
+        <div class="info-card">
+          <div class="info-card-label" style="color:var(--green)">Strengths</div>
+          <ul>
+            <li>~20 TB/s on-chip bandwidth vs ~3–5 TB/s HBM</li>
+            <li>Low, deterministic latency (no DRAM refresh, no page miss)</li>
+            <li>Strong fit for bandwidth-bound decode paths (FFN, MoE hot experts)</li>
+            <li>Excellent TPOP (time per output token) characteristics</li>
+            <li>Lower power per GB/s moved vs HBM</li>
+          </ul>
+        </div>
+        <div class="info-card">
+          <div class="info-card-label" style="color:var(--rust)">Weaknesses</div>
+          <ul>
+            <li>Capacity is expensive and hard to scale — 44 GB is ceiling for many designs</li>
+            <li>KV cache for long-context is simply too large</li>
+            <li>Compute density can be less favorable than GPU for prefill</li>
+            <li>Full-stack serving economics are difficult to justify</li>
+            <li>Ecosystem maturity vs CUDA/ROCm is a real friction</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout rust">
+        <div class="callout-label">The slogan that doesn't hold</div>
+        "SRAM will replace HBM" is physically and economically untenable at the capacity scales that long-context
+        serving requires. HBM keeps scaling in both capacity (144 GB+ per stack) and bandwidth (HBM3e at 4.8 TB/s).
+        The stronger, more durable claim: <strong>SRAM wins the bandwidth-bound subproblem within a heterogeneous stack.</strong>
+      </div>
+    </section>
+
+    <!-- ══ 7 STAGE FIT TABLE ══ -->
+    <section class="card-base section section-anchor" id="fit">
+      <h2>Stage-by-Stage SRAM Fit</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Inference Stage</th><th>Main Bottleneck</th><th>SRAM Fit</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>Prefill</strong></td>
+              <td>Compute intensity (GEMM)</td>
+              <td class="fit-bad">Weak</td>
+              <td>SRAM area spent on memory, not compute. Dense GEMM needs FLOPs, not bandwidth. HBM-heavy GPU wins.</td>
+            </tr>
+            <tr>
+              <td><strong>Decode Attention</strong></td>
+              <td>Bandwidth + KV cache capacity</td>
+              <td class="fit-mid">Mixed</td>
+              <td>Bandwidth helps, but KV cache capacity grows with context and batch size beyond any SRAM ceiling.</td>
+            </tr>
+            <tr>
+              <td><strong>Decode FFN</strong></td>
+              <td>Weight streaming bandwidth</td>
+              <td class="fit-good">Strongest ★</td>
+              <td>Fixed weight size, high bandwidth requirement, near-zero arithmetic intensity. SRAM bandwidth directly = token speed.</td>
+            </tr>
+            <tr>
+              <td><strong>MoE FFN (hot experts)</strong></td>
+              <td>Expert weight bandwidth</td>
+              <td class="fit-good">Best fit ★★</td>
+              <td>Active expert subset fits in SRAM. Hot experts resident on-chip. Cold experts fetched from HBM only when needed.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══ 8 HETEROGENEOUS ══ -->
+    <section class="card-base section section-anchor" id="heterogeneous">
+      <h2>Heterogeneous Inference: The New Structural Answer</h2>
+      <p>
+        Heterogeneous inference means splitting serving across multiple hardware classes rather than insisting
+        one platform do everything. The emerging blueprint:
+      </p>
+      <div class="diagram">
+        <svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg" font-family="DM Sans, sans-serif" font-size="11">
+          <defs>
+            <marker id="arH" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L0,5 L7,2.5 z" fill="rgba(26,23,20,0.3)"/></marker>
+          </defs>
+          <text x="360" y="16" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1714">Heterogeneous Inference — Hardware Division of Labour</text>
+
+          <!-- HBM GPU block -->
+          <rect x="18" y="34" width="310" height="140" rx="14" fill="rgba(140,66,40,0.06)" stroke="rgba(140,66,40,0.25)" stroke-width="1.5"/>
+          <text x="173" y="55" text-anchor="middle" font-weight="700" font-size="12" fill="#8c4228">HBM-Heavy GPU / TPU / Cloud ASIC</text>
+          <text x="173" y="72" text-anchor="middle" fill="#6b6258" font-size="10.5">(NVIDIA Rubin, Google TPU v5, AWS Trainium)</text>
+
+          <rect x="34"  y="84" width="130" height="36" rx="8" fill="rgba(140,66,40,0.15)" stroke="rgba(140,66,40,0.4)" stroke-width="1.2"/>
+          <text x="99"  y="100" text-anchor="middle" fill="#8c4228" font-weight="600">Prefill</text>
+          <text x="99"  y="114" text-anchor="middle" fill="#8c4228" font-size="9.5">Dense GEMM · compute-bound</text>
+
+          <rect x="172" y="84" width="140" height="36" rx="8" fill="rgba(140,66,40,0.12)" stroke="rgba(140,66,40,0.3)" stroke-width="1.2"/>
+          <text x="242" y="100" text-anchor="middle" fill="#8c4228" font-weight="600">Decode Attention</text>
+          <text x="242" y="114" text-anchor="middle" fill="#8c4228" font-size="9.5">KV cache · capacity-bound</text>
+
+          <text x="173" y="160" text-anchor="middle" fill="rgba(140,66,40,0.6)" font-size="10">HBM capacity essential for large KV cache</text>
+
+          <!-- Arrow between chips -->
+          <line x1="332" y1="104" x2="388" y2="104" stroke="rgba(26,23,20,0.25)" stroke-width="2" marker-end="url(#arH)"/>
+          <text x="360" y="98"  text-anchor="middle" fill="rgba(26,23,20,0.45)" font-size="9.5">token</text>
+          <text x="360" y="113" text-anchor="middle" fill="rgba(26,23,20,0.45)" font-size="9.5">vector</text>
+
+          <!-- SRAM chip block -->
+          <rect x="390" y="34" width="312" height="140" rx="14" fill="rgba(11,94,101,0.08)" stroke="rgba(11,94,101,0.35)" stroke-width="2"/>
+          <text x="546" y="55" text-anchor="middle" font-weight="700" font-size="12" fill="#0b5e65">SRAM-Heavy Accelerator</text>
+          <text x="546" y="72" text-anchor="middle" fill="#6b6258" font-size="10.5">(Groq LPU, Cerebras CS-3, NVIDIA LPX)</text>
+
+          <rect x="406" y="84" width="280" height="36" rx="8" fill="rgba(11,94,101,0.18)" stroke="#0b5e65" stroke-width="1.8"/>
+          <text x="546" y="100" text-anchor="middle" fill="#0b5e65" font-weight="700">Decode FFN / MoE Experts</text>
+          <text x="546" y="114" text-anchor="middle" fill="#0b5e65" font-size="9.5">Weight streaming · bandwidth-bound · fixed size</text>
+
+          <text x="546" y="160" text-anchor="middle" fill="rgba(11,94,101,0.65)" font-size="10">~20 TB/s on-chip BW → 6× faster FFN decode</text>
+
+          <!-- Label below -->
+          <text x="173" y="190" text-anchor="middle" fill="rgba(140,66,40,0.7)" font-size="10">General-purpose backbone</text>
+          <text x="546" y="190" text-anchor="middle" fill="rgba(11,94,101,0.7)" font-size="10">Specialist for bandwidth-bound decode</text>
+        </svg>
+        <div class="fig-cap"><strong>Fig 5: Heterogeneous inference division of labour.</strong> HBM-heavy GPUs handle prefill (compute-bound) and decode attention (capacity-bound). SRAM-heavy accelerators handle decode FFN/MoE (bandwidth-bound with fixed weight size). Each chip operates near its natural Pareto frontier.</div>
+      </div>
+    </section>
+
+    <!-- ══ 9 INDUSTRY ══ -->
+    <section class="card-base section section-anchor" id="industry">
+      <h2>What Exists in Industry Today</h2>
+      <p>As of May 2026, this is no longer speculative.</p>
+      <div class="g3">
+        <div class="info-card">
+          <div class="info-card-label" style="color:var(--teal)">Clearest Example</div>
+          <strong style="font-size:0.95rem;">NVIDIA Vera Rubin + Groq 3 LPX</strong>
+          <p style="margin-top:6px">NVIDIA's March 2026 Rubin materials describe Rubin GPUs handling <code>prefill + decode attention</code> while Groq 3 LPX handles <code>latency-sensitive FFN and MoE decode</code>. The cleanest explicit product embodiment of the SRAM-sidecar thesis.</p>
+        </div>
+        <div class="info-card">
+          <div class="info-card-label" style="color:var(--ink3)">Standalone Archetype</div>
+          <strong style="font-size:0.95rem;">Groq LPU</strong>
+          <p style="margin-top:6px">On-chip SRAM as primary storage. Deterministic, low-latency inference. Pure real-world demonstration of the SRAM route in production. Excellent token speed on small-to-medium models.</p>
+        </div>
+        <div class="info-card">
+          <div class="info-card-label" style="color:var(--ink3)">Cloud Direction</div>
+          <strong style="font-size:0.95rem;">AWS Trainium + Cerebras</strong>
+          <p style="margin-top:6px">Publicly described disaggregated inference: Trainium for prefill, Cerebras for decode. Not yet the exact decode-FFN-only split — but hyperscaler-grade willingness to assign different stages to different silicon.</p>
+        </div>
+      </div>
+
+      <h3>Cerebras: promise and tension</h3>
+      <p>
+        Cerebras is the most technically dramatic case. The CS-3 wafer-scale chip carries 44 GB of on-chip SRAM
+        and ~21 PB/s of memory bandwidth — extraordinary numbers. But 44 GB means Cerebras can hold the weights
+        of models up to roughly 20–25B parameters resident on-chip in BF16, or a larger model in INT8.
+        That works brilliantly for small-to-medium model FFN decode; it hits walls for 70B+ models or
+        very long-context attention KV caches.
+      </p>
+      <div class="g2">
+        <div class="info-card">
+          <div class="info-card-label" style="color:var(--green)">Best Case for Cerebras</div>
+          <p>Deeply integrated into a heterogeneous cloud stack: another accelerator handles prefill and decode attention; Cerebras owns decode FFN. Avoids the KV capacity ceiling entirely.</p>
+        </div>
+        <div class="info-card">
+          <div class="info-card-label" style="color:var(--rust)">Harder Case</div>
+          <p>Tries to stand alone as a universal inference replacement and gets pulled into the most difficult economics — large model KV capacity, long-context scaling, whole-system cost justification.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 10 COUNTERARGUMENTS ══ -->
+    <section class="card-base section section-anchor" id="counterarguments">
+      <h2>The Best Counterarguments</h2>
+      <ol>
+        <li>
+          <strong>HBM keeps improving.</strong> HBM3e at 4.8 TB/s and upcoming HBM4 will narrow the gap. The SRAM bandwidth advantage shrinks if HBM roadmaps hold. (Counter: HBM4 projected at ~10 TB/s; SRAM can scale too, and 10 TB/s still trails 20+ TB/s SRAM by 2×.)
+        </li>
+        <li>
+          <strong>Integration is hard.</strong> Splitting inference across chips introduces scheduling, communication latency, compiler complexity, and software orchestration. The token vector handoff between GPU and SRAM accelerator is a real latency budget.
+        </li>
+        <li>
+          <strong>Economics depend on utilisation.</strong> A specialist chip only makes economic sense if operators can keep it busy. Decode FFN is not 100% of serving time — idle time hurts TCO.
+        </li>
+        <li>
+          <strong>Not every model behaves the same.</strong> Dense models, MoE models, long-context models, and agentic workloads stress the stack differently. A chip optimised for MoE FFN decode may underperform on dense-attention-heavy workloads.
+        </li>
+      </ol>
+      <div class="callout gold">
+        <div class="callout-label">These objections don't kill the thesis</div>
+        They simply mean the winning SRAM role is likely to be selective, integrated, and software-dependent
+        rather than universal. A chip that wins one clearly-bounded subproblem and integrates cleanly with the
+        dominant ecosystem is still a large business.
+      </div>
+    </section>
+
+    <!-- ══ 11 TAM ══ -->
+    <section class="card-base section section-anchor" id="tam">
+      <h2>Does Specialisation Shrink the TAM?</h2>
+      <p>Counterintuitively, no. A narrower functional role can mean a larger practical market.</p>
+      <p>
+        If an SRAM-route company insists on selling a full alternative inference platform, it competes for
+        a relatively small number of premium system decisions. But if it becomes the preferred decode-FFN
+        accelerator inside mainstream GPU, TPU, or cloud-ASIC stacks, it rides the much larger shipment
+        volume of those ecosystems.
+      </p>
+      <div class="pullquote">
+        The TAM story improves when SRAM stops trying to replace the whole machine and starts becoming
+        the standard high-bandwidth part inside many machines.
+      </div>
+    </section>
+
+    <!-- ══ 12 BOTTOM LINE ══ -->
+    <section class="card-base section section-anchor" id="bottom-line">
+      <h2>Bottom Line</h2>
+      <p>
+        The structural opportunity in AI chips is no longer about one memory technology defeating another
+        in a clean head-to-head replacement battle. It is about <strong>workflow decomposition</strong>.
+      </p>
+      <p>
+        HBM-heavy systems remain the general-purpose backbone. SRAM-heavy systems increasingly look like
+        the specialist accelerators that reclaim performance in bandwidth-constrained decode paths —
+        particularly FFN and MoE decode, where arithmetic intensity is near zero and the weight footprint
+        is fixed.
+      </p>
+      <div class="callout green">
+        <div class="callout-label">The durable claim</div>
+        SRAM wins the bandwidth-bound subproblem within a heterogeneous stack. This is a smaller claim
+        than "SRAM is the future of all AI chips," but it is far more durable because it aligns with
+        physics, workload characteristics, and now has explicit product validation from NVIDIA, AWS,
+        Groq, and Cerebras.
+      </div>
+    </section>
+
+    <!-- SOURCES -->
+    <div class="sources section-anchor" id="sources">
+      <h2>Selected Sources</h2>
+      <ol>
+        <li><a href="https://developer.nvidia.com/blog/inside-nvidia-groq-3-lpx-the-low-latency-inference-accelerator-for-the-nvidia-vera-rubin-platform/">NVIDIA technical blog: Groq 3 LPX for the Vera Rubin platform</a></li>
+        <li><a href="https://www.nvidia.com/en-us/data-center/lpx/">NVIDIA LPX product page</a></li>
+        <li><a href="https://nvidianews.nvidia.com/news/nvidia-vera-rubin-platform">NVIDIA Newsroom: Vera Rubin platform, March 2026</a></li>
+        <li><a href="https://groq.com/blog/inside-the-lpu-deconstructing-groq-speed">Groq: Inside the LPU</a></li>
+        <li><a href="https://www.aboutamazon.com/news/aws/aws-cerebras-ai-inference">AWS + Cerebras inference announcement</a></li>
+        <li><a href="https://awsdocs-neuron.readthedocs-hosted.com/en/latest/libraries/nxd-inference/developer_guides/disaggregated-inference.html">AWS Neuron: disaggregated inference documentation</a></li>
+        <li><a href="https://www.cerebras.ai/blog/introducing-cerebras-inference-ai-at-instant-speed">Cerebras inference overview</a></li>
+        <li><a href="https://portal.neocortex.psc.edu/docs/CS-3/system-specifications.html">Neocortex CS-3 system specifications</a></li>
+        <li><a href="https://www.marvell.com/company/newsroom/marvell-2nm-custom-sram-next-generation-ai-infrastructure-silicon.html">Marvell: custom SRAM for next-gen AI silicon</a></li>
+      </ol>
+    </div>
+
+  </main><!-- /main-col -->
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="card-base sidebar-card">
+      <div class="sidebar-score">
+        <div class="score-num">9.8</div>
+        <div class="score-label">/ 10 thesis strength</div>
+        <p style="font-family:var(--sans);font-size:12px;color:var(--ink3);margin-top:10px;line-height:1.5">
+          Strong because it aligns chip physics with inference-stage bottlenecks and now has explicit product validation (NVIDIA Rubin+LPX, AWS+Cerebras).
+        </p>
+      </div>
+      <div class="sidebar-toc">
+        <div class="toc-section-label">Contents</div>
+        <nav class="toc">
+          <a href="#thesis">The Thesis</a>
+          <a href="#workload">Three Inference Stages</a>
+          <a href="#decode-deep" class="orig">↳ Decode Deep Dive ★</a>
+          <a href="#decode-ffn" class="orig">↳ Decode FFN Explained ★</a>
+          <a href="#moe" class="orig">↳ MoE & SRAM ★</a>
+          <a href="#sram-tradeoff">SRAM Tradeoff</a>
+          <a href="#fit">Stage-by-Stage Fit</a>
+          <a href="#heterogeneous">Heterogeneous Inference</a>
+          <a href="#industry">Industry Today</a>
+          <a href="#counterarguments">Counterarguments</a>
+          <a href="#tam">TAM Question</a>
+          <a href="#bottom-line">Bottom Line</a>
+          <a href="#sources">Sources</a>
+        </nav>
+      </div>
+    </div>
+  </aside>
+
+  </div><!-- /body-grid -->
+
+  <div class="page-footer">
+    v2 · Enhanced with decode architecture diagrams, interactive step-through, decode-FFN deep dive, and MoE analysis · May 2026
+  </div>
+  <div class="publish-footer">
+    <span><a href="/index.html">© 2026 MANISH AI. All rights reserved.</a></span>
+    <span><a href="/writings.html">← All writings</a></span>
+  </div>
+</div><!-- /page -->
+
+<script>
+(() => {
+  const key = 'theme';
+  const root = document.documentElement;
+  const toggle = document.getElementById('theme-toggle');
+  const applyTheme = (theme) => {
+    const isDark = theme === 'dark';
+    root.classList.toggle('dark', isDark);
+    if (toggle) {
+      toggle.textContent = isDark ? 'Light mode' : 'Dark mode';
+      toggle.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+    }
+  };
+  const saved = localStorage.getItem(key);
+  const preferred = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  applyTheme(preferred);
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      const next = root.classList.contains('dark') ? 'light' : 'dark';
+      localStorage.setItem(key, next);
+      applyTheme(next);
+    });
+  }
+})();
+
+// ── STEP TAB SWITCHER ──
+function showStep(n) {
+  document.querySelectorAll('.step-content').forEach((el,i) => el.classList.toggle('active', i===n));
+  document.querySelectorAll('.step-tab').forEach((el,i) => el.classList.toggle('active', i===n));
+}
+
+// ── TOC ACTIVE TRACKING ──
+const tocLinks = document.querySelectorAll('.toc a');
+const sections = [...document.querySelectorAll('.section-anchor')];
+function updateToc() {
+  let cur = '';
+  sections.forEach(s => { if (window.scrollY >= s.offsetTop - 80) cur = s.id; });
+  tocLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#'+cur));
+}
+window.addEventListener('scroll', updateToc, { passive: true });
+updateToc();
+</script>
+</body>
+</html>
