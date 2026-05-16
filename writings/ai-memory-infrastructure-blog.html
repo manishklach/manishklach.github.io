@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Memory Wall — How AI Infrastructure Is Being Rewired From the Ground Up | Manish AI</title>
+<meta name="description" content="Technical essay on how CXL, coherent memory, SmartNICs, GPUDirect Storage, unified memory, and KV-cache routing are solving the memory movement bottleneck in AI.">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "The Memory Wall — How AI Infrastructure Is Being Rewired From the Ground Up",
+  "description": "Technical essay on how CXL, coherent memory, SmartNICs, GPUDirect Storage, unified memory, and KV-cache routing are solving the memory movement bottleneck in AI.",
+  "author": {
+    "@type": "Person",
+    "name": "Manish"
+  },
+  "datePublished": "2026-05-12",
+  "url": "https://manishklach.github.io/writings/ai-memory-infrastructure-blog.html"
+}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #0f0e0c;
+    --ink2: #3a3833;
+    --ink3: #7a7772;
+    --paper: #faf8f4;
+    --paper2: #f1ede5;
+    --paper3: #e8e2d8;
+    --accent: #c8401a;
+    --accent2: #1a5fc8;
+    --accent3: #2a7a52;
+    --glow: rgba(200, 64, 26, 0.08);
+    --serif: 'DM Serif Display', Georgia, serif;
+    --sans: 'DM Sans', system-ui, sans-serif;
+    --mono: 'Courier New', monospace;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.75;
+    font-weight: 300;
+  }
+
+  /* ── HERO ── */
+  .hero {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 80px 40px 60px;
+  }
+  .hero-kicker {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .hero-kicker::before {
+    content: '';
+    display: inline-block;
+    width: 24px;
+    height: 1px;
+    background: var(--accent);
+  }
+  .hero-title {
+    font-family: var(--serif);
+    font-size: clamp(38px, 5.5vw, 64px);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin-bottom: 16px;
+  }
+  .hero-title em {
+    font-style: italic;
+    color: var(--accent);
+  }
+  .hero-subtitle {
+    font-size: 20px;
+    font-weight: 300;
+    color: var(--ink2);
+    line-height: 1.55;
+    margin-bottom: 36px;
+    max-width: 620px;
+  }
+  .hero-meta {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 13px;
+    color: var(--ink3);
+    padding-top: 28px;
+    border-top: 1px solid var(--paper3);
+  }
+  .hero-meta-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--paper3); }
+
+  /* ── PULL QUOTE HERO ── */
+  .pull-hero {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 60px 40px;
+    text-align: center;
+    margin: 0 0 80px;
+  }
+  .pull-hero-text {
+    font-family: var(--serif);
+    font-size: clamp(22px, 3vw, 36px);
+    line-height: 1.35;
+    max-width: 680px;
+    margin: 0 auto;
+    font-style: italic;
+    color: #f1ede5;
+  }
+  .pull-hero-text em { color: #e8825a; font-style: normal; }
+
+  /* ── ARTICLE BODY ── */
+  .article {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 0 40px 120px;
+  }
+
+  /* ── SECTION HEADERS ── */
+  .section-number {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink3);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-number::after {
+    content: '';
+    display: inline-block;
+    flex: 1;
+    height: 1px;
+    background: var(--paper3);
+  }
+  .section-title {
+    font-family: var(--serif);
+    font-size: clamp(28px, 3.5vw, 42px);
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin-bottom: 28px;
+  }
+  .section-title em { color: var(--accent); font-style: italic; }
+
+  /* ── BODY TEXT ── */
+  p { margin-bottom: 22px; color: var(--ink2); }
+  p:last-child { margin-bottom: 0; }
+
+  strong { font-weight: 500; color: var(--ink); }
+
+  /* ── SECTION DIVIDER ── */
+  .section-block {
+    margin-bottom: 100px;
+    padding-top: 60px;
+    border-top: 1px solid var(--paper3);
+  }
+  .section-block:first-child { border-top: none; padding-top: 0; }
+
+  /* ── DIAGRAMS ── */
+  .diagram-wrap {
+    background: var(--paper2);
+    border: 1px solid var(--paper3);
+    border-radius: 8px;
+    padding: 32px 24px;
+    margin: 36px 0;
+    overflow-x: auto;
+  }
+  .diagram-wrap svg { display: block; max-width: 100%; }
+  .diagram-caption {
+    font-size: 13px;
+    color: var(--ink3);
+    text-align: center;
+    margin-top: 14px;
+    font-style: italic;
+  }
+
+  /* ── CALLOUT BOXES ── */
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: var(--glow);
+    padding: 20px 24px;
+    margin: 32px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .callout.blue { border-color: var(--accent2); background: rgba(26, 95, 200, 0.07); }
+  .callout.green { border-color: var(--accent3); background: rgba(42, 122, 82, 0.07); }
+  .callout-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .callout.blue .callout-label { color: var(--accent2); }
+  .callout.green .callout-label { color: var(--accent3); }
+  .callout p { margin-bottom: 0; font-size: 15px; }
+
+  /* ── PULL QUOTE ── */
+  .pull-quote {
+    border-top: 2px solid var(--ink);
+    border-bottom: 2px solid var(--ink);
+    padding: 28px 0;
+    margin: 48px 0;
+  }
+  .pull-quote p {
+    font-family: var(--serif);
+    font-size: 22px;
+    line-height: 1.4;
+    color: var(--ink);
+    margin: 0;
+    font-style: italic;
+  }
+
+  /* ── CODE BLOCK ── */
+  .code-block {
+    background: var(--ink);
+    color: #c8d4e0;
+    border-radius: 6px;
+    padding: 20px 24px;
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.7;
+    margin: 24px 0;
+    overflow-x: auto;
+  }
+  .code-block .comment { color: #5a6a7a; }
+  .code-block .accent-r { color: #e87a5a; }
+  .code-block .accent-g { color: #6ac48a; }
+  .code-block .accent-b { color: #7ab8e8; }
+
+  /* ── TECH GRID ── */
+  .tech-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin: 32px 0;
+  }
+  .tech-card {
+    border: 1px solid var(--paper3);
+    border-radius: 8px;
+    padding: 20px;
+    background: white;
+  }
+  .tech-card-num {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink3);
+    margin-bottom: 8px;
+  }
+  .tech-card-name {
+    font-family: var(--serif);
+    font-size: 18px;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+  .tech-card-desc {
+    font-size: 13px;
+    color: var(--ink3);
+    line-height: 1.5;
+  }
+
+  /* ── COMPARISON TABLE ── */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 32px 0;
+    font-size: 15px;
+  }
+  .compare-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-weight: 500;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink3);
+    border-bottom: 1px solid var(--paper3);
+  }
+  .compare-table td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--paper2);
+    color: var(--ink2);
+    vertical-align: top;
+  }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--paper2); }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    border-radius: 3px;
+  }
+  .badge-red { background: rgba(200, 64, 26, 0.1); color: var(--accent); }
+  .badge-blue { background: rgba(26, 95, 200, 0.1); color: var(--accent2); }
+  .badge-green { background: rgba(42, 122, 82, 0.1); color: var(--accent3); }
+
+  /* ── BIG CONCLUSION ── */
+  .conclusion {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 80px 40px;
+    margin: 80px -40px 0;
+  }
+  .conclusion-inner { max-width: 720px; margin: 0 auto; }
+  .conclusion h2 {
+    font-family: var(--serif);
+    font-size: clamp(28px, 4vw, 48px);
+    line-height: 1.1;
+    margin-bottom: 24px;
+    color: #f1ede5;
+  }
+  .conclusion h2 em { color: #e8825a; font-style: italic; }
+  .conclusion p { color: #b8b2a8; font-size: 17px; margin-bottom: 20px; }
+
+  @media (max-width: 600px) {
+    .hero, .article { padding-left: 20px; padding-right: 20px; }
+    .pull-hero { padding: 40px 20px; }
+    .conclusion { padding: 60px 20px; margin: 60px -20px 0; }
+  }
+</style>
+<script defer src="/assets/site.js"></script>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="nav">
+    <a href="/writings/" class="back-link">← All posts</a>
+    <button id="theme-toggle">☀️</button>
+  </div>
+</div>
+
+<article data-pagefind-body>
+<!-- ── HERO ── -->
+<section class="hero">
+  <div class="hero-kicker">AI Infrastructure · Memory Systems</div>
+  <h1 class="hero-title">The <em>Memory Wall</em> Is the New Compute Wall</h1>
+  <p class="hero-subtitle">Six technologies — CXL, coherent memory, SmartNICs, GPUDirect Storage, unified memory, and KV-cache routing — are quietly rewriting the physics of AI infrastructure. Here's why they all solve the same problem.</p>
+  <div class="hero-meta">
+    <time datetime="2026-05-12">May 12, 2026</time>
+    <span class="hero-meta-dot"></span>
+    <span>18 min read</span>
+    <span class="hero-meta-dot"></span>
+    <span>Manish</span>
+  </div>
+</section>
+
+<!-- ── PULL QUOTE HERO ── -->
+<div class="pull-hero">
+  <p class="pull-hero-text">"In the old world, <em>GPU compute dominated.</em> In the new world, <em>memory movement dominates.</em> Every bottleneck in modern AI eventually reduces to a question of where the data lives and how fast it can move."</p>
+</div>
+
+<!-- ── ARTICLE BODY ── -->
+<main class="article">
+
+  <!-- INTRO -->
+  <div class="section-block">
+    <p>There's a pattern hiding in six different areas of AI systems research right now. Look at CXL. Look at SmartNICs. Look at GPUDirect Storage, coherent memory fabrics, unified memory architectures, and KV-cache routing. They appear to be six distinct problems, solved by six distinct engineering teams at six different companies.</p>
+    <p>They are not. They are six answers to the same question:</p>
+
+    <div class="code-block">
+<span class="comment">// The one question all of them are answering:</span>
+
+Where is the data?         <span class="accent-b">// location</span>
+Who owns it?               <span class="accent-g">// ownership / coherence</span>
+How fast can another
+  processor access it?     <span class="accent-r">// bandwidth + latency</span>
+How many copies exist?     <span class="accent-g">// replication cost</span>
+    </div>
+
+    <p>In the compute-centric era, you threw more GPUs at a problem and got more throughput. That equation still works — but it's no longer the binding constraint. The binding constraint is now <strong>memory movement</strong>. This post is a technical deep-dive into exactly why, and what the industry is doing about it.</p>
+
+    <div class="tech-grid">
+      <div class="tech-card">
+        <div class="tech-card-num">01</div>
+        <div class="tech-card-name">CXL</div>
+        <div class="tech-card-desc">Shared, coherent memory over PCIe</div>
+      </div>
+      <div class="tech-card">
+        <div class="tech-card-num">02</div>
+        <div class="tech-card-name">Coherent Memory</div>
+        <div class="tech-card-desc">Hardware-level consistency guarantees</div>
+      </div>
+      <div class="tech-card">
+        <div class="tech-card-num">03</div>
+        <div class="tech-card-name">SmartNICs</div>
+        <div class="tech-card-desc">Compute offloaded to the NIC itself</div>
+      </div>
+      <div class="tech-card">
+        <div class="tech-card-num">04</div>
+        <div class="tech-card-name">GPUDirect Storage</div>
+        <div class="tech-card-desc">SSD → GPU without CPU mediation</div>
+      </div>
+      <div class="tech-card">
+        <div class="tech-card-num">05</div>
+        <div class="tech-card-name">Unified Memory</div>
+        <div class="tech-card-desc">One logical address space for all</div>
+      </div>
+      <div class="tech-card">
+        <div class="tech-card-num">06</div>
+        <div class="tech-card-name">KV-Cache Routing</div>
+        <div class="tech-card-desc">Orchestrating transformer state at scale</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 1: CXL -->
+  <div class="section-block">
+    <div class="section-number">Section 01</div>
+    <h2 class="section-title">CXL: When PCIe Learned to <em>Share</em></h2>
+
+    <p>PCIe was designed to connect things. A graphics card. A network card. An NVMe drive. The fundamental model was point-to-point: the CPU tells a device to do something, the device does it, data flows one way or the other. Simple, fast, and totally unsuitable for the memory demands of modern AI.</p>
+
+    <p><strong>CXL (Compute Express Link)</strong> is Intel's answer to what happens when PCIe grows up. Still built on the same physical layer, but with a completely different memory model: instead of copying data between devices, CXL creates a <em>shared, coherent address space</em> that multiple processors can read and write simultaneously — with the hardware guaranteeing everyone sees the same value.</p>
+
+    <div class="diagram-wrap">
+      <svg width="100%" viewBox="0 0 680 320" role="img">
+        <title>PCIe vs CXL memory model comparison</title>
+        <desc>Left side shows PCIe where CPU RAM and GPU VRAM are separate islands connected only by explicit copy operations. Right side shows CXL where a shared memory pool is directly addressable by CPU, GPU, and accelerators without copying.</desc>
+        <defs>
+          <marker id="arr1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <!-- Left panel: PCIe -->
+        <rect x="20" y="20" width="290" height="280" rx="10" fill="#f1ede5" stroke="#d0c8bc" stroke-width="0.5"/>
+        <text x="165" y="48" text-anchor="middle" font-family="'DM Serif Display', serif" font-size="15" fill="#0f0e0c">The Old Model — PCIe</text>
+
+        <!-- CPU box -->
+        <rect x="50" y="68" width="110" height="60" rx="6" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="105" y="92" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="13" font-weight="500" fill="#0f0e0c">CPU</text>
+        <text x="105" y="112" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#7a7772">+ System RAM</text>
+
+        <!-- GPU box left -->
+        <rect x="165" y="200" width="110" height="60" rx="6" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="220" y="224" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="13" font-weight="500" fill="#0f0e0c">GPU</text>
+        <text x="220" y="244" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#7a7772">+ VRAM</text>
+
+        <!-- Copy arrow -->
+        <line x1="145" y1="145" x2="220" y2="195" stroke="#c8401a" stroke-width="1.5" marker-end="url(#arr1)" stroke-dasharray="5 3"/>
+        <rect x="140" y="155" width="76" height="20" rx="3" fill="#faf8f4"/>
+        <text x="178" y="169" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#c8401a">cudaMemcpy()</text>
+
+        <!-- Another GPU -->
+        <rect x="50" y="200" width="100" height="60" rx="6" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="100" y="224" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="13" font-weight="500" fill="#0f0e0c">GPU 2</text>
+        <text x="100" y="244" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#7a7772">+ VRAM</text>
+        <line x1="105" y1="128" x2="100" y2="195" stroke="#c8401a" stroke-width="1.5" marker-end="url(#arr1)" stroke-dasharray="5 3"/>
+
+        <!-- Right panel: CXL -->
+        <rect x="330" y="20" width="330" height="280" rx="10" fill="#f1ede5" stroke="#d0c8bc" stroke-width="0.5"/>
+        <text x="495" y="48" text-anchor="middle" font-family="'DM Serif Display', serif" font-size="15" fill="#0f0e0c">The New Model — CXL</text>
+
+        <!-- Shared pool -->
+        <rect x="355" y="180" width="280" height="80" rx="8" fill="#0f0e0c" stroke="#0f0e0c" stroke-width="0.5"/>
+        <text x="495" y="214" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="13" font-weight="500" fill="#f1ede5">Shared Memory Pool</text>
+        <text x="495" y="234" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#9a9288">CXL-attached, coherent</text>
+
+        <!-- Processors -->
+        <rect x="355" y="70" width="78" height="52" rx="6" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="394" y="100" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" font-weight="500" fill="#0f0e0c">CPU</text>
+
+        <rect x="451" y="70" width="78" height="52" rx="6" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="490" y="100" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" font-weight="500" fill="#0f0e0c">GPU</text>
+
+        <rect x="547" y="70" width="78" height="52" rx="6" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="586" y="96" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" font-weight="500" fill="#0f0e0c">Accel</text>
+        <text x="586" y="110" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="10" fill="#7a7772">erator</text>
+
+        <!-- Direct arrows (no copy labels) -->
+        <line x1="394" y1="122" x2="430" y2="178" stroke="#2a7a52" stroke-width="1.5" marker-end="url(#arr1)"/>
+        <line x1="490" y1="122" x2="490" y2="178" stroke="#2a7a52" stroke-width="1.5" marker-end="url(#arr1)"/>
+        <line x1="586" y1="122" x2="556" y2="178" stroke="#2a7a52" stroke-width="1.5" marker-end="url(#arr1)"/>
+
+        <!-- "No copies" badge -->
+        <rect x="426" y="138" width="70" height="20" rx="3" fill="#eaf5ef"/>
+        <text x="461" y="152" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#2a7a52">no copies</text>
+      </svg>
+      <p class="diagram-caption">Left: the PCIe world, where every data access is an explicit copy. Right: CXL's vision — a shared address space that all processors access directly.</p>
+    </div>
+
+    <p>The numbers behind this matter. A <code style="font-family: var(--mono); font-size: 14px; background: var(--paper2); padding: 2px 6px; border-radius: 3px;">cudaMemcpy()</code> across PCIe 4.0 runs at roughly 28 GB/s and costs on the order of microseconds to initiate. When you're serving a model with a 128k token context, the KV cache alone can be several hundred gigabytes. Copying that around — even once — is genuinely painful. CXL memory modules on the horizon promise coherent access at 50–100 GB/s without the copy semantics at all.</p>
+
+    <div class="callout green">
+      <div class="callout-label">Key Insight</div>
+      <p>CXL doesn't make memory faster in the traditional sense — it makes copies <em>unnecessary</em>. That's a fundamentally different optimization target, and often a more valuable one.</p>
+    </div>
+  </div>
+
+  <!-- SECTION 2: COHERENT MEMORY -->
+  <div class="section-block">
+    <div class="section-number">Section 02</div>
+    <h2 class="section-title">Coherent Memory: <em>Who's Right</em> When Everyone Disagrees?</h2>
+
+    <p>To understand why coherence matters, imagine four people collaborating on a shared document — but each person has a local printed copy and they only occasionally phone each other to sync. Most of the time, they're working off stale data. In computing terms, this is a cache — and it's the source of some of the most subtle, expensive bugs in distributed systems.</p>
+
+    <div class="diagram-wrap">
+      <svg width="100%" viewBox="0 0 680 270" role="img">
+        <title>Coherent vs non-coherent memory diagram</title>
+        <desc>Two scenarios. Non-coherent shows CPU cache and GPU cache holding different values for the same variable X, with question marks about which is correct. Coherent shows a single consistent value shared via hardware, eliminating the question.</desc>
+        <defs>
+          <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <!-- Non-coherent panel -->
+        <rect x="20" y="16" width="295" height="240" rx="8" fill="#f1ede5" stroke="#d0c8bc" stroke-width="0.5"/>
+        <text x="167" y="42" text-anchor="middle" font-family="'DM Serif Display', serif" font-size="14" fill="#0f0e0c">Without coherence</text>
+
+        <!-- CPU cache -->
+        <rect x="40" y="60" width="120" height="72" rx="6" fill="white" stroke="#d0c8bc" stroke-width="0.5"/>
+        <text x="100" y="82" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" fill="#7a7772">CPU cache</text>
+        <text x="100" y="115" text-anchor="middle" font-family="'DM Serif Display', serif" font-size="26" fill="#0f0e0c">X = 5</text>
+
+        <!-- GPU cache -->
+        <rect x="175" y="60" width="120" height="72" rx="6" fill="white" stroke="#d0c8bc" stroke-width="0.5"/>
+        <text x="235" y="82" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" fill="#7a7772">GPU cache</text>
+        <text x="235" y="115" text-anchor="middle" font-family="'DM Serif Display', serif" font-size="26" fill="#c8401a">X = 3</text>
+
+        <!-- Question -->
+        <text x="167" y="168" text-anchor="middle" font-family="'DM Serif Display', serif" font-size="18" fill="#0f0e0c" font-style="italic">Who is correct?</text>
+        <text x="167" y="196" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" fill="#7a7772">Manual sync required:</text>
+        <text x="167" y="215" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" fill="#c8401a">copy → flush → invalidate</text>
+        <text x="167" y="234" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#7a7772">Expensive. Error-prone. Latency.</text>
+
+        <!-- Coherent panel -->
+        <rect x="335" y="16" width="325" height="240" rx="8" fill="#f1ede5" stroke="#d0c8bc" stroke-width="0.5"/>
+        <text x="498" y="42" text-anchor="middle" font-family="'DM Serif Display', serif" font-size="14" fill="#0f0e0c">With hardware coherence</text>
+
+        <!-- Shared memory -->
+        <rect x="400" y="105" width="190" height="60" rx="8" fill="#0f0e0c"/>
+        <text x="495" y="128" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" fill="#9a9288">hardware-managed</text>
+        <text x="495" y="152" text-anchor="middle" font-family="'DM Serif Display', serif" font-size="24" fill="#f1ede5">X = 5</text>
+
+        <!-- CPU node -->
+        <rect x="358" y="55" width="80" height="36" rx="5" fill="white" stroke="#d0c8bc" stroke-width="0.5"/>
+        <text x="398" y="78" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" font-weight="500" fill="#0f0e0c">CPU</text>
+
+        <!-- GPU node -->
+        <rect x="554" y="55" width="80" height="36" rx="5" fill="white" stroke="#d0c8bc" stroke-width="0.5"/>
+        <text x="594" y="78" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" font-weight="500" fill="#0f0e0c">GPU</text>
+
+        <line x1="398" y1="91" x2="445" y2="103" stroke="#2a7a52" stroke-width="1.5" marker-end="url(#arr2)"/>
+        <line x1="594" y1="91" x2="546" y2="103" stroke="#2a7a52" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+        <text x="497" y="196" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" fill="#2a7a52">✓ Both always see X = 5</text>
+        <text x="497" y="216" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#7a7772">Hardware enforces consistency</text>
+        <text x="497" y="236" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#7a7772">Zero programmer overhead</text>
+      </svg>
+      <p class="diagram-caption">Coherence isn't about speed — it's about eliminating an entire class of coordination overhead that otherwise explodes with system scale.</p>
+    </div>
+
+    <p>In a modern AI inference stack you might have a CPU, two or more GPUs, a SmartNIC, and a storage accelerator all legitimately needing to read and write the same KV cache entries. Without hardware coherence, every actor needs to explicitly synchronize with every other — and the synchronization overhead grows roughly as O(n²) with the number of actors. CXL's coherence protocol offloads this from software into silicon.</p>
+
+    <div class="pull-quote">
+      <p>"Coherence is the difference between every process managing its own notebook versus everyone editing the same whiteboard. The whiteboard doesn't need a coordinator."</p>
+    </div>
+  </div>
+
+  <!-- SECTION 3: SMARTNICS -->
+  <div class="section-block">
+    <div class="section-number">Section 03</div>
+    <h2 class="section-title">SmartNICs: <em>The Network Card Becomes a Computer</em></h2>
+
+    <p>For decades the story of networking was: packets arrive, CPU processes them. NIC is a dumb pipe, CPU is the brain. This worked fine when networks were a bottleneck. It breaks catastrophically when networks are faster than your CPU's ability to handle the resulting work.</p>
+
+    <p>At 400 GbE line rates with microsecond-latency SSD-to-GPU transfers happening constantly, the CPU overhead from just the <em>networking stack</em> — TCP/IP processing, RDMA verbs, routing decisions — can consume cores that should be doing inference. Enter SmartNICs like NVIDIA's BlueField, AMD's Pensando, and Intel's IPU family.</p>
+
+    <div class="diagram-wrap">
+      <svg width="100%" viewBox="0 0 680 290" role="img">
+        <title>SmartNIC data path comparison: traditional vs SmartNIC</title>
+        <desc>Left shows traditional path where network packets must flow through CPU before reaching GPU. Right shows SmartNIC path where the NIC itself routes data directly to GPU memory, bypassing the CPU entirely.</desc>
+        <defs>
+          <marker id="arr3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <!-- LEFT: Traditional -->
+        <rect x="20" y="16" width="290" height="258" rx="8" fill="#f1ede5" stroke="#d0c8bc" stroke-width="0.5"/>
+        <text x="165" y="42" text-anchor="middle" font-family="'DM Serif Display', serif" font-size="14" fill="#0f0e0c">Traditional NIC</text>
+
+        <!-- Network -->
+        <rect x="45" y="62" width="100" height="44" rx="5" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="95" y="89" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" fill="#0f0e0c">Network</text>
+
+        <!-- dumb NIC -->
+        <rect x="160" y="62" width="100" height="44" rx="5" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="210" y="84" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" fill="#0f0e0c">Dumb NIC</text>
+        <text x="210" y="99" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="10" fill="#7a7772">just a pipe</text>
+
+        <!-- Arrow to CPU -->
+        <line x1="165" y1="110" x2="165" y2="152" stroke="#c8401a" stroke-width="1.5" marker-end="url(#arr3)"/>
+
+        <!-- CPU (bottleneck) -->
+        <rect x="90" y="154" width="150" height="50" rx="5" fill="#c8401a" stroke="#a33314" stroke-width="0.5"/>
+        <text x="165" y="176" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" font-weight="500" fill="white">CPU Bottleneck</text>
+        <text x="165" y="194" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="10" fill="rgba(255,255,255,0.7)">handles all networking</text>
+
+        <!-- Arrow to GPU -->
+        <line x1="165" y1="206" x2="165" y2="238" stroke="#7a7772" stroke-width="1.5" marker-end="url(#arr3)"/>
+
+        <!-- GPU -->
+        <rect x="90" y="240" width="150" height="22" rx="4" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="165" y="255" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#0f0e0c">GPU (finally gets data)</text>
+
+        <!-- RIGHT: SmartNIC -->
+        <rect x="330" y="16" width="330" height="258" rx="8" fill="#f1ede5" stroke="#d0c8bc" stroke-width="0.5"/>
+        <text x="495" y="42" text-anchor="middle" font-family="'DM Serif Display', serif" font-size="14" fill="#0f0e0c">SmartNIC</text>
+
+        <!-- Network -->
+        <rect x="354" y="62" width="100" height="44" rx="5" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="404" y="89" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" fill="#0f0e0c">Network</text>
+
+        <!-- Smart NIC -->
+        <rect x="468" y="52" width="168" height="64" rx="5" fill="#0f0e0c" stroke="#0f0e0c" stroke-width="0.5"/>
+        <text x="552" y="74" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" font-weight="500" fill="white">SmartNIC</text>
+        <text x="552" y="91" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="10" fill="#9a9288">routing · DMA · encryption</text>
+        <text x="552" y="107" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="10" fill="#9a9288">KV transfers · RPC</text>
+
+        <!-- Arrow to GPU -->
+        <line x1="552" y1="118" x2="552" y2="204" stroke="#2a7a52" stroke-width="2" marker-end="url(#arr3)"/>
+        <rect x="555" y="150" width="80" height="20" rx="3" fill="#eaf5ef"/>
+        <text x="600" y="164" font-family="'DM Sans', sans-serif" font-size="11" fill="#2a7a52">CPU-free</text>
+
+        <!-- CPU (freed) -->
+        <rect x="354" y="154" width="100" height="50" rx="5" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="404" y="176" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" font-weight="500" fill="#2a7a52">CPU freed</text>
+        <text x="404" y="194" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="10" fill="#7a7772">for real work</text>
+
+        <!-- GPU -->
+        <rect x="468" y="206" width="168" height="22" rx="4" fill="#2a7a52" stroke="#1a5a3c" stroke-width="0.5"/>
+        <text x="552" y="221" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" font-weight="500" fill="white">GPU (data arrives instantly)</text>
+      </svg>
+      <p class="diagram-caption">A SmartNIC doesn't just offload work — it eliminates an entire hop in the data path. The NIC decides where data goes, not the CPU.</p>
+    </div>
+
+    <p>The most interesting capability SmartNICs unlock isn't just throughput — it's <strong>semantic routing</strong>. A traditional NIC delivers packets to an IP address. A BlueField can be programmed to inspect the payload, determine that this is a KV cache chunk for session ID 47291, and DMA it directly into the appropriate VRAM region on the appropriate GPU — all without the host CPU ever being involved.</p>
+
+    <div class="callout blue">
+      <div class="callout-label">Design Pattern</div>
+      <p>Think of SmartNICs as application-layer routers embedded in the network card. They push AI-aware intelligence to the edge of the server, where latency is lowest and the CPU is furthest away.</p>
+    </div>
+  </div>
+
+  <!-- SECTION 4: GPUDIRECT STORAGE -->
+  <div class="section-block">
+    <div class="section-number">Section 04</div>
+    <h2 class="section-title">GPUDirect Storage: <em>Killing the CPU Middleman</em></h2>
+
+    <p>The storage hierarchy has always been an afterthought in AI system design. SSDs are for persistence; real work happens in VRAM. But as models grow and contexts lengthen, this clean separation breaks down. The working set — all the KV state, all the weights for the tools an agent might call, all the embeddings for a retrieval system — doesn't fit in VRAM anymore. It spills.</p>
+
+    <div class="diagram-wrap">
+      <svg width="100%" viewBox="0 0 680 200" role="img">
+        <title>GPUDirect Storage path comparison</title>
+        <desc>Traditional path shows SSD data bouncing through CPU RAM before reaching GPU VRAM. GPUDirect path shows SSD writing directly to GPU VRAM via DMA, skipping CPU RAM entirely.</desc>
+        <defs>
+          <marker id="arr4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <!-- Traditional row -->
+        <text x="40" y="44" font-family="'DM Sans', sans-serif" font-size="12" fill="#7a7772">Traditional</text>
+        <rect x="40" y="56" width="80" height="36" rx="5" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="80" y="79" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" fill="#0f0e0c">SSD</text>
+
+        <line x1="122" y1="74" x2="202" y2="74" stroke="#c8401a" stroke-width="1.5" marker-end="url(#arr4)"/>
+        <text x="162" y="66" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="10" fill="#c8401a">copy #1</text>
+
+        <rect x="204" y="56" width="110" height="36" rx="5" fill="#c8401a" stroke="#a33314" stroke-width="0.5"/>
+        <text x="259" y="74" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" font-weight="500" fill="white">CPU RAM</text>
+        <text x="259" y="88" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="10" fill="rgba(255,255,255,0.7)">unnecessary</text>
+
+        <line x1="316" y1="74" x2="396" y2="74" stroke="#c8401a" stroke-width="1.5" marker-end="url(#arr4)"/>
+        <text x="356" y="66" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="10" fill="#c8401a">copy #2</text>
+
+        <rect x="398" y="56" width="90" height="36" rx="5" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="443" y="79" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" fill="#0f0e0c">GPU VRAM</text>
+
+        <!-- GDS row -->
+        <text x="40" y="138" font-family="'DM Sans', sans-serif" font-size="12" fill="#2a7a52">GPUDirect</text>
+        <rect x="40" y="150" width="80" height="36" rx="5" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="80" y="173" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" fill="#0f0e0c">SSD</text>
+
+        <line x1="122" y1="168" x2="396" y2="168" stroke="#2a7a52" stroke-width="2" marker-end="url(#arr4)"/>
+        <text x="259" y="158" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#2a7a52">Direct DMA (no CPU, no copy)</text>
+
+        <rect x="398" y="150" width="90" height="36" rx="5" fill="#2a7a52" stroke="#1a5a3c" stroke-width="0.5"/>
+        <text x="443" y="168" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" font-weight="500" fill="white">GPU VRAM</text>
+        <text x="443" y="181" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="9" fill="rgba(255,255,255,0.75)">direct</text>
+
+        <!-- Labels for savings -->
+        <text x="590" y="74" font-family="'DM Sans', sans-serif" font-size="12" fill="#c8401a">2× copies</text>
+        <text x="590" y="90" font-family="'DM Sans', sans-serif" font-size="11" fill="#c8401a">wasted BW</text>
+        <text x="590" y="168" font-family="'DM Sans', sans-serif" font-size="12" fill="#2a7a52">1× copy</text>
+        <text x="590" y="184" font-family="'DM Sans', sans-serif" font-size="11" fill="#2a7a52">full speed</text>
+      </svg>
+      <p class="diagram-caption">GPUDirect Storage eliminates CPU RAM as a staging area, cutting latency and halving the bandwidth cost of every storage read.</p>
+    </div>
+
+    <p>What GPUDirect Storage achieves is conceptually simple but practically transformative: NVIDIA exposes a DMA path from NVMe SSDs directly into GPU memory address space. The SSD's DMA engine writes directly to VRAM coordinates. The CPU is not involved. System RAM is not touched. The bandwidth ceiling is now the PCIe link itself, not the sum of two links and a CPU memory controller.</p>
+
+    <p>For agentic AI systems that dynamically load tools, swap model weights, and treat fast SSDs as an overflow tier for large KV caches — this changes the economics of what's feasible at what cost.</p>
+  </div>
+
+  <!-- SECTION 5: UNIFIED MEMORY -->
+  <div class="section-block">
+    <div class="section-number">Section 05</div>
+    <h2 class="section-title">Unified Memory: <em>One Address Space to Rule Them All</em></h2>
+
+    <p>Unified memory is the most developer-friendly of these technologies, and also the most dangerous if you don't understand it. The pitch is simple: instead of managing separate CPU and GPU memory spaces and explicitly copying between them, you get a single logical address space. Access any pointer from any processor; the runtime handles migration.</p>
+
+    <div class="diagram-wrap">
+      <svg width="100%" viewBox="0 0 680 250" role="img">
+        <title>Unified memory page migration diagram</title>
+        <desc>Shows a unified virtual address space that maps to both CPU and GPU physical memory. Pages migrate automatically based on access patterns, represented by arrows showing data moving toward the processor that needs it.</desc>
+        <defs>
+          <marker id="arr5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <!-- Virtual address space bar -->
+        <rect x="40" y="30" width="600" height="44" rx="6" fill="#0f0e0c"/>
+        <text x="340" y="48" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" fill="#9a9288">Unified Virtual Address Space</text>
+        <text x="340" y="65" text-anchor="middle" font-family="'DM Serif Display', serif" font-size="14" fill="#f1ede5">ptr[0 … N] — same address, any processor</text>
+
+        <!-- CPU physical -->
+        <rect x="40" y="130" width="240" height="80" rx="8" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="160" y="160" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" font-weight="500" fill="#0f0e0c">CPU Physical Memory</text>
+        <text x="160" y="178" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#7a7772">pages resident here</text>
+        <text x="160" y="196" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#7a7772">when CPU is working</text>
+
+        <!-- GPU physical -->
+        <rect x="400" y="130" width="240" height="80" rx="8" fill="#e8e2d8" stroke="#b8b0a4" stroke-width="0.5"/>
+        <text x="520" y="160" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="12" font-weight="500" fill="#0f0e0c">GPU Physical Memory</text>
+        <text x="520" y="178" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#7a7772">pages migrate here</text>
+        <text x="520" y="196" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#7a7772">on GPU access fault</text>
+
+        <!-- Migration arrow CPU -> GPU -->
+        <path d="M220 80 L440 80 L440 128" fill="none" stroke="#1a5fc8" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#arr5)"/>
+        <rect x="280" y="66" width="110" height="18" rx="3" fill="#e6f1fb"/>
+        <text x="335" y="79" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="11" fill="#1a5fc8">GPU accesses → migrate</text>
+
+        <!-- Migration arrow GPU -> CPU -->
+        <path d="M440 230 L340 230 L340 248" fill="none" stroke="#7a7772" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr5)"/>
+        <text x="380" y="245" text-anchor="middle" font-family="'DM Sans', sans-serif" font-size="10" fill="#7a7772">CPU re-reads → migrate back</text>
+      </svg>
+      <p class="diagram-caption">Unified memory makes the programmer's life easier — but page migration faults can be catastrophic if access patterns thrash between CPU and GPU domains.</p>
+    </div>
+
+    <p>The catch is in the performance model. Page migration has real cost — a GPU page fault can stall a kernel for hundreds of microseconds while the migration completes. When an AI workload has good locality (GPU uses a region, hands it off to CPU, GPU never touches it again), unified memory is nearly free. When a workload thrashes — alternating between CPU and GPU access on the same pages — you can end up slower than explicit copies.</p>
+  </div>
+
+  <!-- CONCLUSION -->
+  <div class="conclusion">
+    <div class="conclusion-inner">
+      <h2>The <em>Infrastructure Rewrite</em> Is Just Beginning</h2>
+      <p>We are witnessing the end of the computer-as-a-motherboard era. When memory movement dominates, the physical location of a processor matters less than its logical distance to the memory fabric.</p>
+      <p>CXL, SmartNICs, and GPUDirect aren't just features; they are the architectural building blocks of the distributed memory computer that AI demands.</p>
+    </div>
+  </div>
+
+</main>
+</article>
+
+<footer>
+  <p>© 2026 Manish · Built for the Long-Context Era</p>
+</footer>
+
+</body>
+</html>
