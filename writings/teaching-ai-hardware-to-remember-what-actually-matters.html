@@ -3,23 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Teaching AI Hardware to Remember What Actually Matters | MANISH AI</title>
-<meta name="description" content="A patent-backed technical essay on attention-sink-aware SRAM placement for transformer inference, using sink-token behavior to cut decode latency and memory cost.">
-<meta name="keywords" content="attention sink, SRAM placement, transformer inference, KV cache, decode latency, AI hardware patent, sink tokens, HBM vs SRAM, MANISH AI">
+<title>The SRAM Insight: How I Built a Patent Around AI's Oldest Memory Habit | MANISH AI</title>
+<meta name="description" content="A patent-backed technical essay on attention-sink-aware SRAM placement, showing how sink-token behavior can turn transformer memory access into a faster decode path.">
+<meta name="keywords" content="attention sink, SRAM placement, transformer inference, KV cache, decode bottleneck, AI hardware patent, sink tokens, HBM vs SRAM, MANISH AI">
 <meta name="author" content="Manish KL">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
 <meta name="color-scheme" content="dark">
 <link rel="canonical" href="https://manishklach.github.io/writings/teaching-ai-hardware-to-remember-what-actually-matters.html">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Teaching AI Hardware to Remember What Actually Matters | MANISH AI">
-<meta property="og:description" content="A patent-backed technical essay on attention-sink-aware SRAM placement for transformer inference, using sink-token behavior to cut decode latency and memory cost.">
+<meta property="og:title" content="The SRAM Insight: How I Built a Patent Around AI's Oldest Memory Habit | MANISH AI">
+<meta property="og:description" content="A patent-backed technical essay on attention-sink-aware SRAM placement, showing how sink-token behavior can turn transformer memory access into a faster decode path.">
 <meta property="og:url" content="https://manishklach.github.io/writings/teaching-ai-hardware-to-remember-what-actually-matters.html">
 <meta property="og:site_name" content="MANISH AI">
 <meta property="og:image" content="https://manishklach.github.io/og/teaching-ai-hardware-to-remember-what-actually-matters.png">
-<meta property="og:image:alt" content="Teaching AI Hardware to Remember What Actually Matters">
+<meta property="og:image:alt" content="The SRAM Insight: How I Built a Patent Around AI's Oldest Memory Habit">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Teaching AI Hardware to Remember What Actually Matters | MANISH AI">
-<meta name="twitter:description" content="A patent-backed technical essay on attention-sink-aware SRAM placement for transformer inference, using sink-token behavior to cut decode latency and memory cost.">
+<meta name="twitter:title" content="The SRAM Insight: How I Built a Patent Around AI's Oldest Memory Habit | MANISH AI">
+<meta name="twitter:description" content="A patent-backed technical essay on attention-sink-aware SRAM placement, showing how sink-token behavior can turn transformer memory access into a faster decode path.">
 <meta name="twitter:image" content="https://manishklach.github.io/og/teaching-ai-hardware-to-remember-what-actually-matters.png">
 <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
 <link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
@@ -29,8 +29,8 @@
 <script type="application/ld+json">{
   "@context": "https://schema.org",
   "@type": "TechArticle",
-  "headline": "Teaching AI Hardware to Remember What Actually Matters",
-  "description": "A patent-backed technical essay on attention-sink-aware SRAM placement for transformer inference, using sink-token behavior to cut decode latency and memory cost.",
+  "headline": "The SRAM Insight: How I Built a Patent Around AI's Oldest Memory Habit",
+  "description": "A patent-backed technical essay on attention-sink-aware SRAM placement, showing how sink-token behavior can turn transformer memory access into a faster decode path.",
   "url": "https://manishklach.github.io/writings/teaching-ai-hardware-to-remember-what-actually-matters.html",
   "datePublished": "2026-05-16",
   "dateModified": "2026-05-16",
@@ -48,734 +48,764 @@
   }
 }</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,600&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg:        #0b0e14;
-    --surface:   #111520;
-    --border:    #1e2535;
-    --text:      #e8eaf0;
-    --muted:     #7b8299;
-    --accent:    #4fc3d4;
-    --accent2:   #f4a942;
-    --accent3:   #6ee7b7;
-    --red:       #f87171;
-    --glow:      rgba(79,195,212,0.18);
-    --serif:     'DM Serif Display', Georgia, serif;
-    --sans:      'DM Sans', system-ui, sans-serif;
-    --mono:      'DM Mono', monospace;
-  }
+:root{
+  --bg:#0d0f14;
+  --bg2:#131720;
+  --bg3:#1a1f2e;
+  --border:#1f2840;
+  --text:#dde1ec;
+  --muted:#6b7494;
+  --faint:#3a4060;
+  --teal:#38c4b4;
+  --teal-d:#1a6e65;
+  --teal-bg:rgba(56,196,180,0.08);
+  --amber:#f4a942;
+  --amber-bg:rgba(244,169,66,0.08);
+  --violet:#9b87f5;
+  --violet-bg:rgba(155,135,245,0.08);
+  --green:#5cc87a;
+  --red:#f07070;
+  --serif:'Lora',Georgia,serif;
+  --sans:'Geist',system-ui,sans-serif;
+  --mono:'Geist Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:17px;line-height:1.8;overflow-x:hidden}
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* NAV */
+nav{position:sticky;top:0;z-index:200;display:flex;align-items:center;justify-content:space-between;padding:14px 32px;background:rgba(13,15,20,0.9);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);gap:18px}
+.nav-brand{font-family:var(--mono);font-size:.75rem;color:var(--teal);letter-spacing:.1em;text-decoration:none}
+.nav-pill{font-family:var(--mono);font-size:.68rem;background:rgba(56,196,180,0.12);border:1px solid rgba(56,196,180,0.3);color:var(--teal);padding:5px 14px;border-radius:20px;letter-spacing:.05em}
+.topbar-nav{display:flex;align-items:center;gap:14px;margin-left:auto;font-family:var(--mono)}
+.topbar-nav a{color:var(--muted);text-decoration:none;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;transition:color .18s ease}
+.topbar-nav a:hover,.topbar-nav a[aria-current="page"]{color:var(--text)}
 
-  html { scroll-behavior: smooth; }
+/* LAYOUT */
+.container{max-width:780px;margin:0 auto;padding:0 24px}
+.wide{max-width:1000px;margin:0 auto;padding:0 24px}
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    font-size: 17px;
-    line-height: 1.75;
-    overflow-x: hidden;
-  }
+/* HERO */
+.hero{padding:72px 0 56px;border-bottom:1px solid var(--border)}
+.stamp{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:4px;padding:6px 14px;font-family:var(--mono);font-size:.72rem;color:var(--muted);letter-spacing:.06em;margin-bottom:32px}
+.stamp .live{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+h1.title{font-family:var(--serif);font-size:clamp(2rem,5vw,3rem);line-height:1.18;font-weight:600;letter-spacing:-.02em;color:#eef0f8;margin-bottom:24px}
+h1.title em{font-style:italic;color:var(--teal)}
+.deck{font-size:1.1rem;color:var(--muted);line-height:1.7;font-weight:300;max-width:660px;margin-bottom:36px}
+.meta-row{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.avatar-ring{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--violet));display:flex;align-items:center;justify-content:center;font-weight:600;font-size:.9rem;color:var(--bg);flex-shrink:0}
+.meta-text{font-size:.83rem;color:var(--muted)}
+.meta-name{color:var(--text);font-weight:500}
+.dot-sep{color:var(--faint)}
 
-  /* ── NOISE TEXTURE OVERLAY ── */
-  body::before {
-    content: '';
-    position: fixed; inset: 0; z-index: 0; pointer-events: none;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-    opacity: 0.4;
-  }
+/* PATENT BANNER */
+.patent-banner{margin:40px 0;background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--teal);border-radius:6px;padding:22px 28px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px}
+.pf label{display:block;font-family:var(--mono);font-size:.65rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px}
+.pf .val{font-size:.93rem;color:var(--text);font-weight:500}
+.pf .val.mono{font-family:var(--mono);color:var(--teal);font-size:1rem}
+.pf .val.ok{color:var(--green)}
 
-  /* ── AMBIENT GLOW ── */
-  .ambient {
-    position: fixed;
-    border-radius: 50%;
-    filter: blur(120px);
-    pointer-events: none;
-    z-index: 0;
-  }
-  .ambient-1 {
-    width: 700px; height: 700px;
-    top: -200px; left: -200px;
-    background: radial-gradient(circle, rgba(79,195,212,0.07) 0%, transparent 70%);
-    animation: drift1 20s ease-in-out infinite alternate;
-  }
-  .ambient-2 {
-    width: 500px; height: 500px;
-    bottom: 10%; right: -100px;
-    background: radial-gradient(circle, rgba(244,169,66,0.06) 0%, transparent 70%);
-    animation: drift2 25s ease-in-out infinite alternate;
-  }
-  @keyframes drift1 { to { transform: translate(80px, 60px); } }
-  @keyframes drift2 { to { transform: translate(-60px, -80px); } }
+/* ARTICLE */
+.article{padding:52px 0}
+h2{font-family:var(--serif);font-size:1.65rem;font-weight:600;color:#eef0f8;margin:56px 0 18px;letter-spacing:-.01em;line-height:1.2}
+h2:first-child{margin-top:0}
+h3{font-family:var(--sans);font-size:1rem;font-weight:500;color:var(--amber);margin:36px 0 12px;letter-spacing:.02em;text-transform:uppercase;font-size:.82rem}
+p{margin-bottom:20px;color:var(--text);font-weight:300}
+p strong{font-weight:500;color:#eef0f8}
+a{color:var(--teal);text-decoration:none;border-bottom:1px solid rgba(56,196,180,0.3)}
+a:hover{border-bottom-color:var(--teal)}
+ul,ol{margin:12px 0 20px 22px}
+li{margin:8px 0;color:var(--text);font-weight:300}
+li strong{font-weight:500;color:#eef0f8}
 
-  /* ── WRAPPER ── */
-  .wrapper {
-    position: relative; z-index: 1;
-    max-width: 760px;
-    margin: 0 auto;
-    padding: 0 28px 120px;
-  }
+/* PULLQUOTE */
+.pq{margin:40px 0;padding:24px 28px;border-left:2px solid var(--teal);background:var(--teal-bg);border-radius:0 6px 6px 0}
+.pq p{font-family:var(--serif);font-size:1.2rem;font-style:italic;color:#eef0f8;margin:0;line-height:1.6;font-weight:400}
 
-  /* ── TOP NAV ── */
-  .topbar {
-    position: sticky; top: 0; z-index: 100;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 0;
-    background: rgba(11,14,20,0.85);
-    backdrop-filter: blur(16px);
-    border-bottom: 1px solid var(--border);
-    margin: 0 -28px;
-    padding: 16px 28px;
-    gap: 18px;
-  }
-  .nav-logo {
-    font-family: var(--mono); font-size: 0.8rem; color: var(--accent);
-    letter-spacing: 0.08em; text-decoration: none;
-  }
-  .topbar-nav {
-    display: flex; align-items: center; gap: 14px;
-    margin-left: auto;
-    font-family: var(--mono);
-  }
-  .topbar-nav a {
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    transition: color 0.2s ease;
-  }
-  .topbar-nav a:hover,
-  .topbar-nav a[aria-current="page"] { color: var(--text); }
-  .nav-tag {
-    font-family: var(--mono); font-size: 0.72rem;
-    background: rgba(79,195,212,0.12);
-    border: 1px solid rgba(79,195,212,0.3);
-    color: var(--accent); padding: 4px 12px; border-radius: 20px;
-    letter-spacing: 0.06em;
-  }
-  @media (max-width: 720px) {
-    .topbar { flex-wrap: wrap; }
-    .topbar-nav { order: 3; width: 100%; margin-left: 0; flex-wrap: wrap; }
-  }
+/* CALLOUT */
+.callout{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:22px 26px;margin:28px 0}
+.callout-label{font-family:var(--mono);font-size:.65rem;color:var(--amber);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px}
+.callout p{margin:0;font-size:.93rem}
+.callout.violet{border-color:rgba(155,135,245,0.3)}
+.callout.violet .callout-label{color:var(--violet)}
+.callout.green{border-color:rgba(92,200,122,0.3)}
+.callout.green .callout-label{color:var(--green)}
 
-  /* ── HERO ── */
-  .hero {
-    padding: 80px 0 56px;
-    border-bottom: 1px solid var(--border);
-  }
+/* STATS */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:32px 0}
+.stat{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:18px 16px;text-align:center}
+.stat .n{font-family:var(--serif);font-size:2.2rem;color:var(--teal);display:block;line-height:1;margin-bottom:6px}
+.stat .l{font-size:.75rem;color:var(--muted);font-family:var(--mono);letter-spacing:.04em}
 
-  .patent-badge {
-    display: inline-flex; align-items: center; gap: 10px;
-    background: rgba(79,195,212,0.08);
-    border: 1px solid rgba(79,195,212,0.25);
-    border-radius: 6px;
-    padding: 8px 16px;
-    font-family: var(--mono); font-size: 0.78rem;
-    color: var(--accent); letter-spacing: 0.06em;
-    margin-bottom: 36px;
-    animation: fadeSlideUp 0.6s ease both;
-  }
-  .patent-badge .dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--accent3);
-    animation: pulse 2s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(0.8); }
-  }
+/* FORMULA BOX */
+.formula{background:#080b10;border:1px solid var(--border);border-left:2px solid var(--violet);border-radius:0 6px 6px 0;padding:18px 22px;margin:22px 0}
+.formula pre{font-family:var(--mono);font-size:.82rem;line-height:1.8;color:var(--muted);white-space:pre}
+.formula pre .kw{color:var(--violet)}
+.formula pre .val{color:var(--amber)}
+.formula pre .cm{color:#3d4460;font-style:italic}
+.formula pre .res{color:var(--teal)}
+.formula-cap{font-size:.8rem;color:var(--muted);font-style:italic;margin-top:10px}
 
-  h1 {
-    font-family: var(--serif);
-    font-size: clamp(2.2rem, 5vw, 3.2rem);
-    line-height: 1.15;
-    letter-spacing: -0.02em;
-    color: var(--text);
-    margin-bottom: 28px;
-    animation: fadeSlideUp 0.6s 0.1s ease both;
-  }
-  h1 em { font-style: italic; color: var(--accent); }
+/* COMPARE TABLE */
+.compare-table{width:100%;border-collapse:collapse;margin:24px 0;font-size:.88rem}
+.compare-table thead th{background:var(--bg3);color:var(--muted);font-family:var(--mono);font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)}
+.compare-table tbody td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--text);font-weight:300}
+.compare-table tbody tr:hover td{background:var(--bg2)}
+.compare-table .new-col{color:var(--green);font-weight:500}
+.compare-table .old-col{color:var(--red);opacity:.8}
 
-  .hero-sub {
-    font-size: 1.12rem;
-    color: var(--muted);
-    line-height: 1.7;
-    max-width: 640px;
-    margin-bottom: 40px;
-    animation: fadeSlideUp 0.6s 0.2s ease both;
-    font-weight: 300;
-  }
+/* TIMELINE */
+.timeline{margin:32px 0}
+.tl{display:flex;gap:18px;padding-bottom:26px;position:relative}
+.tl:not(:last-child)::before{content:'';position:absolute;left:11px;top:26px;bottom:0;width:1px;background:var(--border)}
+.tl-dot{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-top:2px;font-family:var(--mono);font-size:.65rem;font-weight:500}
+.tl-dot.done{background:var(--teal);color:var(--bg)}
+.tl-dot.pend{background:var(--bg2);border:1px solid var(--border);color:var(--muted)}
+.tl-date{font-family:var(--mono);font-size:.72rem;color:var(--muted);margin-bottom:3px}
+.tl-title{font-weight:500;color:#eef0f8;font-size:.95rem;margin-bottom:3px}
+.tl-desc{font-size:.85rem;color:var(--muted);font-weight:300}
 
-  .byline {
-    display: flex; align-items: center; gap: 16px;
-    animation: fadeSlideUp 0.6s 0.3s ease both;
-  }
-  .avatar {
-    width: 42px; height: 42px; border-radius: 50%;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    display: flex; align-items: center; justify-content: center;
-    font-family: var(--serif); font-size: 1.1rem; color: var(--bg);
-    font-weight: 700; flex-shrink: 0;
-  }
-  .byline-text { font-size: 0.88rem; }
-  .byline-name { color: var(--text); font-weight: 600; }
-  .byline-meta { color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
+/* DIAGRAM SECTION */
+.diagram-section{margin:40px -24px;background:var(--bg2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:32px 24px}
+.diagram-title{font-family:var(--mono);font-size:.7rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;text-align:center;margin-bottom:24px}
 
-  @keyframes fadeSlideUp {
-    from { opacity: 0; transform: translateY(18px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
+/* INTERACTIVE DIAGRAM */
+#diagram-wrap{position:relative;font-family:var(--mono)}
+#diagram-wrap svg{display:block;width:100%;height:auto}
 
-  /* ── PATENT INFO CARD ── */
-  .patent-card {
-    margin: 52px 0;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-top: 3px solid var(--accent);
-    border-radius: 8px;
-    padding: 32px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-  }
-  @media (max-width: 520px) { .patent-card { grid-template-columns: 1fr; } }
-  .patent-field label {
-    display: block;
-    font-family: var(--mono); font-size: 0.68rem;
-    color: var(--muted); letter-spacing: 0.1em;
-    text-transform: uppercase; margin-bottom: 6px;
-  }
-  .patent-field .value {
-    font-size: 0.95rem; color: var(--text); font-weight: 500;
-  }
-  .patent-field .value.big {
-    font-family: var(--mono); font-size: 1.1rem; color: var(--accent);
-    letter-spacing: 0.04em;
-  }
-  .patent-field .value.green { color: var(--accent3); }
+/* CONTROLS */
+.ctrl-row{display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap;margin-top:20px}
+.ctrl-btn{font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;padding:7px 18px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text);transition:all .18s}
+.ctrl-btn:hover{border-color:var(--teal);color:var(--teal)}
+.ctrl-btn.active{background:var(--teal-bg);border-color:var(--teal);color:var(--teal)}
+.ctrl-label{font-family:var(--mono);font-size:.7rem;color:var(--muted);letter-spacing:.06em}
 
-  /* ── ARTICLE BODY ── */
-  .article-body {
-    padding: 56px 0;
-  }
+/* STEP PANEL */
+.step-info{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:16px 20px;margin-top:16px;font-size:.84rem;min-height:72px;line-height:1.6;color:var(--muted)}
+.step-info strong{color:var(--teal);font-weight:500}
+.step-info .step-num{font-family:var(--mono);color:var(--amber);margin-right:8px}
 
-  h2 {
-    font-family: var(--serif);
-    font-size: 1.75rem;
-    color: var(--text);
-    margin: 56px 0 18px;
-    letter-spacing: -0.01em;
-    line-height: 1.2;
-  }
-  h2:first-child { margin-top: 0; }
+/* DIVIDER */
+.section-sep{display:flex;align-items:center;gap:16px;margin:52px 0;color:var(--faint)}
+.section-sep::before,.section-sep::after{content:'';flex:1;height:1px;background:var(--border)}
+.section-sep span{font-family:var(--mono);font-size:.7rem;color:var(--faint);letter-spacing:.1em}
 
-  h3 {
-    font-family: var(--sans);
-    font-size: 1.05rem;
-    font-weight: 600;
-    color: var(--accent2);
-    margin: 36px 0 12px;
-    letter-spacing: 0.01em;
-  }
+/* FOOTER */
+footer{border-top:1px solid var(--border);padding:36px 0;text-align:center}
+footer p{font-size:.8rem;color:var(--muted);margin:4px 0}
+footer .app{font-family:var(--mono);color:var(--teal);font-size:.82rem}
+.publish-footer{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:18px;padding-top:18px;border-top:1px solid var(--border);font-size:.88rem}
+.publish-footer a{color:var(--teal);text-decoration:none;border-bottom:0}
+.publish-footer a:hover{text-decoration:underline}
 
-  p { margin-bottom: 22px; color: var(--text); font-weight: 300; }
-  p strong { font-weight: 600; color: var(--text); }
+/* PRINT */
+@media print{
+  nav,.ctrl-row,.step-info{display:none}
+  body{background:#fff;color:#111}
+  .patent-banner,.callout,.stat,.formula{border:1px solid #ccc;background:#f9f9f9}
+  h1.title,h2{color:#111}
+}
 
-  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(79,195,212,0.3); }
-  a:hover { border-bottom-color: var(--accent); }
-
-  /* ── PULL QUOTE ── */
-  .pull-quote {
-    margin: 44px 0;
-    padding: 28px 32px;
-    border-left: 3px solid var(--accent);
-    background: rgba(79,195,212,0.05);
-    border-radius: 0 6px 6px 0;
-  }
-  .pull-quote p {
-    font-family: var(--serif);
-    font-size: 1.25rem;
-    line-height: 1.5;
-    color: var(--text);
-    margin: 0;
-    font-style: italic;
-    font-weight: 400;
-  }
-
-  /* ── CALLOUT BOX ── */
-  .callout {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 24px 28px;
-    margin: 32px 0;
-  }
-  .callout-label {
-    font-family: var(--mono); font-size: 0.7rem;
-    color: var(--accent2); letter-spacing: 0.1em; text-transform: uppercase;
-    margin-bottom: 12px;
-  }
-  .callout p { margin-bottom: 0; font-size: 0.95rem; }
-
-  /* ── DIAGRAM ASCII-STYLE ── */
-  .diagram-box {
-    background: #080b10;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 28px 24px;
-    margin: 36px 0;
-    overflow-x: auto;
-  }
-  .diagram-box pre {
-    font-family: var(--mono);
-    font-size: 0.78rem;
-    line-height: 1.6;
-    color: var(--muted);
-    white-space: pre;
-  }
-  .diagram-box pre .hl { color: var(--accent); }
-  .diagram-box pre .hl2 { color: var(--accent3); }
-  .diagram-box pre .hl3 { color: var(--accent2); }
-  .diagram-label {
-    font-family: var(--mono); font-size: 0.7rem;
-    color: var(--muted); text-align: center; margin-top: 12px;
-    letter-spacing: 0.06em;
-  }
-
-  /* ── STAT PILLS ── */
-  .stats-row {
-    display: flex; flex-wrap: wrap; gap: 12px;
-    margin: 36px 0;
-  }
-  .stat-pill {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 14px 20px;
-    flex: 1; min-width: 140px;
-    text-align: center;
-  }
-  .stat-pill .num {
-    font-family: var(--serif);
-    font-size: 1.9rem;
-    color: var(--accent);
-    display: block; line-height: 1;
-    margin-bottom: 6px;
-  }
-  .stat-pill .lbl {
-    font-size: 0.78rem;
-    color: var(--muted);
-    font-family: var(--mono);
-    letter-spacing: 0.04em;
-  }
-
-  /* ── TIMELINE ── */
-  .timeline { margin: 36px 0; }
-  .tl-item {
-    display: flex; gap: 20px;
-    padding-bottom: 28px;
-    position: relative;
-  }
-  .tl-item:not(:last-child)::before {
-    content: '';
-    position: absolute;
-    left: 13px; top: 28px; bottom: 0;
-    width: 1px;
-    background: var(--border);
-  }
-  .tl-dot {
-    width: 28px; height: 28px; border-radius: 50%;
-    background: var(--surface);
-    border: 2px solid var(--accent);
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0; margin-top: 2px;
-    font-family: var(--mono); font-size: 0.65rem; color: var(--accent);
-    font-weight: 500;
-  }
-  .tl-dot.done { background: var(--accent); color: var(--bg); }
-  .tl-body {}
-  .tl-date { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
-  .tl-title { font-weight: 600; color: var(--text); margin-bottom: 4px; font-size: 0.95rem; }
-  .tl-desc { font-size: 0.88rem; color: var(--muted); font-weight: 300; }
-
-  /* ── CODE SNIPPET ── */
-  .code-block {
-    background: #080b10;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin: 28px 0;
-    overflow: hidden;
-  }
-  .code-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 16px;
-    background: rgba(255,255,255,0.03);
-    border-bottom: 1px solid var(--border);
-  }
-  .code-lang {
-    font-family: var(--mono); font-size: 0.7rem;
-    color: var(--muted); letter-spacing: 0.06em;
-  }
-  .code-dots { display: flex; gap: 6px; }
-  .code-dots span { width: 10px; height: 10px; border-radius: 50%; }
-  .code-dots span:nth-child(1) { background: #ff5f57; }
-  .code-dots span:nth-child(2) { background: #febc2e; }
-  .code-dots span:nth-child(3) { background: #28c840; }
-  .code-block code {
-    display: block; padding: 20px 20px;
-    font-family: var(--mono); font-size: 0.8rem;
-    line-height: 1.75; color: var(--muted);
-    overflow-x: auto;
-  }
-  .code-block code .kw { color: #c792ea; }
-  .code-block code .fn { color: var(--accent); }
-  .code-block code .str { color: var(--accent3); }
-  .code-block code .cm { color: #546e7a; font-style: italic; }
-  .code-block code .num { color: var(--accent2); }
-
-  /* ── DIVIDER ── */
-  .divider {
-    display: flex; align-items: center; gap: 16px;
-    margin: 52px 0;
-    color: var(--border);
-  }
-  .divider::before, .divider::after {
-    content: ''; flex: 1; height: 1px; background: var(--border);
-  }
-  .divider span { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em; }
-
-  /* ── FOOTER ── */
-  footer {
-    border-top: 1px solid var(--border);
-    padding: 40px 0;
-    text-align: center;
-  }
-  footer p { font-size: 0.82rem; color: var(--muted); margin: 0; font-weight: 300; }
-  footer .app-num { font-family: var(--mono); color: var(--accent); font-size: 0.85rem; }
-  .publish-footer {
-    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-    margin-top: 18px; padding-top: 22px; border-top: 1px solid var(--border);
-    font-family: var(--sans); font-size: 0.9rem; color: var(--muted);
-  }
-  .publish-footer a {
-    color: var(--accent);
-    text-decoration: none;
-    border-bottom: 0;
-  }
-  .publish-footer a:hover { text-decoration: underline; }
-
-  /* ── PRINT ── */
-  @media print {
-    body { background: #fff; color: #111; }
-    .ambient, nav { display: none; }
-    .wrapper { max-width: 100%; padding: 20px; }
-    h1, h2 { color: #111; }
-    .patent-card { border: 1px solid #ccc; background: #f9f9f9; }
-  }
+@media(max-width:600px){
+  nav{padding:12px 16px}
+  .topbar-nav{order:3;width:100%;margin-left:0;flex-wrap:wrap}
+  .container,.wide{padding:0 16px}
+  .diagram-section{margin:40px -16px;padding:24px 16px}
+  h1.title{font-size:1.75rem}
+}
 </style>
 </head>
 <body>
 
-<div class="ambient ambient-1"></div>
-<div class="ambient ambient-2"></div>
-
-<nav class="topbar">
-  <a class="nav-logo" href="/index.html">MAN\SH AI</a>
+<nav>
+  <a class="nav-brand" href="/index.html">MAN\SH AI</a>
   <div class="topbar-nav">
     <a href="/index.html">Home</a>
     <a href="/writings.html" aria-current="page">Writings</a>
     <a href="/patents.html">Patents</a>
   </div>
-  <span class="nav-tag">Patent Filed ✓</span>
+  <span class="nav-pill">PATENT FILED · 202641062302</span>
 </nav>
 
-<div class="wrapper">
+<div class="container">
 
-  <!-- ── HERO ── -->
-  <section class="hero">
-    <div class="patent-badge">
-      <span class="dot"></span>
-      Indian Patent Office · Application No. 202641062302 · Filed 16 May 2026
-    </div>
+<!-- ── HERO ─────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="stamp">
+    <span class="live"></span>
+    Indian Patent Application · 202641062302 · 16 May 2026 · 15:19 IST
+  </div>
 
-    <h1>Teaching AI Hardware to Remember What Actually Matters — <em>Not Just What's Recent</em></h1>
+  <h1 class="title">The SRAM Insight:<br><em>How I built a patent around AI's oldest memory habit</em></h1>
 
-    <p class="hero-sub">
-      Today I filed a patent on a new approach to how transformer inference systems manage memory at the hardware level — one that exploits a quirk of how attention works to make AI inference meaningfully faster and cheaper.
-    </p>
+  <p class="deck">
+    Every large language model has a secret: certain tokens act like gravity wells, pulling attention toward them on every single decode step, forever. Today I filed a patent that turns this quirk of transformer attention into a concrete hardware optimization — routing those tokens' memory into the fastest storage on the chip, and leaving everything else where it was.
+  </p>
 
-    <div class="byline">
-      <div class="avatar">MK</div>
-      <div class="byline-text">
-        <div class="byline-name">Manish KL</div>
-        <div class="byline-meta"><time datetime="2026-05-16">16 May 2026</time> · 9 min read · AI Infrastructure · Patents</div>
-      </div>
+  <div class="meta-row">
+    <div class="avatar-ring">MK</div>
+    <div class="meta-text">
+      <div class="meta-name">Manish KL</div>
+      <div><time datetime="2026-05-16">16 May 2026</time> <span class="dot-sep">·</span> 16 min read <span class="dot-sep">·</span> AI Infrastructure, Patents, Hardware</div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <!-- ── PATENT INFO CARD ── -->
-  <div class="patent-card">
-    <div class="patent-field">
-      <label>Application Number</label>
-      <div class="value big">202641062302</div>
-    </div>
-    <div class="patent-field">
-      <label>Filed On</label>
-      <div class="value green">16 May 2026, 15:19 IST</div>
-    </div>
-    <div class="patent-field">
-      <label>Patent Office</label>
-      <div class="value">Chennai, India (IPO)</div>
-    </div>
-    <div class="patent-field">
-      <label>Type</label>
-      <div class="value">Provisional Specification</div>
-    </div>
-    <div class="patent-field" style="grid-column: 1 / -1;">
-      <label>Title</label>
-      <div class="value">Methods and Systems for Attention-Sink-Aware SRAM Placement of Key-Value State in Transformer Inference</div>
+<!-- PATENT BANNER -->
+<div class="patent-banner">
+  <div class="pf"><label>Application number</label><div class="val mono">202641062302</div></div>
+  <div class="pf"><label>Filed</label><div class="val ok">16 May 2026 · 15:19 IST</div></div>
+  <div class="pf"><label>Patent office</label><div class="val">Chennai, India (IPO)</div></div>
+  <div class="pf"><label>Type</label><div class="val">Provisional Specification</div></div>
+  <div class="pf" style="grid-column:1/-1"><label>Full title</label><div class="val">Methods and Systems for Attention-Sink-Aware SRAM Placement of Key-Value State in Transformer Inference</div></div>
+</div>
+
+<!-- ── ARTICLE ───────────────────────────────────────────── -->
+<main class="article" data-pagefind-body>
+
+<h2>Why AI inference is a memory problem first</h2>
+
+<p>
+  There is a question I find almost no one asks when talking about making AI faster: <em>where does the data live, and how long does it take to get it?</em> People talk about compute — FLOPs, tensor cores, matrix multiplication throughput. But in modern large-language-model inference, the bottleneck is almost never compute. It is memory bandwidth.
+</p>
+
+<p>
+  To understand why, you need to understand what the model actually does each time it generates a word. Transformer inference has two phases. In the <strong>prefill phase</strong>, the model reads your entire prompt — every token — and produces a key vector and a value vector for each token at every layer and every attention head. These key-value pairs are stored in what the industry calls the KV cache. In a 70-billion-parameter model with 80 layers, 8 KV heads, and a head dimension of 128, that is 2 × 80 × 8 × 128 = 163,840 floating-point numbers per token. At 16-bit precision, that is roughly 327 kilobytes per token.
+</p>
+
+<p>
+  In the <strong>decode phase</strong>, the model generates one output token at a time. At each step, it computes a query vector for the new token and computes the dot product of that query with every stored key — across every layer, every head, every prior token position. Then it fetches the corresponding values, weights them by the softmax attention scores, and produces the layer output. This happens for all 80 layers on every single decode step.
+</p>
+
+<p>
+  At 32,000-token context — common in modern deployments — and with the full KV cache resident in HBM (High Bandwidth Memory), each decode step reads gigabytes of data. HBM bandwidth is impressive by conventional standards: 3–4 TB/s on the latest HBM3 devices. But those 3 TB/s are shared across all operations, and the access pattern for a KV cache — many small reads scattered across a large address space — is among the most bandwidth-unfriendly workloads that exists. The result: decoding latency is dominated not by computation, but by how long it takes to retrieve cached key-value data from memory.
+</p>
+
+<div class="pq"><p>"In modern LLM inference, compute is rarely the bottleneck. Memory bandwidth is. And not all memory accesses are created equal."</p></div>
+
+<p>
+  This is the landscape into which the present invention fits. The question it answers is: given that we must read from memory on every decode step, and given that we have a small amount of extremely fast on-chip SRAM available, which data should we put there?
+</p>
+
+<h2>The phenomenon that makes this possible</h2>
+
+<p>
+  In 2023, a group of researchers at MIT and elsewhere published a paper that would later become quite influential in the inference optimization community. They observed that in transformer models using softmax attention, a small number of initial token positions consistently receive disproportionately high attention weights — even when those tokens carry little semantic content. The beginning-of-sequence token. A delimiter. A repeated structural anchor. They called these positions <strong>attention sinks</strong>.
+</p>
+
+<p>
+  The mechanism, briefly: softmax attention must sum to one. When no other token in the context is clearly the right key to attend to, the model "dumps" the remaining probability mass somewhere. Initial tokens — which appear in every sequence and are always available — become the default recipient. Over time, through training, the model learns to rely on these positions as structural anchors. What starts as a numerical artifact becomes, in a sense, a learned behavior.
+</p>
+
+<p>
+  The original discovery was used to build streaming inference systems that could handle infinite-length sequences by always keeping the sink tokens in a fixed window, even as the context scrolled. That work focused on the algorithm. No one had yet asked the hardware question.
+</p>
+
+<div class="stats-grid">
+  <div class="stat"><span class="n">2–8</span><span class="l">sink tokens per typical 8K prompt</span></div>
+  <div class="stat"><span class="n">30–50%</span><span class="l">of decode attention directed at sinks</span></div>
+  <div class="stat"><span class="n">~2.6 MB</span><span class="l">SRAM needed for 8 sink tokens (70B GQA model)</span></div>
+  <div class="stat"><span class="n">100×</span><span class="l">SRAM vs HBM latency advantage</span></div>
+</div>
+
+<p>
+  The hardware question is this: if we know — from observing the model's own attention during the prefill pass — which token positions will be accessed with very high frequency throughout the entire decode phase, why are we not placing them in the fastest available memory?
+</p>
+
+<h2>The invention, precisely</h2>
+
+<p>
+  The core of the patent is a <strong>placement controller</strong> — a hardware or software component that sits between the transformer inference engine and its memory subsystem. It does four things:
+</p>
+
+<ol>
+  <li><strong>Observes:</strong> During the prefill phase, it collects attention weight information — either by tapping the attention computation pipeline or by receiving aggregated statistics — and accumulates, per token position, a sink score.</li>
+  <li><strong>Classifies:</strong> After prefill (or continuously during decode in the dynamic variant), it applies one or more threshold criteria to determine which token positions are sinks.</li>
+  <li><strong>Migrates:</strong> It triggers a DMA transfer that copies the key and value vectors for the identified sink tokens from the HBM-resident KV cache into a reserved region of on-chip SRAM.</li>
+  <li><strong>Routes:</strong> During decode, it intercepts KV read requests. Reads for sink-classified token positions are directed to the SRAM path; everything else goes through HBM. The partial attention outputs from the two paths are merged using numerically stable log-sum-exp accumulation.</li>
+</ol>
+
+<p>
+  The model output is mathematically identical to what you would get reading everything from HBM. The token generation latency is not.
+</p>
+
+<h3>The primary sink score formula</h3>
+
+<div class="formula">
+<pre>
+<span class="cm">// Cumulative attention score: how much attention has token t received?</span>
+<span class="kw">S</span>(t) = <span class="res">Σ</span> A(l, h, i, t)   <span class="cm">∀ l ∈ [1..L], h ∈ [1..H], i > t</span>
+
+<span class="cm">// A token is a sink if its score exceeds a configured threshold:</span>
+<span class="kw">classify_sink</span>(t)  ⟺  S(t) ≥ <span class="val">T_sink</span>
+
+<span class="cm">// Dynamic variant — exponential moving average across decode steps:</span>
+<span class="kw">E</span>(t, n) = <span class="val">α</span> · E(t, n−1) + (1−<span class="val">α</span>) · B(t, n)
+
+<span class="cm">// Where:</span>
+<span class="cm">//   α      = decay factor (0.85–0.99), controls how fast sinks can emerge/fade</span>
+<span class="cm">//   B(t,n) = attention mass received by token t at decode step n</span>
+<span class="cm">//   E(t,n) ≥ T_promote for N_dwell steps  → promote to SRAM</span>
+<span class="cm">//   E(t,n) &lt; T_evict  for N_evict steps   → evict from SRAM</span>
+</pre>
+<div class="formula-cap">The primary score S(t) sums attention weights received by token t across all layers, heads, and query positions. The EMA variant E(t,n) enables continuous, step-by-step re-evaluation during decode.</div>
+</div>
+
+<h3>The decode-time merge</h3>
+
+<p>
+  The two-path architecture requires combining partial attention results from the SRAM path (sink tokens) and the HBM path (all other tokens). This is done using a numerically stable merge based on log-sum-exp normalization:
+</p>
+
+<div class="formula">
+<pre>
+<span class="cm">// At each decode step n, for each head h of layer l:</span>
+O_sink, lse_sink = <span class="kw">attend</span>(Q(l,h,n), K_sink, V_sink)      <span class="cm">// SRAM path, ~5 ns</span>
+O_bulk, lse_bulk = <span class="kw">attend</span>(Q(l,h,n), K_bulk, V_bulk)      <span class="cm">// HBM path, ~150 ns</span>
+
+<span class="cm">// Stable merge (online softmax, no full recomputation):</span>
+lse_max = <span class="kw">max</span>(lse_sink, lse_bulk)
+<span class="res">O_final</span> = (exp(lse_sink − lse_max) · O_sink
+          + exp(lse_bulk − lse_max) · O_bulk)
+        / (exp(lse_sink − lse_max) + exp(lse_bulk − lse_max))
+</pre>
+<div class="formula-cap">The merge uses online softmax normalization via log-sum-exp terms, ensuring numerical stability regardless of the relative magnitudes of the two partial outputs. No recomputation of the full attention is required.</div>
+</div>
+
+</div><!-- /article before diagram -->
+</div><!-- /container -->
+
+<!-- ── INTERACTIVE DIAGRAM ─────────────────────────────── -->
+<div class="diagram-section wide">
+  <div class="diagram-title">ARCHITECTURE — attention-sink-aware SRAM placement system</div>
+  <div id="diagram-wrap">
+    <svg id="diag" viewBox="0 0 940 560" xmlns="http://www.w3.org/2000/svg" role="img">
+      <title>Attention-Sink-Aware SRAM KV Placement Architecture</title>
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M2 2L8 5L2 8" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+        <marker id="arr-sm" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 2L8 5L2 8" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- ── BACKGROUND REGIONS ── -->
+      <!-- Accelerator die -->
+      <rect x="16" y="16" width="600" height="530" rx="14" fill="#0f1420" stroke="#1f2840" stroke-width="1.5"/>
+      <text x="32" y="40" font-family="'Geist Mono',monospace" font-size="10" fill="#3a4060" letter-spacing="0.1em">AI ACCELERATOR DIE</text>
+
+      <!-- Compute core -->
+      <rect x="30" y="52" width="268" height="230" rx="10" fill="#13182a" stroke="#1f2840" stroke-width="1"/>
+      <text x="46" y="72" font-family="'Geist Mono',monospace" font-size="9" fill="#3a4060" letter-spacing="0.08em">COMPUTE CORE</text>
+
+      <!-- SRAM region -->
+      <rect x="30" y="300" width="268" height="228" rx="10" fill="#0d1a16" stroke="#1a4035" stroke-width="1.2"/>
+      <text x="46" y="320" font-family="'Geist Mono',monospace" font-size="9" fill="#1e6e50" letter-spacing="0.08em">SRAM FAST TIER</text>
+
+      <!-- Placement controller -->
+      <rect x="318" y="52" width="278" height="480" rx="10" fill="#131520" stroke="#2a2440" stroke-width="1.2"/>
+      <text x="334" y="72" font-family="'Geist Mono',monospace" font-size="9" fill="#4a3890" letter-spacing="0.08em">PLACEMENT CONTROLLER</text>
+
+      <!-- HBM (outside die) -->
+      <rect x="636" y="120" width="286" height="330" rx="10" fill="#1a1206" stroke="#3a2806" stroke-width="1.2"/>
+      <text x="652" y="140" font-family="'Geist Mono',monospace" font-size="9" fill="#6e4a10" letter-spacing="0.08em">HBM / DRAM BULK TIER</text>
+
+      <!-- ── COMPUTE CORE CONTENTS ── -->
+      <!-- Transformer layers box -->
+      <rect x="44" y="82" width="240" height="72" rx="7" fill="#0d0f14" stroke="#1f2840" stroke-width="1"/>
+      <text x="164" y="105" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="10" fill="#6b7494">Transformer layers</text>
+      <text x="164" y="122" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#3a4060">MHA / GQA / MLA · FFN / MoE</text>
+      <text x="164" y="140" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#3a4060">80 layers · 8 KV heads · dim 128</text>
+
+      <!-- Attention monitor -->
+      <rect x="44" y="168" width="240" height="58" rx="7" fill="#0d0f14" stroke="#1f2840" stroke-width="1"/>
+      <text x="164" y="189" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="10" fill="#6b7494">Attention monitor</text>
+      <text x="164" y="207" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#3a4060">Collects A(l,h,i,t) · computes S(t)</text>
+      <text x="164" y="218" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="8.5" fill="#2a3050">Feeds to placement controller</text>
+
+      <!-- KV cache manager (decode bypass mux) -->
+      <rect x="44" y="238" width="240" height="40" rx="7" fill="#0d0f14" stroke="#1f2840" stroke-width="1"/>
+      <text x="164" y="255" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="10" fill="#6b7494">KV cache manager</text>
+      <text x="164" y="270" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#3a4060">Bypass mux · partial output merge</text>
+
+      <!-- ── SRAM CONTENTS ── -->
+      <!-- Header line -->
+      <rect x="44" y="330" width="240" height="30" rx="5" fill="#0d2018" stroke="#1a4035" stroke-width="1"/>
+      <text x="164" y="350" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9.5" fill="#38c4b4">Sink KV entries (pinned)</text>
+
+      <!-- Token rows -->
+      <rect id="sram-t0" x="44" y="368" width="240" height="24" rx="4" fill="#0f2820" stroke="#1e5035" stroke-width="1"/>
+      <text id="sram-t0-lbl" x="54" y="384" font-family="'Geist Mono',monospace" font-size="9" fill="#38c4b4">t0 [BOS]</text>
+      <text x="264" y="384" text-anchor="end" font-family="'Geist Mono',monospace" font-size="8" fill="#1e6e50">S=0.97 · pinned</text>
+
+      <rect id="sram-t1" x="44" y="396" width="240" height="24" rx="4" fill="#0f2820" stroke="#1e5035" stroke-width="1"/>
+      <text id="sram-t1-lbl" x="54" y="412" font-family="'Geist Mono',monospace" font-size="9" fill="#38c4b4">t1 [SYS_END]</text>
+      <text x="264" y="412" text-anchor="end" font-family="'Geist Mono',monospace" font-size="8" fill="#1e6e50">S=0.91 · pinned</text>
+
+      <rect id="sram-t56" x="44" y="424" width="240" height="24" rx="4" fill="#0f2820" stroke="#1e5035" stroke-width="1"/>
+      <text id="sram-t56-lbl" x="54" y="440" font-family="'Geist Mono',monospace" font-size="9" fill="#38c4b4">t56 [ANCHOR]</text>
+      <text x="264" y="440" text-anchor="end" font-family="'Geist Mono',monospace" font-size="8" fill="#1e6e50">S=0.83 · timed</text>
+
+      <!-- Budget indicator -->
+      <rect x="44" y="456" width="240" height="16" rx="3" fill="#081208" stroke="#1a4035" stroke-width="0.5" stroke-dasharray="4 3"/>
+      <text x="164" y="467" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="7.5" fill="#1e4030">reserved budget (unused)</text>
+
+      <!-- Latency badge -->
+      <rect x="44" y="478" width="240" height="36" rx="5" fill="#0a2018" stroke="#38c4b4" stroke-width="0.8"/>
+      <text x="164" y="492" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#38c4b4">Bypass path latency</text>
+      <text x="164" y="507" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="10" fill="#5cc87a" font-weight="500">~1 – 10 ns</text>
+
+      <!-- ── PLACEMENT CONTROLLER CONTENTS ── -->
+      <rect x="332" y="82" width="250" height="30" rx="5" fill="#0f0f1a" stroke="#2a2440" stroke-width="1"/>
+      <text x="457" y="101" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#9b87f5">① Sink score engine</text>
+
+      <rect x="332" y="120" width="250" height="30" rx="5" fill="#0f0f1a" stroke="#2a2440" stroke-width="1"/>
+      <text x="457" y="139" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#9b87f5">② Head / layer profiler</text>
+
+      <rect x="332" y="158" width="250" height="30" rx="5" fill="#0f0f1a" stroke="#2a2440" stroke-width="1"/>
+      <text x="457" y="177" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#9b87f5">③ Threshold comparator</text>
+
+      <!-- Tag array -->
+      <rect x="332" y="200" width="250" height="100" rx="6" fill="#0f0f1a" stroke="#2a2440" stroke-width="1"/>
+      <text x="457" y="220" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#9b87f5">④ Token-to-tier tag array</text>
+      <line x1="340" y1="228" x2="574" y2="228" stroke="#2a2440" stroke-width="0.5"/>
+      <text x="348" y="243" font-family="'Geist Mono',monospace" font-size="8" fill="#4a4070">TOKEN</text>
+      <text x="420" y="243" font-family="'Geist Mono',monospace" font-size="8" fill="#4a4070">SCORE</text>
+      <text x="490" y="243" font-family="'Geist Mono',monospace" font-size="8" fill="#4a4070">TIER</text>
+      <text x="540" y="243" font-family="'Geist Mono',monospace" font-size="8" fill="#4a4070">ADDR</text>
+      <line x1="340" y1="248" x2="574" y2="248" stroke="#1a1a30" stroke-width="0.5"/>
+      <text x="348" y="261" font-family="'Geist Mono',monospace" font-size="8" fill="#38c4b4">t0</text>
+      <text x="420" y="261" font-family="'Geist Mono',monospace" font-size="8" fill="#38c4b4">0.97</text>
+      <text x="490" y="261" font-family="'Geist Mono',monospace" font-size="8" fill="#5cc87a">SRAM</text>
+      <text x="540" y="261" font-family="'Geist Mono',monospace" font-size="8" fill="#38c4b4">0x000</text>
+      <text x="348" y="276" font-family="'Geist Mono',monospace" font-size="8" fill="#38c4b4">t56</text>
+      <text x="420" y="276" font-family="'Geist Mono',monospace" font-size="8" fill="#38c4b4">0.83</text>
+      <text x="490" y="276" font-family="'Geist Mono',monospace" font-size="8" fill="#5cc87a">SRAM</text>
+      <text x="540" y="276" font-family="'Geist Mono',monospace" font-size="8" fill="#38c4b4">0x400</text>
+      <text x="348" y="291" font-family="'Geist Mono',monospace" font-size="8" fill="#3a4060">t2..55</text>
+      <text x="420" y="291" font-family="'Geist Mono',monospace" font-size="8" fill="#3a4060">&lt;0.18</text>
+      <text x="490" y="291" font-family="'Geist Mono',monospace" font-size="8" fill="#6e4a10">HBM</text>
+      <text x="540" y="291" font-family="'Geist Mono',monospace" font-size="8" fill="#3a4060">—</text>
+
+      <rect x="332" y="308" width="250" height="30" rx="5" fill="#0f0f1a" stroke="#2a2440" stroke-width="1"/>
+      <text x="457" y="327" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#9b87f5">⑤ DMA / migration engine</text>
+
+      <rect x="332" y="346" width="250" height="30" rx="5" fill="#0f0f1a" stroke="#2a2440" stroke-width="1"/>
+      <text x="457" y="365" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#9b87f5">⑥ Validity + dwell timer</text>
+
+      <rect x="332" y="384" width="250" height="30" rx="5" fill="#0f0f1a" stroke="#2a2440" stroke-width="1"/>
+      <text x="457" y="403" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#9b87f5">⑦ Budget tracker</text>
+
+      <!-- Config box -->
+      <rect x="332" y="424" width="250" height="84" rx="6" fill="#0a0a18" stroke="#2a2440" stroke-width="0.8" stroke-dasharray="4 3"/>
+      <text x="457" y="444" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="8.5" fill="#4a3890">configurable parameters</text>
+      <text x="348" y="460" font-family="'Geist Mono',monospace" font-size="8" fill="#3a3060">T_sink · T_promote · T_evict</text>
+      <text x="348" y="474" font-family="'Geist Mono',monospace" font-size="8" fill="#3a3060">α (decay) · N_dwell · N_evict</text>
+      <text x="348" y="488" font-family="'Geist Mono',monospace" font-size="8" fill="#3a3060">SRAM_budget · head_mask</text>
+      <text x="348" y="502" font-family="'Geist Mono',monospace" font-size="8" fill="#3a3060">layer_range · tenant_tag</text>
+
+      <!-- ── HBM CONTENTS ── -->
+      <rect x="650" y="154" width="258" height="26" rx="5" fill="#1a1208" stroke="#3a2806" stroke-width="0.8"/>
+      <text x="779" y="171" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9.5" fill="#f4a942">Full KV cache (all N tokens)</text>
+
+      <!-- Token slots in HBM -->
+      <rect x="650" y="186" width="258" height="22" rx="3" fill="#201608" stroke="#3a2806" stroke-width="0.8"/>
+      <text x="660" y="201" font-family="'Geist Mono',monospace" font-size="8.5" fill="#f4a942">t0 · K[0..80], V[0..80]  ★ sink</text>
+      <rect x="650" y="212" width="258" height="22" rx="3" fill="#201608" stroke="#3a2806" stroke-width="0.8"/>
+      <text x="660" y="227" font-family="'Geist Mono',monospace" font-size="8.5" fill="#f4a942">t1 · K[0..80], V[0..80]  ★ sink</text>
+      <rect x="650" y="238" width="258" height="22" rx="3" fill="#181008" stroke="#2a2006" stroke-width="0.8"/>
+      <text x="660" y="253" font-family="'Geist Mono',monospace" font-size="8.5" fill="#6e4a10">t2 … t55  (bulk, non-sink)</text>
+      <rect x="650" y="264" width="258" height="22" rx="3" fill="#201608" stroke="#3a2806" stroke-width="0.8"/>
+      <text x="660" y="279" font-family="'Geist Mono',monospace" font-size="8.5" fill="#f4a942">t56 · K[0..80], V[0..80]  ★ sink</text>
+      <rect x="650" y="290" width="258" height="40" rx="3" fill="#181008" stroke="#2a2006" stroke-width="0.8"/>
+      <text x="660" y="308" font-family="'Geist Mono',monospace" font-size="8.5" fill="#6e4a10">t57 … tN  (bulk, non-sink)</text>
+      <text x="660" y="323" font-family="'Geist Mono',monospace" font-size="7.5" fill="#3a2806">source of truth for all KV entries</text>
+
+      <!-- Latency badge HBM -->
+      <rect x="650" y="340" width="258" height="36" rx="5" fill="#1a1005" stroke="#f4a942" stroke-width="0.8"/>
+      <text x="779" y="355" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#f4a942">Bulk path latency</text>
+      <text x="779" y="371" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="10" fill="#c08030" font-weight="500">~50 – 300 ns</text>
+
+      <!-- ── ARROWS ── -->
+
+      <!-- [A] Attention monitor → Placement controller (sink info) -->
+      <path id="arrow-a" d="M284 197 L332 190" stroke="#9b87f5" stroke-width="1.2" stroke-dasharray="5 3" fill="none" marker-end="url(#arr)" opacity="0.7"/>
+      <text x="305" y="188" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="7.5" fill="#6040b0">attn info</text>
+
+      <!-- [B] Placement controller → DMA to SRAM (promote) -->
+      <path id="arrow-b" d="M332 323 L284 470" stroke="#38c4b4" stroke-width="1.5" fill="none" marker-end="url(#arr)" opacity="0.8"/>
+      <text x="295" y="400" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="7.5" fill="#38c4b4">promote</text>
+
+      <!-- [C] DMA → HBM (copy from) -->
+      <path id="arrow-c" d="M582 323 L650 290" stroke="#f4a942" stroke-width="1.2" stroke-dasharray="5 3" fill="none" marker-end="url(#arr)" opacity="0.7"/>
+      <text x="622" y="310" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="7.5" fill="#c08030">DMA copy</text>
+
+      <!-- [D] KV Manager → SRAM (decode fast read) -->
+      <path id="arrow-d" d="M164 278 L164 330" stroke="#38c4b4" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+      <text x="172" y="308" font-family="'Geist Mono',monospace" font-size="7.5" fill="#38c4b4">sink read</text>
+      <text x="172" y="319" font-family="'Geist Mono',monospace" font-size="7.5" fill="#38c4b4">⚡ fast</text>
+
+      <!-- [E] KV Manager → HBM (decode bulk read) -->
+      <path id="arrow-e" d="M284 258 L636 240" stroke="#f4a942" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+      <text x="460" y="248" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="7.5" fill="#c08030">bulk KV read (~150 ns)</text>
+
+      <!-- [F] Bypass mux tag check (controller → KV manager) -->
+      <path id="arrow-f" d="M332 370 L284 270" stroke="#9b87f5" stroke-width="1" stroke-dasharray="4 3" fill="none" marker-end="url(#arr-sm)" opacity="0.6"/>
+      <text x="300" y="310" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="7" fill="#6040b0">route</text>
+
+      <!-- [G] SRAM evict/fallback → HBM -->
+      <path id="arrow-g" d="M284 496 L636 380" stroke="#3a4060" stroke-width="1" stroke-dasharray="3 4" fill="none" marker-end="url(#arr-sm)" opacity="0.4"/>
+      <text x="460" y="446" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="7" fill="#3a4060">evict / fallback</text>
+
+      <!-- Input tokens (top) -->
+      <rect x="30" y="520" width="600" height="26" rx="5" fill="#0d0f14" stroke="#1f2840" stroke-width="1"/>
+      <text x="330" y="537" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#3a4060">Input prompt tokens  →  prefill  →  decode (autoregressive output, one token per step)</text>
+
+      <!-- HBM input label -->
+      <text x="779" y="110" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="8.5" fill="#3a4060">Off-die / stacked HBM</text>
+      <text x="779" y="108" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="8.5" fill="#3a4060" dy="12">Capacity: 40–80 GB</text>
+    </svg>
+
+    <!-- STEP INFO PANEL -->
+    <div class="step-info" id="step-panel">
+      Click a phase button below to step through the system — or hover over diagram elements to explore.
     </div>
   </div>
 
-  <!-- ── ARTICLE BODY ── -->
-  <main class="article-body" data-pagefind-body>
+  <!-- CONTROLS -->
+  <div class="ctrl-row">
+    <span class="ctrl-label">WALK THROUGH:</span>
+    <button class="ctrl-btn" onclick="showStep(0)">① Prefill</button>
+    <button class="ctrl-btn" onclick="showStep(1)">② Sink detection</button>
+    <button class="ctrl-btn" onclick="showStep(2)">③ KV promotion</button>
+    <button class="ctrl-btn" onclick="showStep(3)">④ Decode routing</button>
+    <button class="ctrl-btn" onclick="showStep(4)">⑤ Merge</button>
+    <button class="ctrl-btn" onclick="showStep(-1)">Reset</button>
+  </div>
+</div>
 
-    <h2>The Problem Nobody Talks About</h2>
+<div class="container">
+<div class="article">
 
-    <p>
-      When you chat with an AI — ChatGPT, Claude, Gemini, any of them — the system is doing two very different things under the hood. First, it reads your message (the <strong>prefill phase</strong>). Then it generates each word of the response one at a time (the <strong>decode phase</strong>). That second part, the decode, is where most of the time goes.
-    </p>
+<h2>Three embodiments, three trade-off profiles</h2>
 
-    <p>
-      During decode, every single word the AI generates requires it to look back at everything it has read so far. At scale — think 70-billion-parameter models, 32,000-word contexts, hundreds of simultaneous users — that "looking back" means fetching enormous amounts of data from high-bandwidth memory (HBM) on every step. This is called the <strong>KV cache problem</strong>, and it is one of the primary drivers of cost and latency in modern AI inference.
-    </p>
+<p>The patent covers three principal implementations of the placement controller, each targeting a different operational context.</p>
 
-    <p>
-      The standard approach? Store all that data uniformly in HBM and read it uniformly on every step. Simple. Predictable. And, as it turns out, deeply suboptimal — because not all tokens are created equal.
-    </p>
+<div class="callout">
+  <div class="callout-label">Embodiment 1A — Threshold prefill (deterministic)</div>
+  <p>After the full prefill pass completes, the controller computes S(t) for every token, applies T_sink, and immediately triggers DMA transfer for qualifying positions. Decode begins only after SRAM is loaded. Zero runtime overhead during decode. Best for short to medium contexts with predictable, structurally-fixed sink positions (system-prompted instruction models, RAG pipelines with fixed templates).</p>
+</div>
 
-    <div class="pull-quote">
-      <p>"A small number of token positions attract a disproportionate fraction of attention across every layer, every head, and every decode step. They are, in a real sense, the anchors of the model's memory."</p>
-    </div>
+<div class="callout violet">
+  <div class="callout-label">Embodiment 1B — EMA dynamic (adaptive)</div>
+  <p>Sink scores are updated continuously using an exponential moving average. Tokens can be promoted or demoted during decode itself, with configurable dwell and eviction timers preventing thrashing. Handles long contexts where attention sinks emerge mid-sequence — common in multi-turn conversations, tool-call interleaving, and retrieval-augmented generation where anchor tokens may appear late in the prompt. The cost is additional decode-step overhead from score maintenance; the benefit is correctness across a wider workload distribution.</p>
+</div>
 
-    <h2>The Attention Sink Phenomenon</h2>
+<div class="callout green">
+  <div class="callout-label">Embodiment 1C — Hardware controller (silicon-native)</div>
+  <p>A dedicated on-die controller with a sink score accumulator, a tag array (content-addressable memory), a DMA state machine, a bypass multiplexer in the attention datapath, and a validity and generation counter. Exposes a set of memory-mapped configuration registers for all threshold and policy parameters. The bypass multiplexer operates entirely in hardware — no software intervention is needed per decode step. This embodiment is designed for inference ASIC integration, with sub-microsecond promotion and routing latency.</p>
+</div>
 
-    <p>
-      Researchers studying how transformer attention actually behaves discovered something fascinating: certain tokens in an input sequence act as <strong>attention sinks</strong>. The beginning-of-sequence token. The end of a system prompt. Structural separators. These positions receive an outsized, persistent share of attention weight — across layers, across heads, across hundreds of decode steps — even when they carry no obvious semantic importance.
-    </p>
+<h2>Head-wise and layer-wise selectivity: doing more with less SRAM</h2>
 
-    <div class="stats-row">
-      <div class="stat-pill">
-        <span class="num">2–8</span>
-        <span class="lbl">sink tokens in a typical 8K-token prompt</span>
-      </div>
-      <div class="stat-pill">
-        <span class="num">~40%</span>
-        <span class="lbl">of total decode attention often directed at sinks</span>
-      </div>
-      <div class="stat-pill">
-        <span class="num">100×</span>
-        <span class="lbl">SRAM vs HBM latency advantage</span>
-      </div>
-    </div>
+<p>
+  One of the more practically important refinements in the patent is the observation that not all attention heads exhibit sink behavior with equal intensity — and not all layers do either. In a 70-billion-parameter GQA model with 8 KV heads across 80 layers, empirical profiling consistently shows that a subset of heads — often those performing global retrieval — concentrate sink behavior, while other heads (local pattern matching, induction heads, recency heads) distribute attention broadly and never develop strong sinks.
+</p>
 
-    <p>
-      Prior work exploited this for algorithmic purposes — StreamingLLM used it to build infinite-context models by keeping sink tokens in a sliding window. But no one had asked the obvious hardware question: <strong>if we know in advance which tokens will be accessed most, why are we storing them in the slow memory?</strong>
-    </p>
+<p>
+  The patent covers a head-wise variant in which the placement controller maintains a per-head, per-layer sink profile. Only the key-value slices corresponding to heads and layer ranges that exhibit sink behavior are promoted to SRAM. For a model where only 3 of 8 heads consistently sink, this reduces the SRAM footprint of a promoted token by 62.5% — turning a 327 KB per-token cost into approximately 123 KB. In practice, this means the SRAM budget can accommodate three times as many sink tokens, or the same number of tokens at a reduced SRAM reservation.
+</p>
 
-    <h2>The Invention: Attention-Sink-Aware SRAM Placement</h2>
+<div class="pq"><p>"The head-wise variant is where the real SRAM efficiency comes from. A 62% reduction in per-token promotion cost lets you fit three times the sinks in the same die area."</p></div>
 
-    <p>
-      That is the core idea of the patent filed today. During the prefill phase, instead of just building the KV cache and moving on, the system <strong>monitors which tokens are attracting attention</strong>, scores them, and identifies the sinks. Then — before decode even begins — it migrates the key and value vectors for those tokens from HBM into <strong>on-chip SRAM</strong>.
-    </p>
+<h2>Multi-tenant serving: turning SRAM into a shared system-prompt cache</h2>
 
-    <div class="diagram-box">
-<pre>
-  INPUT PROMPT (8,000 tokens)
-  ┌──────────────────────────────────────────────────────┐
-  │  <span class="hl">t0 [BOS]</span>  t1  t2 ... t55  <span class="hl">t56 [ANCHOR]</span>  t57 ... tN  │
-  └──────────────────────────────────────────────────────┘
-                      ↓  PREFILL + SINK DETECTION
-  ┌──────────────────────────────────────────────────────┐
-  │  Sink Score S(t) = Σ attention weights received       │
-  │  <span class="hl">t0: S=0.97  ★ SINK</span>   t2-t55: S&lt;0.18  (non-sink)   │
-  │  <span class="hl">t56: S=0.83 ★ SINK</span>  t57-tN: S&lt;0.31  (non-sink)   │
-  └──────────────────────────────────────────────────────┘
-                      ↓  KV PROMOTION (DMA)
-  ┌───────────────────┐        ┌──────────────────────────┐
-  │  <span class="hl2">SRAM  (fast)</span>       │        │  HBM  (bulk)             │
-  │  t0 KV — pinned   │        │  All 8,000 token KV      │
-  │  t56 KV — pinned  │        │  (source of truth)       │
-  │  ~1–10 ns access  │        │  ~100–200 ns access      │
-  └───────────────────┘        └──────────────────────────┘
-                      ↓  DECODE (each step)
-  <span class="hl">SRAM bypass path</span>  ──→  sink KV reads   (fast  ⚡)
-  HBM path          ──→  bulk KV reads   (standard)
-  <span class="hl2">merge outputs</span>     ──→  final attention result
-</pre>
-      <div class="diagram-label">FIG. — Simplified view of the attention-sink-aware KV placement pipeline</div>
-    </div>
+<p>
+  In production LLM serving infrastructure — think a cloud API endpoint serving thousands of concurrent users — a large fraction of all requests share an identical system prompt. The system prompt establishes the model's persona, tools, output format constraints, and behavioral policies. It can be thousands of tokens long. And its first few tokens are, almost always, the most powerful attention sinks in the entire context.
+</p>
 
-    <p>
-      During decode, a <strong>placement controller</strong> intercepts KV read requests. When a request is for a sink token, it routes it to the SRAM path — a nanosecond-scale access. Everything else goes through HBM as normal. The partial attention results from the two paths are merged using numerically stable log-sum-exp accumulation. The model output is mathematically identical. The latency is not.
-    </p>
+<p>
+  The patent covers a variant in which sink-token KV state corresponding to shared prefix tokens is promoted once into a shared SRAM region, reference-counted across concurrent sessions. If 500 requests share a system prompt, the sink KV entries for that prompt are fetched from HBM and placed in SRAM exactly once — not 500 times. Each session's attention bypass reads from the shared SRAM region. Copy-on-write semantics handle per-session modifications. When the reference count drops to zero (all sessions using that system prompt have completed), the SRAM entries are released.
+</p>
 
-    <h3>The Math Behind the Sink Score</h3>
+<p>
+  The practical implication: for a serving system with high prefix reuse, this variant functions as a semantic, attention-derived cache for the most important KV state in the system — completely automatic, with no explicit cache configuration required.
+</p>
 
-    <p>The cumulative sink score for a token position is computed as:</p>
+<h2>Differentiation from prior art</h2>
 
-    <div class="code-block">
-      <div class="code-header">
-        <div class="code-dots"><span></span><span></span><span></span></div>
-        <div class="code-lang">FORMULA — SINK SCORE</div>
-      </div>
-      <code>
-<span class="cm">// Cumulative attention score for token at position t</span>
-<span class="cm">// summed across all layers l, heads h, query positions i</span>
+<table class="compare-table">
+  <thead>
+    <tr>
+      <th>Approach</th>
+      <th>What it does</th>
+      <th>Key limitation vs. this patent</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>StreamingLLM</strong><br><span style="font-size:.78rem;color:var(--muted)">Xiao et al., 2023</span></td>
+      <td>Retains sink tokens in a sliding window for infinite-context generation</td>
+      <td class="old-col">Operates at the <em>algorithm level</em> — modifies which tokens the model sees. No hardware memory tier distinction. Reduces accuracy for evicted non-sink tokens.</td>
+    </tr>
+    <tr>
+      <td><strong>H2O / Heavy Hitter Oracle</strong><br><span style="font-size:.78rem;color:var(--muted)">Zhang et al., 2023</span></td>
+      <td>Evicts low-attention KV entries to reduce total KV cache size</td>
+      <td class="old-col">Operates within a <em>single memory tier</em>. Evicts non-sink entries rather than placing them in a tiered hierarchy. Causes accuracy degradation for evicted tokens.</td>
+    </tr>
+    <tr>
+      <td><strong>PagedAttention / vLLM</strong><br><span style="font-size:.78rem;color:var(--muted)">Kwon et al., 2023</span></td>
+      <td>Pages KV cache into fixed-size blocks to reduce HBM fragmentation</td>
+      <td class="old-col">Placement is <em>attention-agnostic</em> — pages are allocated by recency and request scheduling, not by attention-derived importance. Any page may end up anywhere in HBM.</td>
+    </tr>
+    <tr>
+      <td><strong>LRU/recency SRAM caches</strong><br><span style="font-size:.78rem;color:var(--muted)">Common hardware technique</span></td>
+      <td>Cache recently accessed KV entries in L2 or SRAM</td>
+      <td class="old-col">Recency ≠ importance. Sink tokens accessed many steps ago may be evicted despite being the highest-reuse positions in the entire sequence. LRU is specifically blind to the persistent reuse pattern that attention sinks create.</td>
+    </tr>
+    <tr>
+      <td><strong>Uniform HBM placement</strong><br><span style="font-size:.78rem;color:var(--muted)">Standard inference</span></td>
+      <td>All KV state stored uniformly in HBM</td>
+      <td class="old-col">No differentiation by token importance. Every decode step pays HBM latency for every token — including the small number of sink tokens that will be accessed on every step for the entire decode episode.</td>
+    </tr>
+    <tr>
+      <td><strong style="color:var(--green)">This patent</strong></td>
+      <td class="new-col">Selectively places attention-sink token KV state in SRAM using attention-derived placement policy, with full KV cache preserved in HBM</td>
+      <td class="new-col">No accuracy degradation · No context window limitation · Compatible with GQA, MLA, MoE, speculative decoding · Head-wise and layer-wise granularity · Multi-tenant prefix sharing</td>
+    </tr>
+  </tbody>
+</table>
 
-S(t) = Σ <span class="fn">A</span>(l, h, i, t)   <span class="cm">∀ l ∈ [1..L], h ∈ [1..H], i > t</span>
+<h2>Numbers: what does this actually mean in practice?</h2>
 
-<span class="cm">// Token t is classified as SINK if:</span>
-S(t) ≥ T_sink   <span class="cm">// configurable threshold, e.g. 3.0 normalised over prompt length</span>
+<p>
+  In the best mode described in the specification, the target system is a 70-billion-parameter GQA model with 80 layers, 8 KV heads, and head dimension 128, running on an accelerator with 80 GB HBM3 and 96 MB on-chip SRAM. Inference context length is 8,000–32,000 tokens.
+</p>
 
-<span class="cm">// Dynamic decay variant (updated each decode step n):</span>
-E(t, n) = α · E(t, n-<span class="num">1</span>) + (<span class="num">1</span>-α) · B(t, n)
-<span class="cm">// α = decay factor (0.85–0.99), B(t,n) = attention mass at step n</span>
-      </code>
-    </div>
+<p>
+  Per-token KV state across all layers: 2 × 80 × 8 × 128 × 2 bytes (FP16) = <strong>327,680 bytes ≈ 320 KB per token.</strong> The prefill-time sink detection, configured with T_sink = 3.0 and 2× layer-weight boosting for layers 16–32, identifies 2–8 sink tokens per prompt. Promotion of 8 sink tokens to SRAM requires 8 × 327 KB ≈ <strong>2.62 MB</strong> — less than 3% of the 96 MB SRAM budget.
+</p>
 
-    <h3>Three Key Embodiments</h3>
+<p>
+  If those 8 sink tokens account for 40% of cumulative decode attention mass (a conservative estimate for instruction-tuned models), then 40% of all decode-phase KV reads are served from SRAM at ~5 ns rather than HBM at ~150 ns. The bandwidth previously consumed by 40% of decode traffic is freed for other operations. Combined with INT8 quantisation of non-sink KV entries in HBM and paged KV cache management, the specification describes a 40–55% reduction in aggregate memory bandwidth per decode step on representative instruction-following and RAG workloads.
+</p>
 
-    <p>The patent covers three principal implementations, each with different trade-offs:</p>
+<h2>What the road looks like from here</h2>
 
-    <div class="callout">
-      <div class="callout-label">Embodiment 1A — Threshold Prefill</div>
-      <p>Compute S(t) after the full prefill pass. Any token exceeding T_sink gets its KV migrated to SRAM before decode begins. Simple, deterministic, zero decode-phase overhead. Best for short to medium contexts with predictable sink positions.</p>
-    </div>
+<div class="timeline">
+  <div class="tl"><div class="tl-dot done">✓</div><div><div class="tl-date">16 May 2026 · 15:19 IST</div><div class="tl-title">Provisional filed — priority date established</div><div class="tl-desc">App No. 202641062302 · Chennai IPO · ₹1,760 fee paid · Docket No. 73187</div></div></div>
+  <div class="tl"><div class="tl-dot pend">2</div><div><div class="tl-date">Now → May 2027 (12-month window)</div><div class="tl-title">Prior art search and complete specification</div><div class="tl-desc">Professional prior art analysis · Claim refinement with a registered patent agent · Formal line drawings with reference numerals · Benchmark data for enablement</div></div></div>
+  <div class="tl"><div class="tl-dot pend">3</div><div><div class="tl-date">Under evaluation</div><div class="tl-title">International filing strategy</div><div class="tl-desc">PCT application (establishes priority in 150+ countries for 18 months) · US direct national filing (USPTO) · EU (EPO) · Jurisdiction selection based on where AI chip design, manufacturing, and cloud inference deployment is concentrated</div></div></div>
+  <div class="tl"><div class="tl-dot pend">4</div><div><div class="tl-date">Within 48 months of priority date</div><div class="tl-title">Request for Examination (Form 18)</div><div class="tl-desc">IPO examination commences · Prior art search · Office actions · Amendment rounds</div></div></div>
+  <div class="tl"><div class="tl-dot pend">5</div><div><div class="tl-date">2028–2030 (estimated)</div><div class="tl-title">Grant</div><div class="tl-desc">20-year term from filing date · Portfolio piece for fundraising, licensing, and defensive use</div></div></div>
+</div>
 
-    <div class="callout">
-      <div class="callout-label">Embodiment 1B — EMA Dynamic</div>
-      <p>Use exponential moving average decay to continuously update sink scores during decode. Tokens can be promoted or demoted dynamically. Handles long contexts where sink tokens emerge mid-prompt — common in retrieval-augmented generation and multi-turn instruction following.</p>
-    </div>
+<div class="section-sep"><span>· · ·</span></div>
 
-    <div class="callout">
-      <div class="callout-label">Embodiment 1C — Dedicated Hardware Controller</div>
-      <p>A purpose-built silicon component with a sink score engine, tag array, DMA migration unit, bypass multiplexer, and validity timer. Designed for integration into inference ASICs and AI accelerator chips. Exposes software-configurable registers for all threshold and policy parameters.</p>
-    </div>
+<h2>Why publish this now</h2>
 
-    <h2>Why This Is Harder Than It Sounds</h2>
+<p>
+  The standard advice is to stay quiet after a provisional filing, especially in a fast-moving space. I'm doing the opposite, for a deliberate reason.
+</p>
 
-    <p>
-      The obvious objection: "SRAM is tiny. You can't fit much in it." Exactly right — and that is precisely why this invention is useful. For a 70-billion-parameter GQA model running at 128K context, the full KV cache is roughly 80 GB. The on-chip SRAM budget might be 96 MB. You clearly cannot cache everything.
-    </p>
+<p>
+  The provisional locks the priority date. The idea is documented and on the public record. What publication does is create awareness in exactly the community where this matters — hardware architects at AI chip companies, inference runtime engineers, researchers working on transformer efficiency. If someone is working on a closely related idea independently, I'd rather know that now and have a productive conversation than discover it during examination.
+</p>
 
-    <p>
-      But you don't need to. If 2–8 sink tokens account for 30–50% of decode attention traffic, and those tokens can fit in SRAM — a 70B GQA model's KV state for 8 sink tokens across all 80 layers is approximately <strong>2.6 MB</strong> — then you capture the majority of the high-frequency access benefit at a tiny fraction of the SRAM budget.
-    </p>
+<p>
+  More importantly: the hardware question — <em>where should KV state live in the memory hierarchy, based on attention-derived importance?</em> — is genuinely underexplored. Most of the industry's attention (appropriately) has gone to the algorithm side: quantization, sparsity, distillation, speculative decoding. The memory hierarchy side, informed by the model's own runtime attention behaviour, has barely been touched. I think there is a substantial amount of value left in that direction, and writing about it is how I want to contribute to the conversation.
+</p>
 
-    <div class="pull-quote">
-      <p>"2.6 MB of well-chosen data in SRAM can have more impact on decode latency than 80 GB of data sitting uniformly in HBM."</p>
-    </div>
+<p>
+  If you are working on AI inference hardware, custom accelerators, inference runtimes, or are simply interested in this space — I'd genuinely like to hear from you.
+</p>
 
-    <p>
-      The second challenge is correctness. If an SRAM copy becomes stale, or if a token is evicted while still in use, the attention result must remain accurate. The invention handles this through generation counters, validity bits, and an automatic fallback path: on any tag miss, the system transparently falls through to HBM. The model output is always correct.
-    </p>
+<div class="callout">
+  <div class="callout-label">Patent on the public record</div>
+  <p>
+    <strong>Application Number:</strong> 202641062302<br>
+    <strong>Applicant / Inventor:</strong> Manish KL, Bengaluru, India<br>
+    <strong>Title:</strong> Methods and Systems for Attention-Sink-Aware SRAM Placement of Key-Value State in Transformer Inference<br>
+    <strong>Filed:</strong> 16 May 2026 · Chennai, Indian Patent Office
+  </p>
+</div>
 
-    <h2>Beyond the Basic Case</h2>
+</main><!-- /article -->
+</div><!-- /container -->
 
-    <p>The patent covers a number of important extensions that make it practically useful in real serving systems:</p>
+<div class="container">
+<footer>
+  <p>© 2026 Manish KL · Bengaluru, Karnataka, India</p>
+  <p class="app">Indian Patent Application 202641062302 · Filed 16 May 2026</p>
+  <p style="margin-top:12px">This post describes a filed provisional patent application and does not constitute legal advice. All rights reserved.</p>
+  <div class="publish-footer">
+    <span><a href="/index.html">© 2026 MANISH AI. All rights reserved.</a></span>
+    <span><a href="/writings.html">← All writings</a></span>
+  </div>
+</footer>
+</div>
 
-    <h3>Head-Wise and Layer-Wise Selectivity</h3>
-    <p>
-      Not every attention head is a sink head. Some heads do local pattern matching; others do global retrieval. The invention allows the controller to promote only the key-value slices corresponding to heads that empirically exhibit sink behaviour — reducing SRAM usage by up to 70% versus full-token promotion while retaining most of the latency benefit.
-    </p>
+<script>
+const steps = [
+  {
+    label: "① Prefill phase",
+    text: "<span class='step-num'>STEP 1</span> The input prompt is processed through all transformer layers. At each layer and attention head, the model produces <strong>key (K)</strong> and <strong>value (V)</strong> vectors for every token position. These are stored in the HBM-resident KV cache. Simultaneously, the Attention Monitor begins collecting attention weight data A(l,h,i,t) across all layers, heads, and query positions."
+  },
+  {
+    label: "② Sink detection",
+    text: "<span class='step-num'>STEP 2</span> The Sink Score Engine aggregates attention weights into a <strong>cumulative score S(t)</strong> for each token. Tokens where S(t) ≥ T_sink are classified as sinks and written into the <strong>Token-to-Tier Tag Array</strong> with their SRAM addresses. In our 70B GQA example, this selects 2–8 positions out of 8,000 — typically t0 [BOS], t1 [SYS_END], and anchor tokens."
+  },
+  {
+    label: "③ KV promotion (DMA)",
+    text: "<span class='step-num'>STEP 3</span> The <strong>DMA / Migration Engine</strong> copies K and V tensors for the identified sink tokens from HBM into the reserved SRAM Sink Region. For 8 sink tokens in a 70B GQA model: 8 × 327 KB ≈ <strong>2.6 MB</strong> — less than 3% of the 96 MB SRAM budget. This happens once, before decode begins, in a background DMA pass."
+  },
+  {
+    label: "④ Decode routing (bypass mux)",
+    text: "<span class='step-num'>STEP 4</span> Each decode step generates a query Q(l,h,n). The <strong>Bypass Multiplexer</strong> checks the Tag Array. For sink-classified positions: KV read is routed to SRAM (~5 ns). For all other positions: KV read goes to HBM (~150 ns). In a 8K-token context with 8 sinks, 40% of attention mass is served at 30× lower latency."
+  },
+  {
+    label: "⑤ Partial attention merge",
+    text: "<span class='step-num'>STEP 5</span> The <strong>KV Cache Manager</strong> receives two partial attention outputs: O_sink (from SRAM, fast path) and O_bulk (from HBM). These are merged using <strong>numerically stable log-sum-exp accumulation</strong> to produce the final attention output O_final. The result is mathematically identical to reading everything from HBM — but 40–55% of memory bandwidth has been saved."
+  }
+];
 
-    <h3>Multi-Tenant Shared Prefix</h3>
-    <p>
-      In serving systems where many concurrent requests share an identical system prompt, the sink tokens for that prompt are promoted <em>once</em> into a shared SRAM region with reference counting. Each new request using the same system prompt gets those sink KV entries for free. Copy-on-write semantics handle per-session mutations. This turns SRAM into a high-speed system-prompt cache — automatically, based on attention behaviour.
-    </p>
+let active = -1;
 
-    <h3>Speculative Decoding Integration</h3>
-    <p>
-      In speculative decoding pipelines, the draft model's attention statistics can inform sink classification before the target model's verification pass. Sink KV state staged in SRAM during draft execution is reused during target verification, eliminating a round-trip to HBM.
-    </p>
+function showStep(n) {
+  const panel = document.getElementById('step-panel');
+  const btns = document.querySelectorAll('.ctrl-btn:not(:last-child)');
+  btns.forEach((b,i) => b.classList.toggle('active', i===n));
 
-    <h2>The Road Ahead</h2>
+  if (n === -1) {
+    panel.innerHTML = 'Click a phase button above to walk through how the system works — each step highlights the relevant components.';
+    active = -1;
+    return;
+  }
+  active = n;
+  panel.innerHTML = steps[n].text;
 
-    <div class="timeline">
-      <div class="tl-item">
-        <div class="tl-dot done">✓</div>
-        <div class="tl-body">
-          <div class="tl-date">16 May 2026</div>
-          <div class="tl-title">Provisional filed — priority date established</div>
-          <div class="tl-desc">Application No. 202641062302 · Chennai Patent Office · ₹1,760 fee paid</div>
-        </div>
-      </div>
-      <div class="tl-item">
-        <div class="tl-dot">2</div>
-        <div class="tl-body">
-          <div class="tl-date">Within 12 months (by May 2027)</div>
-          <div class="tl-title">Complete specification filing</div>
-          <div class="tl-desc">Formal claims, line drawings, full enablement, benchmark data</div>
-        </div>
-      </div>
-      <div class="tl-item">
-        <div class="tl-dot">3</div>
-        <div class="tl-body">
-          <div class="tl-date">Within 48 months of priority date</div>
-          <div class="tl-title">Request for Examination (Form 18)</div>
-          <div class="tl-desc">IPO examination begins; prior art search, office actions</div>
-        </div>
-      </div>
-      <div class="tl-item">
-        <div class="tl-dot">4</div>
-        <div class="tl-body">
-          <div class="tl-date">2028–2029 (estimated)</div>
-          <div class="tl-title">Grant (if examination successful)</div>
-          <div class="tl-desc">20-year term from filing date · Parallel PCT / US / EU filings under consideration</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="divider"><span>· · ·</span></div>
-
-    <h2>Why I'm Writing About This Now</h2>
-
-    <p>
-      Patent filings are typically kept secret — applicants worry about tipping off competitors. I'm taking the opposite view. The provisional is filed; the priority date is locked. The idea is documented, timestamped, and on record with the Indian Patent Office as of 15:19 IST today.
-    </p>
-
-    <p>
-      The bigger opportunity, I believe, is in building awareness — with hardware teams at AI labs, chip designers, and inference infrastructure engineers — that this is a tractable, specific, and implementable optimisation. The attention-sink phenomenon is well-documented in the literature. The hardware mechanism to exploit it is straightforward to implement in silicon or software. What was missing was the connection between the two.
-    </p>
-
-    <p>
-      If you're working on AI inference hardware, custom accelerators, or LLM serving infrastructure and want to discuss this — reach out. I'm happy to talk.
-    </p>
-
-    <div class="callout">
-      <div class="callout-label">Patent Details — Public Record</div>
-      <p><strong>Application Number:</strong> 202641062302<br>
-      <strong>Applicant:</strong> Manish KL, Bengaluru, India<br>
-      <strong>Title:</strong> Methods and Systems for Attention-Sink-Aware SRAM Placement of Key-Value State in Transformer Inference<br>
-      <strong>Filed:</strong> 16 May 2026 · Chennai IPO</p>
-    </div>
-
-  </main><!-- /article-body -->
-
-  <footer>
-    <p>© 2026 Manish KL · Bengaluru, India</p>
-    <p style="margin-top:8px;">Indian Patent Application <span class="app-num">202641062302</span> · Filed 16 May 2026 · All rights reserved</p>
-    <p style="margin-top:8px;">This post describes a filed provisional patent application and does not constitute legal advice.</p>
-    <div class="publish-footer">
-      <span><a href="/index.html">© 2026 MANISH AI. All rights reserved.</a></span>
-      <span><a href="/writings.html">← All writings</a></span>
-    </div>
-  </footer>
-
-</div><!-- /wrapper -->
+  // Highlight relevant arrows
+  const allArrows = ['arrow-a','arrow-b','arrow-c','arrow-d','arrow-e','arrow-f','arrow-g'];
+  const stepArrows = [
+    ['arrow-a'],                         // prefill
+    ['arrow-a','arrow-f'],               // sink detection
+    ['arrow-b','arrow-c'],               // DMA promote
+    ['arrow-d','arrow-e','arrow-f'],     // decode routing
+    ['arrow-d','arrow-e'],               // merge
+  ];
+  allArrows.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.opacity = '0.15';
+  });
+  (stepArrows[n]||[]).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.opacity = '1';
+  });
+}
+</script>
 </body>
 </html>
