@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teaching AI Hardware to Remember What Actually Matters | MANISH AI</title>
+<meta name="description" content="A patent-backed technical essay on attention-sink-aware SRAM placement for transformer inference, using sink-token behavior to cut decode latency and memory cost.">
+<meta name="keywords" content="attention sink, SRAM placement, transformer inference, KV cache, decode latency, AI hardware patent, sink tokens, HBM vs SRAM, MANISH AI">
+<meta name="author" content="Manish KL">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://manishklach.github.io/writings/teaching-ai-hardware-to-remember-what-actually-matters.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Teaching AI Hardware to Remember What Actually Matters | MANISH AI">
+<meta property="og:description" content="A patent-backed technical essay on attention-sink-aware SRAM placement for transformer inference, using sink-token behavior to cut decode latency and memory cost.">
+<meta property="og:url" content="https://manishklach.github.io/writings/teaching-ai-hardware-to-remember-what-actually-matters.html">
+<meta property="og:site_name" content="MANISH AI">
+<meta property="og:image" content="https://manishklach.github.io/og/teaching-ai-hardware-to-remember-what-actually-matters.png">
+<meta property="og:image:alt" content="Teaching AI Hardware to Remember What Actually Matters">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Teaching AI Hardware to Remember What Actually Matters | MANISH AI">
+<meta name="twitter:description" content="A patent-backed technical essay on attention-sink-aware SRAM placement for transformer inference, using sink-token behavior to cut decode latency and memory cost.">
+<meta name="twitter:image" content="https://manishklach.github.io/og/teaching-ai-hardware-to-remember-what-actually-matters.png">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Teaching AI Hardware to Remember What Actually Matters",
+  "description": "A patent-backed technical essay on attention-sink-aware SRAM placement for transformer inference, using sink-token behavior to cut decode latency and memory cost.",
+  "url": "https://manishklach.github.io/writings/teaching-ai-hardware-to-remember-what-actually-matters.html",
+  "datePublished": "2026-05-16",
+  "dateModified": "2026-05-16",
+  "mainEntityOfPage": "https://manishklach.github.io/writings/teaching-ai-hardware-to-remember-what-actually-matters.html",
+  "inLanguage": "en",
+  "author": {
+    "@type": "Person",
+    "name": "Manish KL",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  }
+}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0b0e14;
+    --surface:   #111520;
+    --border:    #1e2535;
+    --text:      #e8eaf0;
+    --muted:     #7b8299;
+    --accent:    #4fc3d4;
+    --accent2:   #f4a942;
+    --accent3:   #6ee7b7;
+    --red:       #f87171;
+    --glow:      rgba(79,195,212,0.18);
+    --serif:     'DM Serif Display', Georgia, serif;
+    --sans:      'DM Sans', system-ui, sans-serif;
+    --mono:      'DM Mono', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.75;
+    overflow-x: hidden;
+  }
+
+  /* ── NOISE TEXTURE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    opacity: 0.4;
+  }
+
+  /* ── AMBIENT GLOW ── */
+  .ambient {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .ambient-1 {
+    width: 700px; height: 700px;
+    top: -200px; left: -200px;
+    background: radial-gradient(circle, rgba(79,195,212,0.07) 0%, transparent 70%);
+    animation: drift1 20s ease-in-out infinite alternate;
+  }
+  .ambient-2 {
+    width: 500px; height: 500px;
+    bottom: 10%; right: -100px;
+    background: radial-gradient(circle, rgba(244,169,66,0.06) 0%, transparent 70%);
+    animation: drift2 25s ease-in-out infinite alternate;
+  }
+  @keyframes drift1 { to { transform: translate(80px, 60px); } }
+  @keyframes drift2 { to { transform: translate(-60px, -80px); } }
+
+  /* ── WRAPPER ── */
+  .wrapper {
+    position: relative; z-index: 1;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 28px 120px;
+  }
+
+  /* ── TOP NAV ── */
+  .topbar {
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 0;
+    background: rgba(11,14,20,0.85);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    margin: 0 -28px;
+    padding: 16px 28px;
+    gap: 18px;
+  }
+  .nav-logo {
+    font-family: var(--mono); font-size: 0.8rem; color: var(--accent);
+    letter-spacing: 0.08em; text-decoration: none;
+  }
+  .topbar-nav {
+    display: flex; align-items: center; gap: 14px;
+    margin-left: auto;
+    font-family: var(--mono);
+  }
+  .topbar-nav a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: color 0.2s ease;
+  }
+  .topbar-nav a:hover,
+  .topbar-nav a[aria-current="page"] { color: var(--text); }
+  .nav-tag {
+    font-family: var(--mono); font-size: 0.72rem;
+    background: rgba(79,195,212,0.12);
+    border: 1px solid rgba(79,195,212,0.3);
+    color: var(--accent); padding: 4px 12px; border-radius: 20px;
+    letter-spacing: 0.06em;
+  }
+  @media (max-width: 720px) {
+    .topbar { flex-wrap: wrap; }
+    .topbar-nav { order: 3; width: 100%; margin-left: 0; flex-wrap: wrap; }
+  }
+
+  /* ── HERO ── */
+  .hero {
+    padding: 80px 0 56px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .patent-badge {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: rgba(79,195,212,0.08);
+    border: 1px solid rgba(79,195,212,0.25);
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-family: var(--mono); font-size: 0.78rem;
+    color: var(--accent); letter-spacing: 0.06em;
+    margin-bottom: 36px;
+    animation: fadeSlideUp 0.6s ease both;
+  }
+  .patent-badge .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent3);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(2.2rem, 5vw, 3.2rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 28px;
+    animation: fadeSlideUp 0.6s 0.1s ease both;
+  }
+  h1 em { font-style: italic; color: var(--accent); }
+
+  .hero-sub {
+    font-size: 1.12rem;
+    color: var(--muted);
+    line-height: 1.7;
+    max-width: 640px;
+    margin-bottom: 40px;
+    animation: fadeSlideUp 0.6s 0.2s ease both;
+    font-weight: 300;
+  }
+
+  .byline {
+    display: flex; align-items: center; gap: 16px;
+    animation: fadeSlideUp 0.6s 0.3s ease both;
+  }
+  .avatar {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--serif); font-size: 1.1rem; color: var(--bg);
+    font-weight: 700; flex-shrink: 0;
+  }
+  .byline-text { font-size: 0.88rem; }
+  .byline-name { color: var(--text); font-weight: 600; }
+  .byline-meta { color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
+
+  @keyframes fadeSlideUp {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── PATENT INFO CARD ── */
+  .patent-card {
+    margin: 52px 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 32px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 520px) { .patent-card { grid-template-columns: 1fr; } }
+  .patent-field label {
+    display: block;
+    font-family: var(--mono); font-size: 0.68rem;
+    color: var(--muted); letter-spacing: 0.1em;
+    text-transform: uppercase; margin-bottom: 6px;
+  }
+  .patent-field .value {
+    font-size: 0.95rem; color: var(--text); font-weight: 500;
+  }
+  .patent-field .value.big {
+    font-family: var(--mono); font-size: 1.1rem; color: var(--accent);
+    letter-spacing: 0.04em;
+  }
+  .patent-field .value.green { color: var(--accent3); }
+
+  /* ── ARTICLE BODY ── */
+  .article-body {
+    padding: 56px 0;
+  }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: 1.75rem;
+    color: var(--text);
+    margin: 56px 0 18px;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  h2:first-child { margin-top: 0; }
+
+  h3 {
+    font-family: var(--sans);
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--accent2);
+    margin: 36px 0 12px;
+    letter-spacing: 0.01em;
+  }
+
+  p { margin-bottom: 22px; color: var(--text); font-weight: 300; }
+  p strong { font-weight: 600; color: var(--text); }
+
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(79,195,212,0.3); }
+  a:hover { border-bottom-color: var(--accent); }
+
+  /* ── PULL QUOTE ── */
+  .pull-quote {
+    margin: 44px 0;
+    padding: 28px 32px;
+    border-left: 3px solid var(--accent);
+    background: rgba(79,195,212,0.05);
+    border-radius: 0 6px 6px 0;
+  }
+  .pull-quote p {
+    font-family: var(--serif);
+    font-size: 1.25rem;
+    line-height: 1.5;
+    color: var(--text);
+    margin: 0;
+    font-style: italic;
+    font-weight: 400;
+  }
+
+  /* ── CALLOUT BOX ── */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px 28px;
+    margin: 32px 0;
+  }
+  .callout-label {
+    font-family: var(--mono); font-size: 0.7rem;
+    color: var(--accent2); letter-spacing: 0.1em; text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .callout p { margin-bottom: 0; font-size: 0.95rem; }
+
+  /* ── DIAGRAM ASCII-STYLE ── */
+  .diagram-box {
+    background: #080b10;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 28px 24px;
+    margin: 36px 0;
+    overflow-x: auto;
+  }
+  .diagram-box pre {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.6;
+    color: var(--muted);
+    white-space: pre;
+  }
+  .diagram-box pre .hl { color: var(--accent); }
+  .diagram-box pre .hl2 { color: var(--accent3); }
+  .diagram-box pre .hl3 { color: var(--accent2); }
+  .diagram-label {
+    font-family: var(--mono); font-size: 0.7rem;
+    color: var(--muted); text-align: center; margin-top: 12px;
+    letter-spacing: 0.06em;
+  }
+
+  /* ── STAT PILLS ── */
+  .stats-row {
+    display: flex; flex-wrap: wrap; gap: 12px;
+    margin: 36px 0;
+  }
+  .stat-pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 20px;
+    flex: 1; min-width: 140px;
+    text-align: center;
+  }
+  .stat-pill .num {
+    font-family: var(--serif);
+    font-size: 1.9rem;
+    color: var(--accent);
+    display: block; line-height: 1;
+    margin-bottom: 6px;
+  }
+  .stat-pill .lbl {
+    font-size: 0.78rem;
+    color: var(--muted);
+    font-family: var(--mono);
+    letter-spacing: 0.04em;
+  }
+
+  /* ── TIMELINE ── */
+  .timeline { margin: 36px 0; }
+  .tl-item {
+    display: flex; gap: 20px;
+    padding-bottom: 28px;
+    position: relative;
+  }
+  .tl-item:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 13px; top: 28px; bottom: 0;
+    width: 1px;
+    background: var(--border);
+  }
+  .tl-dot {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--surface);
+    border: 2px solid var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; margin-top: 2px;
+    font-family: var(--mono); font-size: 0.65rem; color: var(--accent);
+    font-weight: 500;
+  }
+  .tl-dot.done { background: var(--accent); color: var(--bg); }
+  .tl-body {}
+  .tl-date { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
+  .tl-title { font-weight: 600; color: var(--text); margin-bottom: 4px; font-size: 0.95rem; }
+  .tl-desc { font-size: 0.88rem; color: var(--muted); font-weight: 300; }
+
+  /* ── CODE SNIPPET ── */
+  .code-block {
+    background: #080b10;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 28px 0;
+    overflow: hidden;
+  }
+  .code-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid var(--border);
+  }
+  .code-lang {
+    font-family: var(--mono); font-size: 0.7rem;
+    color: var(--muted); letter-spacing: 0.06em;
+  }
+  .code-dots { display: flex; gap: 6px; }
+  .code-dots span { width: 10px; height: 10px; border-radius: 50%; }
+  .code-dots span:nth-child(1) { background: #ff5f57; }
+  .code-dots span:nth-child(2) { background: #febc2e; }
+  .code-dots span:nth-child(3) { background: #28c840; }
+  .code-block code {
+    display: block; padding: 20px 20px;
+    font-family: var(--mono); font-size: 0.8rem;
+    line-height: 1.75; color: var(--muted);
+    overflow-x: auto;
+  }
+  .code-block code .kw { color: #c792ea; }
+  .code-block code .fn { color: var(--accent); }
+  .code-block code .str { color: var(--accent3); }
+  .code-block code .cm { color: #546e7a; font-style: italic; }
+  .code-block code .num { color: var(--accent2); }
+
+  /* ── DIVIDER ── */
+  .divider {
+    display: flex; align-items: center; gap: 16px;
+    margin: 52px 0;
+    color: var(--border);
+  }
+  .divider::before, .divider::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+  .divider span { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em; }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 40px 0;
+    text-align: center;
+  }
+  footer p { font-size: 0.82rem; color: var(--muted); margin: 0; font-weight: 300; }
+  footer .app-num { font-family: var(--mono); color: var(--accent); font-size: 0.85rem; }
+  .publish-footer {
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    margin-top: 18px; padding-top: 22px; border-top: 1px solid var(--border);
+    font-family: var(--sans); font-size: 0.9rem; color: var(--muted);
+  }
+  .publish-footer a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 0;
+  }
+  .publish-footer a:hover { text-decoration: underline; }
+
+  /* ── PRINT ── */
+  @media print {
+    body { background: #fff; color: #111; }
+    .ambient, nav { display: none; }
+    .wrapper { max-width: 100%; padding: 20px; }
+    h1, h2 { color: #111; }
+    .patent-card { border: 1px solid #ccc; background: #f9f9f9; }
+  }
+</style>
+</head>
+<body>
+
+<div class="ambient ambient-1"></div>
+<div class="ambient ambient-2"></div>
+
+<nav class="topbar">
+  <a class="nav-logo" href="/index.html">MAN\SH AI</a>
+  <div class="topbar-nav">
+    <a href="/index.html">Home</a>
+    <a href="/writings.html" aria-current="page">Writings</a>
+    <a href="/patents.html">Patents</a>
+  </div>
+  <span class="nav-tag">Patent Filed ✓</span>
+</nav>
+
+<div class="wrapper">
+
+  <!-- ── HERO ── -->
+  <section class="hero">
+    <div class="patent-badge">
+      <span class="dot"></span>
+      Indian Patent Office · Application No. 202641062302 · Filed 16 May 2026
+    </div>
+
+    <h1>Teaching AI Hardware to Remember What Actually Matters — <em>Not Just What's Recent</em></h1>
+
+    <p class="hero-sub">
+      Today I filed a patent on a new approach to how transformer inference systems manage memory at the hardware level — one that exploits a quirk of how attention works to make AI inference meaningfully faster and cheaper.
+    </p>
+
+    <div class="byline">
+      <div class="avatar">MK</div>
+      <div class="byline-text">
+        <div class="byline-name">Manish KL</div>
+        <div class="byline-meta"><time datetime="2026-05-16">16 May 2026</time> · 9 min read · AI Infrastructure · Patents</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── PATENT INFO CARD ── -->
+  <div class="patent-card">
+    <div class="patent-field">
+      <label>Application Number</label>
+      <div class="value big">202641062302</div>
+    </div>
+    <div class="patent-field">
+      <label>Filed On</label>
+      <div class="value green">16 May 2026, 15:19 IST</div>
+    </div>
+    <div class="patent-field">
+      <label>Patent Office</label>
+      <div class="value">Chennai, India (IPO)</div>
+    </div>
+    <div class="patent-field">
+      <label>Type</label>
+      <div class="value">Provisional Specification</div>
+    </div>
+    <div class="patent-field" style="grid-column: 1 / -1;">
+      <label>Title</label>
+      <div class="value">Methods and Systems for Attention-Sink-Aware SRAM Placement of Key-Value State in Transformer Inference</div>
+    </div>
+  </div>
+
+  <!-- ── ARTICLE BODY ── -->
+  <main class="article-body" data-pagefind-body>
+
+    <h2>The Problem Nobody Talks About</h2>
+
+    <p>
+      When you chat with an AI — ChatGPT, Claude, Gemini, any of them — the system is doing two very different things under the hood. First, it reads your message (the <strong>prefill phase</strong>). Then it generates each word of the response one at a time (the <strong>decode phase</strong>). That second part, the decode, is where most of the time goes.
+    </p>
+
+    <p>
+      During decode, every single word the AI generates requires it to look back at everything it has read so far. At scale — think 70-billion-parameter models, 32,000-word contexts, hundreds of simultaneous users — that "looking back" means fetching enormous amounts of data from high-bandwidth memory (HBM) on every step. This is called the <strong>KV cache problem</strong>, and it is one of the primary drivers of cost and latency in modern AI inference.
+    </p>
+
+    <p>
+      The standard approach? Store all that data uniformly in HBM and read it uniformly on every step. Simple. Predictable. And, as it turns out, deeply suboptimal — because not all tokens are created equal.
+    </p>
+
+    <div class="pull-quote">
+      <p>"A small number of token positions attract a disproportionate fraction of attention across every layer, every head, and every decode step. They are, in a real sense, the anchors of the model's memory."</p>
+    </div>
+
+    <h2>The Attention Sink Phenomenon</h2>
+
+    <p>
+      Researchers studying how transformer attention actually behaves discovered something fascinating: certain tokens in an input sequence act as <strong>attention sinks</strong>. The beginning-of-sequence token. The end of a system prompt. Structural separators. These positions receive an outsized, persistent share of attention weight — across layers, across heads, across hundreds of decode steps — even when they carry no obvious semantic importance.
+    </p>
+
+    <div class="stats-row">
+      <div class="stat-pill">
+        <span class="num">2–8</span>
+        <span class="lbl">sink tokens in a typical 8K-token prompt</span>
+      </div>
+      <div class="stat-pill">
+        <span class="num">~40%</span>
+        <span class="lbl">of total decode attention often directed at sinks</span>
+      </div>
+      <div class="stat-pill">
+        <span class="num">100×</span>
+        <span class="lbl">SRAM vs HBM latency advantage</span>
+      </div>
+    </div>
+
+    <p>
+      Prior work exploited this for algorithmic purposes — StreamingLLM used it to build infinite-context models by keeping sink tokens in a sliding window. But no one had asked the obvious hardware question: <strong>if we know in advance which tokens will be accessed most, why are we storing them in the slow memory?</strong>
+    </p>
+
+    <h2>The Invention: Attention-Sink-Aware SRAM Placement</h2>
+
+    <p>
+      That is the core idea of the patent filed today. During the prefill phase, instead of just building the KV cache and moving on, the system <strong>monitors which tokens are attracting attention</strong>, scores them, and identifies the sinks. Then — before decode even begins — it migrates the key and value vectors for those tokens from HBM into <strong>on-chip SRAM</strong>.
+    </p>
+
+    <div class="diagram-box">
+<pre>
+  INPUT PROMPT (8,000 tokens)
+  ┌──────────────────────────────────────────────────────┐
+  │  <span class="hl">t0 [BOS]</span>  t1  t2 ... t55  <span class="hl">t56 [ANCHOR]</span>  t57 ... tN  │
+  └──────────────────────────────────────────────────────┘
+                      ↓  PREFILL + SINK DETECTION
+  ┌──────────────────────────────────────────────────────┐
+  │  Sink Score S(t) = Σ attention weights received       │
+  │  <span class="hl">t0: S=0.97  ★ SINK</span>   t2-t55: S&lt;0.18  (non-sink)   │
+  │  <span class="hl">t56: S=0.83 ★ SINK</span>  t57-tN: S&lt;0.31  (non-sink)   │
+  └──────────────────────────────────────────────────────┘
+                      ↓  KV PROMOTION (DMA)
+  ┌───────────────────┐        ┌──────────────────────────┐
+  │  <span class="hl2">SRAM  (fast)</span>       │        │  HBM  (bulk)             │
+  │  t0 KV — pinned   │        │  All 8,000 token KV      │
+  │  t56 KV — pinned  │        │  (source of truth)       │
+  │  ~1–10 ns access  │        │  ~100–200 ns access      │
+  └───────────────────┘        └──────────────────────────┘
+                      ↓  DECODE (each step)
+  <span class="hl">SRAM bypass path</span>  ──→  sink KV reads   (fast  ⚡)
+  HBM path          ──→  bulk KV reads   (standard)
+  <span class="hl2">merge outputs</span>     ──→  final attention result
+</pre>
+      <div class="diagram-label">FIG. — Simplified view of the attention-sink-aware KV placement pipeline</div>
+    </div>
+
+    <p>
+      During decode, a <strong>placement controller</strong> intercepts KV read requests. When a request is for a sink token, it routes it to the SRAM path — a nanosecond-scale access. Everything else goes through HBM as normal. The partial attention results from the two paths are merged using numerically stable log-sum-exp accumulation. The model output is mathematically identical. The latency is not.
+    </p>
+
+    <h3>The Math Behind the Sink Score</h3>
+
+    <p>The cumulative sink score for a token position is computed as:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <div class="code-lang">FORMULA — SINK SCORE</div>
+      </div>
+      <code>
+<span class="cm">// Cumulative attention score for token at position t</span>
+<span class="cm">// summed across all layers l, heads h, query positions i</span>
+
+S(t) = Σ <span class="fn">A</span>(l, h, i, t)   <span class="cm">∀ l ∈ [1..L], h ∈ [1..H], i > t</span>
+
+<span class="cm">// Token t is classified as SINK if:</span>
+S(t) ≥ T_sink   <span class="cm">// configurable threshold, e.g. 3.0 normalised over prompt length</span>
+
+<span class="cm">// Dynamic decay variant (updated each decode step n):</span>
+E(t, n) = α · E(t, n-<span class="num">1</span>) + (<span class="num">1</span>-α) · B(t, n)
+<span class="cm">// α = decay factor (0.85–0.99), B(t,n) = attention mass at step n</span>
+      </code>
+    </div>
+
+    <h3>Three Key Embodiments</h3>
+
+    <p>The patent covers three principal implementations, each with different trade-offs:</p>
+
+    <div class="callout">
+      <div class="callout-label">Embodiment 1A — Threshold Prefill</div>
+      <p>Compute S(t) after the full prefill pass. Any token exceeding T_sink gets its KV migrated to SRAM before decode begins. Simple, deterministic, zero decode-phase overhead. Best for short to medium contexts with predictable sink positions.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">Embodiment 1B — EMA Dynamic</div>
+      <p>Use exponential moving average decay to continuously update sink scores during decode. Tokens can be promoted or demoted dynamically. Handles long contexts where sink tokens emerge mid-prompt — common in retrieval-augmented generation and multi-turn instruction following.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">Embodiment 1C — Dedicated Hardware Controller</div>
+      <p>A purpose-built silicon component with a sink score engine, tag array, DMA migration unit, bypass multiplexer, and validity timer. Designed for integration into inference ASICs and AI accelerator chips. Exposes software-configurable registers for all threshold and policy parameters.</p>
+    </div>
+
+    <h2>Why This Is Harder Than It Sounds</h2>
+
+    <p>
+      The obvious objection: "SRAM is tiny. You can't fit much in it." Exactly right — and that is precisely why this invention is useful. For a 70-billion-parameter GQA model running at 128K context, the full KV cache is roughly 80 GB. The on-chip SRAM budget might be 96 MB. You clearly cannot cache everything.
+    </p>
+
+    <p>
+      But you don't need to. If 2–8 sink tokens account for 30–50% of decode attention traffic, and those tokens can fit in SRAM — a 70B GQA model's KV state for 8 sink tokens across all 80 layers is approximately <strong>2.6 MB</strong> — then you capture the majority of the high-frequency access benefit at a tiny fraction of the SRAM budget.
+    </p>
+
+    <div class="pull-quote">
+      <p>"2.6 MB of well-chosen data in SRAM can have more impact on decode latency than 80 GB of data sitting uniformly in HBM."</p>
+    </div>
+
+    <p>
+      The second challenge is correctness. If an SRAM copy becomes stale, or if a token is evicted while still in use, the attention result must remain accurate. The invention handles this through generation counters, validity bits, and an automatic fallback path: on any tag miss, the system transparently falls through to HBM. The model output is always correct.
+    </p>
+
+    <h2>Beyond the Basic Case</h2>
+
+    <p>The patent covers a number of important extensions that make it practically useful in real serving systems:</p>
+
+    <h3>Head-Wise and Layer-Wise Selectivity</h3>
+    <p>
+      Not every attention head is a sink head. Some heads do local pattern matching; others do global retrieval. The invention allows the controller to promote only the key-value slices corresponding to heads that empirically exhibit sink behaviour — reducing SRAM usage by up to 70% versus full-token promotion while retaining most of the latency benefit.
+    </p>
+
+    <h3>Multi-Tenant Shared Prefix</h3>
+    <p>
+      In serving systems where many concurrent requests share an identical system prompt, the sink tokens for that prompt are promoted <em>once</em> into a shared SRAM region with reference counting. Each new request using the same system prompt gets those sink KV entries for free. Copy-on-write semantics handle per-session mutations. This turns SRAM into a high-speed system-prompt cache — automatically, based on attention behaviour.
+    </p>
+
+    <h3>Speculative Decoding Integration</h3>
+    <p>
+      In speculative decoding pipelines, the draft model's attention statistics can inform sink classification before the target model's verification pass. Sink KV state staged in SRAM during draft execution is reused during target verification, eliminating a round-trip to HBM.
+    </p>
+
+    <h2>The Road Ahead</h2>
+
+    <div class="timeline">
+      <div class="tl-item">
+        <div class="tl-dot done">✓</div>
+        <div class="tl-body">
+          <div class="tl-date">16 May 2026</div>
+          <div class="tl-title">Provisional filed — priority date established</div>
+          <div class="tl-desc">Application No. 202641062302 · Chennai Patent Office · ₹1,760 fee paid</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot">2</div>
+        <div class="tl-body">
+          <div class="tl-date">Within 12 months (by May 2027)</div>
+          <div class="tl-title">Complete specification filing</div>
+          <div class="tl-desc">Formal claims, line drawings, full enablement, benchmark data</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot">3</div>
+        <div class="tl-body">
+          <div class="tl-date">Within 48 months of priority date</div>
+          <div class="tl-title">Request for Examination (Form 18)</div>
+          <div class="tl-desc">IPO examination begins; prior art search, office actions</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot">4</div>
+        <div class="tl-body">
+          <div class="tl-date">2028–2029 (estimated)</div>
+          <div class="tl-title">Grant (if examination successful)</div>
+          <div class="tl-desc">20-year term from filing date · Parallel PCT / US / EU filings under consideration</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"><span>· · ·</span></div>
+
+    <h2>Why I'm Writing About This Now</h2>
+
+    <p>
+      Patent filings are typically kept secret — applicants worry about tipping off competitors. I'm taking the opposite view. The provisional is filed; the priority date is locked. The idea is documented, timestamped, and on record with the Indian Patent Office as of 15:19 IST today.
+    </p>
+
+    <p>
+      The bigger opportunity, I believe, is in building awareness — with hardware teams at AI labs, chip designers, and inference infrastructure engineers — that this is a tractable, specific, and implementable optimisation. The attention-sink phenomenon is well-documented in the literature. The hardware mechanism to exploit it is straightforward to implement in silicon or software. What was missing was the connection between the two.
+    </p>
+
+    <p>
+      If you're working on AI inference hardware, custom accelerators, or LLM serving infrastructure and want to discuss this — reach out. I'm happy to talk.
+    </p>
+
+    <div class="callout">
+      <div class="callout-label">Patent Details — Public Record</div>
+      <p><strong>Application Number:</strong> 202641062302<br>
+      <strong>Applicant:</strong> Manish KL, Bengaluru, India<br>
+      <strong>Title:</strong> Methods and Systems for Attention-Sink-Aware SRAM Placement of Key-Value State in Transformer Inference<br>
+      <strong>Filed:</strong> 16 May 2026 · Chennai IPO</p>
+    </div>
+
+  </main><!-- /article-body -->
+
+  <footer>
+    <p>© 2026 Manish KL · Bengaluru, India</p>
+    <p style="margin-top:8px;">Indian Patent Application <span class="app-num">202641062302</span> · Filed 16 May 2026 · All rights reserved</p>
+    <p style="margin-top:8px;">This post describes a filed provisional patent application and does not constitute legal advice.</p>
+    <div class="publish-footer">
+      <span><a href="/index.html">© 2026 MANISH AI. All rights reserved.</a></span>
+      <span><a href="/writings.html">← All writings</a></span>
+    </div>
+  </footer>
+
+</div><!-- /wrapper -->
+</body>
+</html>
