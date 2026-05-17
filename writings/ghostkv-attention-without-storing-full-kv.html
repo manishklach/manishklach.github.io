@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GhostKV: Attention Without Storing Full KV | MANISH AI</title>
+  <meta name="description" content="A technical concept essay on GhostKV, a reconstruction-first KV-cache architecture that uses query-time bounded elimination and semantic witnesses to avoid loading full cold KV state.">
+  <meta name="keywords" content="GhostKV, KV cache, transformer inference, attention memory, bounded elimination, semantic witnesses, long context inference, AI memory systems, MANISH AI">
+  <meta name="author" content="MANISH AI">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="canonical" href="https://manishklach.github.io/writings/ghostkv-attention-without-storing-full-kv.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="GhostKV: Attention Without Storing Full KV | MANISH AI">
+  <meta property="og:description" content="A technical concept essay on GhostKV, a reconstruction-first KV-cache architecture that uses query-time bounded elimination and semantic witnesses to avoid loading full cold KV state.">
+  <meta property="og:url" content="https://manishklach.github.io/writings/ghostkv-attention-without-storing-full-kv.html">
+  <meta property="og:site_name" content="MANISH AI">
+  <meta property="og:image" content="https://manishklach.github.io/assets/og-image.png">
+  <meta property="og:image:alt" content="GhostKV: Attention Without Storing Full KV">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="GhostKV: Attention Without Storing Full KV | MANISH AI">
+  <meta name="twitter:description" content="A technical concept essay on GhostKV, a reconstruction-first KV-cache architecture that uses query-time bounded elimination and semantic witnesses to avoid loading full cold KV state.">
+  <meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png">
+  <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+  <link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json">
+  <link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+  <link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+  <script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+  <script>
+  (() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light') document.documentElement.classList.add('light');
+  })();
+  </script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "GhostKV: Attention Without Storing Full KV",
+    "description": "A technical concept essay on GhostKV, a reconstruction-first KV-cache architecture that uses query-time bounded elimination and semantic witnesses to avoid loading full cold KV state.",
+    "url": "https://manishklach.github.io/writings/ghostkv-attention-without-storing-full-kv.html",
+    "datePublished": "2026-05-17",
+    "dateModified": "2026-05-17",
+    "mainEntityOfPage": "https://manishklach.github.io/writings/ghostkv-attention-without-storing-full-kv.html",
+    "inLanguage": "en",
+    "author": {
+      "@type": "Person",
+      "name": "MANISH AI",
+      "url": "https://manishklach.github.io/"
+    },
+    "publisher": {
+      "@type": "Person",
+      "name": "MANISH AI",
+      "url": "https://manishklach.github.io/"
+    }
+  }</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Geist:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #05080f;
+      --panel: #0c1120;
+      --panel2: #111829;
+      --text: #eef3ff;
+      --muted: #8a96b8;
+      --muted2: #b8c2df;
+      --accent: #6effc4;
+      --accent2: #7eadff;
+      --accent3: #ffd97a;
+      --border: rgba(255,255,255,0.09);
+      --border2: rgba(255,255,255,0.05);
+      --shadow: 0 32px 100px rgba(0,0,0,0.6);
+      --code-bg: #080d1a;
+      --radius: 20px;
+    }
+
+    html.light {
+      --bg: #f5f1e8;
+      --panel: #fffdfa;
+      --panel2: #f4eee4;
+      --text: #171311;
+      --muted: #6f6a7d;
+      --muted2: #403b51;
+      --accent: #0f8f69;
+      --accent2: #3b72dd;
+      --accent3: #c18b10;
+      --border: rgba(23,19,17,0.12);
+      --border2: rgba(23,19,17,0.06);
+      --shadow: 0 32px 100px rgba(50,40,26,0.12);
+      --code-bg: #f3ede4;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    html.light body {
+      background:
+        radial-gradient(ellipse 60% 40% at 15% 10%, rgba(15,143,105,0.08) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 35% at 85% 8%, rgba(59,114,221,0.08) 0%, transparent 55%),
+        radial-gradient(ellipse 40% 30% at 50% 95%, rgba(193,139,16,0.05) 0%, transparent 55%),
+        var(--bg);
+    }
+
+    /* Animated background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 15% 10%, rgba(110,255,196,0.09) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 35% at 85% 8%, rgba(126,173,255,0.09) 0%, transparent 55%),
+        radial-gradient(ellipse 40% 30% at 50% 95%, rgba(255,217,122,0.05) 0%, transparent 55%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .wrap { width: min(1100px, calc(100% - 48px)); margin: 0 auto; position: relative; z-index: 1; }
+
+    /* ── NAV ── */
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 28px 0;
+      border-bottom: 1px solid var(--border2);
+      margin-bottom: 0;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--muted2); text-decoration: none;
+    }
+    .brand-orb {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: conic-gradient(from 0deg, var(--accent), var(--accent2), var(--accent));
+      box-shadow: 0 0 20px rgba(110,255,196,0.7);
+      animation: pulse 3s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(110,255,196,0.7); }
+      50% { box-shadow: 0 0 35px rgba(110,255,196,1), 0 0 60px rgba(110,255,196,0.3); }
+    }
+    .nav-meta { font-size: 13px; color: var(--muted); display: flex; gap: 18px; }
+    .tag {
+      border: 1px solid var(--border);
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--muted2);
+      background: rgba(255,255,255,0.03);
+    }
+    .tag.new { border-color: rgba(110,255,196,0.35); color: var(--accent); background: rgba(110,255,196,0.06); }
+    .theme-toggle {
+      border: 1px solid var(--border);
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--muted2);
+      background: rgba(255,255,255,0.03);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .theme-toggle:hover { border-color: rgba(110,255,196,0.35); color: var(--accent); background: rgba(110,255,196,0.06); }
+
+    /* ── HERO ── */
+    header.hero {
+      padding: 80px 0 70px;
+      position: relative;
+    }
+
+    .eyebrow {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 22px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .eyebrow::before {
+      content: '';
+      display: block; width: 30px; height: 1px;
+      background: var(--accent);
+    }
+
+    h1 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: clamp(50px, 8vw, 96px);
+      line-height: 0.9;
+      margin: 0 0 30px;
+      letter-spacing: -0.02em;
+      font-weight: 400;
+    }
+    .h1-ghost {
+      display: block;
+      background: linear-gradient(100deg, var(--accent) 0%, var(--accent2) 50%, var(--accent3) 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      font-style: italic;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 60px;
+      align-items: start;
+    }
+
+    .subtitle {
+      font-size: 19px;
+      color: var(--muted2);
+      margin: 0 0 28px;
+      line-height: 1.6;
+      max-width: 540px;
+    }
+
+    .meta-row {
+      display: flex; gap: 20px; flex-wrap: wrap;
+      margin-bottom: 36px;
+      font-size: 13px; color: var(--muted);
+    }
+    .meta-item { display: flex; align-items: center; gap: 6px; }
+
+    .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 22px;
+      border-radius: 12px;
+      font-size: 14px; font-weight: 600;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); }
+    .btn.primary {
+      background: linear-gradient(135deg, rgba(110,255,196,0.18), rgba(126,173,255,0.14));
+      border-color: rgba(110,255,196,0.4);
+    }
+    .btn.primary:hover { background: linear-gradient(135deg, rgba(110,255,196,0.28), rgba(126,173,255,0.22)); }
+
+    /* ── HERO VISUAL ── */
+    .hero-visual {
+      background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-visual::before {
+      content: '';
+      position: absolute;
+      top: -1px; left: 20px; right: 20px; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(110,255,196,0.5), transparent);
+    }
+    .visual-label {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    .decode-step {
+      margin: 0 0 6px;
+      display: grid;
+      grid-template-columns: 72px 1fr 56px;
+      gap: 10px;
+      align-items: center;
+      padding: 11px 14px;
+      border-radius: 14px;
+      border: 1px solid transparent;
+      transition: all 0.3s;
+      position: relative;
+    }
+    .decode-step.hot {
+      background: rgba(110,255,196,0.07);
+      border-color: rgba(110,255,196,0.2);
+    }
+    .decode-step.warm {
+      background: rgba(126,173,255,0.06);
+      border-color: rgba(126,173,255,0.14);
+    }
+    .decode-step.ghost-row {
+      background: rgba(255,255,255,0.025);
+      border-color: rgba(255,255,255,0.06);
+    }
+    .decode-step.eliminated {
+      opacity: 0.38;
+    }
+    .tok-label { font-size: 12px; font-weight: 700; color: var(--muted2); font-family: 'DM Mono', monospace; }
+    .tok-bar-wrap { position: relative; height: 8px; border-radius: 999px; background: rgba(255,255,255,0.06); overflow: hidden; }
+    .tok-bar { height: 100%; border-radius: 999px; }
+    .tok-bar.full { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+    .tok-bar.partial { background: linear-gradient(90deg, var(--accent2), rgba(126,173,255,0.4)); }
+    .tok-bar.sketch { background: linear-gradient(90deg, #445577, rgba(68,85,119,0.3)); width: 22%; }
+    .tok-status { font-size: 11px; color: var(--muted); text-align: right; white-space: nowrap; }
+    .tok-status.live { color: var(--accent); }
+    .tok-status.elim { color: #ff6b6b; text-decoration: line-through; }
+    .tok-status.resur { color: var(--accent3); }
+
+    .visual-caption {
+      margin-top: 20px;
+      font-size: 12px; color: var(--muted);
+      line-height: 1.5;
+      padding-top: 16px;
+      border-top: 1px solid var(--border2);
+    }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+    .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+    .leg-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    /* ── SECTIONS ── */
+    main { padding: 20px 0 100px; }
+
+    .section-card {
+      background: rgba(12,17,32,0.7);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: clamp(28px, 4vw, 48px);
+      margin: 24px 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .section-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+    }
+
+    h2 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.05;
+      margin: 0 0 16px;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+    }
+    h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin: 24px 0 8px 0;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+    .mini-card h3 { margin-top: 0; }
+
+    p { color: var(--muted2); margin: 12px 0; }
+    strong { color: var(--text); font-weight: 600; }
+    em { color: var(--muted2); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .lead {
+      font-size: 20px;
+      color: var(--muted2);
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+
+    .quote {
+      border-left: 3px solid var(--accent);
+      padding: 18px 24px;
+      background: rgba(110,255,196,0.05);
+      border-radius: 0 16px 16px 0;
+      color: #e0fff4;
+      font-size: 19px;
+      margin: 24px 0;
+      line-height: 1.5;
+      font-style: italic;
+      font-family: 'Instrument Serif', Georgia, serif;
+    }
+
+    .callout {
+      background: linear-gradient(135deg, rgba(110,255,196,0.1), rgba(126,173,255,0.07));
+      border: 1px solid rgba(110,255,196,0.22);
+      border-radius: 18px;
+      padding: 22px 26px;
+      margin-top: 20px;
+      color: var(--muted2);
+    }
+    .callout strong { color: var(--accent); }
+
+    .callout-warn {
+      background: rgba(255,217,122,0.06);
+      border: 1px solid rgba(255,217,122,0.2);
+      border-radius: 18px;
+      padding: 20px 24px;
+      margin: 20px 0;
+      color: var(--muted2);
+    }
+    .callout-warn strong { color: var(--accent3); }
+
+    /* grids */
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; margin-top: 20px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; margin-top: 20px; }
+
+    .mini-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border2);
+      border-radius: 18px;
+      padding: 22px;
+    }
+    .mini-card h3 { color: var(--text); font-size: 15px; margin-bottom: 8px; }
+    .mini-card p { font-size: 14px; color: var(--muted); margin: 0; }
+
+    .num-badge {
+      display: inline-block;
+      background: rgba(110,255,196,0.12);
+      color: var(--accent);
+      font-size: 12px; font-weight: 800;
+      padding: 3px 10px;
+      border-radius: 999px;
+      margin-bottom: 10px;
+      font-family: 'DM Mono', monospace;
+    }
+
+    /* pipeline */
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(4,1fr);
+      gap: 12px;
+      margin-top: 24px;
+      position: relative;
+    }
+    .pipeline::before {
+      content: '';
+      position: absolute;
+      top: 30px; left: calc(12.5% + 6px); right: calc(12.5% + 6px);
+      height: 1px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      opacity: 0.3;
+    }
+    .stage {
+      padding: 22px 18px;
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(126,173,255,0.08), rgba(110,255,196,0.04));
+      border: 1px solid rgba(255,255,255,0.08);
+      text-align: center;
+    }
+    .stage-num {
+      width: 36px; height: 36px; border-radius: 50%;
+      display: grid; place-items: center;
+      background: rgba(110,255,196,0.12);
+      color: var(--accent);
+      font-weight: 900;
+      font-size: 15px;
+      margin: 0 auto 14px;
+      border: 1px solid rgba(110,255,196,0.25);
+    }
+    .stage h3 { margin: 0 0 8px; text-align: center; font-size: 15px; }
+    .stage p { font-size: 13px; margin: 0; }
+
+    /* code/pre */
+    code, pre { font-family: 'DM Mono', "SFMono-Regular", Consolas, monospace; }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      padding: 22px 26px;
+      overflow-x: auto;
+      color: #c4d4ff;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .comment { color: #4a6080; }
+    .kw { color: var(--accent); }
+    .val { color: var(--accent3); }
+    .fn { color: var(--accent2); }
+
+    /* table */
+    table {
+      width: 100%; border-collapse: collapse;
+      margin: 20px 0;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      font-size: 14px;
+    }
+    th, td { padding: 13px 16px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: top; }
+    th { background: rgba(255,255,255,0.05); color: var(--text); font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+    td { color: var(--muted2); }
+    tr:last-child td { border-bottom: none; }
+    td:first-child { font-weight: 600; color: var(--text); }
+    .cell-accent { color: var(--accent); font-weight: 600; }
+    .cell-warn { color: var(--accent3); }
+    .cell-muted { color: var(--muted); }
+
+    /* comparison vs prior work */
+    .diff-tag {
+      display: inline-block;
+      font-size: 11px; font-weight: 700;
+      padding: 2px 8px; border-radius: 6px;
+    }
+    .diff-tag.ghostkv { background: rgba(110,255,196,0.15); color: var(--accent); }
+    .diff-tag.prior { background: rgba(255,255,255,0.07); color: var(--muted); }
+
+    /* worked example */
+    .example-box {
+      background: var(--code-bg);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      padding: 26px;
+      margin: 20px 0;
+    }
+    .ex-row {
+      display: grid;
+      grid-template-columns: 60px 1fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .ex-row:last-child { border-bottom: none; }
+    .ex-tok { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--muted2); }
+    .ex-detail { font-size: 13px; color: var(--muted); }
+    .ex-verdict { font-size: 12px; font-weight: 700; white-space: nowrap; padding: 3px 10px; border-radius: 8px; }
+    .ev-elim { background: rgba(255,80,80,0.12); color: #ff6b6b; }
+    .ev-resur { background: rgba(255,217,122,0.12); color: var(--accent3); }
+    .ev-hot { background: rgba(110,255,196,0.12); color: var(--accent); }
+    .ex-note { font-size: 12px; color: var(--muted); margin-top: 14px; font-style: italic; }
+
+    /* stat chips */
+    .stat-row { display: flex; gap: 16px; flex-wrap: wrap; margin: 20px 0; }
+    .stat-chip {
+      flex: 1; min-width: 140px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border2);
+      border-radius: 16px;
+      padding: 18px 20px;
+    }
+    .stat-num { font-size: 32px; font-weight: 900; line-height: 1; margin-bottom: 4px; }
+    .stat-num.green { color: var(--accent); }
+    .stat-num.blue { color: var(--accent2); }
+    .stat-num.yellow { color: var(--accent3); }
+    .stat-desc { font-size: 12px; color: var(--muted); }
+
+    /* open questions */
+    .question-card {
+      border: 1px solid var(--border2);
+      border-radius: 16px;
+      padding: 20px;
+      background: rgba(255,255,255,0.02);
+      margin-bottom: 12px;
+    }
+    .question-card h3 { margin: 0 0 6px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+    .q-num { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
+    .question-card p { margin: 0; font-size: 14px; color: var(--muted); }
+
+    /* section label */
+    .section-eyebrow {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--muted);
+      margin-bottom: 14px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-eyebrow::before {
+      content: ''; display: block;
+      width: 20px; height: 1px; background: var(--muted);
+    }
+
+    /* footer */
+    footer {
+      border-top: 1px solid var(--border2);
+      padding: 48px 0 60px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .footer-grid { display: grid; grid-template-columns: 1fr auto; gap: 40px; align-items: start; }
+    .footer-title { font-family: 'Instrument Serif', serif; font-size: 22px; color: var(--text); margin-bottom: 8px; }
+    .footer-links { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 16px; }
+    .footer-link {
+      padding: 8px 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--muted2);
+      font-size: 13px;
+      text-decoration: none;
+      background: rgba(255,255,255,0.03);
+      transition: all 0.2s;
+    }
+    .footer-link:hover { border-color: rgba(110,255,196,0.3); color: var(--accent); background: rgba(110,255,196,0.05); }
+    .footer-meta { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+    /* scroll fade in */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .section-card { animation: fadeUp 0.5s ease both; }
+
+    @media (max-width: 820px) {
+      .hero-grid, .grid-2, .grid-3, .pipeline { grid-template-columns: 1fr; }
+      .pipeline::before { display: none; }
+      .footer-grid { grid-template-columns: 1fr; }
+      .stat-row { flex-direction: column; }
+      nav { flex-wrap: wrap; gap: 12px; }
+      .nav-meta { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="wrap">
+  <nav aria-label="Primary">
+    <a class="brand" href="/index.html"><span class="brand-orb"></span> MAN\SH AI</a>
+    <div class="nav-meta">
+      <span class="tag new">New Concept</span>
+      <span class="tag">Inference · KV Cache</span>
+      <span class="tag">May 2026</span>
+      <a class="tag" href="/writings.html">Writings</a>
+      <a class="tag" href="/patents.html">Patents</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle theme">Light</button>
+    </div>
+  </nav>
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Proposal</div>
+
+    <!-- INVENTION CLAIM BOX -->
+    <div style="margin-bottom:36px; background:linear-gradient(135deg, rgba(110,255,196,0.08), rgba(126,173,255,0.06)); border:1px solid rgba(110,255,196,0.35); border-radius:20px; padding:22px 28px; display:flex; gap:20px; align-items:flex-start; max-width:900px;">
+      <div style="flex-shrink:0; margin-top:2px;">
+        <div style="width:36px; height:36px; border-radius:10px; background:rgba(110,255,196,0.15); border:1px solid rgba(110,255,196,0.3); display:grid; place-items:center; font-size:16px;">⚡</div>
+      </div>
+      <div>
+        <div style="font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; color:var(--accent); margin-bottom:8px;">Core Invention Claim</div>
+        <div style="font-size:17px; color:#e8fff5; line-height:1.55; font-family:'Instrument Serif',Georgia,serif; font-style:italic;">The novelty is not KV compression. It is <strong style="color:var(--accent); font-style:normal;">query-time, bounded elimination</strong> of reconstructable KV witnesses <strong style="color:var(--accent); font-style:normal;">before memory movement occurs.</strong></div>
+        <div style="margin-top:12px; font-size:13px; color:var(--muted); line-height:1.5;">Prior work compresses, evicts, or sparsifies stored KV. GhostKV converts cold tokens into witnesses that prove their own irrelevance at query time — and only then decides whether to move any data at all.</div>
+      </div>
+    </div>
+
+    <div class="hero-grid">
+      <div>
+        <h1>GhostKV:<br><span class="h1-ghost">Attention Without<br>Storing Full KV</span></h1>
+        <p class="subtitle">A reconstruction-first architecture where cold KV-cache entries become tiny semantic witnesses — and exact KV is materialized only when a query proves the token could matter.</p>
+        <p style="font-size:14px; color:var(--muted); margin: -16px 0 24px; max-width:520px; line-height:1.6;">We outline a simulation plan using Llama-3-8B on 64K–128K contexts to validate elimination rates and measure perplexity drift under varied ghosting aggressiveness.</p>
+        <div class="meta-row">
+          <span class="meta-item">📄 Concept note</span>
+          <span class="meta-item">🔬 Pre-experimental</span>
+          <span class="meta-item">🔓 Open for collaboration</span>
+          <span class="meta-item">🇮🇳 India · 202641062451 · 2026-05-17</span>
+        </div>
+        <div class="hero-actions">
+          <a class="btn primary" href="#idea">Read the idea ↓</a>
+          <a class="btn" href="#worked-example">Worked example</a>
+          <a class="btn" href="#simulation">Simulation plan</a>
+          <a class="btn" href="#prior-work">vs. prior work</a>
+        </div>
+      </div>
+
+      <div class="hero-visual">
+        <div class="visual-label">One decode step — 32K context, Q attends 8 tokens</div>
+        <div>
+          <div class="decode-step hot">
+            <div class="tok-label">T31,900</div>
+            <div class="tok-bar-wrap"><div class="tok-bar full" style="width:94%"></div></div>
+            <div class="tok-status live">● exact</div>
+          </div>
+          <div class="decode-step hot">
+            <div class="tok-label">T31,850</div>
+            <div class="tok-bar-wrap"><div class="tok-bar full" style="width:81%"></div></div>
+            <div class="tok-status live">● exact</div>
+          </div>
+          <div class="decode-step warm">
+            <div class="tok-label">T28,000</div>
+            <div class="tok-bar-wrap"><div class="tok-bar partial" style="width:55%"></div></div>
+            <div class="tok-status resur">↑ resurrected</div>
+          </div>
+          <div class="decode-step ghost-row eliminated">
+            <div class="tok-label">T19,000</div>
+            <div class="tok-bar-wrap"><div class="tok-bar sketch"></div></div>
+            <div class="tok-status elim">✕ elim.</div>
+          </div>
+          <div class="decode-step ghost-row eliminated">
+            <div class="tok-label">T11,200</div>
+            <div class="tok-bar-wrap"><div class="tok-bar sketch"></div></div>
+            <div class="tok-status elim">✕ elim.</div>
+          </div>
+          <div class="decode-step ghost-row eliminated">
+            <div class="tok-label">T4,400</div>
+            <div class="tok-bar-wrap"><div class="tok-bar sketch"></div></div>
+            <div class="tok-status elim">✕ elim.</div>
+          </div>
+        </div>
+        <div class="visual-caption">
+          Cold tokens are not merely compressed — they're eliminated before decompression.
+          <div class="legend">
+            <div class="leg-item"><div class="leg-dot" style="background:var(--accent)"></div> hot / exact</div>
+            <div class="leg-item"><div class="leg-dot" style="background:var(--accent2)"></div> resurrected</div>
+            <div class="leg-item"><div class="leg-dot" style="background:#445577"></div> ghost sketch (never loaded)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main data-pagefind-body>
+  <div class="wrap">
+
+    <!-- FRAMING -->
+    <section id="idea" class="section-card">
+      <div class="section-eyebrow">The problem</div>
+      <h2>Inference is colliding with memory movement, not just compute.</h2>
+      <p class="lead">As context windows grow to 128K, 1M, and beyond, LLM inference increasingly bottlenecks on the cost of moving KV tensors — not on FLOPs alone.</p>
+      <p>Every decode step must load, decompress, and attend over all stored KV state. In a 128K-token context at 32 layers and 128 heads with half-precision 128-dim keys/values, the raw KV cache approaches <strong>~67 GB</strong>. Even with 4-bit quantization, that's ~17 GB — and it must be partially traversed every step.</p>
+
+      <div class="stat-row">
+        <div class="stat-chip">
+          <div class="stat-num green">~85%</div>
+          <div class="stat-desc">of tokens become low-attention after sliding out of the local window <span style="display:block;margin-top:4px;font-size:10px;color:var(--muted);font-style:italic;">Based on H2O / SnapKV attention-mass analysis on LongBench tasks</span></div>
+        </div>
+        <div class="stat-chip">
+          <div class="stat-num blue">~67 GB</div>
+          <div class="stat-desc">raw FP16 KV cache for 128K context, 32-layer, 128-head, 128-dim model <span style="display:block;margin-top:4px;font-size:10px;color:var(--muted);font-style:italic;">Computed: 2×128K×32×128×128×2B</span></div>
+        </div>
+        <div class="stat-chip">
+          <div class="stat-num yellow">&gt;50%</div>
+          <div class="stat-desc">of decode wall-time on memory-bound hardware attributable to KV movement <span style="display:block;margin-top:4px;font-size:10px;color:var(--muted);font-style:italic;">Estimated from roofline analysis; pending Llama-3 profiling</span></div>
+        </div>
+      </div>
+
+      <p>The common instinct: <strong>compress KV more aggressively.</strong> GhostKV asks a different question:</p>
+      <div class="quote">Do we need to <em>materialize</em> full KV for most tokens at all?</div>
+      <div style="margin-top:28px;">
+        <div class="section-eyebrow" style="margin-bottom:16px;">Bandwidth comparison</div>
+        <div style="background:var(--code-bg); border:1px solid var(--border); border-radius:18px; padding:26px;">
+          <div style="font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); margin-bottom:20px;">HBM bandwidth consumed per decode step · 128K context · relative units</div>
+
+          <div style="margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+              <span style="font-size:13px; font-weight:600; color:var(--muted2);">Load all KV (exact)</span>
+              <span style="font-size:12px; color:var(--muted); font-family:'DM Mono',monospace;">100%</span>
+            </div>
+            <div style="height:28px; border-radius:8px; overflow:hidden; display:flex; gap:2px;">
+              <div style="flex:0.05; background:rgba(110,255,196,0.5); border-radius:6px 0 0 6px;"></div>
+              <div style="flex:0.15; background:rgba(126,173,255,0.4);"></div>
+              <div style="flex:0.80; background:rgba(255,100,100,0.35); border-radius:0 6px 6px 0;"></div>
+            </div>
+            <div style="display:flex; gap:16px; margin-top:6px; font-size:11px; color:var(--muted);">
+              <span><span style="display:inline-block;width:8px;height:8px;background:rgba(110,255,196,0.5);border-radius:2px;margin-right:4px;"></span>hot (5%)</span>
+              <span><span style="display:inline-block;width:8px;height:8px;background:rgba(126,173,255,0.4);border-radius:2px;margin-right:4px;"></span>warm (15%)</span>
+              <span><span style="display:inline-block;width:8px;height:8px;background:rgba(255,100,100,0.35);border-radius:2px;margin-right:4px;"></span>cold KV — loaded but mostly irrelevant (80%)</span>
+            </div>
+          </div>
+
+          <div style="margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+              <span style="font-size:13px; font-weight:600; color:var(--muted2);">Load sketches + resurrect 2%</span>
+              <span style="font-size:12px; color:var(--accent); font-family:'DM Mono',monospace;">~8%</span>
+            </div>
+            <div style="height:28px; border-radius:8px; overflow:hidden; display:flex; gap:2px;">
+              <div style="flex:0.05; background:rgba(110,255,196,0.5); border-radius:6px 0 0 6px;"></div>
+              <div style="flex:0.015; background:rgba(255,217,122,0.5);"></div>
+              <div style="flex:0.015; background:rgba(126,173,255,0.4);"></div>
+              <div style="flex:0.92; background:rgba(255,255,255,0.04); border:1px dashed rgba(255,255,255,0.1); border-radius:0 6px 6px 0;"></div>
+            </div>
+            <div style="display:flex; gap:16px; margin-top:6px; font-size:11px; color:var(--muted);">
+              <span><span style="display:inline-block;width:8px;height:8px;background:rgba(110,255,196,0.5);border-radius:2px;margin-right:4px;"></span>hot</span>
+              <span><span style="display:inline-block;width:8px;height:8px;background:rgba(255,217,122,0.5);border-radius:2px;margin-right:4px;"></span>ghost sketches (tiny)</span>
+              <span><span style="display:inline-block;width:8px;height:8px;background:rgba(126,173,255,0.4);border-radius:2px;margin-right:4px;"></span>resurrected (2%)</span>
+              <span><span style="display:inline-block;width:8px;height:8px;background:rgba(255,255,255,0.04);border:1px dashed rgba(255,255,255,0.2);border-radius:2px;margin-right:4px;"></span>not loaded</span>
+            </div>
+          </div>
+
+          <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--border2); font-size:12px; color:var(--muted); font-style:italic;">
+            Illustrative. Assumes ~85% cold tokens, 2% resurrection rate, ghost sketches at ~1% of full KV size. The bandwidth story is the story.
+          </div>
+        </div>
+      </div>
+
+      <!-- NOT A REPLACEMENT CALLOUT -->
+      <div class="callout-warn" style="margin-top:20px;">
+        <strong>GhostKV is not a replacement for KV quantization.</strong> INT4/INT8 quantization reduces the byte cost of every stored token. GhostKV reduces the number of tokens that ever get loaded. They are complementary: quantize warm tokens, ghost cold tokens. The biggest gains come from combining both. "Why not just use INT4?" misses that a decompressed INT4 token still costs a memory fetch; GhostKV eliminates that fetch entirely for tokens that fail the sketch bound.
+      </div>
+    </section>
+
+    <!-- CORE OBSERVATION -->
+    <section class="section-card">
+      <div class="section-eyebrow">Core observation</div>
+      <h2>Most tokens become semantically dormant.</h2>
+      <p>In long-context transformers, empirical analysis of attention patterns reveals a consistent structure: a small fraction of historical tokens — typically <strong>sink tokens</strong> at position 0–5, instruction tokens, and recent tokens — dominate total attention mass. The majority are nearly inactive.</p>
+      <p>StreamingLLM observed that attention sinks are critical. H2O and SnapKV showed that only a small per-head KV budget is needed for high quality. GhostKV goes further: instead of keeping a fixed budget of the "most important" tokens, it converts dormant tokens into <strong>compact witnesses</strong> that can prove their own irrelevance — or trigger reconstruction when they can't.</p>
+    </section>
+
+    <!-- GHOST WITNESSES -->
+    <section class="section-card">
+      <div class="section-eyebrow">The mechanism</div>
+      <h2>GhostKV introduces attention witnesses.</h2>
+      <p>Instead of storing full key/value tensors for cold tokens, GhostKV converts them into <strong>ghost records</strong>: compact structures that retain just enough information to answer one question per decode step:</p>
+      <div class="quote">Could reconstructing this exact KV possibly change the attention result?</div>
+
+      <p>A ghost record has three components:</p>
+      <div class="grid-3">
+        <div class="mini-card">
+          <div class="num-badge">01</div>
+          <h3>Attention Sketch</h3>
+          <p>A small projection (e.g. 8–32 dims) of the key state that allows fast approximate query-similarity scoring without loading full KV. Think locality-sensitive hashing or a random Gaussian projection of K.</p>
+        </div>
+        <div class="mini-card">
+          <div class="num-badge">02</div>
+          <h3>Semantic Anchor ID</h3>
+          <p>A reference to a shared semantic cluster or contextual anchor. Multiple nearby tokens can share one anchor, enabling residual-style reconstruction from a compact stored basis.</p>
+        </div>
+        <div class="mini-card">
+          <div class="num-badge">03</div>
+          <h3>Residual Fingerprint</h3>
+          <p>A compact uncertainty envelope that bounds the maximum error introduced by approximation. Used to ensure the elimination decision is conservative (safe) rather than greedy.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- LIFECYCLE TABLE -->
+    <section class="section-card">
+      <div class="section-eyebrow">Data model</div>
+      <h2>From full KV to ghost state</h2>
+      <p>Standard transformers store tensors shaped <code>KV[layer][token][head][dim]</code>. GhostKV introduces a lifecycle with four states. Fresh tokens begin as exact KV and transition through the hierarchy as they age and their attention mass declines.</p>
+
+      <table>
+        <thead>
+          <tr><th>State</th><th>Representation</th><th>Est. size per token</th><th>Purpose</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="cell-accent">Hot</span></td>
+            <td>Exact FP16 or BF16 KV in HBM/SRAM</td>
+            <td class="cell-muted">~4 KB (128d, 32h)</td>
+            <td>Recent tokens with high reuse probability</td>
+          </tr>
+          <tr>
+            <td><span style="color:var(--accent2)">Warm</span></td>
+            <td>INT4/INT8 quantized KV</td>
+            <td class="cell-muted">~500–1000 B</td>
+            <td>Tokens likely still participating in attention</td>
+          </tr>
+          <tr>
+            <td>Ghost</td>
+            <td>Sketch + anchor ID + residual fingerprint</td>
+            <td class="cell-muted">~32–64 B</td>
+            <td>Cold tokens that only need to prove whether they matter</td>
+          </tr>
+          <tr>
+            <td class="cell-muted">Archive</td>
+            <td>Anchor metadata or compressed fragment on DRAM/CXL/SSD</td>
+            <td class="cell-muted">&lt;16 B in HBM</td>
+            <td>Rarely-accessed long-term memory</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <strong>Ghost compression ratio:</strong> A ghost record at 32–64 bytes vs a full FP16 KV at ~4 KB is a <strong>~64–128× size reduction</strong> per token. At 100K cold tokens, that's ~400 MB of HBM pressure replaced by ~6 MB of witness records.
+      </div>
+    </section>
+
+    <!-- BOUNDED ELIMINATION -->
+    <section class="section-card">
+      <div class="section-eyebrow">Key innovation</div>
+      <h2>Bounded attention elimination</h2>
+      <p>GhostKV tries to <em>prove</em> a token cannot matter before decompression or reconstruction occurs. For query vector <strong>Q</strong> and ghost token <strong>Gᵢ</strong>, the runtime computes a conservative upper-bound estimate of the maximum possible attention score:</p>
+
+      <!-- Formal math block -->
+      <div style="background:var(--code-bg); border:1px solid rgba(110,255,196,0.15); border-radius:18px; padding:26px 30px; margin:20px 0; font-family:'DM Mono',monospace; font-size:15px; line-height:2;">
+        <div style="color:var(--muted); font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:14px; font-family:'Geist',sans-serif;">Formal bound</div>
+        <div style="color:#e0f0ff;">
+          AttnUB(Q, G<sub style="font-size:11px;">i</sub>) &nbsp;=&nbsp;
+          <span style="color:var(--accent);">sketch_sim</span>(Q,&nbsp;G<sub style="font-size:11px;">i</sub>.sk)
+          &nbsp;+&nbsp;<span style="color:var(--accent3);">ε<sub style="font-size:11px;">res</sub></span>
+          &nbsp;+&nbsp;<span style="color:var(--accent2);">σ<sub style="font-size:11px;">anchor</sub></span>
+        </div>
+        <div style="margin-top:16px; display:grid; gap:6px;">
+          <div style="font-size:12px; color:var(--muted);">
+            <span style="color:var(--accent);">sketch_sim(Q, Gᵢ.sk)</span> — dot product of query projection against the ghost's sketch vector (~32 dims). O(d_sketch) per token.
+          </div>
+          <div style="font-size:12px; color:var(--muted);">
+            <span style="color:var(--accent3);">ε<sub>res</sub></span> — residual uncertainty: worst-case approximation error from sketch dimensionality reduction (JL bound).
+          </div>
+          <div style="font-size:12px; color:var(--muted);">
+            <span style="color:var(--accent2);">σ<sub>anchor</sub></span> — semantic variance: spread of the anchor cluster this token belongs to; wider clusters → larger safety margin.
+          </div>
+        </div>
+        <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border2); color:#c4d4ff; font-size:14px;">
+          <span style="color:var(--muted);">Eliminate if: &nbsp;</span>AttnUB(Q, G<sub style="font-size:11px;">i</sub>) &lt; θ<sub style="font-size:11px;">elim</sub><br>
+          <span style="color:var(--muted);">Resurrect if: &nbsp;</span>AttnUB(Q, G<sub style="font-size:11px;">i</sub>) ≥ θ<sub style="font-size:11px;">elim</sub>
+        </div>
+      </div>
+
+      <pre><span class="comment">// Runtime pseudocode — per ghost token per decode step</span>
+<span class="kw">for</span> Gᵢ <span class="kw">in</span> ghost_tokens:
+  bound = <span class="fn">sketch_sim</span>(Q, Gᵢ.sk) + Gᵢ.ε_res + Gᵢ.σ_anchor
+  <span class="kw">if</span> bound &lt; θ_elim:
+    <span class="comment">// Provably safe to skip. Never loaded, decompressed, or transferred.</span>
+    softmax_denom += exp(ELIM_CONSTANT)  <span class="comment">// add negligible bounded constant</span>
+    <span class="kw">continue</span>
+  <span class="kw">else</span>:
+    <span class="fn">resurrect</span>(Gᵢ)  <span class="comment">// DMA fetch from DRAM/CXL</span></pre>
+
+      <div class="callout">
+        <strong>The crucial shift:</strong> the system avoids memory <em>movement</em>, not merely storage. A compressed-KV system still loads and decompresses before scoring. GhostKV scores first, at the ghost tier, and only moves data for tokens that survive elimination.
+      </div>
+
+      <div class="callout-warn" style="margin-top:16px;">
+        <strong>Softmax denominator note.</strong> Standard softmax requires summing exp(score) over all tokens. When tokens are eliminated, their contribution to the denominator is approximated as exp(AttnUB(Q, Gᵢ)) — a conservative upper bound on their actual contribution. This slightly inflates the denominator (safer than omitting it), and for tokens with AttnUB ≪ θ, the contribution is negligible. A tighter treatment would track the eliminated mass explicitly and bound the resulting normalization error.
+      </div>
+    </section>
+
+    <!-- WORKED EXAMPLE -->
+    <section id="worked-example" class="section-card">
+      <div class="section-eyebrow">Concrete example</div>
+      <h2>Walking through one decode step</h2>
+      <p>Consider a model generating token T+1 in a 32K context. The query Q encodes "What was the final conclusion?" — semantically rich with long-range retrieval intent.</p>
+
+      <div class="example-box">
+        <div class="ex-row" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px; margin-bottom: 4px;">
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted);">Token</div>
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted);">Sketch score + uncertainty</div>
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted);">Verdict</div>
+        </div>
+        <div class="ex-row">
+          <div class="ex-tok">T31,990</div>
+          <div class="ex-detail">Exact KV (hot) — always attend</div>
+          <div class="ex-verdict ev-hot">✓ attend</div>
+        </div>
+        <div class="ex-row">
+          <div class="ex-tok">T31,950</div>
+          <div class="ex-detail">Exact KV (hot) — always attend</div>
+          <div class="ex-verdict ev-hot">✓ attend</div>
+        </div>
+        <div class="ex-row">
+          <div class="ex-tok">T0–T4</div>
+          <div class="ex-detail">Sink tokens — always kept exact</div>
+          <div class="ex-verdict ev-hot">✓ attend</div>
+        </div>
+        <div class="ex-row">
+          <div class="ex-tok">T28,100</div>
+          <div class="ex-detail">Ghost. sketch_sim=0.71, uncertainty=0.12 → bound=0.83 &gt; θ=0.4</div>
+          <div class="ex-verdict ev-resur">↑ resurrect</div>
+        </div>
+        <div class="ex-row">
+          <div class="ex-tok">T19,000</div>
+          <div class="ex-detail">Ghost. sketch_sim=0.08, uncertainty=0.18 → bound=0.26 &lt; θ=0.4</div>
+          <div class="ex-verdict ev-elim">✕ eliminated</div>
+        </div>
+        <div class="ex-row">
+          <div class="ex-tok">T11,500</div>
+          <div class="ex-detail">Ghost. sketch_sim=0.03, uncertainty=0.14 → bound=0.17 &lt; θ=0.4</div>
+          <div class="ex-verdict ev-elim">✕ eliminated</div>
+        </div>
+        <div class="ex-row">
+          <div class="ex-tok">T5,200</div>
+          <div class="ex-detail">Ghost. sketch_sim=0.05, uncertainty=0.20 → bound=0.25 &lt; θ=0.4</div>
+          <div class="ex-verdict ev-elim">✕ eliminated</div>
+        </div>
+        <div class="ex-note">
+          T28,100 had high sketch similarity because it encoded "conclusion" semantically. Tokens T11K–T19K were irrelevant filler. All eliminated tokens: never fetched, never decompressed. Only T28,100 triggers a resurrection DMA from DRAM.
+        </div>
+      </div>
+    </section>
+
+    <!-- PIPELINE -->
+    <section class="section-card">
+      <div class="section-eyebrow">The pipeline</div>
+      <h2>Sketch → Bound → Resurrect → Attend</h2>
+      <p>Traditional KV-cache systems load and decompress first, then discover many tokens were irrelevant. GhostKV inverts this order — the filtering happens <em>near memory</em>, before data moves to the GPU.</p>
+      <div class="pipeline">
+        <div class="stage">
+          <div class="stage-num">1</div>
+          <h3>Sketch</h3>
+          <p>Compare query sketch against ghost sketches. Cheap dot products near the memory tier.</p>
+        </div>
+        <div class="stage">
+          <div class="stage-num">2</div>
+          <h3>Bound</h3>
+          <p>Compute safe upper bounds on maximum possible attention contribution per ghost.</p>
+        </div>
+        <div class="stage">
+          <div class="stage-num">3</div>
+          <h3>Resurrect</h3>
+          <p>Fetch and reconstruct only survivors. Everything else stays cold and unloaded.</p>
+        </div>
+        <div class="stage">
+          <div class="stage-num">4</div>
+          <h3>Attend</h3>
+          <p>Run exact attention on a much smaller candidate set — typically 1–5% of context.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESURRECTION PATHS -->
+    <section class="section-card">
+      <div class="section-eyebrow">Reconstruction</div>
+      <h2>Token resurrection</h2>
+      <p>Tokens that survive the elimination bound are "resurrected" — their full or near-full KV is reconstructed before being handed to the attention kernel. Several reconstruction paths can be combined:</p>
+      <div class="grid-2">
+        <div class="mini-card">
+          <h3>Anchor + residual</h3>
+          <p>Rebuild from a shared semantic anchor and a compact per-token residual. Lowest fetch cost; quality bounded by anchor fidelity.</p>
+        </div>
+        <div class="mini-card">
+          <h3>Compressed fragment fetch</h3>
+          <p>Pull a higher-fidelity quantized KV block from DRAM, CXL memory, or SSD. Exact quality, higher latency — pipelined with compute to hide cost.</p>
+        </div>
+        <div class="mini-card">
+          <h3>Low-rank reconstruction</h3>
+          <p>Use a learned low-rank basis (e.g. from SVD-style compression during ghosting) for approximate key/value recovery at intermediate quality.</p>
+        </div>
+        <div class="mini-card">
+          <h3>Predictive prefetch</h3>
+          <p>Scan sketches 1–2 decode steps ahead using predicted query vectors — prefetch likely resurrection candidates before the attention kernel stalls on them.</p>
+        </div>
+      </div>
+
+      <!-- LATENCY MODEL -->
+      <h3 style="margin-top:28px;">Latency model: when resurrection is viable</h3>
+      <p>The core performance concern: decode steps are fast and memory-bound. If a resurrected token's DMA fetch isn't hidden, it stalls execution. The viability condition is:</p>
+
+      <div style="background:var(--code-bg); border:1px solid var(--border); border-radius:16px; padding:22px 26px; margin:16px 0; font-family:'DM Mono',monospace; font-size:14px; line-height:1.9; color:#c4d4ff;">
+        <div style="color:var(--muted); font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:12px; font-family:'Geist',sans-serif;">Viability condition</div>
+        p<sub style="font-size:11px;">resurrect</sub> × T<sub style="font-size:11px;">fetch</sub> &lt; T<sub style="font-size:11px;">compute</sub><br>
+        <span style="color:var(--muted); font-size:12px;">
+          where p<sub>resurrect</sub> = fraction of tokens resurrected per step,<br>
+          T<sub>fetch</sub> = DMA latency per resurrected token (DRAM ~80ns, CXL ~150ns),<br>
+          T<sub>compute</sub> = attention kernel time for hot+warm tokens.
+        </span>
+      </div>
+
+      <p>At decode batch size = 1, compute time is short (~10–50μs on A100), making latency hiding difficult. <strong>GhostKV's primary target is batch size &gt; 1</strong>, where compute per step is proportionally longer. At batch = 8 with 2% resurrection rate (~2,560 tokens in 128K context), a pipelined DMA over 2,560 tokens × 4KB = ~10MB at 900 GB/s HBM takes ~11μs — overlappable with attention compute. Predictive prefetch adds another buffer: scanning sketches for step T+1 while step T's attention runs.</p>
+
+      <div class="callout-warn">
+        <strong>Honest limitation:</strong> at batch size = 1 on current hardware, resurrection stalls are a real risk without predictive prefetch or near-memory filtering. A pure software implementation on vanilla A100s benefits most when the resurrection rate stays below ~0.5% of context per step.
+      </div>
+
+      <!-- GHOSTIFICATION TIMING -->
+      <h3 style="margin-top:28px;">When and where ghostification happens</h3>
+      <p>Converting a token from warm KV to ghost state requires computing its sketch, assigning an anchor cluster, and writing the residual fingerprint. This must <strong>not</strong> happen on the GPU's critical decode path. Three viable approaches:</p>
+
+      <div class="grid-3" style="margin-top:16px;">
+        <div class="mini-card">
+          <h3>Async CPU thread</h3>
+          <p>A background CPU thread processes aging tokens from a warm-to-ghost queue. Low GPU overhead; adds a small memory copy but keeps GPU decode clean.</p>
+        </div>
+        <div class="mini-card">
+          <h3>Prefill phase</h3>
+          <p>Ghostify all tokens beyond a hot window during the prefill pass, before decode begins. No per-step overhead; requires pre-identifying hot vs cold at prompt time.</p>
+        </div>
+        <div class="mini-card">
+          <h3>Near-memory silicon</h3>
+          <p>Offload sketch computation and anchor assignment to a CXL memory controller or Upmem PIM unit — the ideal long-term path but requires custom hardware.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- HEAD-AWARE -->
+    <section class="section-card">
+      <div class="section-eyebrow">Head specialization</div>
+      <h2>Head-aware ghosting</h2>
+      <p>Different attention heads specialize differently. Some heads are local and syntactic — they care only about nearby tokens and decay rapidly after a few hundred positions. Others are retrieval heads that carry long-range semantic dependencies across thousands of tokens.</p>
+      <p>GhostKV should not ghost all heads equally. Per-head ghost aggressiveness can be determined from profiling or learned during fine-tuning:</p>
+      <table>
+        <thead><tr><th>Head behavior</th><th>Ghost policy</th><th>Sketch size</th></tr></thead>
+        <tbody>
+          <tr><td>Local / positional</td><td>Aggressive ghosting after 512–1K tokens</td><td class="cell-muted">8–16 dims</td></tr>
+          <tr><td>Retrieval-critical</td><td>Slower decay; higher-fidelity sketch</td><td class="cell-muted">32–64 dims</td></tr>
+          <tr><td>Dormant / inactive</td><td>Convert rapidly to minimal witness state</td><td class="cell-muted">4–8 dims</td></tr>
+          <tr><td>Semantic memory</td><td>Anchor-preserving reconstruction path</td><td class="cell-muted">16–32 dims</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- HARDWARE -->
+    <section id="hardware" class="section-card">
+      <div class="section-eyebrow">Hardware co-design</div>
+      <h2>Memory-side attention filtering</h2>
+      <p>GhostKV becomes especially compelling when the sketch-and-bound computation happens near memory — before data ever crosses the HBM or PCIe bandwidth bottleneck. Critically, this is not purely a future-hardware story: suitable substrates exist today.</p>
+      <div class="grid-2">
+        <div class="mini-card">
+          <h3>Near-memory filter</h3>
+          <p>A controller co-located with DRAM or CXL memory maintains ghost sketches and returns only candidate token IDs to the GPU — not full tensors. <strong>Upmem PIM</strong> (Processing-In-Memory) DRAM modules with embedded RISC cores are a near-term prototype target for sketch scoring.</p>
+        </div>
+        <div class="mini-card">
+          <h3>CXL 3.0/3.1 fabric</h3>
+          <p>CXL 3.0/3.1 enables Type-3 memory pooling with device-side compute. A CXL memory expander with sketch-scoring logic could filter ghost candidates before they traverse the fabric — returning token ID lists rather than tensors.</p>
+        </div>
+        <div class="mini-card">
+          <h3>Tier-aware cache</h3>
+          <p>Hot exact KV lives in HBM. Warm quantized KV in DRAM. Ghost records in a tiny HBM-resident index (~6 MB for 100K ghost tokens at 64 B each). Archive state on CXL or SSD.</p>
+        </div>
+        <div class="mini-card">
+          <h3>Semantic memory controller</h3>
+          <p>Memory acts as an active participant in attention — not a passive tensor warehouse. The ghost sketch index is a tiny structure: 100K tokens × 32 dims × 2B = 6.4 MB resident in HBM for sketch scoring on the GPU itself, if near-memory silicon isn't available.</p>
+        </div>
+      </div>
+      <div class="quote">The GPU no longer scans massive cold KV tensors. Memory itself performs semantic candidate elimination.</div>
+    </section>
+
+    <!-- PRIOR WORK COMPARISON -->
+    <section id="prior-work" class="section-card">
+      <div class="section-eyebrow">Differentiation</div>
+      <h2>How GhostKV differs from prior work</h2>
+      <p>Several important systems address KV-cache efficiency. GhostKV is most closely related to eviction-based and sparse-attention methods, but differs in a fundamental way: it does not discard or evict tokens — it converts them into reconstructable witnesses.</p>
+
+      <table>
+        <thead>
+          <tr><th>System</th><th>Core idea</th><th>What happens to cold tokens</th><th>GhostKV difference</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>StreamingLLM</td>
+            <td>Keep only sink + recent window</td>
+            <td class="cell-muted">Permanently evicted — cannot resurrect</td>
+            <td class="cell-accent">Ghost tokens stay reconstructable</td>
+          </tr>
+          <tr>
+            <td>H2O</td>
+            <td>Heavy Hitter Oracle — keep top-K attention tokens</td>
+            <td class="cell-muted">Low-attention tokens evicted</td>
+            <td class="cell-accent">GhostKV keeps witnesses; can resurrect if query changes</td>
+          </tr>
+          <tr>
+            <td>SnapKV</td>
+            <td>Prompt-time selection of important KV positions</td>
+            <td class="cell-muted">Unselected positions dropped at prefill</td>
+            <td class="cell-accent">GhostKV is query-adaptive — "importance" re-evaluated per decode step</td>
+          </tr>
+          <tr>
+            <td>PyramidKV</td>
+            <td>Layer-wise budget allocation; fewer KV at lower layers</td>
+            <td class="cell-muted">Layer-specific eviction</td>
+            <td class="cell-accent">GhostKV acts within layers; head-aware, query-conditioned</td>
+          </tr>
+          <tr>
+            <td>KV Quantization (KIVI, WKVQuant)</td>
+            <td>Store all KV at lower precision</td>
+            <td class="cell-muted">Stored, decompressed every step</td>
+            <td class="cell-accent">GhostKV skips decompression entirely for eliminated tokens</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout-warn">
+        <strong>The key claim:</strong> eviction-based methods permanently discard information based on historical importance. GhostKV preserves reconstructability and makes elimination decisions <em>at query time</em> — a token irrelevant to query Q may be essential for Q+1.
+      </div>
+    </section>
+
+    <!-- WHY IT MATTERS -->
+    <section class="section-card">
+      <div class="section-eyebrow">Impact</div>
+      <h2>Why this matters beyond compression</h2>
+      <p>Compression reduces <em>capacity pressure</em>. GhostKV reduces <em>movement pressure</em>. These are different problems with different bottlenecks.</p>
+
+      <table>
+        <thead><tr><th>Problem</th><th>GhostKV attack vector</th></tr></thead>
+        <tbody>
+          <tr><td>HBM bandwidth saturation</td><td>Avoid loading cold KV for tokens that fail sketch bounds</td></tr>
+          <tr><td>Decompression stalls</td><td>Eliminated tokens are never decompressed at all</td></tr>
+          <tr><td>Long-context latency scaling</td><td>Ghost state grows the cache without growing bandwidth cost proportionally</td></tr>
+          <tr><td>Multi-user cache contention</td><td>Ghost records are tiny; less HBM pollution per user's cold history</td></tr>
+          <tr><td>Persistent agent memory</td><td>Long multi-turn histories stored as reconstructable semantic state, not raw tensors</td></tr>
+          <tr><td>Heterogeneous memory tiers</td><td>Tiered residency: sketches in HBM, reconstruction sources in DRAM/CXL/SSD</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- THREATS TO VALIDITY -->
+    <!-- COMPLEXITY REDUCTION -->
+    <section class="section-card">
+      <div class="section-eyebrow">Asymptotic framing</div>
+      <h2>Complexity reduction</h2>
+      <p>The bandwidth savings can be expressed compactly. Let <strong>N</strong> = total context tokens, <strong>d</strong> = KV dimension, <strong>q</strong> = quantization factor, <strong>H</strong> = hot tokens, <strong>R</strong> = resurrected tokens per step. The decode memory traffic scales as:</p>
+
+      <table>
+        <thead><tr><th>System</th><th>Decode memory traffic</th><th>What moves</th></tr></thead>
+        <tbody>
+          <tr><td>Standard attention</td><td style="font-family:'DM Mono',monospace; color:var(--accent3);">O(N · d)</td><td>All KV tensors every step</td></tr>
+          <tr><td>Quantized KV (INT4)</td><td style="font-family:'DM Mono',monospace; color:var(--accent3);">O(N · d/q)</td><td>All KV, lower precision — still loads everything</td></tr>
+          <tr><td>Eviction (H2O, SnapKV)</td><td style="font-family:'DM Mono',monospace; color:var(--accent2);">O(K · d)</td><td>Top-K retained tokens — discards the rest permanently</td></tr>
+          <tr><td style="color:var(--accent); font-weight:700;">GhostKV</td><td style="font-family:'DM Mono',monospace; color:var(--accent);">O(H · d + R · d)</td><td>Hot tokens exact + resurrected survivors only</td></tr>
+        </tbody>
+      </table>
+
+      <p>Where <strong style="color:var(--accent);">R ≪ N</strong> is the key. If 85% of tokens are cold and 2% of those are resurrected per step, then R ≈ 0.017N. GhostKV's traffic approaches <strong>O(H · d)</strong> in the best case — linear in the hot window, not the full context.</p>
+
+      <div class="callout">
+        <strong>The difference from eviction:</strong> eviction methods also achieve O(K · d), but K is a fixed budget chosen at prefill time. GhostKV's R is <em>query-adaptive</em> — it shrinks when the query is specific and grows when it's broad. And unlike eviction, the N − H − R tokens are still reconstructable: they haven't been discarded, just deferred.
+      </div>
+
+      <div class="callout-warn" style="margin-top:16px;">
+        <strong>Is GhostKV approximate attention?</strong> No — with an important clarification. GhostKV performs <strong>exact attention</strong> over the surviving candidate set (hot tokens + resurrected tokens). Approximation exists <em>only</em> in the elimination stage: the sketch bound may conservatively include some low-relevance tokens (false resurrections), but it is designed never to exclude tokens that would have meaningfully contributed. The attention computation itself, once candidates are selected, is exact.
+      </div>
+    </section>
+
+    <section class="section-card">
+      <div class="section-eyebrow">Threats to validity</div>
+      <h2>Limitations & honest failure modes</h2>
+      <p>A strong concept note acknowledges where it could be wrong. GhostKV has four principal threats:</p>
+
+      <div class="question-card">
+        <h3>⚠ Sketch collision rate</h3>
+        <p>Unrelated tokens may project similarly in sketch space, triggering false resurrections that load unnecessary KV. The JL lemma bounds collision probability for random projections, but at high token volumes (100K+), even low collision rates accumulate. What's the empirical false-positive rate on real attention distributions?</p>
+      </div>
+      <div class="question-card">
+        <h3>⚠ Anchor drift</h3>
+        <p>Semantic anchors are assigned at ghostification time. If the model's attention geometry shifts mid-generation (common in multi-topic documents), old anchors become stale — increasing σ_anchor and therefore the uncertainty term. This pushes more tokens toward resurrection (conservative but costly) or, if thresholds aren't recalibrated, toward incorrect elimination. Anchor refresh strategies are an open problem.</p>
+      </div>
+      <div class="question-card">
+        <h3>⚠ Hardware assumptions</h3>
+        <p>The near-memory filtering argument requires compute co-located with DRAM or CXL. On vanilla A100s without Upmem PIM or CXL 3.x expanders, sketch scoring runs on the GPU itself. This is still viable (6.4 MB sketch index fits in L2 cache), but the bandwidth savings are lower because sketch data still crosses HBM, just at much lower volume than full KV.</p>
+      </div>
+      <div class="question-card">
+        <h3>⚠ Worst-case quality degradation</h3>
+        <p>The elimination bound is conservative in theory, but in practice depends on how well the sketch captures the key distribution. If a critical token has an atypically low sketch norm — e.g. after layer normalization or head-specific scaling — its sketch_sim will underestimate its true attention score, and it may be incorrectly eliminated. Worst-case perplexity delta under aggressive ghosting needs empirical measurement across diverse tasks.</p>
+      </div>
+    </section>
+
+    <!-- SIMULATION PLAN -->
+    <section id="simulation" class="section-card">
+      <div class="section-eyebrow">Validation roadmap</div>
+      <h2>Simulation plan</h2>
+      <p>GhostKV is pre-experimental. Here is the exact sequence of experiments needed to validate or falsify its core claims — ordered from cheapest to most involved.</p>
+
+      <!-- Step 1 -->
+      <div style="margin-top:28px; display:grid; grid-template-columns:40px 1fr; gap:16px; align-items:start;">
+        <div style="display:grid; place-items:center; width:40px; height:40px; border-radius:12px; background:rgba(110,255,196,0.1); border:1px solid rgba(110,255,196,0.25); font-family:'DM Mono',monospace; font-weight:900; color:var(--accent); font-size:15px; flex-shrink:0;">1</div>
+        <div>
+          <h3 style="margin:0 0 8px;">Sketch quality audit <span style="font-size:12px; color:var(--muted); font-weight:400; margin-left:8px;">~1–2 days, no training</span></h3>
+          <p style="margin:0 0 10px;"><strong>Goal:</strong> Measure how well random projections preserve key-query similarity in practice.</p>
+          <div style="background:var(--code-bg); border:1px solid var(--border); border-radius:14px; padding:18px 20px; font-size:13px; color:var(--muted); line-height:1.8;">
+            <div><span style="color:var(--accent2);">Model:</span> Llama-3-8B or Mistral-7B-Instruct</div>
+            <div><span style="color:var(--accent2);">Data:</span> GovReport (long documents), SCROLLS/QMSum</div>
+            <div><span style="color:var(--accent2);">Method:</span> Run forward pass, extract all K tensors, compute 32-dim random Gaussian projections, measure cosine-sim rank preservation vs exact dot product</div>
+            <div><span style="color:var(--accent2);">Metric:</span> Sketch collision rate — fraction of tokens with sketch_sim &lt; θ but true attn score &gt; θ (false eliminations)</div>
+            <div style="margin-top:10px; color:var(--muted); font-style:italic;">Pass criteria: false elimination rate &lt;0.5% at θ that eliminates &gt;70% of cold tokens.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div style="margin-top:24px; display:grid; grid-template-columns:40px 1fr; gap:16px; align-items:start;">
+        <div style="display:grid; place-items:center; width:40px; height:40px; border-radius:12px; background:rgba(126,173,255,0.1); border:1px solid rgba(126,173,255,0.25); font-family:'DM Mono',monospace; font-weight:900; color:var(--accent2); font-size:15px; flex-shrink:0;">2</div>
+        <div>
+          <h3 style="margin:0 0 8px;">θ-vs-quality curve <span style="font-size:12px; color:var(--muted); font-weight:400; margin-left:8px;">~3–5 days</span></h3>
+          <p style="margin:0 0 10px;"><strong>Goal:</strong> Map the elimination threshold tradeoff space empirically.</p>
+          <div style="background:var(--code-bg); border:1px solid var(--border); border-radius:14px; padding:18px 20px; font-size:13px; color:var(--muted); line-height:1.8;">
+            <div><span style="color:var(--accent2);">Model:</span> Llama-3-8B</div>
+            <div><span style="color:var(--accent2);">Datasets:</span> LongBench (multi-task), Needle-in-a-Haystack (retrieval stress test), GovReport (summarization)</div>
+            <div><span style="color:var(--accent2);">Compare against:</span> full exact KV · INT4 quantized KV (KIVI) · SnapKV (budget=512) · H2O (heavy hitter, budget=512)</div>
+            <div><span style="color:var(--accent2);">Sweep:</span> θ ∈ {0.1, 0.2, 0.3, 0.4, 0.5, 0.6} with sketch dim ∈ {16, 32, 64}</div>
+            <div><span style="color:var(--accent2);">Metrics:</span>
+              <ul style="margin:6px 0 0 16px; padding:0; list-style:disc;">
+                <li>Perplexity delta vs exact KV (primary quality signal)</li>
+                <li>Elimination rate (% of ghost tokens skipped per step)</li>
+                <li>Resurrection rate (% of ghost tokens fetched per step)</li>
+                <li>LongBench task score delta (F1, Rouge-L, accuracy)</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div style="margin-top:24px; display:grid; grid-template-columns:40px 1fr; gap:16px; align-items:start;">
+        <div style="display:grid; place-items:center; width:40px; height:40px; border-radius:12px; background:rgba(255,217,122,0.1); border:1px solid rgba(255,217,122,0.25); font-family:'DM Mono',monospace; font-weight:900; color:var(--accent3); font-size:15px; flex-shrink:0;">3</div>
+        <div>
+          <h3 style="margin:0 0 8px;">Latency benchmark <span style="font-size:12px; color:var(--muted); font-weight:400; margin-left:8px;">~1 week, requires implementation</span></h3>
+          <p style="margin:0 0 10px;"><strong>Goal:</strong> Verify that sketch scoring + selective resurrection is faster than loading all KV, across batch sizes.</p>
+          <div style="background:var(--code-bg); border:1px solid var(--border); border-radius:14px; padding:18px 20px; font-size:13px; color:var(--muted); line-height:1.8;">
+            <div><span style="color:var(--accent2);">Hardware:</span> A100-80GB (baseline), H100 SXM (stretch goal)</div>
+            <div><span style="color:var(--accent2);">Implementation:</span> Async CPU ghostification thread + GPU sketch scoring (sketch index resident in L2/HBM) + selective DMA resurrection</div>
+            <div><span style="color:var(--accent2);">Batch sizes:</span> 1, 4, 8, 16 (resurrection latency hiding improves with larger batch)</div>
+            <div><span style="color:var(--accent2);">Context lengths:</span> 32K, 64K, 128K</div>
+            <div><span style="color:var(--accent2);">Metrics:</span>
+              <ul style="margin:6px 0 0 16px; padding:0; list-style:disc;">
+                <li>p50 / p95 decode step latency (ms)</li>
+                <li>HBM bandwidth utilization (GB/s, via nvtx/nsight)</li>
+                <li>Throughput (tokens/sec) vs FlashAttention-2 baseline</li>
+              </ul>
+            </div>
+            <div style="margin-top:10px; color:var(--muted); font-style:italic;">Pass criteria: p95 decode latency ≤ full-KV baseline at batch ≥ 4, with &lt;1pp perplexity delta at θ achieving ≥60% cold elimination.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout" style="margin-top:24px;">
+        <strong>Why this order matters:</strong> Step 1 takes a day and either validates the sketch approach or kills it early. Step 2 maps the tradeoff space before any real implementation. Step 3 is where real engineering effort begins — only worth it if steps 1 and 2 look promising.
+      </div>
+    </section>
+
+    <!-- OPEN QUESTIONS -->
+    <section class="section-card">
+      <div class="section-eyebrow">Open problems</div>
+      <h2>Research questions worth pursuing</h2>
+      <p>GhostKV is a pre-experimental concept. These are the hard questions that determine whether it works in practice:</p>
+
+      <div class="question-card">
+        <h3><span class="q-num">Q1 —</span> How tight can elimination bounds become?</h3>
+        <p>The bound must be conservative (never wrongly eliminate) while tight enough to be useful. Loose bounds eliminate fewer tokens; tight bounds risk quality degradation. What sketch dimensionality and uncertainty model achieves the best tradeoff?</p>
+      </div>
+      <div class="question-card">
+        <h3><span class="q-num">Q2 —</span> Should sketches be learned or random?</h3>
+        <p>Random Gaussian projections are provably sound (JL lemma) but agnostic to the model's attention geometry. Model-aware sketches trained jointly with the transformer could tighten bounds substantially. What's the training overhead?</p>
+      </div>
+      <div class="question-card">
+        <h3><span class="q-num">Q3 —</span> Which layers and heads form durable semantic anchors?</h3>
+        <p>Anchor stability is central to reconstruction quality. If anchors drift as context grows, reconstruction error accumulates. Understanding per-layer, per-head anchor stability determines where aggressive ghosting is safe.</p>
+      </div>
+      <div class="question-card">
+        <h3><span class="q-num">Q4 —</span> Can resurrection DMA reliably overlap with decode compute?</h3>
+        <p>The performance case depends on hiding resurrection latency behind prefill or attention compute. Is this feasible on current GPU/CPU memory hierarchies? What software pipelining is required?</p>
+      </div>
+      <div class="question-card">
+        <h3><span class="q-num">Q5 —</span> How does GhostKV interact with speculative decoding?</h3>
+        <p>Speculative decoding generates multiple candidate tokens in parallel. Ghost elimination thresholds may need to account for the full set of candidate queries, not just the greedy next token.</p>
+      </div>
+      <div class="question-card">
+        <h3><span class="q-num">Q6 —</span> What minimal near-memory silicon is sufficient?</h3>
+        <p>For the hardware co-design path: what is the minimum compute required at the memory controller to perform sketch scoring? A few multiply-accumulates per ghost record — is this feasible in a CXL or HBM PHY layer?</p>
+      </div>
+    </section>
+
+    <!-- CRITICISM -->
+    <section class="section-card">
+      <div class="section-eyebrow">Anticipated objections</div>
+      <h2>The main criticism — and the answer</h2>
+
+      <div class="callout-warn">
+        <strong>"Sketch scoring itself will become bandwidth-bound at million-token scale."</strong> If you have 1M ghost tokens and must score each one against the query sketch every decode step, you're reading 1M × 64B = 64 MB of sketch data per step — which at 900 GB/s HBM takes ~71μs. That's not free.
+      </div>
+
+      <p>This is the right criticism, and it has three answers:</p>
+
+      <div class="grid-3" style="margin-top:16px;">
+        <div class="mini-card">
+          <div class="num-badge">01</div>
+          <h3>Sketches are tiny</h3>
+          <p>64 MB for 1M ghost tokens at 64B each vs ~4TB for 1M full FP16 tokens. Even if sketch scoring isn't free, the bandwidth cost is ~62.5× lower than loading full KV. The absolute number matters more than the asymptotic one.</p>
+        </div>
+        <div class="mini-card">
+          <div class="num-badge">02</div>
+          <h3>Hierarchical sketch trees</h3>
+          <p>At million-token scale, ghost records can be organized into a hierarchical index — anchor-level sketches first, then per-token sketches only for survivors of the coarse filter. O(log N) traversal instead of O(N) for the sketch scoring phase.</p>
+        </div>
+        <div class="mini-card">
+          <div class="num-badge">03</div>
+          <h3>Near-memory filtering</h3>
+          <p>With Upmem PIM or CXL-side compute, sketch scoring happens at the memory controller — the sketch data never crosses the GPU's memory bus at all. The GPU receives only a list of token IDs to resurrect.</p>
+        </div>
+      </div>
+
+      <p style="margin-top:20px;">A secondary criticism is that the system adds engineering complexity — a lifecycle manager, a sketch index, async ghostification, and a resurrection DMA pipeline — on top of an already complex inference stack. This is fair. GhostKV is not a one-line patch. The bet is that the bandwidth savings at long-context scale justify the complexity, the same way FlashAttention's tile scheduling justified its complexity over naive attention.</p>
+    </section>
+
+    <!-- CLOSING -->
+    <section class="section-card">
+      <div class="section-eyebrow">Closing framing</div>
+      <h2>A different mental model for AI memory</h2>
+      <p>GhostKV suggests that future inference memory systems may stop treating all stored state as raw tensors waiting to be loaded. Instead, cold memory becomes <strong>probabilistic, reconstructable, and query-conditioned</strong>:</p>
+
+      <ul style="color:var(--muted2); padding-left: 20px; margin: 16px 0;">
+        <li style="margin-bottom: 8px;">The exact tensor is no longer always the primary object in the cache.</li>
+        <li style="margin-bottom: 8px;">Cold tokens store enough to make an elimination decision — not enough to participate in attention directly.</li>
+        <li style="margin-bottom: 8px;">Reconstruction is expensive and rare — elimination is cheap and common.</li>
+        <li>Memory behaves like a smart index, not a passive buffer.</li>
+      </ul>
+
+      <div class="quote">GhostKV transforms cold KV-cache entries into semantic attention witnesses — reconstructing exact KV only when a query proves a token could meaningfully matter.</div>
+
+      <p>Whether this pans out empirically depends on the tightness of elimination bounds, anchor stability, and whether resurrection latency can be hidden. These are solvable engineering problems. The conceptual shift — from "compress and load all" to "prove irrelevance before loading" — seems worth exploring.</p>
+
+      <div class="quote" style="margin-top:28px; font-size:20px;">In the extreme limit, future transformers may never persist exact KV at all — only reconstructable semantic state trajectories.</div>
+    </section>
+
+    <!-- RELATED WORK -->
+    <section class="section-card">
+      <div class="section-eyebrow">Context</div>
+      <h2>Related areas</h2>
+      <p>GhostKV sits at the intersection of several active research threads. Prior work it builds on or connects to:</p>
+      <p><strong>KV-cache compression:</strong> KIVI, WKVQuant, and KVSharer explore quantization and sharing of KV tensors. <strong>Sparse/selective attention:</strong> H2O, SnapKV, PyramidKV, and ScissorHands develop eviction policies for KV budgets. <strong>Approximate attention:</strong> Reformer (LSH attention), Longformer, BigBird, and Scatterbrain use structured sparsity. <strong>Approximate nearest-neighbor search:</strong> LSH, HNSW, and FAISS form the basis for sketch-based similarity estimation. <strong>Memory-side compute:</strong> PIM (Processing-in-Memory), CXL smart memory, and near-data processing are relevant hardware directions. <strong>Semantic compression:</strong> Memorizing Transformers and MemGPT treat long-horizon memory as a retrieval problem.</p>
+
+      <div class="callout-warn" style="margin-top:20px;">
+        <strong>Why GhostKV is not ANN retrieval.</strong> A natural confusion: GhostKV uses sketch-based similarity scoring — doesn't that make it approximate nearest-neighbor search over KV entries? The distinction matters. ANN retrieval (FAISS, HNSW) finds semantically similar embeddings globally across a corpus, optimizing for recall over a large index. GhostKV performs bounded elimination <em>inside the transformer attention pipeline itself</em> — per layer, per head, per decode step — preserving autoregressive semantics, the per-head attention structure, and the softmax normalization contract. It does not retrieve; it eliminates. The query is not a search query; it is the transformer's attention query vector. The "index" is not a vector database; it is the KV cache for a single sequence. These are different problems with different correctness requirements.
+      </div>
+
+      <p>The distinctive claim in GhostKV: combining sketch-based elimination, conservative upper bounds, and lazy reconstruction into a single lifecycle that avoids memory movement for cold tokens rather than just reducing their stored size.</p>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-title">GhostKV</div>
+        <p style="margin: 6px 0 16px; font-size:14px; color:var(--muted); max-width: 480px; line-height:1.6;">A concept note on semantic attention witnesses and reconstruction-first KV memory systems. Pre-experimental — inviting discussion, collaboration, and empirical work.</p>
+        <p style="margin: 0 0 10px; font-size:13px; color:var(--muted);"><a href="/index.html" style="color:inherit; text-decoration:none;">© 2026 MANISH AI. All rights reserved.</a></p>
+        <p style="margin: 0 0 14px; font-size:13px; color:var(--muted2); line-height:1.7;">Patent application <strong>202641062451</strong> · Filed <strong>May 17, 2026</strong> · Jurisdiction <strong>India</strong></p>
+
+        <div style="font-size:13px; font-weight:700; color:var(--muted2); margin-bottom:10px; letter-spacing:0.04em;">3 concrete things to tackle first:</div>
+        <div style="display:grid; gap:10px; max-width:520px; margin-bottom:22px;">
+          <div style="display:flex; gap:12px; align-items:flex-start; font-size:13px; color:var(--muted);">
+            <span style="color:var(--accent); font-weight:800; font-family:'DM Mono',monospace; flex-shrink:0;">01</span>
+            <span><strong style="color:var(--muted2);">Measure sketch collision rate on Llama-3-8B.</strong> Run a 128K-token forward pass, compute 32-dim random projections of all keys, and measure what fraction of eliminated tokens would have had non-negligible attention scores under exact computation.</span>
+          </div>
+          <div style="display:flex; gap:12px; align-items:flex-start; font-size:13px; color:var(--muted);">
+            <span style="color:var(--accent); font-weight:800; font-family:'DM Mono',monospace; flex-shrink:0;">02</span>
+            <span><strong style="color:var(--muted2);">Profile resurrection rate vs. perplexity tradeoff.</strong> Sweep elimination threshold θ from conservative to aggressive on LongBench/RULER, record resurrection rate and perplexity delta. The θ-vs-quality curve is the central empirical result GhostKV needs.</span>
+          </div>
+          <div style="display:flex; gap:12px; align-items:flex-start; font-size:13px; color:var(--muted);">
+            <span style="color:var(--accent); font-weight:800; font-family:'DM Mono',monospace; flex-shrink:0;">03</span>
+            <span><strong style="color:var(--muted2);">Prototype ghostification as a CPU async thread.</strong> Implement warm→ghost conversion off the GPU's critical path and benchmark the overhead vs. standard FlashAttention-2 decode on A100 at batch sizes 1, 4, 8.</span>
+          </div>
+        </div>
+
+        <div class="footer-meta">Status: concept / pre-experimental · May 2026</div>
+        <div class="footer-links">
+          <a href="/writings.html" class="footer-link">← All writings</a>
+          <a href="#idea" class="footer-link">Read the concept</a>
+          <a href="#simulation" class="footer-link">Simulation plan</a>
+          <a href="#worked-example" class="footer-link">Worked example</a>
+          <a href="#prior-work" class="footer-link">Prior work comparison</a>
+        </div>
+      </div>
+      <div style="text-align:right; color: var(--muted); font-size:13px; padding-top: 6px;">
+        <div style="margin-bottom: 6px; font-weight: 600; color: var(--muted2);">Discussion welcome</div>
+        <div>Share · Cite · Collaborate</div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const toggle = document.getElementById('theme-toggle');
+  const syncLabel = () => {
+    if (!toggle) return;
+    toggle.textContent = document.documentElement.classList.contains('light') ? 'Dark' : 'Light';
+  };
+  toggle?.addEventListener('click', () => {
+    document.documentElement.classList.toggle('light');
+    localStorage.setItem('theme', document.documentElement.classList.contains('light') ? 'light' : 'dark');
+    syncLabel();
+  });
+  syncLabel();
+})();
+</script>
+</body>
+</html>
