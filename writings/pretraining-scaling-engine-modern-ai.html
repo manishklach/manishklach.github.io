@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pretraining Scaling: The Engine Behind Modern AI | MANISH AI</title>
+<meta name="description" content="A deep technical explainer on pretraining scaling laws, Chinchilla compute-optimal training, data limits, inference economics, and modern AI scaling.">
+<meta name="keywords" content="pretraining scaling, scaling laws, Chinchilla, Kaplan scaling laws, LLM pretraining, compute optimal training, AI scaling laws, transformer training compute, inference economics">
+<meta name="author" content="MANISH AI">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://manishklach.github.io/writings/pretraining-scaling-engine-modern-ai.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Pretraining Scaling: The Engine Behind Modern AI | MANISH AI">
+<meta property="og:description" content="A deep technical explainer on pretraining scaling laws, Chinchilla compute-optimal training, data limits, inference economics, and modern AI scaling.">
+<meta property="og:url" content="https://manishklach.github.io/writings/pretraining-scaling-engine-modern-ai.html">
+<meta property="og:site_name" content="MANISH AI">
+<meta property="og:image" content="https://manishklach.github.io/og/pretraining-scaling-engine-modern-ai.png">
+<meta property="og:image:alt" content="Pretraining Scaling: The Engine Behind Modern AI social preview">
+<meta property="article:published_time" content="2026-05-18">
+<meta property="article:modified_time" content="2026-05-18">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pretraining Scaling: The Engine Behind Modern AI | MANISH AI">
+<meta name="twitter:description" content="A deep technical explainer on pretraining scaling laws, Chinchilla compute-optimal training, data limits, inference economics, and modern AI scaling.">
+<meta name="twitter:image" content="https://manishklach.github.io/og/pretraining-scaling-engine-modern-ai.png">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc">
+<script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Pretraining Scaling: The Engine Behind Modern AI",
+  "description": "A deep technical explainer on pretraining scaling laws, Chinchilla compute-optimal training, data limits, inference economics, and modern AI scaling.",
+  "url": "https://manishklach.github.io/writings/pretraining-scaling-engine-modern-ai.html",
+  "datePublished": "2026-05-18",
+  "dateModified": "2026-05-18",
+  "author": { "@type": "Person", "name": "MANISH AI", "url": "https://manishklach.github.io/" },
+  "publisher": { "@type": "Person", "name": "MANISH AI", "url": "https://manishklach.github.io/" },
+  "mainEntityOfPage": { "@type": "WebPage", "@id": "https://manishklach.github.io/writings/pretraining-scaling-engine-modern-ai.html" },
+  "inLanguage": "en-US",
+  "keywords": "pretraining scaling, scaling laws, Chinchilla, Kaplan scaling laws, LLM pretraining, compute optimal training, AI scaling laws, transformer training compute, inference economics"
+}</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Playfair+Display:wght@600;700&family=Source+Serif+4:opsz,wght@8..60,300;8..60,400;8..60,600&display=swap');
+
+  :root {
+    --font-serif: 'Source Serif 4', Georgia, serif;
+    --font-display: 'Playfair Display', Georgia, serif;
+    --font-sans: 'IBM Plex Sans', Arial, sans-serif;
+    --font-mono: 'IBM Plex Mono', Consolas, monospace;
+    --color-bg: #f7f4ee;
+    --color-panel: rgba(255, 252, 247, 0.86);
+    --color-panel-strong: #fffdf9;
+    --color-text-primary: #1f1d1a;
+    --color-text-secondary: #4f4a43;
+    --color-text-tertiary: #756d63;
+    --color-text-info: #8f4b24;
+    --color-border-primary: rgba(70, 52, 34, 0.15);
+    --color-border-secondary: rgba(70, 52, 34, 0.24);
+    --color-border-info: rgba(143, 75, 36, 0.42);
+    --color-accent: #b45a2f;
+    --color-accent-soft: rgba(180, 90, 47, 0.12);
+    --color-blue: #245d7a;
+    --color-blue-soft: rgba(36, 93, 122, 0.12);
+    --color-green: #46694d;
+    --color-green-soft: rgba(70, 105, 77, 0.12);
+    --shadow-soft: 0 18px 55px rgba(59, 43, 25, 0.08);
+    --border-radius-lg: 22px;
+    --border-radius-md: 14px;
+    --border-radius-sm: 10px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html {
+    background:
+      radial-gradient(circle at top left, rgba(180, 90, 47, 0.12), transparent 34%),
+      radial-gradient(circle at 88% 8%, rgba(36, 93, 122, 0.12), transparent 28%),
+      linear-gradient(180deg, #fbf8f2 0%, #f7f4ee 100%);
+  }
+
+  body {
+    font-family: var(--font-serif);
+    font-size: 18px;
+    line-height: 1.82;
+    color: var(--color-text-primary);
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 2.2rem 1.4rem 4rem;
+    background: transparent;
+  }
+
+  .page-shell {
+    background: var(--color-panel);
+    border: 1px solid var(--color-border-primary);
+    box-shadow: var(--shadow-soft);
+    backdrop-filter: blur(10px);
+    border-radius: 32px;
+    overflow: hidden;
+  }
+
+  .article-inner {
+    padding: 2rem 1.6rem 3.4rem;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .hero {
+    padding: 1.2rem 0 1rem;
+    margin-bottom: 1.4rem;
+  }
+
+  .kicker {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-text-info);
+    margin-bottom: 1rem;
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-size: clamp(34px, 6vw, 56px);
+    font-weight: 700;
+    line-height: 1.04;
+    letter-spacing: -0.03em;
+    margin-bottom: 1rem;
+    max-width: 12.5ch;
+  }
+
+  .subtitle {
+    font-size: 21px;
+    font-weight: 300;
+    font-style: italic;
+    color: var(--color-text-secondary);
+    max-width: 39ch;
+    margin-bottom: 1.6rem;
+    line-height: 1.5;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    margin-bottom: 1.6rem;
+  }
+
+  .meta span {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+    padding: 0.42rem 0.68rem;
+    border: 1px solid var(--color-border-primary);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.5);
+  }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.25fr 0.95fr;
+    gap: 18px;
+    align-items: stretch;
+  }
+
+  .hero-card,
+  .hero-sidecard,
+  .callout,
+  .law-card,
+  .takeaway-card,
+  .timeline-item,
+  .chart-container,
+  .equation-block,
+  .dimension-card {
+    background: var(--color-panel-strong);
+    border: 1px solid var(--color-border-primary);
+    border-radius: var(--border-radius-lg);
+  }
+
+  .hero-card {
+    padding: 1.4rem 1.5rem 1.3rem;
+    position: relative;
+    overflow: hidden;
+    min-height: 250px;
+  }
+
+  .hero-card::before {
+    content: "";
+    position: absolute;
+    inset: auto -15% -40% 35%;
+    height: 220px;
+    background: radial-gradient(circle, rgba(180, 90, 47, 0.18), transparent 60%);
+    pointer-events: none;
+  }
+
+  .hero-card-label {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-text-info);
+    margin-bottom: 0.75rem;
+  }
+
+  .hero-card-title {
+    font-family: var(--font-display);
+    font-size: 27px;
+    line-height: 1.12;
+    margin-bottom: 0.7rem;
+    letter-spacing: -0.02em;
+    max-width: 15ch;
+  }
+
+  .hero-card p,
+  .hero-sidecard p {
+    color: var(--color-text-secondary);
+    font-size: 15px;
+    margin-bottom: 0;
+  }
+
+  .mini-curve {
+    margin-top: 1.15rem;
+    height: 88px;
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, rgba(180, 90, 47, 0.06), rgba(180, 90, 47, 0)),
+      repeating-linear-gradient(to right, rgba(70, 52, 34, 0.06) 0 1px, transparent 1px 68px),
+      repeating-linear-gradient(to top, rgba(70, 52, 34, 0.06) 0 1px, transparent 1px 32px),
+      #faf7f2;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mini-curve svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .hero-sidecard {
+    padding: 1.3rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .hero-stat {
+    padding-bottom: 0.95rem;
+    border-bottom: 1px solid var(--color-border-primary);
+  }
+
+  .hero-stat:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .hero-stat-number {
+    font-family: var(--font-display);
+    font-size: 34px;
+    line-height: 1;
+    margin-bottom: 0.3rem;
+    color: var(--color-blue);
+  }
+
+  .hero-stat-label {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--color-text-secondary);
+  }
+
+  h2 {
+    font-family: var(--font-display);
+    font-size: 31px;
+    font-weight: 700;
+    line-height: 1.14;
+    letter-spacing: -0.02em;
+    margin: 2.8rem 0 0.9rem;
+  }
+
+  h3 {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+    margin: 2rem 0 0.8rem;
+  }
+
+  p { margin-bottom: 1.25rem; }
+
+  .lead {
+    font-size: 20px;
+    color: var(--color-text-secondary);
+    margin-bottom: 1.8rem;
+    line-height: 1.72;
+  }
+
+  .section-intro {
+    color: var(--color-text-secondary);
+    font-size: 19px;
+  }
+
+  blockquote {
+    margin: 2rem 0;
+    padding: 0.35rem 0 0.35rem 1.25rem;
+    border-left: 3px solid var(--color-border-info);
+    font-style: italic;
+    font-size: 19px;
+    color: var(--color-text-secondary);
+  }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--color-border-primary);
+    margin: 2.6rem 0;
+  }
+
+  .law-grid,
+  .takeaway-grid,
+  .dimension-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin: 1.5rem 0;
+  }
+
+  .law-card,
+  .takeaway-card,
+  .dimension-card {
+    padding: 1rem 1.1rem;
+  }
+
+  .law-card-label,
+  .callout-label,
+  .chart-title,
+  .dimension-label {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-info);
+  }
+
+  .law-card-value {
+    font-family: var(--font-display);
+    font-size: 25px;
+    margin: 0.2rem 0 0.15rem;
+  }
+
+  .law-card-desc,
+  .dimension-body,
+  .takeaway-text,
+  .timeline-body,
+  .fine-print {
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--color-text-secondary);
+  }
+
+  .callout {
+    padding: 1.15rem 1.2rem;
+    margin: 1.7rem 0;
+    background: linear-gradient(180deg, rgba(180, 90, 47, 0.06), rgba(180, 90, 47, 0.02));
+  }
+
+  .callout p { margin: 0.35rem 0 0; font-size: 15px; }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: rgba(70, 52, 34, 0.06);
+    padding: 2px 6px;
+    border-radius: 6px;
+  }
+
+  .equation-block {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    line-height: 1.95;
+    padding: 1.15rem 1.25rem;
+    margin: 1.4rem 0;
+    overflow-x: auto;
+    background: linear-gradient(180deg, rgba(36, 93, 122, 0.04), rgba(36, 93, 122, 0.01));
+  }
+
+  .equation-block .comment {
+    color: var(--color-text-tertiary);
+    font-style: italic;
+  }
+
+  .chart-container {
+    margin: 1.7rem 0;
+    padding: 1.1rem 1.1rem 1rem;
+  }
+
+  .chart-title {
+    text-align: center;
+    margin-bottom: 0.3rem;
+  }
+
+  .chart-subtitle {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    text-align: center;
+    color: var(--color-text-secondary);
+    margin-bottom: 1rem;
+  }
+
+  .chart-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,255,255,0.9));
+  }
+
+  .chart-axis,
+  .chart-grid {
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .chart-grid {
+    stroke: rgba(70, 52, 34, 0.12);
+    stroke-width: 1;
+  }
+
+  .chart-axis {
+    stroke: rgba(70, 52, 34, 0.32);
+    stroke-width: 1.5;
+  }
+
+  .chart-fit {
+    fill: none;
+    stroke: #b45a2f;
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .chart-point-kaplan { fill: #245d7a; }
+  .chart-point-chinchilla { fill: #b45a2f; }
+  .chart-point-deploy { fill: #46694d; }
+
+  .chart-label,
+  .chart-axis-label,
+  .chart-legend-text {
+    font-family: var(--font-sans);
+    fill: var(--color-text-secondary);
+  }
+
+  .chart-label {
+    font-size: 12px;
+  }
+
+  .chart-axis-label {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .chart-legend-text {
+    font-size: 12px;
+  }
+
+  .timeline {
+    position: relative;
+    margin: 1.7rem 0;
+    padding-left: 1.25rem;
+  }
+
+  .timeline::before {
+    content: "";
+    position: absolute;
+    left: 12px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, rgba(180, 90, 47, 0.18), rgba(36, 93, 122, 0.2));
+  }
+
+  .timeline-item {
+    position: relative;
+    margin-bottom: 1rem;
+    padding: 1rem 1rem 1rem 1.4rem;
+    margin-left: 1rem;
+  }
+
+  .timeline-dot {
+    position: absolute;
+    left: -1.35rem;
+    top: 1.2rem;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff5ef;
+    border: 3px solid var(--color-accent);
+    box-shadow: 0 0 0 8px rgba(180, 90, 47, 0.07);
+  }
+
+  .timeline-year {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--color-text-info);
+    text-transform: uppercase;
+    margin-bottom: 0.2rem;
+  }
+
+  .timeline-title {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+  }
+
+  .two-column-note {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 1.6rem 0;
+  }
+
+  .note-box {
+    padding: 1rem 1.05rem;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--color-border-primary);
+    background: rgba(255, 255, 255, 0.5);
+  }
+
+  .note-box strong {
+    display: block;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-text-info);
+    margin-bottom: 0.35rem;
+  }
+
+  .dimension-label {
+    margin-bottom: 0.35rem;
+  }
+
+  .dimension-title {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+  }
+
+  .takeaway-text strong {
+    display: block;
+    font-size: 14px;
+    color: var(--color-text-primary);
+    margin-bottom: 0.2rem;
+  }
+
+  .big-stat {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+    margin: 1.8rem 0 0.2rem;
+  }
+
+  .stat-item {
+    padding: 1.1rem 1rem;
+    border-radius: var(--border-radius-lg);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.55));
+    border: 1px solid var(--color-border-primary);
+  }
+
+  .stat-number {
+    font-family: var(--font-display);
+    font-size: 37px;
+    line-height: 1;
+    color: var(--color-blue);
+  }
+
+  .stat-label {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    margin-top: 0.35rem;
+    line-height: 1.45;
+  }
+
+  .sources {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: var(--color-text-tertiary);
+    margin-top: 1rem;
+    line-height: 1.7;
+  }
+
+  @media (max-width: 760px) {
+    body { padding: 1rem 0.8rem 2.4rem; }
+    .article-inner { padding: 1.25rem 1rem 2.3rem; }
+    .hero-grid,
+    .two-column-note {
+      grid-template-columns: 1fr;
+    }
+    h1 { max-width: none; }
+    .subtitle { font-size: 19px; }
+    .timeline-item { margin-left: 0.9rem; }
+  }
+
+  html.dark {
+    --color-bg: #0f141a;
+    --color-panel: rgba(21, 29, 38, 0.88);
+    --color-panel-strong: #151d26;
+    --color-text-primary: #eef3f7;
+    --color-text-secondary: #c4d0db;
+    --color-text-tertiary: #9cb0c2;
+    --color-text-info: #8bb5d1;
+    --color-border-primary: rgba(255, 255, 255, 0.13);
+    --color-border-secondary: rgba(255, 255, 255, 0.22);
+    --color-border-info: rgba(139, 181, 209, 0.42);
+    --color-accent: #8bb5d1;
+    --color-accent-soft: rgba(139, 181, 209, 0.12);
+    --color-blue: #91c7e4;
+    --color-blue-soft: rgba(145, 199, 228, 0.14);
+    --color-green: #9ac9a2;
+    --color-green-soft: rgba(154, 201, 162, 0.13);
+    --shadow-soft: 0 18px 55px rgba(0, 0, 0, 0.34);
+  }
+
+  html.dark {
+    background:
+      radial-gradient(circle at top left, rgba(139, 181, 209, 0.12), transparent 34%),
+      radial-gradient(circle at 88% 8%, rgba(154, 201, 162, 0.1), transparent 28%),
+      linear-gradient(180deg, #0f141a 0%, #111820 100%);
+  }
+
+  body {
+    max-width: none;
+    padding: 0 1.4rem 4rem;
+  }
+
+  .site-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    margin: 0 -1.4rem 2.2rem;
+    background: rgba(245, 247, 251, 0.76);
+    backdrop-filter: blur(18px);
+    border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  }
+
+  html.dark .site-topbar {
+    background: rgba(10, 10, 10, 0.78);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .site-nav {
+    width: min(100% - 2rem, 1120px);
+    min-height: 74px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .brand-lockup {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    transition: opacity 0.2s ease;
+    text-decoration: none;
+  }
+
+  .brand-lockup:hover { opacity: 0.8; }
+
+  .brand-logo {
+    display: block;
+    height: 56px;
+    width: auto;
+    max-width: min(300px, 48vw);
+    object-fit: contain;
+  }
+
+  .header-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .header-nav a,
+  .header-nav button {
+    padding: 10px 14px;
+    border-radius: 999px;
+    color: var(--color-text-tertiary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 600;
+    border: 0;
+    background: transparent;
+    transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .header-nav a:hover,
+  .header-nav a[aria-current="page"],
+  .header-nav button:hover {
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--color-text-primary);
+    transform: translateY(-1px);
+  }
+
+  html.dark .header-nav a:hover,
+  html.dark .header-nav a[aria-current="page"],
+  html.dark .header-nav button:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .page-shell {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  .site-footer {
+    width: min(100% - 2rem, 860px);
+    margin: 1.8rem auto 0;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--color-border-primary);
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: center;
+    font-family: var(--font-sans);
+    color: var(--color-text-tertiary);
+    font-size: 13px;
+  }
+
+  .site-footer a { color: var(--color-text-info); text-decoration: none; }
+  .site-footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 760px) {
+    body { padding: 0 0.8rem 2.4rem; }
+    .site-topbar { margin: 0 -0.8rem 1rem; }
+    .header-nav { display: none; }
+    .brand-logo { height: 42px; }
+    .site-footer { flex-direction: column; align-items: flex-start; width: min(100% - 1.6rem, 860px); }
+  }
+</style>
+</head>
+<body>
+<header class="site-topbar">
+  <div class="site-nav">
+    <a aria-label="MANISH AI homepage" class="brand-lockup" href="/">
+      <img alt="MANISH AI" class="brand-logo" height="56" src="/assets/manish-ai-logo.png" width="75">
+    </a>
+    <nav aria-label="Primary" class="header-nav">
+      <a href="/#hero">Home</a>
+      <a href="/#featured">Featured</a>
+      <a href="/patents.html">Patents</a>
+      <a aria-current="page" href="/writings.html">Writing</a>
+      <a href="/#contact">Contact</a>
+      <button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button>
+    </nav>
+  </div>
+</header>
+<main class="page-shell" data-pagefind-body>
+  <div class="article-inner">
+    <h2 class="sr-only">Blog post: Pretraining Scaling in Large Language Models</h2>
+
+    <section class="hero">
+      <div class="kicker">Deep Dive · AI Research</div>
+      <h1>Pretraining Scaling: The Engine Behind Modern AI</h1>
+      <p class="subtitle">How bigger models, larger datasets, and vast compute budgets kept producing smarter systems, why that was economically rational, and where the classical scaling story now starts to bend.</p>
+
+      <div class="meta">
+        <span>May 2026</span>
+        <span>~17 min read</span>
+        <span>Foundations · LLM Research</span>
+      </div>
+
+      <div class="hero-grid">
+        <div class="hero-card">
+          <div class="hero-card-label">The Core Surprise</div>
+          <div class="hero-card-title">Progress was not merely large. It was predictable.</div>
+          <p>That is the historical hinge. Frontier labs did not spend billions because bigger models sometimes worked. They spent billions because, across many orders of magnitude, the returns were smooth enough to extrapolate from small runs to giant ones.</p>
+          <div class="mini-curve" aria-hidden="true">
+            <svg viewBox="0 0 520 120" preserveAspectRatio="none">
+              <path d="M18 94 C92 80, 138 72, 202 58 S310 36, 378 28 S468 18, 502 14" fill="none" stroke="#b45a2f" stroke-width="4" stroke-linecap="round"/>
+              <circle cx="58" cy="84" r="4.5" fill="#245d7a"/>
+              <circle cx="116" cy="74" r="4.5" fill="#245d7a"/>
+              <circle cx="186" cy="63" r="4.5" fill="#245d7a"/>
+              <circle cx="250" cy="50" r="4.5" fill="#245d7a"/>
+              <circle cx="325" cy="39" r="4.5" fill="#245d7a"/>
+              <circle cx="404" cy="26" r="4.5" fill="#245d7a"/>
+              <circle cx="474" cy="18" r="4.5" fill="#245d7a"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="hero-sidecard">
+          <div class="hero-stat">
+            <div class="hero-stat-number">6ND</div>
+            <div class="hero-stat-label">Back-of-the-envelope transformer training cost: roughly <code>C ≈ 6ND</code>, ignoring lower-order attention, optimizer, and systems overheads.</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-number">20N</div>
+            <div class="hero-stat-label">Chinchilla-era rule of thumb: compute-optimal training uses about twenty tokens per parameter.</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-number">Not equal</div>
+            <div class="hero-stat-label">Training-optimal models and deployment-optimal models are often different objects once inference economics enter the picture.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <p class="lead">Every time a new generation of AI model arrives and astonishes the world, the same question surfaces: how? The honest answer, more often than not, is scale. Pretraining scaling is the most consequential empirical idea in modern AI, and it remains one of the least intuitively understood.</p>
+
+    <p>This post unpacks what pretraining scaling means, where the idea came from, the mathematics that govern it, why transformers proved especially scalable, and why the economics of scaling mattered almost as much as the science.</p>
+
+    <hr class="divider">
+
+    <h2>What is pretraining?</h2>
+
+    <p class="section-intro">Before we can talk about scaling, we need to understand what is being scaled. Pretraining is the first, longest, and usually most expensive phase of training a large language model.</p>
+
+    <p>During pretraining, a model is exposed to an enormous corpus of text: web pages, books, code repositories, reference material, scientific papers, and increasingly multimodal data aligned into a token stream. The task is deceptively simple: predict the next token.</p>
+
+    <p>Given a sequence of prior tokens, what token comes next? The model adjusts its parameters after each prediction, gradually learning grammar, facts, latent concepts, code structure, translation patterns, and the statistical regularities that underlie reasoning-like behavior.</p>
+
+    <blockquote>"The pretraining objective is humble. The emergent capabilities it produces are anything but."</blockquote>
+
+    <p>After pretraining, models are typically fine-tuned with supervised instruction data, preference optimization, safety methods, or reinforcement learning. Those later stages matter enormously for usability, but the base capabilities are largely set by pretraining.</p>
+
+    <hr class="divider">
+
+    <h2>The three classical axes of scale</h2>
+
+    <p>Pretraining scaling originally meant systematically increasing three tightly coupled quantities.</p>
+
+    <div class="law-grid">
+      <div class="law-card">
+        <div class="law-card-label">Axis 1</div>
+        <div class="law-card-value">N</div>
+        <div class="law-card-desc">Model parameters: the size and representational capacity of the neural network.</div>
+      </div>
+      <div class="law-card">
+        <div class="law-card-label">Axis 2</div>
+        <div class="law-card-value">D</div>
+        <div class="law-card-desc">Dataset tokens: how much text or multimodal tokenized data the model sees during training.</div>
+      </div>
+      <div class="law-card">
+        <div class="law-card-label">Axis 3</div>
+        <div class="law-card-value">C</div>
+        <div class="law-card-desc">Compute budget: the total training work, usually expressed in floating-point operations.</div>
+      </div>
+    </div>
+
+    <p>These axes are not independent. For a decoder-only transformer, a useful first approximation is <code>C ≈ 6ND</code>. That means scaling is always an allocation problem. If compute is fixed, should you spend it on a larger model, more data, or some balance of both?</p>
+
+    <div class="callout">
+      <div class="callout-label">Approximation, Not Identity</div>
+      <p>The <code>6ND</code> rule is pedagogically useful because it captures the dominant dense-matrix-multiplication cost of training. In practice, attention cost, sequence length, activation recomputation, optimizer overhead, communication, and systems choices all matter too.</p>
+    </div>
+
+    <hr class="divider">
+
+    <h2>Why transformers unlocked scaling</h2>
+
+    <p>A missing but important bridge in many scaling explainers is that scaling laws are not architecture-agnostic magic. Transformers proved unusually compatible with industrial scale.</p>
+
+    <div class="two-column-note">
+      <div class="note-box">
+        <strong>Hardware Fit</strong>
+        Dense matrix multiplies map extremely well onto GPUs and specialized accelerators. That gave researchers an architecture whose most expensive operations aligned with the hardware trend line.
+      </div>
+      <div class="note-box">
+        <strong>Optimization Stability</strong>
+        Residual connections, layer normalization, Adam-style optimizers, and later refinements made it practical to train deep models without optimization blowing up.
+      </div>
+    </div>
+
+    <p>Self-attention is also highly parallelizable during training, unlike earlier recurrent architectures that processed tokens more sequentially. Tokenization helped too: once language, code, images, and audio could all be converted into a common token stream, web-scale corpora became tractable. The result was an architecture that was not just expressive, but operationally scalable.</p>
+
+    <p>That is why the modern scaling story is really a story about transformer-era systems engineering as much as model theory.</p>
+
+    <hr class="divider">
+
+    <h2>The scaling laws: from Kaplan to Chinchilla</h2>
+
+    <h3>The 2020 Kaplan et al. result</h3>
+
+    <p>In 2020, Jared Kaplan and colleagues at OpenAI published one of the defining papers of the field. Their central finding was startling in its regularity: language-model loss appeared to follow smooth power laws with respect to parameters, data, and compute.</p>
+
+    <div class="equation-block">
+L(N) = (N<sub>c</sub> / N)<sup>&alpha;<sub>N</sub></sup> &nbsp;&nbsp;&nbsp;<span class="comment">loss vs. parameters, holding data fixed</span><br>
+L(D) = (D<sub>c</sub> / D)<sup>&alpha;<sub>D</sub></sup> &nbsp;&nbsp;&nbsp;<span class="comment">loss vs. tokens, holding model size fixed</span><br>
+L(C) = (C<sub>c</sub> / C)<sup>&alpha;<sub>C</sub></sup> &nbsp;&nbsp;&nbsp;<span class="comment">loss vs. compute budget</span>
+    </div>
+
+    <p>What made this so consequential was not merely that larger models did better. Researchers observed an almost eerie smoothness over multiple orders of magnitude, from small early transformer runs with hidden sizes around 768 and parameter counts in the millions up through billion-parameter systems. The curves looked extrapolatable.</p>
+
+    <div class="chart-container">
+      <div class="chart-title">Schematic Frontier Curves</div>
+      <div class="chart-subtitle">Illustrative scatter plus fit lines: smooth trends, different training regimes, and a visible shift from Kaplan-style undertraining toward Chinchilla-era compute optimality.</div>
+      <svg class="chart-svg" viewBox="0 0 760 430" role="img" aria-label="Scaling-law chart showing validation loss falling as training compute rises, with separate point clusters for Kaplan-era undertrained runs, Chinchilla-style compute-optimal runs, and overtrained deployment-efficient models.">
+        <rect x="0" y="0" width="760" height="430" fill="transparent"></rect>
+
+        <line class="chart-grid" x1="90" y1="70" x2="690" y2="70"></line>
+        <line class="chart-grid" x1="90" y1="125" x2="690" y2="125"></line>
+        <line class="chart-grid" x1="90" y1="180" x2="690" y2="180"></line>
+        <line class="chart-grid" x1="90" y1="235" x2="690" y2="235"></line>
+        <line class="chart-grid" x1="90" y1="290" x2="690" y2="290"></line>
+        <line class="chart-grid" x1="90" y1="345" x2="690" y2="345"></line>
+
+        <line class="chart-grid" x1="90" y1="70" x2="90" y2="345"></line>
+        <line class="chart-grid" x1="210" y1="70" x2="210" y2="345"></line>
+        <line class="chart-grid" x1="330" y1="70" x2="330" y2="345"></line>
+        <line class="chart-grid" x1="450" y1="70" x2="450" y2="345"></line>
+        <line class="chart-grid" x1="570" y1="70" x2="570" y2="345"></line>
+        <line class="chart-grid" x1="690" y1="70" x2="690" y2="345"></line>
+
+        <line class="chart-axis" x1="90" y1="345" x2="690" y2="345"></line>
+        <line class="chart-axis" x1="90" y1="70" x2="90" y2="345"></line>
+
+        <path class="chart-fit" d="M 108 92 C 165 114, 218 136, 262 161 C 313 190, 369 217, 419 238 C 470 259, 529 281, 589 302 C 628 315, 657 326, 673 334"></path>
+
+        <circle class="chart-point-kaplan" cx="107" cy="99" r="6"></circle>
+        <circle class="chart-point-kaplan" cx="210" cy="135" r="6"></circle>
+        <circle class="chart-point-kaplan" cx="296" cy="168" r="6"></circle>
+        <circle class="chart-point-kaplan" cx="399" cy="199" r="6"></circle>
+        <circle class="chart-point-kaplan" cx="502" cy="235" r="6"></circle>
+        <circle class="chart-point-kaplan" cx="588" cy="255" r="6"></circle>
+
+        <circle class="chart-point-chinchilla" cx="159" cy="122" r="6"></circle>
+        <circle class="chart-point-chinchilla" cx="261" cy="163" r="6"></circle>
+        <circle class="chart-point-chinchilla" cx="364" cy="204" r="6"></circle>
+        <circle class="chart-point-chinchilla" cx="467" cy="242" r="6"></circle>
+        <circle class="chart-point-chinchilla" cx="570" cy="278" r="6"></circle>
+        <circle class="chart-point-chinchilla" cx="656" cy="307" r="6"></circle>
+
+        <circle class="chart-point-deploy" cx="244" cy="150" r="6"></circle>
+        <circle class="chart-point-deploy" cx="347" cy="187" r="6"></circle>
+        <circle class="chart-point-deploy" cx="450" cy="218" r="6"></circle>
+        <circle class="chart-point-deploy" cx="553" cy="261" r="6"></circle>
+        <circle class="chart-point-deploy" cx="621" cy="290" r="6"></circle>
+
+        <text class="chart-label" x="81" y="349" text-anchor="end">2.2</text>
+        <text class="chart-label" x="81" y="294" text-anchor="end">2.4</text>
+        <text class="chart-label" x="81" y="239" text-anchor="end">2.6</text>
+        <text class="chart-label" x="81" y="184" text-anchor="end">2.8</text>
+        <text class="chart-label" x="81" y="129" text-anchor="end">3.0</text>
+        <text class="chart-label" x="81" y="74" text-anchor="end">3.2</text>
+
+        <text class="chart-label" x="90" y="370" text-anchor="middle">20.0</text>
+        <text class="chart-label" x="210" y="370" text-anchor="middle">20.7</text>
+        <text class="chart-label" x="330" y="370" text-anchor="middle">21.4</text>
+        <text class="chart-label" x="450" y="370" text-anchor="middle">22.1</text>
+        <text class="chart-label" x="570" y="370" text-anchor="middle">22.8</text>
+        <text class="chart-label" x="690" y="370" text-anchor="middle">23.5</text>
+
+        <text class="chart-axis-label" x="390" y="402" text-anchor="middle">log10(training compute in FLOPs)</text>
+        <text class="chart-axis-label" x="24" y="208" text-anchor="middle" transform="rotate(-90 24 208)">validation loss</text>
+
+        <line x1="112" y1="28" x2="144" y2="28" stroke="#b45a2f" stroke-width="4" stroke-linecap="round"></line>
+        <text class="chart-legend-text" x="152" y="32">frontier fit</text>
+
+        <circle class="chart-point-kaplan" cx="298" cy="28" r="5.5"></circle>
+        <text class="chart-legend-text" x="312" y="32">Kaplan-era undertrained runs</text>
+
+        <circle class="chart-point-chinchilla" cx="529" cy="28" r="5.5"></circle>
+        <text class="chart-legend-text" x="543" y="32">Chinchilla-style compute-optimal runs</text>
+
+        <circle class="chart-point-deploy" cx="298" cy="50" r="5.5"></circle>
+        <text class="chart-legend-text" x="312" y="54">overtrained deployment-efficient models</text>
+      </svg>
+    </div>
+
+    <h3>The Chinchilla correction</h3>
+
+    <p>The original Kaplan-era reading encouraged labs to emphasize parameter count aggressively, even if that meant relatively fewer tokens per parameter. That was a reasonable interpretation at the time, and it shaped the design of large models such as GPT-3.</p>
+
+    <p>Then came DeepMind's 2022 Chinchilla paper. Hoffmann and colleagues re-examined the tradeoff and concluded that many large models were simply undertrained.</p>
+
+    <blockquote>For compute-optimal training, model size and training tokens should grow together much more evenly than the field had assumed.</blockquote>
+
+    <p>The practical rule of thumb was unforgettable: for a model with <code>N</code> parameters, compute-optimal training uses roughly <code>20N</code> tokens. Not exact. Not universal. But directionally transformative.</p>
+
+    <div class="equation-block">
+D<sub>optimal</sub> &asymp; 20N &nbsp;&nbsp;&nbsp;<span class="comment">rough Chinchilla token rule</span><br>
+N<sub>optimal</sub> &prop; C<sup>0.5</sup> &nbsp;&nbsp;&nbsp;<span class="comment">optimal model size grows with the square root of compute</span><br>
+D<sub>optimal</sub> &prop; C<sup>0.5</sup> &nbsp;&nbsp;&nbsp;<span class="comment">optimal token count does too</span>
+    </div>
+
+    <hr class="divider">
+
+    <h2>A concrete worked example</h2>
+
+    <p>Suppose a lab has a training budget of <code>10^23 FLOPs</code>, squarely in frontier territory. Using the rough transformer cost model and the Chinchilla token ratio:</p>
+
+    <div class="equation-block">
+C = 6 &times; N &times; D<br>
+D &asymp; 20N<br><br>
+C = 6 &times; N &times; 20N = 120N<sup>2</sup><br><br>
+N<sup>2</sup> = C / 120 = 10<sup>23</sup> / 120 &asymp; 8.3 &times; 10<sup>20</sup><br><br>
+N &asymp; 2.9 &times; 10<sup>10</sup> &nbsp;=&nbsp; <strong>29B parameters</strong><br>
+D &asymp; 20N &nbsp;=&nbsp; <strong>580B tokens</strong>
+    </div>
+
+    <p>That is the key intuition. With a fixed compute budget, a roughly 29B model trained on roughly 580B tokens can beat a much larger but relatively undertrained model. Bigger is not automatically better. Better-balanced is often better.</p>
+
+    <div class="callout">
+      <div class="callout-label">Deployment Reality</div>
+      <p>Many production models are intentionally trained beyond pure compute-optimality. Training is usually far more expensive than single-pass inference, but at internet scale the cumulative cost of serving tokens dominates design decisions. A smaller overtrained model can be more profitable than a larger perfectly compute-optimal one.</p>
+    </div>
+
+    <hr class="divider">
+
+    <h2>Why scaling was economically rational</h2>
+
+    <p>This is the part that deserves more attention than it usually gets. Scaling was not only scientifically interesting. It was investable.</p>
+
+    <p>If returns had been chaotic, stepwise, or wildly irreproducible, no serious organization would have built the hardware, datacenter, and networking stack required for frontier training. But the power laws were smooth enough that small experiments could forecast large runs. That changed the economics of belief.</p>
+
+    <div class="takeaway-grid">
+      <div class="takeaway-card">
+        <div class="takeaway-text">
+          <strong>Predictable returns</strong>
+          Each extra order of magnitude in compute looked like it bought a fairly consistent reduction in loss.
+        </div>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-text">
+          <strong>Extrapolation discipline</strong>
+          Teams could fit curves on smaller runs, estimate payoff, then justify larger capex with something better than hope.
+        </div>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-text">
+          <strong>Infrastructure co-design</strong>
+          When returns are forecastable, cluster design, networking, and software optimization become strategic levers rather than speculative bets.
+        </div>
+      </div>
+    </div>
+
+    <p>The deepest historical fact is not just that bigger models improved. It is that the improvement curve was smooth enough to industrialize.</p>
+
+    <hr class="divider">
+
+    <h2>Historical milestones: scaling in action</h2>
+
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-year">2018</div>
+        <div class="timeline-title">GPT-1 · 117M parameters</div>
+        <div class="timeline-body">OpenAI showed that unsupervised pretraining could create broadly useful language representations. The scaling hypothesis existed, but it was still a hypothesis.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-year">2019</div>
+        <div class="timeline-title">GPT-2 · 1.5B parameters</div>
+        <div class="timeline-body">A roughly 10x jump in parameter count produced writing quality surprising enough to trigger staged release debates. The model-family trend line looked real.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-year">2020</div>
+        <div class="timeline-title">GPT-3 · 175B parameters</div>
+        <div class="timeline-body">Another immense jump. In-context learning became impossible to ignore, and the Kaplan paper gave practitioners a formal language for what they were observing empirically.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-year">2022</div>
+        <div class="timeline-title">Chinchilla · 70B parameters, 1.4T tokens</div>
+        <div class="timeline-body">DeepMind demonstrated that a smaller, better-trained model could outperform much larger undertrained peers. The field's notion of optimality changed almost overnight.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-year">2023 to 2025</div>
+        <div class="timeline-title">Llama, Claude, Gemini, Mistral and beyond</div>
+        <div class="timeline-body">The post-Chinchilla era brought overtraining for deployment efficiency, multimodal pretraining, synthetic-data pipelines, and a shift from pure model size toward full-system optimization.</div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <h2>Why does scaling work?</h2>
+
+    <p>Here the story becomes less settled. We have robust empirical evidence that scaling works. We do not yet have a fully satisfying theory for why the behavior is so smooth and so durable.</p>
+
+    <h3>Capacity and representation</h3>
+    <p>Larger models can encode more structure with less destructive compression. They can devote capacity to rare patterns, long-range dependencies, and subtle distinctions that small models are forced to blur together.</p>
+
+    <h3>Optimization at scale</h3>
+    <p>Bigger models are not just larger lookup tables. In practice they often optimize into smoother, more reusable internal representations. More compute means more parameter updates; more data means a better estimate of the world-distribution; both help shape the model into a richer predictive engine.</p>
+
+    <h3>Compression and intelligence</h3>
+    <p>Next-token prediction is also a compression problem. A model that predicts text well has discovered latent regularities in language, knowledge, and behavior. In that sense, lower loss is evidence of a more informative world model. That is one reason scaling laws feel deeper than a benchmark trick.</p>
+
+    <h3>Emergence, with appropriate caution</h3>
+    <p>Some capabilities appear to arrive abruptly rather than smoothly. But this remains an active debate. Some researchers argue that apparent emergence is partly an artifact of thresholded or nonlinear evaluation metrics; others believe there are genuine capability phase transitions in the underlying models. The careful statement is not that emergence is settled, but that the phenomenon is important enough to remain contested.</p>
+
+    <hr class="divider">
+
+    <h2>Modern scaling is no longer only about N, D, and C</h2>
+
+    <p>The classical picture is still foundational, but frontier systems now scale along additional dimensions that interact with pretraining.</p>
+
+    <div class="dimension-grid">
+      <div class="dimension-card">
+        <div class="dimension-label">Dimension 1</div>
+        <div class="dimension-title">Context length</div>
+        <div class="dimension-body">Longer contexts change both capability and serving cost. Retrieval, memory behavior, and attention efficiency all become first-order concerns.</div>
+      </div>
+      <div class="dimension-card">
+        <div class="dimension-label">Dimension 2</div>
+        <div class="dimension-title">Synthetic data</div>
+        <div class="dimension-body">As high-quality human text becomes scarcer, self-generated and curated synthetic corpora increasingly determine whether scaling can continue cleanly.</div>
+      </div>
+      <div class="dimension-card">
+        <div class="dimension-label">Dimension 3</div>
+        <div class="dimension-title">Inference-time compute</div>
+        <div class="dimension-body">Reasoning traces, search, verification, reranking, and tool use allow capability to grow at deployment time rather than only during pretraining.</div>
+      </div>
+      <div class="dimension-card">
+        <div class="dimension-label">Dimension 4</div>
+        <div class="dimension-title">Multimodality</div>
+        <div class="dimension-body">Text is no longer the only substrate. Images, audio, video, and action trajectories widen both the data pipeline and the notion of what "scale" means.</div>
+      </div>
+      <div class="dimension-card">
+        <div class="dimension-label">Dimension 5</div>
+        <div class="dimension-title">Serving economics</div>
+        <div class="dimension-body">Memory bandwidth, latency, batchability, and accelerator efficiency now determine which model is truly optimal in the market, not just in the training lab.</div>
+      </div>
+      <div class="dimension-card">
+        <div class="dimension-label">Dimension 6</div>
+        <div class="dimension-title">Agentic scaffolding</div>
+        <div class="dimension-body">A model paired with tools, retrieval, code execution, and memory can exhibit a different scaling profile than the base model alone.</div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <h2>Current limits and open questions</h2>
+
+    <div class="takeaway-grid">
+      <div class="takeaway-card">
+        <div class="takeaway-text">
+          <strong>Are we hitting a data wall?</strong>
+          High-quality public text is finite. The next phase may depend on synthetic data quality, private data partnerships, and multimodal corpora rather than raw web scraping.
+        </div>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-text">
+          <strong>Will the power laws bend?</strong>
+          The smooth exponents observed so far may not continue forever, especially for specific capabilities rather than aggregate loss.
+        </div>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-text">
+          <strong>What is the right objective now?</strong>
+          Minimizing pretraining loss is no longer the only game. Alignment, reasoning reliability, tool competence, and latency all matter.
+        </div>
+      </div>
+      <div class="takeaway-card">
+        <div class="takeaway-text">
+          <strong>How far can test-time scaling go?</strong>
+          If inference-time search and verification continue improving, the center of gravity may shift from ever-larger pretraining runs toward smarter deployment loops.
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <h2>The bottom line</h2>
+
+    <p>Pretraining scaling is not a hack or a one-off curiosity. It is a profound empirical regularity: loss improves predictably as parameters, data, and compute increase, at least over the ranges that transformed modern AI. Kaplan gave the field its first clean formalization. Chinchilla corrected its intuition about how to spend compute. The frontier since then has been about folding economics, systems design, and new scaling dimensions into the same story.</p>
+
+    <p>What makes the phenomenon remarkable is not only that it works, but that it works <em>predictably enough to plan around</em>. Labs fit small curves, extrapolate, and spend accordingly. The fact that those extrapolations are reliable enough to bet billions of dollars on is itself one of the strangest and most consequential facts about the present technological era.</p>
+
+    <div class="big-stat">
+      <div class="stat-item">
+        <div class="stat-number">10<sup>6</sup>x</div>
+        <div class="stat-label">Approximate growth in frontier training compute from the late 2010s into the mid-2020s</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-number">~0.05</div>
+        <div class="stat-label">Order-of-magnitude intuition for the compute-loss exponent often cited in scaling-law discussions</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-number">20x</div>
+        <div class="stat-label">The memorable Chinchilla token-per-parameter heuristic</div>
+      </div>
+    </div>
+
+    <p class="sources">Further reading: Kaplan et al. (2020), "Scaling Laws for Neural Language Models"; Hoffmann et al. (2022), "Training Compute-Optimal Large Language Models"; Wei et al. (2022), "Emergent Abilities of Large Language Models".</p>
+  </div>
+</main>
+<footer class="site-footer">
+  <span>© 2026 <a href="/index.html">MANISH AI</a>. All rights reserved.</span>
+  <span><a href="/writings.html">Back to Writings</a> · <a href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></span>
+</footer>
+<script async data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>
+
