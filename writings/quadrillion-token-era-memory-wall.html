@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Quadrillion-Token Era Has Arrived | MANISH AI</title>
+  <meta name="description" content="A systems deep dive into the quadrillion-token era, KV-cache memory pressure, prefill/decode disaggregation, token warehouses, and the AI memory wall." />
+  <meta name="keywords" content="quadrillion tokens, AI memory wall, KV cache, prefill decode disaggregation, token warehouse, inference memory, AI infrastructure, memory orchestration, CXL memory, HBM bandwidth" />
+  <meta name="author" content="MANISH AI" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <meta name="color-scheme" content="light dark" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/quadrillion-token-era-memory-wall.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="The Quadrillion-Token Era Has Arrived | MANISH AI" />
+  <meta property="og:description" content="A systems deep dive into the quadrillion-token era, KV-cache memory pressure, prefill/decode disaggregation, token warehouses, and the AI memory wall." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/quadrillion-token-era-memory-wall.html" />
+  <meta property="og:site_name" content="MANISH AI" />
+  <meta property="og:image" content="https://manishklach.github.io/og/quadrillion-token-era-memory-wall.png" />
+  <meta property="og:image:alt" content="The Quadrillion-Token Era Has Arrived social preview" />
+  <meta property="article:published_time" content="2026-05-20" />
+  <meta property="article:modified_time" content="2026-05-20" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="The Quadrillion-Token Era Has Arrived | MANISH AI" />
+  <meta name="twitter:description" content="A systems deep dive into the quadrillion-token era, KV-cache memory pressure, prefill/decode disaggregation, token warehouses, and the AI memory wall." />
+  <meta name="twitter:image" content="https://manishklach.github.io/og/quadrillion-token-era-memory-wall.png" />
+  <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml" />
+  <link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json" />
+  <link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention" />
+  <link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc" />
+  <script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "The Quadrillion-Token Era Has Arrived",
+  "description": "A systems deep dive into the quadrillion-token era, KV-cache memory pressure, prefill/decode disaggregation, token warehouses, and the AI memory wall.",
+  "url": "https://manishklach.github.io/writings/quadrillion-token-era-memory-wall.html",
+  "datePublished": "2026-05-20",
+  "dateModified": "2026-05-20",
+  "author": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://manishklach.github.io/writings/quadrillion-token-era-memory-wall.html"
+  },
+  "inLanguage": "en-US",
+  "keywords": "quadrillion tokens, AI memory wall, KV cache, prefill decode disaggregation, token warehouse, inference memory, AI infrastructure, memory orchestration, CXL memory, HBM bandwidth"
+}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;700&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #06090f;
+      --panel: rgba(255,255,255,0.06);
+      --panel2: rgba(255,255,255,0.09);
+      --text: #edf0f8;
+      --muted: #8a95ad;
+      --line: rgba(255,255,255,0.12);
+      --blue: #60c8ff;
+      --violet: #a87cff;
+      --green: #5ef0a0;
+      --amber: #ffc84a;
+      --red: #ff6b8a;
+      --shadow: 0 32px 96px rgba(0,0,0,0.55);
+      --shadow-sm: 0 8px 32px rgba(0,0,0,0.35);
+      --radius: 22px;
+      --font-display: 'DM Serif Display', Georgia, serif;
+      --font-body: 'Instrument Sans', ui-sans-serif, sans-serif;
+      --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      color: var(--text);
+      background:
+        radial-gradient(ellipse 80% 40% at 10% 0%, rgba(96,200,255,0.14), transparent 55%),
+        radial-gradient(ellipse 60% 50% at 92% 5%, rgba(168,124,255,0.18), transparent 50%),
+        radial-gradient(ellipse 50% 30% at 60% 80%, rgba(94,240,160,0.06), transparent 40%),
+        linear-gradient(180deg, #05080d 0%, #080c18 50%, #06090f 100%);
+      line-height: 1.68; overflow-x: hidden;
+    }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .noise {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: .09;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E");
+    }
+    main { position: relative; z-index: 1; }
+    .wrap { width: min(1160px, calc(100% - 48px)); margin: 0 auto; }
+    /* HERO */
+    .hero { padding: 88px 0 52px; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 9px; padding: 8px 14px;
+      border: 1px solid rgba(94,240,160,0.3); border-radius: 999px;
+      background: rgba(94,240,160,0.07); font-size: 13px; letter-spacing: .06em;
+      color: var(--green); margin-bottom: 36px; font-family: var(--font-mono);
+    }
+    .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 rgba(94,240,160,0.7); animation: pulse 2s infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(94,240,160,0.7); } 70% { box-shadow: 0 0 0 8px rgba(94,240,160,0); } 100% { box-shadow: 0 0 0 0 rgba(94,240,160,0); } }
+    h1 { font-family: var(--font-display); font-size: clamp(48px, 8.5vw, 102px); line-height: .93; letter-spacing: -1px; margin: 0 0 28px; max-width: 1060px; font-weight: 400; }
+    h1 em { font-style: italic; color: var(--blue); }
+    h1 strong { font-style: normal; background: linear-gradient(95deg, var(--blue) 10%, var(--violet) 55%, var(--green) 90%); -webkit-background-clip: text; color: transparent; font-weight: 400; }
+    .lede { font-size: clamp(18px, 2vw, 23px); color: #c8d0e8; max-width: 840px; margin-bottom: 18px; line-height: 1.55; }
+    .lede strong { color: var(--text); }
+    .thesis-line { font-size: clamp(14px, 1.5vw, 18px); color: var(--blue); font-family: var(--font-mono); font-weight: 700; border-left: 3px solid var(--blue); padding-left: 18px; margin: 28px 0 40px; max-width: 760px; }
+    .anecdote { border-left: 3px solid rgba(255,255,255,0.18); padding: 6px 0 6px 24px; margin: 28px 0; color: var(--muted); font-size: clamp(16px, 1.7vw, 20px); line-height: 1.55; font-style: italic; }
+    .anecdote strong { color: var(--text); font-style: normal; }
+    /* stats */
+    .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+    .stat { padding: 24px 22px; background: linear-gradient(145deg, var(--panel2), var(--panel)); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); position: relative; overflow: hidden; }
+    .stat::after { content: ""; position: absolute; right: -40px; bottom: -50px; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(96,200,255,0.18), transparent 70%); }
+    .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; font-family: var(--font-mono); }
+    .num { font-family: var(--font-display); font-size: clamp(36px, 5vw, 56px); margin: 8px 0 6px; line-height: 1; }
+    .small { color: var(--muted); font-size: 13px; }
+    /* hero grid */
+    .hero-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 20px; align-items: stretch; }
+    .card { background: linear-gradient(160deg, var(--panel2), rgba(255,255,255,.04)); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); backdrop-filter: blur(16px); }
+    .chart-card { padding: 28px; }
+    .chart-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 22px; gap: 16px; }
+    .chart-head h2 { margin: 0; }
+    .badge { padding: 4px 10px; border-radius: 999px; font-size: 11px; font-family: var(--font-mono); background: rgba(96,200,255,0.12); color: #a8e8ff; border: 1px solid rgba(96,200,255,0.2); white-space: nowrap; }
+    .bar-chart { display: grid; gap: 14px; }
+    .barline { display: grid; grid-template-columns: 52px 1fr 88px; gap: 14px; align-items: center; }
+    .bar-year { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--muted); }
+    .track { height: 20px; background: rgba(255,255,255,.07); border-radius: 999px; overflow: hidden; border: 1px solid rgba(255,255,255,.09); }
+    .fill { height: 100%; border-radius: inherit; }
+    .fill-blue { background: linear-gradient(90deg, var(--blue), var(--violet)); box-shadow: 0 0 20px rgba(96,200,255,0.3); }
+    .bar-val { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--text); }
+    /* sections */
+    section { padding: 44px 0; }
+    section h2 { font-family: var(--font-display); font-size: clamp(26px, 3.8vw, 48px); letter-spacing: -.5px; line-height: 1.06; margin: 0 0 18px; font-weight: 400; }
+    .section-label { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); margin-bottom: 10px; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+    .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .section-card { padding: 32px; }
+    .muted { color: var(--muted); }
+    /* callouts */
+    .callout { padding: 28px 32px; border-radius: var(--radius); border: 1px solid rgba(96,200,255,0.28); background: linear-gradient(135deg, rgba(96,200,255,0.10), rgba(168,124,255,0.08)); font-size: clamp(18px, 2vw, 25px); line-height: 1.35; letter-spacing: -.3px; margin: 22px 0; }
+    .callout-green { border-color: rgba(94,240,160,0.28); background: linear-gradient(135deg, rgba(94,240,160,0.09), rgba(58,236,220,0.07)); }
+    .callout-amber { border-color: rgba(255,200,74,0.28); background: linear-gradient(135deg, rgba(255,200,74,0.09), rgba(255,107,138,0.06)); }
+    .callout em { font-style: italic; color: var(--blue); }
+    .callout-green em { color: var(--green); }
+    .callout-amber em { color: var(--amber); }
+    /* tables */
+    table { width: 100%; border-collapse: collapse; margin: 16px 0 8px; }
+    th, td { padding: 14px 13px; text-align: left; border-bottom: 1px solid rgba(255,255,255,.10); }
+    th { color: var(--muted); background: rgba(255,255,255,.06); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; font-family: var(--font-mono); font-weight: 700; }
+    td { color: #cdd4ea; font-size: 15px; }
+    td strong { color: var(--text); }
+    tr:last-child td { border-bottom: 0; }
+    .td-mono { font-family: var(--font-mono); font-size: 13px; }
+    .td-hl { color: var(--blue); font-weight: 600; }
+    /* formula */
+    .formula { padding: 20px 22px; border-radius: 16px; border: 1px solid rgba(94,240,160,0.22); background: rgba(94,240,160,0.07); font-family: var(--font-mono); color: #c8ffde; font-size: clamp(12px, 1.5vw, 18px); overflow-x: auto; margin: 16px 0; }
+    /* memory tier */
+    .flow { display: grid; gap: 10px; margin-top: 16px; }
+    .tier { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 15px; background: rgba(255,255,255,.05); transition: background .2s; }
+    .tier:hover { background: rgba(255,255,255,.085); }
+    .tier strong { font-size: 16px; }
+    .tier-sub { font-size: 13px; color: var(--muted); margin-top: 3px; }
+    .tier-badge { font-family: var(--font-mono); font-size: 11px; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+    .tier-fastest { background: rgba(96,200,255,.12); color: #a8e8ff; border: 1px solid rgba(96,200,255,.25); }
+    .tier-hbm { background: rgba(168,124,255,.12); color: #cdb8ff; border: 1px solid rgba(168,124,255,.25); }
+    .tier-dram { background: rgba(94,240,160,.10); color: #a8ffd0; border: 1px solid rgba(94,240,160,.22); }
+    .tier-cxl { background: rgba(255,200,74,.10); color: #ffe8a0; border: 1px solid rgba(255,200,74,.22); }
+    .tier-nvme { background: rgba(255,107,138,.10); color: #ffb8c8; border: 1px solid rgba(255,107,138,.22); }
+    /* bigquote */
+    .bigquote { font-family: var(--font-display); font-size: clamp(32px, 5.5vw, 64px); line-height: 1.02; letter-spacing: -.5px; padding: 52px 48px; text-align: center; font-weight: 400; }
+    .bigquote em { font-style: italic; }
+    /* disagg */
+    .disagg-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin: 20px 0; }
+    .disagg-box { padding: 20px; border-radius: 18px; text-align: center; }
+    .disagg-prefill { background: rgba(168,124,255,.13); border: 1px solid rgba(168,124,255,.3); }
+    .disagg-decode { background: rgba(96,200,255,.13); border: 1px solid rgba(96,200,255,.3); }
+    .disagg-arrow { color: var(--muted); font-size: 28px; text-align: center; }
+    .disagg-label { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px; }
+    .disagg-name { font-family: var(--font-display); font-size: 22px; font-weight: 400; }
+    .disagg-desc { font-size: 13px; color: var(--muted); margin-top: 6px; }
+    .disagg-props { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+    .tag { font-family: var(--font-mono); font-size: 11px; padding: 3px 8px; border-radius: 6px; background: rgba(255,255,255,.07); color: var(--muted); }
+    /* builder */
+    .builder-card { padding: 28px; }
+    .builder-card h3 { font-family: var(--font-display); font-size: 24px; margin: 0 0 10px; font-weight: 400; }
+    /* prediction */
+    .prediction { padding: 44px; border-radius: var(--radius); border: 1px solid rgba(255,200,74,0.22); background: linear-gradient(150deg, rgba(255,200,74,0.06), rgba(168,124,255,0.08)); text-align: center; }
+    .prediction p { font-family: var(--font-display); font-size: clamp(22px, 3.2vw, 40px); line-height: 1.15; margin: 0 0 8px; font-weight: 400; }
+    .prediction .sub { font-family: var(--font-body); font-size: 15px; color: var(--muted); margin: 16px 0 0; }
+    .sources li { margin: 10px 0; color: var(--muted); font-size: 15px; }
+    .svgbox { width: 100%; display: block; }
+    footer { padding: 48px 0 80px; color: var(--muted); font-size: 14px; }
+
+    /* MANISH AI site shell */
+    .site-topbar {
+      position: relative;
+      z-index: 2;
+      padding: 18px 24px 0;
+      font-family: var(--font-mono);
+    }
+    .site-nav {
+      width: min(1160px, calc(100% - 48px));
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,0.055);
+      box-shadow: var(--shadow-sm);
+      backdrop-filter: blur(14px);
+    }
+    .brand-logo {
+      display: inline-flex;
+      align-items: center;
+      text-decoration: none;
+      opacity: 0.98;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .brand-logo:hover { opacity: 0.82; transform: translateY(-1px); text-decoration: none; }
+    .brand-logo img { display: block; height: 52px; width: auto; }
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .header-nav a, #theme-toggle {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.76rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      font-family: var(--font-mono);
+    }
+    .header-nav a:hover, #theme-toggle:hover { color: var(--text); text-decoration: none; }
+    .article-top-link {
+      display: inline-flex;
+      margin-bottom: 22px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      text-decoration: none;
+    }
+    .article-top-link:hover { color: var(--blue); text-decoration: none; }
+    .site-footer {
+      position: relative;
+      z-index: 1;
+      padding: 34px 24px 54px;
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+    }
+    .site-footer a { color: var(--blue); text-decoration: none; }
+    .site-footer a:hover { text-decoration: underline; }
+    #webmentions { margin-top: 32px; }
+    #webmentions img { width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; }
+    html:not(.dark) {
+      --bg: #f6f3eb;
+      --panel: rgba(20,30,48,0.055);
+      --panel2: rgba(20,30,48,0.085);
+      --text: #111827;
+      --muted: #5b6576;
+      --line: rgba(12,18,31,0.13);
+      --blue: #1467a8;
+      --violet: #6b4dcc;
+      --green: #13794c;
+      --amber: #a86600;
+      --red: #b82549;
+      --shadow: 0 32px 96px rgba(31,41,55,0.13);
+      --shadow-sm: 0 8px 32px rgba(31,41,55,0.10);
+    }
+    html:not(.dark) body {
+      background:
+        radial-gradient(ellipse 80% 40% at 10% 0%, rgba(20,103,168,0.12), transparent 55%),
+        radial-gradient(ellipse 60% 50% at 92% 5%, rgba(107,77,204,0.12), transparent 50%),
+        radial-gradient(ellipse 50% 30% at 60% 80%, rgba(19,121,76,0.05), transparent 40%),
+        linear-gradient(180deg, #faf8f2 0%, #f4f1ea 50%, #f6f3eb 100%);
+    }
+    html:not(.dark) .site-nav, html:not(.dark) .card, html:not(.dark) .stat {
+      background: rgba(255,255,255,0.74);
+    }
+    html:not(.dark) .lede, html:not(.dark) td { color: #334155; }
+    html:not(.dark) .noise { opacity: 0.035; }
+    html:not(.dark) h1 { color: #111827; }
+    html:not(.dark) h1 em { color: var(--blue); }
+    html:not(.dark) h1 strong { color: transparent; }
+    @media (max-width: 860px) {
+      .site-nav { align-items: flex-start; width: min(1160px, calc(100% - 32px)); }
+      .brand-logo img { height: 40px; }
+      .header-nav { gap: 10px; }
+      .header-nav a, #theme-toggle { font-size: 0.68rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+    }
+
+    @media (max-width: 860px) {
+      .hero-grid, .two, .three, .stat-row { grid-template-columns: 1fr; }
+      h1 { letter-spacing: -.5px; }
+      .barline { grid-template-columns: 48px 1fr; }
+      .bar-val { display: none; }
+      .disagg-row { grid-template-columns: 1fr; }
+      .bigquote { padding: 36px 28px; }
+      .section-card, .chart-card, .builder-card { padding: 22px; }
+    }
+  </style>
+</head>
+<body>
+<div class="noise"></div>
+<header class="site-topbar" aria-label="Site header">
+  <nav class="site-nav" aria-label="Primary navigation">
+    <a class="brand-logo" href="/index.html" aria-label="MANISH AI home"><img src="/assets/manish-ai-logo.png" alt="MANISH AI"></a>
+    <div class="header-nav">
+      <a href="/index.html#top">Home</a>
+      <a href="/index.html#featured">Featured</a>
+      <a href="/patents.html">Patents</a>
+      <a href="/writings.html">Writing</a>
+      <a href="/index.html#contact">Contact</a>
+      <button id="theme-toggle" type="button" aria-label="Toggle theme">☀️</button>
+    </div>
+  </nav>
+</header>
+<main data-pagefind-body>
+<div class="wrap">
+  <a class="article-top-link" href="/writings.html">← All writings</a>
+
+  <header class="hero">
+    <div class="eyebrow"><span class="pulse"></span> Google I/O 2026 &middot; Systems Deep Dive</div>
+    <h1>The <strong>Quadrillion-Token</strong> Era <em>Has Arrived</em></h1>
+    <div class="anecdote">
+      At Google I/O 2026, Sundar Pichai didn't lead with a new model name or a benchmark score. He led with a number: <strong>3.2 quadrillion tokens per month</strong>. That contrast &mdash; product metrics, not research metrics &mdash; is the signal.
+    </div>
+    <p class="lede">The strategic implication is bigger than raw AI usage: inference is becoming a <strong>planetary-scale memory-orchestration problem</strong>.</p>
+    <div class="thesis-line">// The bottleneck has moved from FLOPs to memory bandwidth, capacity, and placement. We are no longer compute-bound. We are state-bound.</div>
+    <div class="stat-row">
+      <div class="stat"><div class="label">May 2024</div><div class="num" style="color:var(--muted)">9.7T</div><div class="small">tokens/month across Google surfaces</div></div>
+      <div class="stat"><div class="label">May 2025</div><div class="num" style="color:var(--blue)">480T</div><div class="small">49.5&times; growth year-over-year</div></div>
+      <div class="stat"><div class="label">May 2026</div><div class="num" style="color:var(--green)">3.2Q+</div><div class="small">~7&times; again &mdash; the compounding is real</div></div>
+    </div>
+    <div class="hero-grid">
+      <div class="card chart-card">
+        <div class="chart-head"><h2>Token volume is compounding faster than infrastructure comfort.</h2><span class="badge">log-scale intuition</span></div>
+        <div class="bar-chart">
+          <div class="barline"><span class="bar-year">2024</span><div class="track"><div class="fill fill-blue" style="width:0.3%"></div></div><span class="bar-val">9.7T</span></div>
+          <div class="barline"><span class="bar-year">2025</span><div class="track"><div class="fill fill-blue" style="width:15%"></div></div><span class="bar-val">480T</span></div>
+          <div class="barline"><span class="bar-year">2026</span><div class="track"><div class="fill fill-blue" style="width:100%"></div></div><span class="bar-val">3.2Q+</span></div>
+        </div>
+        <p class="muted" style="margin-top:20px;font-size:14px;">Tokens are now a first-class unit of infrastructure demand &mdash; not an approximation of model activity, but the load metric itself.</p>
+      </div>
+      <div class="card chart-card">
+        <svg class="svgbox" viewBox="0 0 520 340" role="img" aria-label="Diagram: users to inference runtime to KV cache to memory hierarchy">
+          <defs>
+            <linearGradient id="g1" x1="0" x2="1"><stop offset="0%" stop-color="#60c8ff"/><stop offset="100%" stop-color="#a87cff"/></linearGradient>
+            <filter id="glow"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <rect x="12" y="12" width="496" height="316" rx="22" fill="rgba(255,255,255,.035)" stroke="rgba(255,255,255,.1)"/>
+          <circle cx="78" cy="88" r="32" fill="rgba(96,200,255,.14)" stroke="#60c8ff" stroke-width="1.5"/>
+          <text x="78" y="84" text-anchor="middle" fill="#edf0f8" font-size="13" font-family="'Instrument Sans', sans-serif" font-weight="600">Users</text>
+          <text x="78" y="100" text-anchor="middle" fill="#8a95ad" font-size="10" font-family="'Instrument Sans', sans-serif">1.23B tok/s</text>
+          <path d="M113 88 C160 88 168 88 210 88" stroke="url(#g1)" stroke-width="4.5" fill="none" filter="url(#glow)"/>
+          <polygon points="210,88 197,81 197,95" fill="#a87cff"/>
+          <rect x="214" y="56" width="108" height="64" rx="16" fill="rgba(168,124,255,.15)" stroke="#a87cff" stroke-width="1.5"/>
+          <text x="268" y="84" text-anchor="middle" fill="#edf0f8" font-size="13" font-family="'Instrument Sans', sans-serif" font-weight="600">Inference</text>
+          <text x="268" y="100" text-anchor="middle" fill="#8a95ad" font-size="10" font-family="'Instrument Sans', sans-serif">runtime</text>
+          <path d="M322 88 C370 88 376 88 418 88" stroke="url(#g1)" stroke-width="4.5" fill="none" filter="url(#glow)"/>
+          <polygon points="418,88 405,81 405,95" fill="#60c8ff"/>
+          <rect x="354" y="152" width="112" height="50" rx="14" fill="rgba(94,240,160,.12)" stroke="#5ef0a0" stroke-width="1.5"/>
+          <text x="410" y="183" text-anchor="middle" fill="#edf0f8" font-size="13" font-family="'Instrument Sans', sans-serif" font-weight="600">KV Cache</text>
+          <path d="M410 120 L410 152" stroke="#5ef0a0" stroke-width="3.5"/>
+          <g font-size="12" font-family="'Instrument Sans', sans-serif" font-weight="600" fill="#edf0f8">
+            <rect x="38" y="236" width="78" height="38" rx="11" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.14)"/><text x="77" y="260" text-anchor="middle">SRAM</text>
+            <rect x="126" y="236" width="78" height="38" rx="11" fill="rgba(168,124,255,.09)" stroke="rgba(168,124,255,.22)"/><text x="165" y="260" text-anchor="middle" fill="#cdb8ff">HBM</text>
+            <rect x="214" y="236" width="78" height="38" rx="11" fill="rgba(94,240,160,.07)" stroke="rgba(94,240,160,.18)"/><text x="253" y="260" text-anchor="middle" fill="#a8ffd0">DRAM</text>
+            <rect x="302" y="236" width="78" height="38" rx="11" fill="rgba(255,200,74,.07)" stroke="rgba(255,200,74,.18)"/><text x="341" y="260" text-anchor="middle" fill="#ffe8a0">CXL</text>
+            <rect x="390" y="236" width="78" height="38" rx="11" fill="rgba(255,107,138,.07)" stroke="rgba(255,107,138,.18)"/><text x="429" y="260" text-anchor="middle" fill="#ffb8c8">NVMe</text>
+          </g>
+          <path d="M410 202 C410 222 253 222 253 236" stroke="#5ef0a0" stroke-width="2.5" fill="none" stroke-dasharray="6 7"/>
+          <text x="77" y="294" text-anchor="middle" fill="#8a95ad" font-size="9" font-family="'JetBrains Mono', monospace">fastest</text>
+          <text x="165" y="294" text-anchor="middle" fill="#8a95ad" font-size="9" font-family="'JetBrains Mono', monospace">bandwidth</text>
+          <text x="253" y="294" text-anchor="middle" fill="#8a95ad" font-size="9" font-family="'JetBrains Mono', monospace">capacity</text>
+          <text x="341" y="294" text-anchor="middle" fill="#8a95ad" font-size="9" font-family="'JetBrains Mono', monospace">fabric</text>
+          <text x="429" y="294" text-anchor="middle" fill="#8a95ad" font-size="9" font-family="'JetBrains Mono', monospace">cold KV</text>
+        </svg>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <div class="two">
+      <div class="card section-card">
+        <div class="section-label">01 &middot; Economics</div>
+        <h2>Cost per token fell. Demand exploded.</h2>
+        <p>Public API pricing is not Google's internal cost &mdash; but it proxies the economic direction. Jevons' paradox at planetary scale: cheaper tokens create more token demand, not less.</p>
+        <table>
+          <thead><tr><th>Proxy (Gemini API)</th><th>Approx public price</th></tr></thead>
+          <tbody>
+            <tr><td>Low-cost input tokens</td><td class="td-mono">~$0.10 / 1M tokens</td></tr>
+            <tr><td>Low-cost output tokens</td><td class="td-mono">~$0.40 / 1M tokens</td></tr>
+            <tr><td>Higher-tier input tokens</td><td class="td-mono">~$1.50+ / 1M tokens</td></tr>
+            <tr><td>Higher-tier output tokens</td><td class="td-mono">~$9.00+ / 1M tokens</td></tr>
+          </tbody>
+        </table>
+        <p class="muted" style="font-size:14px;">At 3.2Q tokens/month, a $0.01 difference in cost per million tokens equals $32M/month. Efficiency is a first-order financial variable, not a footnote.</p>
+      </div>
+      <div class="card section-card">
+        <div class="section-label">02 &middot; The Hidden Unit</div>
+        <h2>The hidden unit is not the text token.</h2>
+        <p>A token is a few bytes as text. But during autoregressive inference, each token creates attention state across all layers &mdash; the KV cache. That state is the real infrastructure unit.</p>
+        <div class="formula">KV bytes/token = 2 &times; layers &times; KV_heads &times; head_dim &times; bytes_per_value</div>
+        <p>The "2" is for keys and values. Critically, this footprint <strong>scales linearly with sequence length N</strong>. A 64K-token context window carries 64,000&times; more KV residency than a single token. Long-context agent sessions are memory multipliers, not just "longer requests."</p>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding:8px 0">
+    <div class="callout">
+      We are no longer in the GPU shortage era. We are in the <em>memory residency</em> era &mdash; and most infrastructure teams aren't ready for what that implies.
+    </div>
+  </section>
+
+  <section>
+    <div class="card section-card">
+      <div class="section-label">03 &middot; KV RAM per Token</div>
+      <h2>How much RAM does one token actually consume?</h2>
+      <p>Exact numbers depend on architecture, precision, layers, KV heads, head dimension, compression, and attention style (MHA vs GQA vs MQA):</p>
+      <table>
+        <thead><tr><th>Model / attention style</th><th>Approx KV RAM per token</th><th>Why it compounds fast</th></tr></thead>
+        <tbody>
+          <tr><td>Small Flash-like efficient model</td><td class="td-mono">32&ndash;64 KB</td><td>Still 40+ PB live at 5-minute windows at Google-scale</td></tr>
+          <tr><td>8B-class GQA model</td><td class="td-mono td-hl">~128 KB</td><td>Planning anchor; ~9.4 PB resident at a 60-second window</td></tr>
+          <tr><td>70B-class GQA model</td><td class="td-mono">~320 KB</td><td>Stresses HBM capacity within minutes at this throughput</td></tr>
+          <tr><td>Non-optimized large MHA model</td><td class="td-mono">512 KB &ndash; 1 MB</td><td>Becomes capacity-bound faster than compute-bound at any load</td></tr>
+        </tbody>
+      </table>
+      <p>Because footprint is linear in sequence length, a model serving 64K-token agent sessions carries <strong>500&ndash;2000&times; more KV residency</strong> than the same model serving short chat completions. Long-context is a memory multiplier with no ceiling in sight.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="two">
+      <div class="card section-card">
+        <div class="section-label">04 &middot; Token Rate</div>
+        <h2>Convert 3.2Q/month into tokens per second.</h2>
+        <div class="formula">3.2 &times; 10&sup1;&sup5; &divide; (30 &times; 24 &times; 3600) &asymp; 1.23 &times; 10&sup9; tokens/sec</div>
+        <p>Roughly <strong>1.23 billion tokens per second</strong>, continuously, averaged across the month. The average hides the real problem.</p>
+        <p class="muted">Peak traffic is materially higher. Real systems must provision for burstiness, geography, model tiering, product-specific latency SLOs, and traffic spikes. The burst provisioning budget is where memory costs spike fastest.</p>
+      </div>
+      <div class="card section-card">
+        <div class="section-label">05 &middot; The Real Bottleneck</div>
+        <h2>Live memory, not lifetime tokens, is the bottleneck.</h2>
+        <p>Google does not need all monthly tokens resident forever. The systems problem is how many tokens are <strong>live simultaneously</strong> &mdash; across active conversations, agent threads, and multimodal streams.</p>
+        <div class="callout callout-green" style="font-size:17px;padding:20px 24px;margin-top:18px;">
+          <em>Live KV memory = token rate &times; live residency window &times; KV bytes/token</em>
+        </div>
+        <p class="muted" style="font-size:14px;">The residency window is set by latency targets, context lengths, and session lifetimes &mdash; not business logic. It is a systems parameter, and it is growing with every new product feature.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card section-card">
+      <div class="section-label">06 &middot; Live RAM Table</div>
+      <h2>Estimated live RAM at today's Google-scale token rate</h2>
+      <p>Using 1.23B tokens/sec as the average rate. Systems estimates for infrastructure thinking &mdash; not claimed Google internal numbers.</p>
+      <table>
+        <thead><tr><th>KV per token</th><th>60 sec live window</th><th>5 min live window</th><th>Representative model class</th></tr></thead>
+        <tbody>
+          <tr><td class="td-mono">64 KB</td><td class="td-mono">~4.7 PB</td><td class="td-mono">~23.6 PB</td><td>Small / Flash-style</td></tr>
+          <tr><td class="td-mono td-hl">128 KB</td><td class="td-mono td-hl">~9.4 PB</td><td class="td-mono td-hl">~47.2 PB</td><td>8B-class GQA (planning anchor)</td></tr>
+          <tr><td class="td-mono">320 KB</td><td class="td-mono">~23.6 PB</td><td class="td-mono">~118 PB</td><td>70B-class GQA</td></tr>
+          <tr><td class="td-mono">512 KB</td><td class="td-mono">~37.8 PB</td><td class="td-mono">~189 PB</td><td>Large non-optimized MHA</td></tr>
+        </tbody>
+      </table>
+      <p class="muted" style="font-size:14px;">Math check: 1.23 &times; 10&sup9; &times; 60 &times; 131,072 &asymp; 9.67 &times; 10&sup1;&sup5; bytes (decimal) &asymp; 9.4 PB (binary). Numbers hold under peer review; variance is rounding convention only.</p>
+    </div>
+  </section>
+
+  <section style="padding:10px 0">
+    <div class="card bigquote">
+      The next AI bottleneck is not <em>only</em> FLOPS.<br/>
+      It is <span style="color:var(--blue)">memory residency</span>, <span style="color:var(--violet)">movement</span>, and <span style="color:var(--green)">orchestration</span>.
+    </div>
+  </section>
+
+  <section>
+    <div class="card section-card">
+      <div class="section-label">07 &middot; Prefill vs. Decode Disaggregation</div>
+      <h2>The token lifecycle is splitting at scale.</h2>
+      <p>At quadrillion-token throughput, monolithic inference clusters give way to <strong>disaggregated architectures</strong> &mdash; because Prefill and Decode have fundamentally different resource profiles and can no longer share the same cluster efficiently.</p>
+      <div class="disagg-row">
+        <div class="disagg-box disagg-prefill">
+          <div class="disagg-label" style="color:#cdb8ff">Prefill Stage</div>
+          <div class="disagg-name" style="color:#a87cff">Process the Prompt</div>
+          <div class="disagg-desc">Parallel attention over all input tokens simultaneously. Runs once per request.</div>
+          <div class="disagg-props">
+            <span class="tag">compute-bound</span><span class="tag">high FLOPS utilization</span><span class="tag">parallelizable</span>
+          </div>
+        </div>
+        <div class="disagg-arrow">&rarr;</div>
+        <div class="disagg-box disagg-decode">
+          <div class="disagg-label" style="color:#a8e8ff">Decode Stage</div>
+          <div class="disagg-name" style="color:#60c8ff">Generate Each Token</div>
+          <div class="disagg-desc">Autoregressive, one token at a time. KV cache grows with every step generated.</div>
+          <div class="disagg-props">
+            <span class="tag">memory-bandwidth-bound</span><span class="tag">KV cache hot path</span><span class="tag">latency-sensitive</span>
+          </div>
+        </div>
+      </div>
+      <p>You cannot optimize both stages on the same cluster. The industry is moving toward dedicated <strong>Prefill clusters</strong> (FLOPS-dense) and dedicated <strong>Decode clusters</strong> (memory-optimized, high-bandwidth HBM). KV state is handed off between them: a low-latency transfer of hundreds of megabytes per active long-context session.</p>
+      <div class="callout callout-amber">
+        The quadrillion-token era doesn't just stress hardware. It forces a <em>different cluster topology</em> &mdash; one the industry is still actively designing.
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="two">
+      <div class="card section-card">
+        <div class="section-label">08 &middot; Memory Hierarchy</div>
+        <h2>The new inference memory hierarchy</h2>
+        <p class="muted" style="margin-bottom:16px;">HBM capacity scaling cannot keep pace with context window growth. The runtime must treat local accelerator memory as a cache for a massive, distributed, multi-tiered memory fabric.</p>
+        <div class="flow">
+          <div class="tier"><div><strong>Tensor SRAM / Registers</strong><div class="tier-sub">On-chip, nanosecond access &mdash; the hot path</div></div><span class="tier-badge tier-fastest">fastest</span></div>
+          <div class="tier"><div><strong>HBM (High Bandwidth Memory)</strong><div class="tier-sub">2&ndash;3 TB/s bandwidth, but capacity-limited (~80 GB/chip)</div></div><span class="tier-badge tier-hbm">bandwidth</span></div>
+          <div class="tier"><div><strong>Host DRAM</strong><div class="tier-sub">Slower but 4&ndash;8&times; more capacity per accelerator node</div></div><span class="tier-badge tier-dram">capacity</span></div>
+          <div class="tier"><div><strong>CXL Pooled Memory</strong><div class="tier-sub">Shared fabric across nodes &mdash; scale beyond local memory</div></div><span class="tier-badge tier-cxl">fabric scale</span></div>
+          <div class="tier"><div><strong>NVMe / SSD Spill</strong><div class="tier-sub">Cold KV cache, prefix archives, evicted sessions</div></div><span class="tier-badge tier-nvme">cold KV</span></div>
+        </div>
+      </div>
+      <div class="card section-card">
+        <div class="section-label">09 &middot; Techniques That Earn Their Place</div>
+        <h2>What systems will need at this scale</h2>
+        <table>
+          <tbody>
+            <tr><td><strong>GQA / MQA</strong></td><td>Reduce KV head duplication; 4&ndash;8&times; memory savings</td></tr>
+            <tr><td><strong>PagedAttention</strong></td><td>Virtualize KV-cache allocation like OS paging</td></tr>
+            <tr><td><strong>Prefix caching</strong></td><td>Reuse shared prompt state across requests</td></tr>
+            <tr><td><strong>KV quantization</strong></td><td>INT8/FP8 compression; 2&ndash;4&times; footprint reduction</td></tr>
+            <tr><td><strong>CXL pooling</strong></td><td>Scale KV capacity beyond per-node HBM</td></tr>
+            <tr><td><strong>Semantic eviction</strong></td><td>Keep reusable state; drop ephemeral state intelligently</td></tr>
+            <tr><td><strong>Disaggregated serving</strong></td><td>Split Prefill and Decode by resource profile</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card section-card" style="margin-bottom:18px;">
+      <div class="section-label">10 &middot; For Practitioners</div>
+      <h2>What this means if you're serving models in 2026</h2>
+      <p>This analysis is not just about Google. The same physics applies at any scale &mdash; and the architectural choices compound faster than the hardware roadmap.</p>
+    </div>
+    <div class="three">
+      <div class="card builder-card">
+        <h3>HBM4 and beyond</h3>
+        <p class="muted">HBM4 roughly doubles memory bandwidth over HBM3e. But context windows are growing faster. By the time HBM4 ships at scale, 1M-token contexts will be common &mdash; and at 128KB/token, that's 128 GB of KV state per session. Bandwidth is necessary but not sufficient. Capacity is the new wall.</p>
+      </div>
+      <div class="card builder-card">
+        <h3>Disaggregated memory serving</h3>
+        <p class="muted">The correct mental model is no longer "GPU cluster." It's a multi-tier memory fabric with compute attached. Prefill clusters handle prompt processing; Decode clusters manage live KV state; CXL fabrics pool memory across nodes. Designing without this split leaves FLOPs-per-dollar on the table and memory bandwidth as a hard ceiling.</p>
+      </div>
+      <div class="card builder-card">
+        <h3>Token warehouses</h3>
+        <p class="muted">Long-running agents, persistent memory, and shared system prompts are creating a new primitive: the token warehouse &mdash; a persistent, queryable store of KV state that survives across sessions. This is not a cache. It's a database. And its access patterns (hot/warm/cold, semantic eviction, prefix reuse) look more like a storage engine than a GPU kernel.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card section-card">
+      <div class="section-label">11 &middot; Stress Test</div>
+      <h2>Extrapolation: if 7&times; yearly growth continued</h2>
+      <p>Not a forecast &mdash; a stress test to surface what must be solved before the numbers arrive.</p>
+      <table>
+        <thead><tr><th>Year</th><th>Tokens/month</th><th>Avg tokens/sec</th><th>Live KV @ 128KB, 60s window</th><th>What it forces</th></tr></thead>
+        <tbody>
+          <tr><td class="td-mono">2026</td><td class="td-mono">3.2Q</td><td class="td-mono">1.23B/s</td><td class="td-mono">~9.4 PB</td><td>Multi-node HBM pooling</td></tr>
+          <tr><td class="td-mono">2027</td><td class="td-mono">22.4Q</td><td class="td-mono">8.64B/s</td><td class="td-mono">~66 PB</td><td>CXL fabric at datacenter scale</td></tr>
+          <tr><td class="td-mono">2028</td><td class="td-mono">156.8Q</td><td class="td-mono">60.5B/s</td><td class="td-mono">~465 PB</td><td>Token warehouses, semantic eviction, new memory media</td></tr>
+        </tbody>
+      </table>
+      <p>At the 2028 row, memory placement, compression, DMA scheduling, and workload-aware memory fabrics are not optimization targets. They are the critical path.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="three">
+      <div class="card builder-card">
+        <h3>Compiler-controlled execution</h3>
+        <p class="muted">Static scheduling reduces runtime chaos by preplanning memory movement and buffer reuse &mdash; treating memory traffic as a first-class compilation target, not an afterthought added in the optimizer.</p>
+      </div>
+      <div class="card builder-card">
+        <h3>KV-aware memory controllers</h3>
+        <p class="muted">Next-generation controllers may need to understand inference state semantics &mdash; distinguishing hot reusable state, streaming decode state, and ephemeral one-shot state &mdash; to make intelligent placement decisions in hardware.</p>
+      </div>
+      <div class="card builder-card">
+        <h3>OS / runtime co-design</h3>
+        <p class="muted">The boundary between OS, accelerator runtime, interconnect, and memory fabric is blurring. The systems software stack for a trillion-parameter inference cluster in 2028 will look nothing like today's CUDA + PyTorch + Linux.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card section-card">
+      <div class="section-label">12 &middot; Conclusion</div>
+      <h2>Conclusion</h2>
+      <p>Google's 3.2 quadrillion tokens/month milestone is not an AI adoption metric. It is a systems warning. Inference at this scale is no longer about feeding tensor cores &mdash; it is about deciding which memory state should stay close, which should move, which should be compressed, which should be evicted, and which should be reused across sessions.</p>
+      <p>Prefill/Decode disaggregation, the emergence of token warehouses, and the rise of CXL memory fabrics are not incremental improvements to the GPU-centric architecture of 2020. They are a different architecture entirely &mdash; one the industry is building in real time.</p>
+      <div class="callout callout-green" style="margin:24px 0;">
+        The AI era is shifting from <em>compute-centric scaling</em> to <em>memory-orchestration-centric scaling</em>.
+      </div>
+    </div>
+  </section>
+
+  <section style="padding:10px 0 48px">
+    <div class="prediction">
+      <p>The next 10&times; won't come from bigger models.</p>
+      <p>It will come from <span style="color:var(--amber)">killing the memory wall.</span></p>
+      <p class="sub">The teams who treat memory as the first-order constraint &mdash; not an optimization to revisit later &mdash; will define what production AI infrastructure looks like in 2028.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="card section-card">
+      <div class="section-label">Sources &amp; Notes</div>
+      <h2>Sources and notes</h2>
+      <ul class="sources">
+        <li>Google I/O 2026 official post &mdash; Sundar Pichai reporting 3.2Q tokens/month, with historical milestones of 9.7T (2024) and ~480T (2025): <a href="https://blog.google/intl/en-in/company-news/technology/sundar-pichai-io-2026/" target="_blank" rel="noopener">Google Blog</a>.</li>
+        <li>Business Insider coverage of Google I/O 2026 AI usage numbers: <a href="https://www.businessinsider.com/ceo-sundar-pichai-google-ai-growth-io-conference-2026-5" target="_blank" rel="noopener">Business Insider</a>.</li>
+        <li>Gemini Developer API pricing used as a public market proxy for token economics, not as Google internal infrastructure cost: <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener">Gemini API Pricing</a>.</li>
+        <li>KV-cache calculations are architecture estimates based on the standard transformer KV-cache formula. Actual internal systems vary by model, precision, batching, prefix caching, compression, eviction policy, and hardware topology.</li>
+        <li>Math verification: 1.23 &times; 10&sup9; &times; 60 &times; 131,072 &asymp; 9.67 &times; 10&sup1;&sup5; bytes (decimal PB) &asymp; 9.4 PB (binary). Numbers consistent within rounding conventions.</li>
+        <li>Prefill/Decode disaggregation references: Zhong et al. "DistServe" (2024), Patel et al. "Splitwise" (2024), and ongoing production deployments across major inference providers.</li>
+      </ul>
+    </div>
+  </section>
+
+  <div id="webmentions"></div>
+
+</div>
+</main>
+<footer class="site-footer" aria-label="Site footer">
+  <p><a href="/index.html">© 2026 MANISH AI. All rights reserved.</a></p>
+  <p><a href="/writings.html">Back to Writings</a> · <a href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></p>
+</footer>
+<script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script src="/assets/site.js"></script>
+</body>
+</html>
