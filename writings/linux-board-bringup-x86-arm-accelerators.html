@@ -1,0 +1,1675 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>First Silicon Is Not the Finish Line: Linux Board Bring-Up for x86, Arm, and Accelerators | MANISH AI</title>
+  <meta name="description" content="A systems engineering guide to Linux board bring-up for x86, Arm, and accelerators, covering firmware, ACPI, Device Tree, drivers, DMA, IOMMU, runtimes, and debugging." />
+  <meta name="keywords" content="Linux board bring-up, x86 bring-up, Arm bring-up, accelerator bring-up, Linux kernel drivers, ACPI, Device Tree, DMA, IOMMU, firmware, platform drivers, U-Boot, PCIe, kernel debugging" />
+  <meta name="author" content="MANISH AI" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <meta name="color-scheme" content="light dark" />
+  <link rel="canonical" href="https://manishklach.github.io/writings/linux-board-bringup-x86-arm-accelerators.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="First Silicon Is Not the Finish Line: Linux Board Bring-Up for x86, Arm, and Accelerators | MANISH AI" />
+  <meta property="og:description" content="A systems engineering guide to Linux board bring-up for x86, Arm, and accelerators, covering firmware, ACPI, Device Tree, drivers, DMA, IOMMU, runtimes, and debugging." />
+  <meta property="og:url" content="https://manishklach.github.io/writings/linux-board-bringup-x86-arm-accelerators.html" />
+  <meta property="og:site_name" content="MANISH AI" />
+  <meta property="og:image" content="https://manishklach.github.io/og/linux-board-bringup-x86-arm-accelerators.png" />
+  <meta property="og:image:alt" content="First Silicon Is Not the Finish Line: Linux Board Bring-Up for x86, Arm, and Accelerators social preview" />
+  <meta property="article:published_time" content="2026-05-21" />
+  <meta property="article:modified_time" content="2026-05-21" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="First Silicon Is Not the Finish Line: Linux Board Bring-Up for x86, Arm, and Accelerators | MANISH AI" />
+  <meta name="twitter:description" content="A systems engineering guide to Linux board bring-up for x86, Arm, and accelerators, covering firmware, ACPI, Device Tree, drivers, DMA, IOMMU, runtimes, and debugging." />
+  <meta name="twitter:image" content="https://manishklach.github.io/og/linux-board-bringup-x86-arm-accelerators.png" />
+  <link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml" />
+  <link rel="alternate" type="application/feed+json" title="MANISH AI JSON" href="/feed.json" />
+  <link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention" />
+  <link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc" />
+  <script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "First Silicon Is Not the Finish Line: Linux Board Bring-Up for x86, Arm, and Accelerators",
+  "description": "A systems engineering guide to Linux board bring-up for x86, Arm, and accelerators, covering firmware, ACPI, Device Tree, drivers, DMA, IOMMU, runtimes, and debugging.",
+  "url": "https://manishklach.github.io/writings/linux-board-bringup-x86-arm-accelerators.html",
+  "datePublished": "2026-05-21",
+  "dateModified": "2026-05-21",
+  "author": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "MANISH AI",
+    "url": "https://manishklach.github.io/"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://manishklach.github.io/writings/linux-board-bringup-x86-arm-accelerators.html"
+  },
+  "inLanguage": "en-US",
+  "keywords": "Linux board bring-up, x86 bring-up, Arm bring-up, accelerator bring-up, Linux kernel drivers, ACPI, Device Tree, DMA, IOMMU, firmware, platform drivers, U-Boot, PCIe, kernel debugging"
+}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:       #050d18;
+      --surface:  #0a1525;
+      --surface2: #0f1e33;
+      --surface3: #132340;
+      --ink:      #e8f2ff;
+      --ink2:     #bdd0e8;
+      --muted:    #7a93b0;
+      --line:     rgba(255,255,255,0.09);
+      --line2:    rgba(255,255,255,0.16);
+      --cyan:     #4dd9ff;
+      --violet:   #a78bfa;
+      --green:    #34d399;
+      --amber:    #fbbf24;
+      --red:      #f87171;
+      --code-bg:  #030b15;
+      --r-sm:     12px;
+      --r-md:     20px;
+      --r-lg:     28px;
+      --r-xl:     36px;
+      --shadow-sm: 0 4px 20px rgba(0,0,0,0.4);
+      --shadow-md: 0 16px 60px rgba(0,0,0,0.5);
+      --shadow-lg: 0 32px 90px rgba(0,0,0,0.6);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+      background-color: var(--bg);
+      color: var(--ink);
+      line-height: 1.7;
+      overflow-x: hidden;
+    }
+
+    /* ─── NOISE OVERLAY ─── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      opacity: 0.5;
+    }
+
+    /* ─── AMBIENT GLOWS ─── */
+    .glow-1, .glow-2, .glow-3 {
+      position: fixed; border-radius: 50%;
+      pointer-events: none; filter: blur(120px); z-index: 0;
+    }
+    .glow-1 { width: 600px; height: 600px; background: radial-gradient(circle, rgba(77,217,255,0.07), transparent 70%); top: -100px; left: -100px; }
+    .glow-2 { width: 500px; height: 500px; background: radial-gradient(circle, rgba(167,139,250,0.07), transparent 70%); top: 20%; right: -100px; }
+    .glow-3 { width: 400px; height: 400px; background: radial-gradient(circle, rgba(52,211,153,0.05), transparent 70%); top: 60%; left: 20%; }
+
+    /* ─── LAYOUT ─── */
+    .wrap { width: min(1220px, calc(100% - 40px)); margin: 0 auto; position: relative; z-index: 1; }
+
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ─── HEADER / HERO ─── */
+    header.hero {
+      position: relative;
+      padding: 80px 0 64px;
+      border-bottom: 1px solid var(--line);
+    }
+    .hero-grid-bg {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(77,217,255,.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(77,217,255,.05) 1px, transparent 1px);
+      background-size: 52px 52px;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent 90%);
+    }
+    .hero-inner {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 48px;
+      align-items: start;
+    }
+    .eyebrow-row {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    .eyebrow {
+      display: inline-flex; gap: 8px; align-items: center;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+      padding: 6px 12px; border-radius: 999px;
+      border: 1px solid rgba(52,211,153,.30);
+      background: rgba(52,211,153,.07);
+      color: var(--green);
+    }
+    .eyebrow-secondary {
+      border-color: rgba(77,217,255,.25);
+      background: rgba(77,217,255,.06);
+      color: var(--cyan);
+    }
+    h1 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: clamp(44px, 6.5vw, 82px);
+      line-height: .92;
+      letter-spacing: -0.03em;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    h1 em {
+      font-style: italic;
+      background: linear-gradient(135deg, var(--cyan) 0%, var(--violet) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-subtitle {
+      font-size: clamp(16px, 1.8vw, 20px);
+      color: var(--ink2);
+      margin: 24px 0 28px;
+      max-width: 640px;
+      line-height: 1.55;
+    }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; font-weight: 500;
+      padding: 5px 11px; border-radius: 999px;
+      border: 1px solid var(--line2);
+      background: rgba(255,255,255,.04);
+      color: var(--ink2);
+      white-space: nowrap;
+    }
+
+    /* ─── TL;DR BOX ─── */
+    .tldr {
+      background: linear-gradient(145deg, rgba(77,217,255,.08), rgba(167,139,250,.08));
+      border: 1px solid rgba(77,217,255,.25);
+      border-radius: var(--r-lg);
+      padding: 28px 32px;
+      margin-top: 36px;
+    }
+    .tldr-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+      color: var(--cyan); margin-bottom: 12px;
+    }
+    .tldr p {
+      font-size: 17px; color: var(--ink); line-height: 1.6;
+      font-weight: 500;
+    }
+    .tldr-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .tldr-pill {
+      font-size: 13px; font-weight: 600;
+      padding: 4px 12px; border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      color: var(--ink2);
+    }
+
+    /* ─── HERO SIDEBAR CARD ─── */
+    .hero-card {
+      background: linear-gradient(160deg, rgba(15,30,51,.9) 0%, rgba(10,21,37,.95) 100%);
+      border: 1px solid var(--line2);
+      border-radius: var(--r-xl);
+      padding: 28px;
+      box-shadow: var(--shadow-lg);
+      position: sticky; top: 24px;
+    }
+    .hero-card-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 20px;
+    }
+    .pipeline { display: grid; gap: 10px; }
+    .stage {
+      display: grid; grid-template-columns: 36px 1fr; gap: 14px; align-items: start;
+      padding: 14px 16px; border-radius: var(--r-md);
+      background: rgba(255,255,255,.035);
+      border: 1px solid rgba(255,255,255,.07);
+      transition: background 0.2s;
+    }
+    .stage:hover { background: rgba(255,255,255,.06); }
+    .num {
+      width: 36px; height: 36px;
+      display: grid; place-items: center;
+      border-radius: 50%;
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 700; font-size: 14px;
+      background: linear-gradient(135deg, var(--cyan), var(--violet));
+      color: #030b15;
+      flex-shrink: 0;
+    }
+    .stage-text { font-size: 14px; color: var(--ink2); line-height: 1.5; padding-top: 8px; }
+
+    /* ─── MAIN CONTENT ─── */
+    main { padding: 52px 0 80px; }
+    .layout { display: grid; grid-template-columns: 256px 1fr; gap: 40px; align-items: start; }
+
+    /* ─── TOC ─── */
+    nav.toc {
+      position: sticky; top: 24px;
+      background: rgba(10,21,37,.85);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      padding: 20px 18px;
+      backdrop-filter: blur(12px);
+    }
+    nav.toc .toc-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 14px; padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    nav.toc a {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px; color: var(--muted); font-size: 13px;
+      border-radius: 8px; transition: all 0.15s; margin: 2px 0;
+    }
+    nav.toc a::before {
+      content: '';
+      width: 4px; height: 4px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0;
+      transition: background 0.15s;
+    }
+    nav.toc a:hover { background: rgba(255,255,255,.06); color: var(--ink); text-decoration: none; }
+    nav.toc a:hover::before { background: var(--cyan); }
+
+    /* ─── ARTICLE ─── */
+    article {
+      min-width: 0;
+      background: rgba(10,21,37,.4);
+      border: 1px solid var(--line);
+      border-radius: var(--r-xl);
+      padding: clamp(28px, 5vw, 56px);
+      box-shadow: var(--shadow-md);
+    }
+
+    section { scroll-margin-top: 32px; }
+    section + section { margin-top: 72px; }
+
+    h2 {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: clamp(30px, 4vw, 46px);
+      line-height: 1.08;
+      letter-spacing: -0.025em;
+      color: #fff;
+      margin-bottom: 20px;
+    }
+    h2:not(:first-child) { margin-top: 64px; }
+    h3 {
+      font-family: 'Geist', sans-serif;
+      font-size: clamp(18px, 2.2vw, 23px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      margin: 40px 0 12px;
+    }
+    p { color: var(--ink2); margin: 14px 0; font-size: 16px; line-height: 1.75; }
+    .lead { font-size: 19px; color: var(--ink); font-weight: 400; line-height: 1.65; }
+    ul, ol { color: var(--ink2); padding-left: 24px; font-size: 15px; }
+    li { margin: 8px 0; line-height: 1.6; }
+    strong { color: var(--ink); }
+
+    /* ─── BLOCKQUOTE ─── */
+    .pullquote {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-style: italic;
+      font-size: clamp(22px, 2.5vw, 28px);
+      line-height: 1.4;
+      color: #fff;
+      padding: 32px 36px;
+      border-left: 3px solid var(--green);
+      background: linear-gradient(90deg, rgba(52,211,153,.07), transparent 70%);
+      border-radius: 0 var(--r-md) var(--r-md) 0;
+      margin: 36px 0;
+    }
+
+    /* ─── CALLOUTS ─── */
+    .callout {
+      margin: 24px 0; padding: 20px 24px;
+      border-radius: var(--r-md);
+      border: 1px solid rgba(77,217,255,.25);
+      background: rgba(77,217,255,.06);
+      font-size: 15px; color: var(--ink2);
+    }
+    .callout.warn {
+      border-color: rgba(251,191,36,.25);
+      background: rgba(251,191,36,.06);
+    }
+    .callout.danger {
+      border-color: rgba(248,113,113,.25);
+      background: rgba(248,113,113,.06);
+    }
+    .callout strong { color: var(--ink); }
+    .callout code { font-size: 13px; }
+
+    /* ─── CARDS ─── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px; margin: 24px 0;
+    }
+    .card {
+      background: rgba(255,255,255,.032);
+      border: 1px solid rgba(255,255,255,.09);
+      border-radius: var(--r-md);
+      padding: 20px 22px;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .card:hover { background: rgba(255,255,255,.055); border-color: rgba(255,255,255,.16); }
+    .card h4 { font-size: 16px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+    .card p { font-size: 14px; color: var(--muted); margin: 0; }
+    .card code { font-size: 12px; }
+
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 24px 0; }
+
+    /* ─── CODE ─── */
+    code, pre {
+      font-family: 'IBM Plex Mono', SFMono-Regular, Consolas, monospace;
+    }
+    code {
+      font-size: 13px; font-weight: 500;
+      color: var(--cyan);
+      background: rgba(77,217,255,.09);
+      padding: 2px 7px; border-radius: 6px;
+      border: 1px solid rgba(77,217,255,.15);
+    }
+    .code-block {
+      position: relative;
+      margin: 20px 0;
+    }
+    .code-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; font-weight: 600;
+      letter-spacing: .08em; text-transform: uppercase;
+      color: var(--muted);
+      background: var(--code-bg);
+      padding: 10px 18px 8px;
+      border-radius: var(--r-md) var(--r-md) 0 0;
+      border: 1px solid rgba(255,255,255,.09);
+      border-bottom: none;
+    }
+    pre {
+      overflow-x: auto;
+      padding: 20px 22px;
+      border-radius: var(--r-md);
+      background: var(--code-bg);
+      border: 1px solid rgba(255,255,255,.09);
+      color: #c8daf0;
+      font-size: 13px;
+      line-height: 1.65;
+      box-shadow: inset 0 0 0 1px rgba(77,217,255,.04);
+    }
+    .code-block .code-label + pre { border-radius: 0 0 var(--r-md) var(--r-md); }
+
+    /* Syntax coloring */
+    pre .kw  { color: #a78bfa; }
+    pre .fn  { color: #67e8f9; }
+    pre .str { color: #86efac; }
+    pre .cm  { color: #4a6a8a; font-style: italic; }
+    pre .num { color: #fbbf24; }
+    pre .pp  { color: #f9a8d4; }
+
+    /* ─── DIAGRAMS ─── */
+    .diagram {
+      margin: 32px 0; padding: 20px;
+      border-radius: var(--r-lg);
+      background: var(--code-bg);
+      border: 1px solid rgba(255,255,255,.09);
+      overflow-x: auto;
+    }
+    svg { max-width: 100%; height: auto; }
+
+    /* ─── TABLES ─── */
+    .table-wrap {
+      overflow-x: auto; margin: 24px 0;
+      border-radius: var(--r-lg);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
+    }
+    table { width: 100%; border-collapse: collapse; min-width: 700px; }
+    thead { background: var(--surface3); }
+    th {
+      padding: 13px 16px; text-align: left;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; font-weight: 600;
+      letter-spacing: .10em; text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line2);
+    }
+    td {
+      padding: 13px 16px; font-size: 14px; color: var(--ink2);
+      border-bottom: 1px solid var(--line);
+      vertical-align: top; line-height: 1.55;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,.02); }
+
+    /* ─── PATCH SERIES BOX ─── */
+    .patch-series {
+      background: var(--code-bg);
+      border: 1px solid rgba(77,217,255,.15);
+      border-left: 3px solid var(--cyan);
+      border-radius: var(--r-md);
+      padding: 20px 22px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px; color: var(--ink2);
+      line-height: 1.65; margin: 20px 0;
+    }
+    .patch-series .ph { color: var(--muted); font-style: italic; }
+    .patch-series .pn { color: var(--violet); }
+    .patch-series .pt { color: var(--ink); }
+
+    /* ─── CHECKLIST ─── */
+    .checklist { list-style: none; padding: 0; }
+    .checklist li {
+      display: flex; gap: 14px; align-items: flex-start;
+      padding: 12px 16px; border-radius: var(--r-sm);
+      transition: background 0.15s;
+    }
+    .checklist li:hover { background: rgba(255,255,255,.03); }
+    .check-icon {
+      width: 22px; height: 22px; flex-shrink: 0;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgba(52,211,153,.2), rgba(52,211,153,.05));
+      border: 1px solid rgba(52,211,153,.30);
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 1px;
+    }
+    .check-icon::after {
+      content: '✓';
+      font-size: 11px; font-weight: 700; color: var(--green);
+    }
+    .checklist li strong { color: var(--ink); }
+
+    /* ─── DEBUG BOX ─── */
+    .debug-box {
+      background: linear-gradient(145deg, rgba(251,191,36,.06), rgba(248,113,113,.04));
+      border: 1px solid rgba(251,191,36,.22);
+      border-radius: var(--r-lg);
+      padding: 28px;
+      margin: 28px 0;
+    }
+    .debug-box-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--amber); margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .debug-box-label::before { content: '⚡'; font-size: 14px; }
+    .debug-cmd {
+      margin: 10px 0;
+      display: flex; gap: 12px;
+      align-items: flex-start;
+    }
+    .debug-cmd-num {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; color: var(--amber);
+      flex-shrink: 0; width: 18px; padding-top: 2px;
+    }
+    .debug-cmd-desc { font-size: 14px; color: var(--ink2); line-height: 1.55; }
+    .debug-cmd-desc code { font-size: 12px; }
+
+    /* ─── TAGLINE ─── */
+    .tagline {
+      margin-top: 40px; padding: 30px 36px;
+      text-align: center;
+      border-radius: var(--r-xl);
+      background: linear-gradient(135deg, rgba(77,217,255,.10), rgba(52,211,153,.08), rgba(167,139,250,.10));
+      border: 1px solid rgba(255,255,255,.12);
+      box-shadow: var(--shadow-md);
+    }
+    .tagline p {
+      font-family: 'Instrument Serif', Georgia, serif;
+      font-size: clamp(20px, 2.5vw, 26px);
+      font-style: italic;
+      color: #fff; margin: 0; line-height: 1.45;
+    }
+
+    /* ─── CTA ─── */
+    .cta-box {
+      margin-top: 40px; padding: 28px 32px;
+      border-radius: var(--r-lg);
+      background: var(--surface2);
+      border: 1px solid var(--line2);
+      display: flex; gap: 20px; align-items: center;
+      flex-wrap: wrap;
+    }
+    .cta-icon {
+      font-size: 32px; flex-shrink: 0;
+    }
+    .cta-text { flex: 1; min-width: 200px; }
+    .cta-text strong { display: block; font-size: 17px; color: var(--ink); margin-bottom: 4px; }
+    .cta-text span { font-size: 15px; color: var(--muted); }
+
+    /* ─── REFS ─── */
+    .refs { list-style: none; padding: 0; }
+    .refs li {
+      padding: 10px 14px; font-size: 14px; color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      line-height: 1.55;
+    }
+    .refs li:last-child { border-bottom: none; }
+    .refs li::before { content: '→  '; color: var(--cyan); font-weight: 700; }
+
+    /* ─── FOOTER ─── */
+    footer {
+      color: var(--muted); font-size: 13px;
+      border-top: 1px solid var(--line);
+      padding: 32px 0 52px;
+      position: relative; z-index: 1;
+    }
+    footer .wrap {
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+    }
+    .footer-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+    .footer-tag {
+      font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+      padding: 3px 9px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--muted);
+    }
+
+    /* MANISH AI site shell */
+    .site-topbar {
+      position: relative;
+      z-index: 2;
+      padding: 18px 24px 0;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .site-nav {
+      width: min(1220px, calc(100% - 40px));
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 12px 14px;
+      border: 1px solid var(--line2);
+      border-radius: 18px;
+      background: rgba(255,255,255,.045);
+      box-shadow: var(--shadow-sm);
+      backdrop-filter: blur(14px);
+    }
+    .brand-logo {
+      display: inline-flex;
+      align-items: center;
+      text-decoration: none;
+      opacity: .98;
+      transition: opacity .2s ease, transform .2s ease;
+    }
+    .brand-logo:hover { opacity: .82; transform: translateY(-1px); text-decoration: none; }
+    .brand-logo img { display: block; height: 52px; width: auto; }
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .header-nav a, #theme-toggle {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: .76rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 700;
+    }
+    .header-nav a:hover, #theme-toggle:hover { color: var(--ink); text-decoration: none; }
+    .article-top-link {
+      display: inline-flex;
+      margin: 0 0 24px;
+      color: var(--muted);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .82rem;
+      text-decoration: none;
+    }
+    .article-top-link:hover { color: var(--cyan); text-decoration: none; }
+    .site-footer {
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px solid var(--line);
+      padding: 34px 0 54px;
+      position: relative;
+      z-index: 1;
+      text-align: center;
+    }
+    .site-footer a { color: var(--cyan); text-decoration: none; }
+    .site-footer a:hover { text-decoration: underline; }
+    .site-footer .wrap { display: block; }
+    #webmentions { margin-top: 32px; }
+    #webmentions img { width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; }
+    html:not(.dark) {
+      --bg: #f7f4ee;
+      --surface: #ffffff;
+      --surface2: #f2f7fb;
+      --surface3: #e6eff8;
+      --ink: #111827;
+      --ink2: #334155;
+      --muted: #64748b;
+      --line: rgba(15,23,42,.12);
+      --line2: rgba(15,23,42,.18);
+      --cyan: #08789a;
+      --violet: #6d4fc2;
+      --green: #16845b;
+      --amber: #9a650d;
+      --red: #b33b3b;
+      --code-bg: #f8fafc;
+      --shadow-sm: 0 4px 20px rgba(31,41,55,.08);
+      --shadow-md: 0 16px 60px rgba(31,41,55,.10);
+      --shadow-lg: 0 32px 90px rgba(31,41,55,.13);
+    }
+    html:not(.dark) body { background-color: var(--bg); }
+    html:not(.dark) body::before { opacity: .18; }
+    html:not(.dark) .glow-1 { background: radial-gradient(circle, rgba(8,120,154,.09), transparent 70%); }
+    html:not(.dark) .glow-2 { background: radial-gradient(circle, rgba(109,79,194,.08), transparent 70%); }
+    html:not(.dark) .glow-3 { background: radial-gradient(circle, rgba(22,132,91,.07), transparent 70%); }
+    html:not(.dark) h1, html:not(.dark) h2, html:not(.dark) .tagline p { color: #111827; }
+    html:not(.dark) h1 em { -webkit-text-fill-color: transparent; }
+    html:not(.dark) .hero-card, html:not(.dark) article, html:not(.dark) nav.toc, html:not(.dark) .site-nav {
+      background: rgba(255,255,255,.82);
+    }
+    html:not(.dark) .card, html:not(.dark) .stage, html:not(.dark) .cta-box {
+      background: rgba(255,255,255,.66);
+      border-color: rgba(15,23,42,.12);
+    }
+    html:not(.dark) pre, html:not(.dark) .code-label, html:not(.dark) .diagram, html:not(.dark) .patch-series {
+      background: #f8fafc;
+      color: #334155;
+      border-color: rgba(15,23,42,.14);
+    }
+    html:not(.dark) thead { background: #e6eff8; }
+    html:not(.dark) tr:hover td { background: rgba(15,23,42,.035); }
+    @media (max-width: 640px) {
+      .site-nav { align-items: flex-start; width: min(1220px, calc(100% - 32px)); }
+      .brand-logo img { height: 40px; }
+      .header-nav { gap: 10px; }
+      .header-nav a, #theme-toggle { font-size: .68rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+    }
+
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 960px) {
+      .hero-inner, .layout { grid-template-columns: 1fr; }
+      .cards, .split { grid-template-columns: 1fr; }
+      nav.toc { position: relative; top: auto; }
+      .hero-card { position: relative; top: auto; }
+    }
+    @media (max-width: 640px) {
+      h1 { letter-spacing: -0.02em; }
+      article { padding: 24px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient glows -->
+  <div class="glow-1"></div>
+  <div class="glow-2"></div>
+  <div class="glow-3"></div>
+
+  <header class="site-topbar" aria-label="Site header">
+    <nav class="site-nav" aria-label="Primary navigation">
+      <a class="brand-logo" href="/index.html" aria-label="MANISH AI home"><img src="/assets/manish-ai-logo.png" alt="MANISH AI"></a>
+      <div class="header-nav">
+        <a href="/index.html#top">Home</a>
+        <a href="/index.html#featured">Featured</a>
+        <a href="/patents.html">Patents</a>
+        <a href="/writings.html">Writing</a>
+        <a href="/index.html#contact">Contact</a>
+        <button id="theme-toggle" type="button" aria-label="Toggle theme">☀️</button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ── HERO ── -->
+  <header class="hero">
+    <div class="hero-grid-bg"></div>
+    <div class="wrap">
+      <div class="hero-inner">
+        <div>
+          <div class="eyebrow-row">
+            <span class="eyebrow">Systems Engineering</span>
+            <span class="eyebrow eyebrow-secondary">Linux Kernel · x86 · Arm · Accelerators</span>
+          </div>
+          <h1>First Silicon Is Not the <em>Finish Line</em></h1>
+          <p class="hero-subtitle">
+            From power-on to production ML — how new boards and accelerators become real Linux platforms: firmware, ACPI, Device Tree, drivers, DMA, memory management, compiler lowering, graph capture, collectives, and debugging.
+          </p>
+          <div class="chip-row">
+            <span class="chip">ACPI</span>
+            <span class="chip">Device Tree</span>
+            <span class="chip">Platform Drivers</span>
+            <span class="chip">IOMMU / DMA</span>
+            <span class="chip">Graph Capture</span>
+            <span class="chip">Collectives</span>
+            <span class="chip">Profiling</span>
+          </div>
+
+          <!-- TL;DR box -->
+          <div class="tldr">
+            <div class="tldr-label">TL;DR</div>
+            <p>Bring-up is a stack of contracts. Every layer — firmware, kernel, runtime, compiler — must make and keep a promise to the layer above it. Until all contracts are sound, the silicon is not a platform.</p>
+            <div class="tldr-pills">
+              <span class="tldr-pill">Firmware → kernel handoff</span>
+              <span class="tldr-pill">DMA correctness</span>
+              <span class="tldr-pill">Runtime orchestration</span>
+              <span class="tldr-pill">Compiler lowering</span>
+              <span class="tldr-pill">Collective comms</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sidebar pipeline card -->
+        <aside class="hero-card">
+          <div class="hero-card-label">The real bring-up sequence</div>
+          <div class="pipeline">
+            <div class="stage">
+              <div class="num">1</div>
+              <div class="stage-text">Board boots firmware and exposes a trustworthy hardware description.</div>
+            </div>
+            <div class="stage">
+              <div class="num">2</div>
+              <div class="stage-text">Linux enumerates devices and binds the right drivers.</div>
+            </div>
+            <div class="stage">
+              <div class="num">3</div>
+              <div class="stage-text">Memory, interrupts, DMA, IOMMU, clocks, reset, and power domains work reliably.</div>
+            </div>
+            <div class="stage">
+              <div class="num">4</div>
+              <div class="stage-text">Runtime, compiler, graph capture, collectives, and tools hide the hardware complexity.</div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── MAIN ── -->
+  <main data-pagefind-body>
+    <div class="wrap"><a class="article-top-link" href="/writings.html">← All writings</a></div>
+    <div class="wrap layout">
+
+      <!-- TOC -->
+      <nav class="toc" aria-label="Table of contents">
+        <div class="toc-label">Contents</div>
+        <a href="#thesis">Thesis</a>
+        <a href="#mental-model">Mental model</a>
+        <a href="#x86-arm">x86 vs Arm</a>
+        <a href="#kernel-work">Kernel work</a>
+        <a href="#accelerator">Accelerator stack</a>
+        <a href="#code">Code patterns</a>
+        <a href="#debug">Debugging</a>
+        <a href="#when-it-doesnt-boot">When it doesn't boot</a>
+        <a href="#checklist">Checklist</a>
+        <a href="#references">References</a>
+      </nav>
+
+      <article>
+
+        <!-- ── THESIS ── -->
+        <section id="thesis">
+          <h2>The uncomfortable truth: a chip is not a platform</h2>
+          <p class="lead">A new board can tape out successfully, power on, and still be months away from being useful to anyone. Silicon readiness and software readiness are different milestones — and the gap between them is where teams get hurt.</p>
+
+          <p>"First silicon" is usually the beginning of platform bring-up, not the end of development. The board still needs firmware, boot flow, clock and reset sequencing, interrupt routing, memory maps, IOMMU setup, device enumeration, kernel drivers, runtime libraries, compiler support, graph capture, collective communication, profiling hooks, and failure diagnostics.</p>
+
+          <div class="pullquote">
+            The silicon may be ready, but the software stack decides whether the silicon is usable, debuggable, schedulable, and fast.
+          </div>
+
+          <p>That is why "new chip = 2× faster" is rarely true on day one. Performance arrives only when the kernel and runtime can keep the device fed without drowning it in synchronization, page faults, inefficient memory movement, or poorly shaped execution graphs.</p>
+        </section>
+
+        <!-- ── MENTAL MODEL ── -->
+        <section id="mental-model">
+          <h2>The board bring-up mental model</h2>
+          <p>Adding Linux support for a new board is not one patch. It is a stack of contracts. Firmware describes the hardware. The kernel enumerates it. Drivers bind to devices. The memory subsystem makes buffers visible to the right agents. Runtime software converts user intent into kernel-visible operations. Debug tools make the inevitable failures observable.</p>
+
+          <div class="diagram" aria-label="Layered board bring-up stack from silicon to user frameworks">
+            <svg viewBox="0 0 980 530" role="img" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="bg-grad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#4dd9ff" stop-opacity=".12"/>
+                  <stop offset="1" stop-color="#a78bfa" stop-opacity=".12"/>
+                </linearGradient>
+                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="8" result="blur"/>
+                  <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+                </filter>
+                <linearGradient id="layer1" x1="0" x2="1"><stop offset="0" stop-color="#4dd9ff" stop-opacity=".18"/><stop offset="1" stop-color="#4dd9ff" stop-opacity=".04"/></linearGradient>
+                <linearGradient id="layer2" x1="0" x2="1"><stop offset="0" stop-color="#a78bfa" stop-opacity=".18"/><stop offset="1" stop-color="#a78bfa" stop-opacity=".04"/></linearGradient>
+                <linearGradient id="layer3" x1="0" x2="1"><stop offset="0" stop-color="#34d399" stop-opacity=".18"/><stop offset="1" stop-color="#34d399" stop-opacity=".04"/></linearGradient>
+                <linearGradient id="layer4" x1="0" x2="1"><stop offset="0" stop-color="#fbbf24" stop-opacity=".18"/><stop offset="1" stop-color="#fbbf24" stop-opacity=".04"/></linearGradient>
+              </defs>
+              <rect x="20" y="20" width="940" height="490" rx="24" fill="url(#bg-grad)" stroke="rgba(255,255,255,.10)"/>
+
+              <!-- Applications -->
+              <rect x="60" y="55" width="860" height="70" rx="14" fill="url(#layer1)" stroke="rgba(77,217,255,.3)"/>
+              <text x="88" y="87" fill="#4dd9ff" font-size="12" font-weight="700" font-family="'IBM Plex Mono', monospace" letter-spacing="2" text-transform="uppercase">LAYER 4</text>
+              <text x="88" y="110" fill="#fff" font-size="20" font-weight="700">Applications / Frameworks — PyTorch, TensorFlow, JAX, inference servers</text>
+
+              <!-- Compiler + Runtime -->
+              <rect x="60" y="143" width="860" height="70" rx="14" fill="url(#layer2)" stroke="rgba(167,139,250,.3)"/>
+              <text x="88" y="175" fill="#a78bfa" font-size="12" font-weight="700" font-family="'IBM Plex Mono', monospace" letter-spacing="2">LAYER 3</text>
+              <text x="88" y="198" fill="#fff" font-size="20" font-weight="700">Compiler + Runtime — lowering, graph capture, kernels, collective comms</text>
+
+              <!-- Linux Kernel -->
+              <rect x="60" y="231" width="860" height="70" rx="14" fill="url(#layer3)" stroke="rgba(52,211,153,.3)"/>
+              <text x="88" y="263" fill="#34d399" font-size="12" font-weight="700" font-family="'IBM Plex Mono', monospace" letter-spacing="2">LAYER 2</text>
+              <text x="88" y="286" fill="#fff" font-size="20" font-weight="700">Linux Kernel — drivers, DMA, memory allocator, scheduler, tracing</text>
+
+              <!-- x86 / Arm -->
+              <rect x="60" y="319" width="415" height="70" rx="14" fill="url(#layer4)" stroke="rgba(251,191,36,.3)"/>
+              <text x="88" y="351" fill="#fbbf24" font-size="12" font-weight="700" font-family="'IBM Plex Mono', monospace" letter-spacing="2">LAYER 1a</text>
+              <text x="88" y="374" fill="#fff" font-size="19" font-weight="700">x86 — UEFI + ACPI + PCIe</text>
+
+              <rect x="505" y="319" width="415" height="70" rx="14" fill="url(#layer4)" stroke="rgba(251,191,36,.3)"/>
+              <text x="533" y="351" fill="#fbbf24" font-size="12" font-weight="700" font-family="'IBM Plex Mono', monospace" letter-spacing="2">LAYER 1b</text>
+              <text x="533" y="374" fill="#fff" font-size="19" font-weight="700">Arm — U-Boot / UEFI + DT / ACPI</text>
+
+              <!-- Silicon -->
+              <rect x="60" y="407" width="860" height="70" rx="14" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.15)"/>
+              <text x="88" y="439" fill="#7a93b0" font-size="12" font-weight="700" font-family="'IBM Plex Mono', monospace" letter-spacing="2">LAYER 0</text>
+              <text x="88" y="462" fill="#e8f2ff" font-size="20" font-weight="700">Silicon + Board — SoC, accelerator, DRAM / HBM, PCIe / CXL, NIC, PMIC</text>
+            </svg>
+          </div>
+
+          <div class="callout">
+            <strong>Practical rule:</strong> if a board needs custom clocks, reset lines, GPIOs, regulators, mailbox firmware, IOMMU windows, reserved memory, or non-standard interrupt routing, the kernel cannot "just discover it." It needs a correct hardware description and drivers that interpret that description correctly.
+          </div>
+        </section>
+
+        <!-- ── X86 vs ARM ── -->
+        <section id="x86-arm">
+          <h2>x86 and Arm solve discovery differently</h2>
+          <p>The first architectural split is how Linux learns what hardware exists. On conventional x86 systems, enumeration is driven by UEFI, ACPI, PCI/PCIe discovery, SMBIOS, and chipset conventions. On Arm boards — especially embedded and SoC-style systems — Device Tree is still the common way to describe non-discoverable hardware; Arm server systems may use UEFI and ACPI.</p>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Area</th><th>x86 board path</th><th>Arm board path</th><th>What can go wrong</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Boot firmware</strong></td>
+                  <td>UEFI/BIOS initializes platform state and publishes ACPI tables.</td>
+                  <td>Boot ROM → SPL/TF-A → U-Boot or UEFI; passes Device Tree blob or ACPI tables.</td>
+                  <td>Wrong memory map, missing reserved regions, broken PSCI/SMC interface, invalid ACPI/DT nodes.</td>
+                </tr>
+                <tr>
+                  <td><strong>Hardware description</strong></td>
+                  <td>ACPI namespace, PCI config space, MADT/IORT/DMAR-style tables.</td>
+                  <td>Device Tree nodes for SoC blocks, board wiring, clocks, resets, regulators; ACPI for server-class Arm.</td>
+                  <td>Driver never probes, resources are wrong, interrupt line is wrong, DMA mask is wrong.</td>
+                </tr>
+                <tr>
+                  <td><strong>Device model</strong></td>
+                  <td>Mostly discoverable PCIe devices plus platform devices described through ACPI.</td>
+                  <td>Many non-discoverable platform devices described by Device Tree.</td>
+                  <td>Probe deferral loops, missing regulators/clocks, incompatible strings not matching driver table.</td>
+                </tr>
+                <tr>
+                  <td><strong>Accelerator integration</strong></td>
+                  <td>PCIe card with BARs, MSI-X, DMA/IOMMU, user runtime, firmware loader.</td>
+                  <td>PCIe card or integrated SoC accelerator with reserved memory, mailbox, SMMU, power domains.</td>
+                  <td>Good microbenchmarks but poor end-to-end performance due to memory movement and runtime stalls.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Arm Device Tree: describe the board, not just the SoC</h3>
+          <p>Device Tree is a data structure passed to the kernel that describes hardware layout: CPUs, memory, buses, interrupt controllers, clocks, GPIOs, regulators, reserved memory, and devices that cannot be discovered automatically. The board file wires what the SoC file defines — it decides whether a node is enabled, which memory region it uses, and how it is physically connected.</p>
+
+          <div class="code-block">
+            <div class="code-label">arch/arm64/boot/dts/example/example-ai-board-reva.dts</div>
+            <pre>/dts-v1/;
+#include "example-ai-soc.dtsi"
+
+/ {
+    model = "Example AI Board RevA";
+    compatible = "example,ai-board-reva", "example,ai-soc";
+
+    chosen {
+        stdout-path = "serial0:115200n8";
+        bootargs = "earlycon console=ttyS0,115200";
+    };
+
+    memory@80000000 {
+        device_type = "memory";
+        reg = &lt;0x0 0x80000000 0x0 0x80000000&gt;;   /* 2 GiB DRAM */
+    };
+
+    reserved-memory {
+        #address-cells = &lt;2&gt;;
+        #size-cells = &lt;2&gt;;
+        ranges;
+
+        /* 64 MiB reserved for firmware command buffers — no-map keeps
+           the kernel from touching this region */
+        accel_reserved: accel-buffer@90000000 {
+            compatible = "shared-dma-pool";
+            reg = &lt;0x0 0x90000000 0x0 0x04000000&gt;;
+            reusable;
+        };
+    };
+};
+
+/* Board-level override: enable the accelerator defined in the .dtsi */
+&amp;ai_accel0 {
+    compatible = "example,ai-accelerator-v1";
+    reg = &lt;0x0 0xa0000000 0x0 0x10000&gt;;         /* 64 KiB MMIO window */
+    interrupts = &lt;GIC_SPI 83 IRQ_TYPE_LEVEL_HIGH&gt;;
+    clocks = &lt;&amp;clk 12&gt;;
+    resets = &lt;&amp;rst 4&gt;;
+    memory-region = &lt;&amp;accel_reserved&gt;;
+    dma-coherent;
+    status = "okay";
+};</pre>
+          </div>
+
+          <h3>x86 ACPI: firmware publishes platform contracts</h3>
+          <p>On x86, board support often looks invisible because the platform description lives in firmware tables — but the work still exists. The ACPI namespace must describe devices, resources, power states, interrupts, and device-specific properties. The kernel driver matches a Hardware ID, then reads everything else from ACPI.</p>
+
+          <div class="code-block">
+            <div class="code-label">Illustrative DSDT/SSDT ASL fragment — memory-mapped accelerator</div>
+            <pre>Device (XAI0)
+{
+    Name (_HID, "EXAI0001")          /* Hardware ID matched by Linux driver   */
+    Name (_UID, 0)
+    Name (_CCA, One)                 /* Cache-coherent DMA (platform-specific) */
+
+    Method (_CRS, 0, NotSerialized)
+    {
+        Name (RBUF, ResourceTemplate () {
+            Memory32Fixed (ReadWrite, 0xA0000000, 0x00010000)   /* 64 KiB BAR */
+            Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive) { 83 }
+        })
+        Return (RBUF)
+    }
+
+    /* _DSD: device-specific data — treat this like a stable firmware ABI */
+    Name (_DSD, Package () {
+        ToUUID ("daffd814-6eba-4d8c-8a91-bc9bbf4aa301"),
+        Package () {
+            Package () { "firmware-name",    "example/xai0.bin" },
+            Package () { "num-queues",       8                  },
+            Package () { "dma-address-bits", 48                 }
+        }
+    })
+}</pre>
+          </div>
+
+          <div class="callout warn">
+            <strong>Key difference:</strong> x86 does not mean "no board support." It often means the board support is split between firmware, ACPI tables, PCIe enumeration, vendor drivers, and runtime libraries rather than a visible board-specific <code>.dts</code> file. The work is the same; the file is different.
+          </div>
+        </section>
+
+        <!-- ── KERNEL WORK ── -->
+        <section id="kernel-work">
+          <h2>What actually gets added to the Linux kernel?</h2>
+          <p>For a new board, kernel work falls into seven buckets: early boot support, hardware description, platform drivers, bus drivers, memory and DMA, power management, and observability.</p>
+
+          <div class="cards">
+            <div class="card"><h4>1. Boot and firmware handoff</h4><p>Confirm the kernel receives a correct memory map, CPU topology, interrupt controller state, boot arguments, and firmware interfaces.</p></div>
+            <div class="card"><h4>2. Hardware description</h4><p>Add Device Tree bindings and DTS files, or ACPI IDs and properties for devices that firmware exposes.</p></div>
+            <div class="card"><h4>3. Driver binding</h4><p>Make sure drivers match <code>compatible</code> strings, ACPI IDs, or PCI IDs, then request resources and initialize hardware safely.</p></div>
+            <div class="card"><h4>4. Interrupts</h4><p>Wire GIC / APIC / MSI / MSI-X correctly and verify affinity, storm behavior, and completion latency.</p></div>
+            <div class="card"><h4>5. DMA and IOMMU</h4><p>Set DMA masks, map buffers, handle cache coherency, and validate scatter-gather behavior under pressure.</p></div>
+            <div class="card"><h4>6. Power and reset</h4><p>Handle regulators, clocks, resets, runtime PM, suspend/resume, thermal throttling, and device-level recovery.</p></div>
+            <div class="card"><h4>7. Userspace ABI</h4><p>Expose stable interfaces through char devices, sysfs, debugfs, ioctl, mmap, dma-buf, or existing subsystem APIs.</p></div>
+            <div class="card"><h4>8. Tooling</h4><p>Add tracepoints, counters, error registers, firmware logs, and test hooks before customers need them.</p></div>
+          </div>
+
+          <h3>Minimal kernel patch shape</h3>
+          <p>AI and compute accelerator drivers live under <code>drivers/accel/</code> — a dedicated kernel subsystem introduced specifically to separate AI/compute hardware from legacy DRM/graphics drivers. Using <code>accel/</code> rather than <code>misc/</code> or <code>char/</code> signals to reviewers that your driver participates in the standard compute-accelerator ABI and DRM infrastructure (memory management, file operations, context isolation) without the full display stack overhead. A realistic upstreamable board-support series for an Arm SoC accelerator might look like:</p>
+
+          <div class="patch-series">
+            <span class="pn">[PATCH 0/8]</span> <span class="pt">Add support for Example AI Board RevA</span><br>
+            <span class="pn">[PATCH 1/8]</span> <span class="pt">dt-bindings: vendor: document Example AI accelerator</span><br>
+            <span class="pn">[PATCH 2/8]</span> <span class="pt">arm64: dts: example: add AI Board RevA base device tree</span><br>
+            <span class="pn">[PATCH 3/8]</span> <span class="pt">clk: example: add accelerator clock gate</span><br>
+            <span class="pn">[PATCH 4/8]</span> <span class="pt">reset: example: add accelerator reset line</span><br>
+            <span class="pn">[PATCH 5/8]</span> <span class="pt">mailbox: example: add firmware mailbox transport</span><br>
+            <span class="pn">[PATCH 6/8]</span> <span class="pt">dmaengine: example: add DMA engine support</span><br>
+            <span class="pn">[PATCH 7/8]</span> <span class="pt">accel/example: add initial accelerator driver</span><br>
+            <span class="pn">[PATCH 8/8]</span> <span class="pt">MAINTAINERS: add Example AI Board entries</span>
+          </div>
+
+          <p>For an x86 PCIe accelerator, the series is more driver-centric — board description lives in firmware, so the patch set focuses on the driver subsystem:</p>
+
+          <div class="patch-series">
+            <span class="pn">[PATCH 0/6]</span> <span class="pt">Add Example PCIe accelerator driver</span><br>
+            <span class="pn">[PATCH 1/6]</span> <span class="pt">accel/example: add PCI device IDs and BAR mapping</span><br>
+            <span class="pn">[PATCH 2/6]</span> <span class="pt">accel/example: add firmware load and device reset</span><br>
+            <span class="pn">[PATCH 3/6]</span> <span class="pt">accel/example: add DMA queue submission path</span><br>
+            <span class="pn">[PATCH 4/6]</span> <span class="pt">accel/example: add mmap and user command ABI</span><br>
+            <span class="pn">[PATCH 5/6]</span> <span class="pt">accel/example: add tracepoints and debugfs counters</span><br>
+            <span class="pn">[PATCH 6/6]</span> <span class="pt">MAINTAINERS: add Example accelerator driver</span>
+          </div>
+        </section>
+
+        <!-- ── ACCELERATOR ── -->
+        <section id="accelerator">
+          <h2>Modern accelerators need more than a driver</h2>
+          <p>A driver can make a device visible. It does not automatically make the device fast. A modern AI accelerator needs an entire software stack that converts high-level model execution into low-latency, memory-efficient device work.</p>
+
+          <div class="diagram" aria-label="Accelerator software stack from model graph to hardware">
+            <svg viewBox="0 0 980 420" role="img" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+                  <path d="M0,0 L0,6 L9,3 z" fill="#4dd9ff" />
+                </marker>
+              </defs>
+              <!-- Boxes -->
+              <rect x="45" y="48" width="180" height="90" rx="16" fill="#0f2139" stroke="rgba(77,217,255,.35)"/>
+              <text x="135" y="86" fill="#4dd9ff" font-size="11" font-weight="700" text-anchor="middle" font-family="'IBM Plex Mono', monospace">MODEL GRAPH</text>
+              <text x="135" y="112" fill="#7a93b0" font-size="13" text-anchor="middle">ops, tensors, shapes</text>
+
+              <rect x="287" y="48" width="180" height="90" rx="16" fill="#14163a" stroke="rgba(167,139,250,.35)"/>
+              <text x="377" y="86" fill="#a78bfa" font-size="11" font-weight="700" text-anchor="middle" font-family="'IBM Plex Mono', monospace">COMPILER</text>
+              <text x="377" y="112" fill="#7a93b0" font-size="13" text-anchor="middle">lowering, fusion, tiling</text>
+
+              <rect x="529" y="48" width="180" height="90" rx="16" fill="#0e2130" stroke="rgba(52,211,153,.35)"/>
+              <text x="619" y="86" fill="#34d399" font-size="11" font-weight="700" text-anchor="middle" font-family="'IBM Plex Mono', monospace">RUNTIME</text>
+              <text x="619" y="112" fill="#7a93b0" font-size="13" text-anchor="middle">graph capture, queues</text>
+
+              <rect x="771" y="48" width="164" height="90" rx="16" fill="#0b1a2c" stroke="rgba(251,191,36,.35)"/>
+              <text x="853" y="86" fill="#fbbf24" font-size="11" font-weight="700" text-anchor="middle" font-family="'IBM Plex Mono', monospace">DRIVER</text>
+              <text x="853" y="112" fill="#7a93b0" font-size="13" text-anchor="middle">DMA, IRQ, mmap</text>
+
+              <!-- Arrows -->
+              <path d="M225 93 H282" stroke="#4dd9ff" stroke-width="2.5" marker-end="url(#arrow)"/>
+              <path d="M467 93 H524" stroke="#4dd9ff" stroke-width="2.5" marker-end="url(#arrow)"/>
+              <path d="M709 93 H766" stroke="#4dd9ff" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+              <!-- Hardware fabric -->
+              <rect x="80" y="210" width="820" height="150" rx="22" fill="rgba(255,255,255,.025)" stroke="rgba(255,255,255,.12)"/>
+              <text x="490" y="258" fill="#fff" font-size="22" font-weight="800" text-anchor="middle">Hardware Execution Fabric</text>
+              <text x="490" y="292" fill="#4dd9ff" font-size="14" text-anchor="middle" font-family="'IBM Plex Mono', monospace">command queues</text>
+              <text x="490" y="314" fill="#7a93b0" font-size="14" text-anchor="middle">DMA engines · SRAM/HBM/DRAM · collectives · NIC/fabric · firmware scheduler</text>
+
+              <!-- Connector line -->
+              <line x1="490" y1="138" x2="490" y2="210" stroke="rgba(77,217,255,.2)" stroke-width="1.5" stroke-dasharray="4 4"/>
+            </svg>
+          </div>
+
+          <h3>The accelerator platform checklist</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Layer</th><th>What it does</th><th>Failure mode if immature</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><strong>Kernel driver</strong></td><td>BAR mapping, queues, interrupts, reset, firmware load, mmap, DMA mapping, security checks.</td><td>Device exists but crashes, stalls, leaks memory, or requires fragile userspace workarounds.</td></tr>
+                <tr><td><strong>Scheduler</strong></td><td>Submits work, prioritizes contexts, handles preemption or fairness, isolates tenants.</td><td>One model monopolizes the device; latency-sensitive inference waits behind batch jobs.</td></tr>
+                <tr><td><strong>Memory allocator</strong></td><td>Manages device memory, host pinned memory, huge pages, dma-buf, IOVA space, and fragmentation.</td><td>Page faults and allocator churn dominate runtime; large graphs fail after hours of use.</td></tr>
+                <tr><td><strong>DMA / runtime orchestration</strong></td><td>Moves weights, activations, KV cache, gradients, and command descriptors with overlap.</td><td>Compute units wait for memory; PCIe/CXL/HBM bandwidth is wasted.</td></tr>
+                <tr><td><strong>Compiler lowering</strong></td><td>Maps high-level ops to kernels, tiles, vector modes, SRAM reuse, and memory schedules.</td><td>The hardware peak is unreachable because generated kernels do not match the architecture.</td></tr>
+                <tr><td><strong>Graph capture</strong></td><td>Turns repeated dynamic execution into reusable static command graphs.</td><td>CPU submission overhead and synchronization points eat latency at every inference call.</td></tr>
+                <tr><td><strong>Collective libraries</strong></td><td>Enable multi-device all-reduce, all-gather, reduce-scatter, broadcast, and topology-aware routing.</td><td>Scale-out performance collapses even if single-chip performance looks good.</td></tr>
+                <tr><td><strong>Profiling / debug tools</strong></td><td>Expose queue depth, DMA stalls, page faults, IRQ latency, kernel occupancy, fabric congestion.</td><td>Teams guess instead of measuring; bring-up becomes folklore passed between engineers.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout danger">
+            <strong>Performance killer:</strong> a board can pass smoke tests and still spend half its life stalled behind sync points, page faults, cache maintenance, IOMMU misses, CPU submission overhead, or inefficient memory placement. The checklist exists to close each of those gaps deliberately.
+          </div>
+        </section>
+
+        <!-- ── CODE PATTERNS ── -->
+        <section id="code">
+          <h2>Core code patterns</h2>
+
+          <div class="callout">
+            <strong>Note:</strong> the examples below are intentionally small and illustrative. Real upstream code needs error unwinding, locking, runtime PM, security review, stable userspace ABI design, and subsystem maintainer feedback.
+          </div>
+
+          <h3>0. Device Tree binding YAML: the contract before the DTS</h3>
+          <p>For Arm boards, the DTS should not be a random hardware dump. The binding document is the formal contract: which properties are required, which clocks/resets/interrupts exist, whether DMA is coherent, and what the <code>compatible</code> string promises.</p>
+
+          <div class="code-block">
+            <div class="code-label">Documentation/devicetree/bindings/accel/example,ai-accelerator.yaml</div>
+            <pre>$schema: http://devicetree.org/meta-schemas/core.yaml#
+title: Example AI Accelerator
+
+maintainers:
+  - Example Maintainer &lt;maintainer@example.com&gt;
+
+properties:
+  compatible:
+    enum:
+      - example,ai-accelerator-v1
+
+  reg:
+    maxItems: 1                    # Single MMIO window
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    maxItems: 1
+
+  resets:
+    maxItems: 1
+
+  memory-region:
+    description: Reserved firmware or command-buffer region.
+
+  dma-coherent: true
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - clocks
+  - resets
+
+additionalProperties: false
+
+examples:
+  - |
+    accelerator@a0000000 {
+        compatible = "example,ai-accelerator-v1";
+        reg = &lt;0x0 0xa0000000 0x0 0x10000&gt;;
+        interrupts = &lt;0 83 4&gt;;
+        clocks = &lt;&amp;clk 12&gt;;
+        resets = &lt;&amp;rst 4&gt;;
+        dma-coherent;
+    };</pre>
+          </div>
+
+          <h3>1. One driver, two discovery paths: OF + ACPI</h3>
+          <p>A well-structured platform driver shares most code between Arm Device Tree and x86/Arm-server ACPI. Keep discovery-specific parsing thin; keep hardware implementation common. <code>device_property_read_string</code> works transparently for both <code>_DSD</code> and DT properties.</p>
+
+          <div class="code-block">
+            <div class="code-label">drivers/accel/example/example-accel.c — match tables</div>
+            <pre>static const struct of_device_id example_accel_of_match[] = {
+    { .compatible = "example,ai-accelerator-v1" },
+    { }
+};
+MODULE_DEVICE_TABLE(of, example_accel_of_match);
+
+static const struct acpi_device_id example_accel_acpi_match[] = {
+    { "EXAI0001", 0 },
+    { }
+};
+MODULE_DEVICE_TABLE(acpi, example_accel_acpi_match);
+
+/* device_property_read_string works for both DT and ACPI _DSD */
+static int example_read_fw_name(struct device *dev, const char **fw_name)
+{
+    int ret = device_property_read_string(dev, "firmware-name", fw_name);
+    if (ret)
+        *fw_name = "example/xai0.bin";   /* safe default */
+    return 0;
+}
+
+static struct platform_driver example_accel_driver = {
+    .probe      = example_accel_probe,
+    .remove_new = example_accel_remove,
+    .driver = {
+        .name             = "example-ai-accelerator",
+        .of_match_table   = example_accel_of_match,
+        .acpi_match_table = ACPI_PTR(example_accel_acpi_match),
+    },
+};
+module_platform_driver(example_accel_driver);</pre>
+          </div>
+
+          <h3>2. Platform driver probe: resources, IRQ, DMA mask</h3>
+          <p>The probe function is where the driver claims ownership of hardware. Get memory, IRQ, and DMA mask in that order. Use <code>devm_*</code> helpers so cleanup on error is automatic.</p>
+
+          <div class="code-block">
+            <div class="code-label">Platform driver probe — SoC / Device Tree path</div>
+            <pre>static int example_accel_probe(struct platform_device *pdev)
+{
+    struct device *dev = &amp;pdev-&gt;dev;
+    struct example_accel *accel;
+    int irq, ret;
+
+    accel = devm_kzalloc(dev, sizeof(*accel), GFP_KERNEL);
+    if (!accel)
+        return -ENOMEM;
+
+    /* Map MMIO BAR — devm frees it on probe failure or driver unbind */
+    accel-&gt;regs = devm_platform_ioremap_resource(pdev, 0);
+    if (IS_ERR(accel-&gt;regs))
+        return PTR_ERR(accel-&gt;regs);
+
+    irq = platform_get_irq(pdev, 0);
+    if (irq &lt; 0)
+        return irq;
+
+    ret = devm_request_irq(dev, irq, example_accel_irq, 0,
+                           dev_name(dev), accel);
+    if (ret)
+        return ret;
+
+    /* Set DMA addressing limit — call before any dma_alloc_* */
+    ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(48));
+    if (ret)
+        return dev_err_probe(dev, ret, "failed to set DMA mask\n");
+
+    platform_set_drvdata(pdev, accel);
+    return example_accel_hw_init(accel);
+}</pre>
+          </div>
+
+          <h3>3. PCIe accelerator skeleton</h3>
+
+          <div class="code-block">
+            <div class="code-label">PCI probe — x86 discrete accelerator card</div>
+            <pre>static int example_pci_probe(struct pci_dev *pdev,
+                             const struct pci_device_id *id)
+{
+    struct example_accel *accel;
+    int ret;
+
+    ret = pcim_enable_device(pdev);
+    if (ret)
+        return ret;
+
+    /* Map BAR 0 and register it with devres — auto-unmapped on remove */
+    ret = pcim_iomap_regions(pdev, BIT(0), "example-accel");
+    if (ret)
+        return ret;
+
+    pci_set_master(pdev);
+
+    ret = dma_set_mask_and_coherent(&amp;pdev-&gt;dev, DMA_BIT_MASK(48));
+    if (ret)
+        return ret;
+
+    /* Request up to 32 MSI-X vectors; fall back to MSI */
+    ret = pci_alloc_irq_vectors(pdev, 1, 32, PCI_IRQ_MSIX | PCI_IRQ_MSI);
+    if (ret &lt; 0)
+        return ret;
+
+    accel = devm_kzalloc(&amp;pdev-&gt;dev, sizeof(*accel), GFP_KERNEL);
+    if (!accel)
+        return -ENOMEM;
+
+    accel-&gt;bar0 = pcim_iomap_table(pdev)[0];
+    pci_set_drvdata(pdev, accel);
+
+    return example_accel_init_queues(accel);
+}
+
+static const struct pci_device_id example_pci_ids[] = {
+    { PCI_DEVICE(0x1abc, 0x0001) },
+    { }
+};
+MODULE_DEVICE_TABLE(pci, example_pci_ids);</pre>
+          </div>
+
+          <h3>4. DMA mapping: the easy place to create hard bugs</h3>
+          <p>DMA correctness is one of the most important bring-up boundaries. The driver must use the kernel DMA API, respect device addressing limits, handle cache-coherency assumptions, and unmap every buffer it maps.</p>
+
+          <div class="code-block">
+            <div class="code-label">Coherent allocation + streaming map pattern</div>
+            <pre>dma_addr_t dma;
+void *cpu_addr;
+
+/* Coherent command ring: CPU and device both see writes immediately.
+   Use this for descriptor rings and doorbells — never for bulk data. */
+cpu_addr = dma_alloc_coherent(dev, ring_size, &amp;dma, GFP_KERNEL);
+if (!cpu_addr)
+    return -ENOMEM;
+
+writel(lower_32_bits(dma), accel-&gt;regs + RING_BASE_LO);
+writel(upper_32_bits(dma), accel-&gt;regs + RING_BASE_HI);
+
+/* Streaming map: used for one-shot transfers.
+   Direction must match — DMA_TO_DEVICE skips cache invalidation on return. */
+dma_addr_t src = dma_map_single(dev, user_buf, len, DMA_TO_DEVICE);
+if (dma_mapping_error(dev, src))
+    return -EIO;
+
+example_program_dma(accel, src, len);
+
+/* Must unmap before the CPU touches the buffer again */
+dma_unmap_single(dev, src, len, DMA_TO_DEVICE);</pre>
+          </div>
+
+          <h3>5. Runtime PM, clocks, reset, firmware load</h3>
+          <p>Real boards need reset sequencing, clock enablement, firmware loading, and runtime power management. Many first-silicon failures hide here because the register map looks correct but the hardware is still held in reset.</p>
+
+          <div class="code-block">
+            <div class="code-label">Hardware init — clock, reset, firmware, runtime PM</div>
+            <pre>static int example_accel_hw_init(struct example_accel *accel)
+{
+    struct device *dev = accel-&gt;dev;
+    const struct firmware *fw;
+    const char *fw_name;
+    int ret;
+
+    example_read_fw_name(dev, &amp;fw_name);
+
+    accel-&gt;clk = devm_clk_get(dev, NULL);
+    if (IS_ERR(accel-&gt;clk))
+        return dev_err_probe(dev, PTR_ERR(accel-&gt;clk), "missing clock\n");
+
+    accel-&gt;rst = devm_reset_control_get_optional_exclusive(dev, NULL);
+    if (IS_ERR(accel-&gt;rst))
+        return dev_err_probe(dev, PTR_ERR(accel-&gt;rst), "missing reset\n");
+
+    ret = clk_prepare_enable(accel-&gt;clk);
+    if (ret)
+        return ret;
+
+    reset_control_deassert(accel-&gt;rst);  /* hardware is now out of reset */
+
+    ret = request_firmware(&amp;fw, fw_name, dev);
+    if (ret) {
+        dev_err(dev, "firmware %s not available: %d\n", fw_name, ret);
+        goto err_power;
+    }
+
+    ret = example_upload_firmware(accel, fw-&gt;data, fw-&gt;size);
+    release_firmware(fw);
+    if (ret)
+        goto err_power;
+
+    pm_runtime_set_active(dev);
+    pm_runtime_enable(dev);
+    return 0;
+
+err_power:
+    reset_control_assert(accel-&gt;rst);
+    clk_disable_unprepare(accel-&gt;clk);
+    return ret;
+}</pre>
+          </div>
+
+          <h3>6. Char device ABI: ioctl for submit, mmap for rings</h3>
+          <p>Many accelerators expose a char device for command submission and memory mapping. Validate all user pointers, lengths, queue IDs, flags, and device state — this is where security matters most.</p>
+
+          <div class="code-block">
+            <div class="code-label">ioctl + mmap userspace interface</div>
+            <pre>#define EXAMPLE_IOC_MAGIC      'x'
+#define EXAMPLE_IOC_SUBMIT     _IOW(EXAMPLE_IOC_MAGIC, 1, struct example_submit)
+
+struct example_submit {
+    __u64 user_ptr;
+    __u32 len;
+    __u32 queue_id;
+    __u64 flags;
+};
+
+static long example_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+    struct example_file *ctx = filp-&gt;private_data;
+    struct example_submit submit;
+
+    if (cmd != EXAMPLE_IOC_SUBMIT)
+        return -ENOTTY;
+
+    if (copy_from_user(&amp;submit, (void __user *)arg, sizeof(submit)))
+        return -EFAULT;
+
+    /* Validate all fields — never trust userspace */
+    if (submit.len == 0 || submit.len &gt; EXAMPLE_MAX_SUBMIT_SIZE)
+        return -EINVAL;
+
+    if (submit.queue_id &gt;= ctx-&gt;accel-&gt;num_queues)
+        return -EINVAL;
+
+    /* submit.user_ptr is intentionally not dereferenced here.
+     * example_submit_user_work() is responsible for safe access:
+     * either copy_from_user() for small descriptors, or
+     * pin_user_pages_fast() + get_user_pages() for DMA-pinned buffers.
+     * Never pass a raw __u64 user pointer directly to the hardware. */
+    return example_submit_user_work(ctx, &amp;submit);
+}
+
+static int example_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+    struct example_file *ctx = filp-&gt;private_data;
+    unsigned long size = vma-&gt;vm_end - vma-&gt;vm_start;
+
+    if (size &gt; ctx-&gt;ring_size)
+        return -EINVAL;
+
+    /* Map coherent ring into userspace — DMA-safe, no cache issues */
+    return dma_mmap_coherent(ctx-&gt;accel-&gt;dev, vma,
+                             ctx-&gt;ring_cpu, ctx-&gt;ring_dma, size);
+}</pre>
+          </div>
+
+          <h3>7. Tracepoints and debugfs: make stalls visible early</h3>
+          <p>A new accelerator should ship with measurement hooks from day one. You want to know whether latency is in userspace submission, kernel queueing, DMA programming, interrupt completion, wakeup, or graph replay — before customers ask.</p>
+
+          <div class="code-block">
+            <div class="code-label">include/trace/events/example_accel.h</div>
+            <pre>#undef TRACE_SYSTEM
+#define TRACE_SYSTEM example_accel
+
+#if !defined(_TRACE_EXAMPLE_ACCEL_H) || defined(TRACE_HEADER_MULTI_READ)
+#define _TRACE_EXAMPLE_ACCEL_H
+
+#include &lt;linux/tracepoint.h&gt;
+
+TRACE_EVENT(example_submit,
+    TP_PROTO(u32 queue_id, u32 bytes),
+    TP_ARGS(queue_id, bytes),
+    TP_STRUCT__entry(
+        __field(u32, queue_id)
+        __field(u32, bytes)
+    ),
+    TP_fast_assign(
+        __entry-&gt;queue_id = queue_id;
+        __entry-&gt;bytes    = bytes;
+    ),
+    TP_printk("queue=%u bytes=%u", __entry-&gt;queue_id, __entry-&gt;bytes)
+);
+
+#endif
+#include &lt;trace/define_trace.h&gt;</pre>
+          </div>
+
+          <div class="code-block">
+            <div class="code-label">debugfs counters — expose in probe, read from userspace</div>
+            <pre>static int example_debugfs_init(struct example_accel *accel)
+{
+    accel-&gt;debugfs_dir = debugfs_create_dir("example_accel", NULL);
+
+    debugfs_create_u64("submitted_jobs", 0444,
+                       accel-&gt;debugfs_dir, &amp;accel-&gt;submitted_jobs);
+    debugfs_create_u64("dma_faults",     0444,
+                       accel-&gt;debugfs_dir, &amp;accel-&gt;dma_faults);
+    debugfs_create_u32("queue_depth",    0444,
+                       accel-&gt;debugfs_dir, &amp;accel-&gt;queue_depth);
+    return 0;
+}</pre>
+          </div>
+
+          <h3>8. Kconfig and Makefile</h3>
+          <div class="code-block">
+            <div class="code-label">drivers/accel/example/Kconfig + Makefile</div>
+            <pre>config EXAMPLE_AI_ACCEL
+    tristate "Example AI accelerator support"
+    depends on PCI || OF
+    select DMA_SHARED_BUFFER
+    help
+      Enables support for the Example AI accelerator device.
+      Works on both x86 PCIe and Arm SoC platforms.
+
+obj-$(CONFIG_EXAMPLE_AI_ACCEL) += example-ai-accel.o</pre>
+          </div>
+        </section>
+
+        <!-- ── DEBUGGING ── -->
+        <section id="debug">
+          <h2>Bring-up debugging: measure before guessing</h2>
+          <p>A board team needs observability from day one. Without instrumentation, every failure becomes "firmware maybe," "kernel maybe," "driver maybe," "runtime maybe," or "compiler maybe." Good platform support includes counters and trace hooks early — not after the first customer escalation.</p>
+
+          <div class="split">
+            <div class="card">
+              <h4>Kernel-level signals</h4>
+              <ul>
+                <li><code>dmesg</code> probe and firmware logs</li>
+                <li><code>lspci -vv</code>, <code>setpci</code>, ACPI table dumps</li>
+                <li><code>/proc/interrupts</code>, IRQ affinity, MSI-X vector use</li>
+                <li><code>debugfs</code> queue depth and error counters</li>
+                <li><code>ftrace</code>, tracepoints, perf sched/irq analysis</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h4>Runtime-level signals</h4>
+              <ul>
+                <li>Kernel launch latency and graph replay latency</li>
+                <li>DMA bytes, DMA overlap, and copy engine utilization</li>
+                <li>Page fault count and pinned-memory failures</li>
+                <li>HBM/DRAM bandwidth and fragmentation</li>
+                <li>Collective latency, topology, and retry behavior</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="code-block">
+            <div class="code-label">Shell — IRQ visibility, ftrace, PCIe state</div>
+            <pre># Show IRQ lines claimed by the driver
+cat /proc/interrupts | grep example
+
+# List available tracepoints
+cat /sys/kernel/debug/tracing/available_events | grep example
+
+# Function-graph trace around the probe path
+echo function_graph &gt; /sys/kernel/debug/tracing/current_tracer
+echo example_accel_probe &gt; /sys/kernel/debug/tracing/set_graph_function
+cat /sys/kernel/debug/tracing/trace
+
+# PCIe device state and capability dump
+lspci -nnvv -d 1abc:
+dmesg -T | grep -i "example\|iommu\|dma\|msi"</pre>
+          </div>
+
+          <div class="callout">
+            <strong>Bring-up maturity test:</strong> when a workload is slow, the team should be able to answer within minutes — is the stall in compiler lowering, graph capture, CPU submission, scheduler queueing, DMA, page faults, IRQ completion, collective communication, or actual compute? If you cannot answer that question, you do not yet have enough instrumentation.
+          </div>
+        </section>
+
+        <!-- ── WHEN IT DOESN'T BOOT ── -->
+        <section id="when-it-doesnt-boot">
+          <h2>When it doesn't boot: a first-responder checklist</h2>
+          <p>Bring-up lives and dies on the first few minutes after power-on. Most early failures fall into a predictable set of causes. Work through these in order before diving into driver code.</p>
+
+          <div class="debug-box">
+            <div class="debug-box-label">Go-to commands when the board won't cooperate</div>
+
+            <div class="debug-cmd">
+              <span class="debug-cmd-num">1.</span>
+              <span class="debug-cmd-desc"><strong>Get a serial console first.</strong> Add <code>earlycon console=ttyS0,115200</code> (or the Arm equivalent <code>earlycon=pl011,...</code>) to kernel bootargs. Without console output, everything else is guessing. If nothing prints, suspect the UART clock not being enabled by firmware.</span>
+            </div>
+
+            <div class="debug-cmd">
+              <span class="debug-cmd-num">2.</span>
+              <span class="debug-cmd-desc"><strong>Enable initcall debug.</strong> Append <code>initcall_debug</code> to <code>bootargs</code>. Every <code>initcall</code> entry and exit is logged with timestamps — a hung call means one subsystem is stuck waiting for something (a clock, an IRQ, a firmware response). The last completed call before silence tells you exactly where.</span>
+            </div>
+
+            <div class="debug-cmd">
+              <span class="debug-cmd-num">3.</span>
+              <span class="debug-cmd-desc"><strong>Check driver probe.</strong> Run <code>dmesg | grep -E "example|probe|IOMMU|dma|deferred"</code>. Deferred probe is common when clocks, regulators, or reset controllers haven't registered yet — they will register later but the accelerator driver gave up. Fix: ensure DT dependencies are correct and clock/reset providers probe before the consumer.</span>
+            </div>
+
+            <div class="debug-cmd">
+              <span class="debug-cmd-num">4.</span>
+              <span class="debug-cmd-desc"><strong>Trace DMA and IOMMU faults.</strong> Enable <code>trace_event=dma_fence,iommu</code> and watch for IOMMU faults in <code>dmesg</code>. An IOMMU fault almost always means the IOVA range wasn't mapped before the device started a transfer — check <code>dma_set_mask_and_coherent</code> is called before any <code>dma_alloc_*</code> and that the DMA mask matches the hardware capability.</span>
+            </div>
+
+            <div class="debug-cmd">
+              <span class="debug-cmd-num">5.</span>
+              <span class="debug-cmd-desc"><strong>Check interrupt routing.</strong> After probe, run <code>cat /proc/interrupts</code> and confirm the driver's IRQ line shows a non-zero count after triggering any device operation. Zero count means either the IRQ is misconfigured in DT/ACPI, the MSI/MSI-X allocation failed, or the device firmware never fires the interrupt. Use <code>perf sched</code> to confirm the interrupt reaches the expected CPU.</span>
+            </div>
+
+            <div class="debug-cmd">
+              <span class="debug-cmd-num">6.</span>
+              <span class="debug-cmd-desc"><strong>Validate firmware load.</strong> Use <code>dmesg | grep firmware</code> to confirm the firmware file was found and accepted. If firmware upload silently fails, the device MMIO registers will return wrong values or bus errors. Add a sentinel register read after firmware boot and compare against a known-good value documented in the hardware spec.</span>
+            </div>
+          </div>
+
+          <div class="callout warn">
+            <strong>Common pattern:</strong> a driver that probes successfully but produces no output from the device usually means the firmware uploaded correctly but a command ring or doorbell register is wrong. Read back the ring-base address registers after writing them. Compare to what you wrote. If they differ, you have a BAR offset bug or an endianness issue.
+          </div>
+        </section>
+
+        <!-- ── CHECKLIST ── -->
+        <section id="checklist">
+          <h2>A practical board-support checklist</h2>
+
+          <ul class="checklist">
+            <li><span class="check-icon"></span><div><strong>Boot:</strong> kernel reaches userspace reliably on serial console; panic logs are recoverable.</div></li>
+            <li><span class="check-icon"></span><div><strong>Hardware description:</strong> DT bindings or ACPI properties are reviewed and versioned; no board-specific hacks hidden in drivers.</div></li>
+            <li><span class="check-icon"></span><div><strong>Memory map:</strong> DRAM, reserved memory, firmware regions, MMIO ranges, and IOMMU windows are correct and tested.</div></li>
+            <li><span class="check-icon"></span><div><strong>Interrupts:</strong> IRQ routing, affinity, MSI/MSI-X, and interrupt storm handling are verified.</div></li>
+            <li><span class="check-icon"></span><div><strong>DMA:</strong> coherent and streaming mappings are correct; DMA mask and cache-coherency assumptions are tested.</div></li>
+            <li><span class="check-icon"></span><div><strong>Power:</strong> clocks, resets, regulators, runtime PM, suspend/resume, and thermal throttling are tested.</div></li>
+            <li><span class="check-icon"></span><div><strong>Driver ABI:</strong> userspace interface is stable, documented, permissioned, and fuzz-tested.</div></li>
+            <li><span class="check-icon"></span><div><strong>Runtime:</strong> memory allocator, queue submission, graph capture, and synchronization model are integrated.</div></li>
+            <li><span class="check-icon"></span><div><strong>Compiler:</strong> lowering path produces kernels that match the memory hierarchy and execution fabric.</div></li>
+            <li><span class="check-icon"></span><div><strong>Collectives:</strong> multi-device communication works before marketing claims scale-out numbers.</div></li>
+            <li><span class="check-icon"></span><div><strong>Profiling:</strong> tracepoints, counters, error paths, and debug tools exist before customer deployment.</div></li>
+            <li><span class="check-icon"></span><div><strong>Upstream path:</strong> patches follow subsystem boundaries, coding style, binding conventions, maintainer feedback, and test evidence.</div></li>
+          </ul>
+
+          <div class="tagline">
+            <p>First silicon proves the chip can exist.<br>Board bring-up proves the platform can survive real software.</p>
+          </div>
+
+          <!-- CTA -->
+          <div class="cta-box">
+            <div class="cta-icon">💬</div>
+            <div class="cta-text">
+              <strong>What part of bring-up bit you hardest?</strong>
+              <span>DMA bugs? Deferred probe loops? A firmware handoff that silently corrupted memory? Share in the comments — the war stories are where the real knowledge lives.</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── REFERENCES ── -->
+        <section id="references">
+          <h2>References and further reading</h2>
+          <ul class="refs">
+            <li>Linux kernel documentation: Linux and the Devicetree — hardware description model for non-discoverable devices.</li>
+            <li>Linux kernel documentation: ACPI on Arm systems — expectations when Arm systems use ACPI rather than Device Tree.</li>
+            <li>Linux kernel documentation: Platform Devices and Drivers — platform bus and driver binding model.</li>
+            <li>Linux kernel documentation: Dynamic DMA mapping guide and generic DMA API documentation.</li>
+            <li>Linux kernel documentation: kbuild and external module build process.</li>
+            <li>Linux kernel documentation: ftrace function tracer for kernel debugging and latency analysis.</li>
+            <li>Linux kernel process documentation: submitting patches and patch submission checklist.</li>
+            <li>Linux kernel documentation: Writing ACPI AML for device-specific data (_DSD usage).</li>
+            <li>Devicetree specification: schema validation with <code>dt-schema</code> and <code>yamllint</code>.</li>
+          </ul>
+        </section>
+
+        <div id="webmentions"></div>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer" aria-label="Site footer">
+    <div class="wrap">
+      <p><a href="/index.html">© 2026 MANISH AI. All rights reserved.</a></p>
+      <p><a href="/writings.html">Back to Writings</a> · <a href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></p>
+    </div>
+  </footer>
+  <script data-goatcounter="https://manishklach.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+  <script src="/assets/site.js"></script>
+</body>
+</html>
