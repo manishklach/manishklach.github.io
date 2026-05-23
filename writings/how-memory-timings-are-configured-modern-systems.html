@@ -1,0 +1,1436 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>How Memory Timings Are Actually Configured in Modern Systems | MANISH AI</title>
+<meta name="description" content="A practical deep dive into how DRAM timings are configured across BIOS, firmware training, memory controllers, Linux interfaces, NUMA, CXL tiering, HBM, and modern memory orchestration."/>
+<meta name="keywords" content="memory timings, DDR5 timings, Linux memory management, DRAM training, BIOS XMP EXPO, NUMA, CXL tiering, MGLRU, HBM, integrated memory controller, EDAC, memory performance"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/how-memory-timings-are-configured-modern-systems.html"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="How Memory Timings Are Actually Configured in Modern Systems | MANISH AI"/>
+<meta property="og:description" content="A practical deep dive into how DRAM timings are configured across BIOS, firmware training, memory controllers, Linux interfaces, NUMA, CXL tiering, HBM, and modern memory orchestration."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/how-memory-timings-are-configured-modern-systems.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:image" content="https://manishklach.github.io/og/how-memory-timings-are-configured-modern-systems.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="How Memory Timings Are Actually Configured in Modern Systems by MANISH AI"/>
+<meta property="article:published_time" content="2026-05-23T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-05-23T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="Linux Memory Systems"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="How Memory Timings Are Actually Configured in Modern Systems"/>
+<meta name="twitter:description" content="A practical deep dive into how DRAM timings are configured across BIOS, firmware training, memory controllers, Linux interfaces, NUMA, CXL tiering, HBM, and modern memory orchestration."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/how-memory-timings-are-configured-modern-systems.png"/>
+<meta name="twitter:image:alt" content="How Memory Timings Are Actually Configured in Modern Systems by MANISH AI"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"How Memory Timings Are Actually Configured in Modern Systems",
+  "description":"A practical deep dive into how DRAM timings are configured across BIOS, firmware training, memory controllers, Linux interfaces, NUMA, CXL tiering, HBM, and modern memory orchestration.",
+  "url":"https://manishklach.github.io/writings/how-memory-timings-are-configured-modern-systems.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/how-memory-timings-are-configured-modern-systems.html",
+  "datePublished":"2026-05-23",
+  "dateModified":"2026-05-23",
+  "articleSection":"Linux Memory Systems",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink: #0d1117;
+  --ink-2: #2a3240;
+  --ink-3: #4a5568;
+  --ink-4: #718096;
+  --paper: #faf8f4;
+  --paper-2: #f0ede6;
+  --paper-3: #e8e4da;
+  --accent: #c0392b;
+  --accent-2: #e74c3c;
+  --accent-light: #fdf0ef;
+  --gold: #b7860b;
+  --gold-light: #fdf8e8;
+  --blue: #1a3a5c;
+  --blue-mid: #2563a8;
+  --blue-light: #eef4fb;
+  --mono: 'DM Mono', monospace;
+  --serif: 'DM Serif Display', Georgia, serif;
+  --sans: 'Syne', system-ui, sans-serif;
+  --rule: 1px solid rgba(0,0,0,.12);
+  --rule-heavy: 2px solid var(--ink);
+}
+
+html { font-size: 16px; scroll-behavior: smooth; }
+
+body {
+  font-family: var(--sans);
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.7;
+  min-height: 100vh;
+}
+
+/* ── LAYOUT ─────────────────────────────────────── */
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 40px; }
+@media (max-width: 768px) { .wrap { padding: 0 20px; } }
+
+/* ── SITE HEADER ────────────────────────────────── */
+.article-header {
+  border-bottom: var(--rule);
+  padding: 18px 0;
+  position: sticky;
+  top: 0;
+  background: rgba(250,248,244,.92);
+  backdrop-filter: blur(10px);
+  z-index: 100;
+}
+.article-header .wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.article-logo {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-3);
+  letter-spacing: .04em;
+  text-decoration: none;
+}
+.article-logo span { color: var(--accent); }
+.header-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .08em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,.14);
+  color: var(--ink-3);
+  background: white;
+}
+
+/* ── HERO ───────────────────────────────────────── */
+.hero {
+  padding: 80px 0 60px;
+  border-bottom: var(--rule);
+}
+.hero-eyebrow {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 28px;
+}
+.hero h1 {
+  font-family: var(--serif);
+  font-size: clamp(42px, 6.5vw, 88px);
+  line-height: 1.0;
+  letter-spacing: -.02em;
+  color: var(--ink);
+  max-width: 860px;
+  margin-bottom: 32px;
+}
+.hero h1 em {
+  font-style: italic;
+  color: var(--accent);
+}
+.hero-meta {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-bottom: 36px;
+}
+.hero-meta-item {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-4);
+  letter-spacing: .04em;
+}
+.hero-meta-item strong { color: var(--ink-2); font-weight: 500; }
+.hero-divider { color: var(--paper-3); }
+.hero-lede {
+  font-size: 20px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  max-width: 740px;
+  border-left: 3px solid var(--accent);
+  padding-left: 24px;
+}
+
+/* ── ARTICLE BODY ───────────────────────────────── */
+.article-body {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 0;
+}
+@media (max-width: 900px) {
+  .article-body { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+}
+
+.main-content { border-right: var(--rule); padding: 60px 60px 60px 0; }
+@media (max-width: 900px) { .main-content { border-right: none; padding: 40px 0; } }
+
+/* ── SIDEBAR ────────────────────────────────────── */
+.sidebar { padding: 60px 0 60px 40px; }
+.sidebar-sticky { position: sticky; top: 80px; }
+.sidebar-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-bottom: 16px;
+}
+.toc-list { list-style: none; }
+.toc-list li { border-top: var(--rule); }
+.toc-list a {
+  display: block;
+  padding: 10px 0;
+  font-size: 13px;
+  color: var(--ink-3);
+  text-decoration: none;
+  transition: color .15s;
+}
+.toc-list a:hover { color: var(--accent); }
+.toc-num {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-4);
+  margin-right: 8px;
+}
+
+.sidebar-card {
+  margin-top: 40px;
+  background: var(--paper-2);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid var(--paper-3);
+}
+.sidebar-card-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-bottom: 12px;
+}
+.sidebar-stat { margin-bottom: 12px; }
+.sidebar-stat-num {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+.sidebar-stat-label { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+
+/* ── SECTION STYLING ────────────────────────────── */
+.section { margin-bottom: 64px; }
+.section:last-child { margin-bottom: 0; }
+
+.section-number {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-bottom: 10px;
+}
+.section h2 {
+  font-family: var(--serif);
+  font-size: clamp(30px, 3.5vw, 48px);
+  line-height: 1.1;
+  letter-spacing: -.02em;
+  color: var(--ink);
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: var(--rule-heavy);
+}
+.section h3 {
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 40px 0 12px;
+}
+
+p { font-size: 17px; color: var(--ink-2); margin-bottom: 20px; line-height: 1.75; }
+p:last-child { margin-bottom: 0; }
+
+strong { font-weight: 600; color: var(--ink); }
+
+/* ── CALLOUT / PULL QUOTE ────────────────────────── */
+.callout {
+  margin: 36px 0;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 32px 36px;
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+.callout::before {
+  content: '"';
+  font-family: var(--serif);
+  font-size: 180px;
+  position: absolute;
+  right: 24px;
+  top: -20px;
+  opacity: .06;
+  line-height: 1;
+  color: white;
+}
+.callout-text {
+  font-family: var(--serif);
+  font-size: 24px;
+  line-height: 1.4;
+  color: var(--paper);
+  position: relative;
+  z-index: 1;
+}
+.callout-text em { color: #f4a89a; font-style: italic; }
+.callout-source {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: rgba(255,255,255,.45);
+  margin-top: 16px;
+  letter-spacing: .06em;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── ACCENT BOX ──────────────────────────────────── */
+.accent-box {
+  border: 1px solid var(--paper-3);
+  background: var(--paper-2);
+  border-radius: 8px;
+  padding: 24px 28px;
+  margin: 28px 0;
+}
+.accent-box-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.accent-box p { font-size: 15px; color: var(--ink-2); margin: 0; }
+
+/* ── STACK DIAGRAM ───────────────────────────────── */
+.stack-diagram { margin: 28px 0; }
+.stack-layer {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin-bottom: 3px;
+}
+.stack-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  width: 200px;
+  flex-shrink: 0;
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  padding-right: 16px;
+}
+.stack-bar {
+  flex: 1;
+  padding: 12px 18px;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.stack-bar-desc { font-size: 11px; font-weight: 400; opacity: .7; }
+.stack-arrow {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 0;
+}
+.stack-arrow-line {
+  width: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 0;
+}
+.stack-arrow-line svg { display: block; }
+
+.sl-dram { background: #1a3a5c; color: #b8d4ef; }
+.sl-phy  { background: #1e4976; color: #c0d9f0; }
+.sl-imc  { background: #235b8a; color: #c7def2; }
+.sl-fw   { background: #b7860b; color: #fdf8e8; }
+.sl-linux { background: #1a5e36; color: #c6ecd7; }
+.sl-app  { background: #f0ede6; color: #4a5568; border: 1px solid #e0dbd0; }
+
+/* ── TABLE ────────────────────────────────────────── */
+.data-table-wrap { overflow-x: auto; margin: 28px 0; border: var(--rule); border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+thead tr { background: var(--paper-2); border-bottom: var(--rule-heavy); }
+th {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+  padding: 12px 16px;
+  text-align: left;
+}
+td { padding: 13px 16px; color: var(--ink-2); border-bottom: var(--rule); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: rgba(0,0,0,.02); }
+td:first-child { font-family: var(--mono); font-size: 13px; color: var(--ink); font-weight: 500; }
+.td-impact { font-size: 13px; color: var(--ink-3); }
+.table-badge {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 500;
+}
+.table-badge.good { background: #edf7ed; color: #1a6e2a; }
+.table-badge.warn { background: #fef8e6; color: #8a6200; }
+
+/* ── CODE BLOCK ──────────────────────────────────── */
+.code-block {
+  background: var(--ink);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 24px 0;
+}
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04);
+}
+.code-block-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .08em;
+  color: rgba(255,255,255,.4);
+  text-transform: uppercase;
+}
+.code-block-dots { display: flex; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.15); }
+pre {
+  padding: 22px 20px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+  color: #a8c6e8;
+  margin: 0;
+}
+.cm { color: rgba(255,255,255,.35); }
+.ck { color: #81d4fa; }
+.cv { color: #ffcc80; }
+.cs { color: #a5d6a7; }
+
+/* ── GRID CARDS ──────────────────────────────────── */
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 24px 0; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 24px 0; }
+@media (max-width: 600px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+}
+
+.g-card {
+  background: white;
+  border: var(--rule);
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+.g-card-icon {
+  font-family: var(--mono);
+  font-size: 18px;
+  margin-bottom: 10px;
+  display: block;
+}
+.g-card-title {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+.g-card p { font-size: 13px; color: var(--ink-3); line-height: 1.55; margin: 0; }
+
+.g-card.highlight { background: var(--accent-light); border-color: rgba(192,57,43,.2); }
+.g-card.highlight .g-card-title { color: var(--accent); }
+
+/* ── COMPARISON TABLE ────────────────────────────── */
+.compare-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border: var(--rule);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 24px 0;
+}
+.compare-col { padding: 24px; }
+.compare-col + .compare-col { border-left: var(--rule); }
+.compare-col-head {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-bottom: 6px;
+}
+.compare-col-name {
+  font-family: var(--serif);
+  font-size: 22px;
+  color: var(--ink);
+  margin-bottom: 16px;
+}
+.compare-col.featured { background: var(--ink); }
+.compare-col.featured .compare-col-head { color: rgba(255,255,255,.4); }
+.compare-col.featured .compare-col-name { color: white; }
+.compare-spec {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+  border-top: 1px solid rgba(0,0,0,.07);
+  font-size: 13px;
+}
+.compare-col.featured .compare-spec { border-top-color: rgba(255,255,255,.08); }
+.compare-spec-label { color: var(--ink-3); }
+.compare-col.featured .compare-spec-label { color: rgba(255,255,255,.45); }
+.compare-spec-val { font-family: var(--mono); font-weight: 500; color: var(--ink); font-size: 13px; }
+.compare-col.featured .compare-spec-val { color: #f4a89a; }
+
+/* ── TRAINING PIPELINE ───────────────────────────── */
+.pipeline { margin: 28px 0; }
+.pipeline-step {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  position: relative;
+  padding-bottom: 28px;
+}
+.pipeline-step::after {
+  content: '';
+  position: absolute;
+  left: 18px;
+  top: 40px;
+  bottom: 0;
+  width: 1px;
+  background: var(--rule);
+  background: linear-gradient(to bottom, rgba(0,0,0,.12), transparent);
+}
+.pipeline-step:last-child::after { display: none; }
+.pipeline-step:last-child { padding-bottom: 0; }
+.pipeline-num {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  position: relative;
+  z-index: 1;
+}
+.pipeline-num.accent { background: var(--accent); }
+.pipeline-num.gold { background: var(--gold); }
+.pipeline-content { padding-top: 6px; flex: 1; }
+.pipeline-title { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+.pipeline-desc { font-size: 14px; color: var(--ink-3); line-height: 1.55; margin: 0; }
+
+/* ── LINUX INTERFACE LIST ────────────────────────── */
+.iface-group { margin: 24px 0; }
+.iface-group-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: var(--rule);
+}
+.iface-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: var(--rule);
+}
+.iface-item:last-child { border-bottom: none; }
+.iface-path {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--blue-mid);
+  flex-shrink: 0;
+  background: var(--blue-light);
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(37,99,168,.15);
+}
+.iface-desc { font-size: 13px; color: var(--ink-3); line-height: 1.5; }
+
+/* ── TAKEAWAY CARDS ──────────────────────────────── */
+.takeaway-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 24px 0; }
+@media (max-width: 600px) { .takeaway-grid { grid-template-columns: 1fr; } }
+.takeaway-card {
+  border: var(--rule);
+  border-radius: 8px;
+  padding: 20px 22px;
+  background: white;
+  position: relative;
+  overflow: hidden;
+}
+.takeaway-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+}
+.takeaway-card.c-red::before { background: var(--accent); }
+.takeaway-card.c-gold::before { background: var(--gold); }
+.takeaway-card.c-blue::before { background: var(--blue-mid); }
+.takeaway-card.c-green::before { background: #1a6e2a; }
+.takeaway-card.c-gray::before { background: var(--ink-3); }
+.takeaway-card.c-teal::before { background: #0f6e56; }
+.takeaway-audience {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-bottom: 8px;
+}
+.takeaway-main { font-size: 14px; color: var(--ink-2); line-height: 1.6; }
+
+/* ── FINAL QUOTE ──────────────────────────────────── */
+.final-callout {
+  margin: 48px 0 0;
+  padding: 56px 0 0;
+  border-top: var(--rule-heavy);
+  text-align: center;
+}
+.final-quote {
+  font-family: var(--serif);
+  font-size: clamp(22px, 3vw, 34px);
+  line-height: 1.35;
+  color: var(--ink);
+  max-width: 680px;
+  margin: 0 auto 24px;
+}
+.final-quote em { font-style: italic; color: var(--accent); }
+
+/* -- ARTICLE FOOTER -- */
+.article-footer {
+  border-top: var(--rule);
+  padding: 40px 0;
+  margin-top: 80px;
+}
+.article-footer-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.article-footer-note { font-family: var(--mono); font-size: 12px; color: var(--ink-4); letter-spacing: .04em; }
+
+/* ── ANIMATIONS ──────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.hero h1   { animation: fadeUp .6s ease both; }
+.hero-lede { animation: fadeUp .6s .12s ease both; }
+.hero-meta { animation: fadeUp .6s .06s ease both; }
+
+/* Print */
+@media print {
+  .article-header, .sidebar { display: none; }
+  .main-content { border: none; padding: 0; }
+  .article-body { display: block; }
+  .callout { background: #111; -webkit-print-color-adjust: exact; }
+}
+
+
+/* Shared site publishing chrome */
+.site-header, .site-footer { max-width: 1120px; margin: 0 auto; padding: 0 40px; font-family: var(--sans); }
+.site-header-inner, .site-footer-inner { display:flex; align-items:center; justify-content:space-between; gap:18px; border:var(--rule); background:rgba(250,248,244,.88); backdrop-filter:blur(12px); }
+.site-header-inner { margin-top:18px; padding:14px 18px; border-radius:16px; }
+.site-brand { color:var(--ink); font-family:var(--mono); font-size:13px; letter-spacing:.08em; font-weight:500; text-decoration:none; }
+.site-nav { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:16px; font-size:13px; }
+.site-nav a, .site-footer a { color:var(--accent); text-decoration:none; font-weight:650; }
+.site-nav a:hover, .site-footer a:hover { text-decoration:underline; }
+.byline { font-family:var(--mono); font-size:12px; color:var(--ink-4); letter-spacing:.04em; margin:-16px 0 32px; }
+.site-footer-inner { margin:28px 0 34px; padding:18px; border-radius:16px; color:var(--ink-4); font-size:13px; }
+#webmentions { flex-basis:100%; color:var(--ink-4); }
+
+/* Dark mode for the shared site toggle. */
+html.dark {
+  --ink:#eef2f7; --ink-2:#d4dde8; --ink-3:#a8b5c5; --ink-4:#76879b;
+  --paper:#0b0f16; --paper-2:#111722; --paper-3:#202a38;
+  --accent:#ff6b5f; --accent-2:#ff887d; --accent-light:#331917;
+  --gold:#f0c15f; --gold-light:#2e2613;
+  --blue:#8fbeff; --blue-mid:#74a9f0; --blue-light:#132238;
+  --rule:1px solid rgba(255,255,255,.13); --rule-heavy:2px solid #eef2f7;
+}
+html.dark body { background:var(--paper); color:var(--ink); }
+html.dark .article-header { background:rgba(11,15,22,.9); }
+html.dark .tag, html.dark .takeaway-card, html.dark .site-header-inner, html.dark .site-footer-inner { background:#111722; }
+html.dark .sidebar-card, html.dark .callout, html.dark .layer-card, html.dark .compare-col, html.dark .data-table-wrap, html.dark .formula-box, html.dark .final-callout { background:var(--paper-2); }
+html.dark .compare-col.featured { background:#1e2634; }
+html.dark .pipeline-num { background:#eef2f7; color:#0b0f16; }
+html.dark .pipeline-step::after { background:linear-gradient(to bottom, rgba(255,255,255,.16), transparent); }
+html.dark .iface-path { background:var(--blue-light); color:var(--blue); border-color:rgba(116,169,240,.24); }
+html.dark table th { background:#151d29; }
+html.dark table td, html.dark .takeaway-main, html.dark .pipeline-desc, html.dark .iface-desc { color:var(--ink-3); }
+html.dark code { background:#1a2230; color:#ff9a91; }
+
+@media (max-width: 768px) {
+  .site-header, .site-footer { padding:0 20px; }
+  .site-header-inner, .site-footer-inner { align-items:flex-start; flex-direction:column; }
+  .site-nav { justify-content:flex-start; }
+}
+</style>
+<script async data-goatcounter="https://manishklach.goatcounter.com/count" src="//gc.zgo.at/count.js"></script>
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<link rel="alternate" title="MANISH AI RSS" type="application/rss+xml" href="/feed.xml"/>
+<link rel="alternate" title="MANISH AI JSON" type="application/feed+json" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+</head>
+<body>
+<div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><button aria-label="Toggle theme" id="theme-toggle" type="button">☀️</button></div>
+<header class="site-header" aria-label="Site header">
+  <div class="site-header-inner">
+    <a class="site-brand" href="/index.html">MANISH AI</a>
+    <div class="site-nav" aria-label="Primary navigation">
+      <a href="/index.html">Home</a>
+      <a href="/writings.html">Writings</a>
+      <a href="/patents.html">Patents</a>
+      <a href="/feed.xml">RSS</a>
+    </div>
+  </div>
+</header>
+<!-- ARTICLE HEADER -->
+<header class="article-header">
+  <div class="wrap">
+    <a class="article-logo" href="#">kernel<span>// deep-dive</span></a>
+    <div class="header-tags">
+      <span class="tag">DDR5</span>
+      <span class="tag">Linux Kernel</span>
+      <span class="tag">BIOS / UEFI</span>
+      <span class="tag">CXL</span>
+      <span class="tag">HBM</span>
+    </div>
+  </div>
+</header>
+
+<!-- HERO -->
+<div class="wrap">
+  <div class="hero">
+    <div class="hero-eyebrow">Memory Systems Engineering</div>
+    <h1>How Memory Timings Are<br><em>Actually</em> Configured<br>in Modern Systems</h1>
+    <div class="byline">By <a href="/index.html">MANISH AI</a> · Published <time datetime="2026-05-23">May 23, 2026</time> · 16 min read</div>
+    <div class="hero-meta">
+      <span class="hero-meta-item"><strong>16 min read</strong></span>
+      <span class="hero-divider">·</span>
+      <span class="hero-meta-item">DRAM · Firmware · Linux · NUMA · CXL</span>
+      <span class="hero-divider">·</span>
+      <span class="hero-meta-item">Systems engineering deep-dive</span>
+    </div>
+    <p class="hero-lede">
+      You paid for DDR5-6000 CL30. Your system booted at DDR5-4800 CL40.
+      Most engineers stop at "enable XMP" and move on. This piece explains
+      what actually happens — across firmware, memory controllers, DDR training,
+      Linux, and runtime orchestration — and why the gap matters more than ever
+      in the CXL and HBM era.
+    </p>
+  </div>
+</div>
+
+<!-- ARTICLE BODY -->
+<div class="wrap">
+  <div class="article-body">
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content" data-pagefind-body="">
+
+      <!-- §1 KEY MENTAL MODEL -->
+      <section class="section" id="mental-model">
+        <div class="section-number">01 — Foundation</div>
+        <h2>The Key Mental Model</h2>
+
+        <div class="callout">
+          <p class="callout-text">
+            Firmware asks: <em>"Can the memory operate safely?"</em><br>
+            Linux asks: <em>"How should memory be used efficiently?"</em>
+          </p>
+          <p class="callout-source">The distinction that unlocks everything else</p>
+        </div>
+
+        <p>
+          One of the most persistent misconceptions in systems engineering is that the Linux
+          kernel directly controls low-level DRAM timings — things like CAS latency, row
+          activation delays, or precharge timing. These timings are configured much earlier
+          during firmware bring-up and DRAM training, often before the kernel even has
+          an address space.
+        </p>
+        <p>
+          By the time Linux boots, the DRAM controller is already fully trained and its
+          timing registers are locked. Linux's job is entirely different: it orchestrates
+          <em>how</em> that trained memory gets allocated, reclaimed, migrated, and tiered.
+          Confusing these two roles leads to wasted tuning effort and missed optimization
+          opportunities at both layers.
+        </p>
+      </section>
+
+      <!-- §2 THE STACK -->
+      <section class="section" id="the-stack">
+        <div class="section-number">02 — Architecture</div>
+        <h2>The Modern Memory Stack</h2>
+
+        <p>
+          Every modern system delegates memory concerns across six distinct layers. Understanding
+          who owns what determines where to look when performance is wrong — or when you want
+          to make it better.
+        </p>
+
+        <div class="stack-diagram">
+          <div class="stack-layer">
+            <div class="stack-bar sl-dram"><span>DRAM Chips</span><span class="stack-bar-desc">Store bits · obey timing constraints</span></div>
+          </div>
+          <div style="text-align:center;padding:3px 0;font-family:var(--mono);font-size:18px;color:var(--ink-4);">↓</div>
+          <div class="stack-layer">
+            <div class="stack-bar sl-phy"><span>DDR PHY</span><span class="stack-bar-desc">Signal integrity · training</span></div>
+          </div>
+          <div style="text-align:center;padding:3px 0;font-family:var(--mono);font-size:18px;color:var(--ink-4);">↓</div>
+          <div class="stack-layer">
+            <div class="stack-bar sl-imc"><span>Integrated Memory Controller (IMC)</span><span class="stack-bar-desc">Schedules reads, writes, refreshes, banks</span></div>
+          </div>
+          <div style="text-align:center;padding:3px 0;font-family:var(--mono);font-size:18px;color:var(--ink-4);">↓</div>
+          <div class="stack-layer">
+            <div class="stack-bar sl-fw"><span>BIOS / UEFI / AGESA / TF-A</span><span class="stack-bar-desc">Trains memory · programs timing registers</span></div>
+          </div>
+          <div style="text-align:center;padding:3px 0;font-family:var(--mono);font-size:18px;color:var(--ink-4);">↓</div>
+          <div class="stack-layer">
+            <div class="stack-bar sl-linux"><span>Linux Kernel</span><span class="stack-bar-desc">Allocation · NUMA · reclaim · tiering</span></div>
+          </div>
+          <div style="text-align:center;padding:3px 0;font-family:var(--mono);font-size:18px;color:var(--ink-4);">↓</div>
+          <div class="stack-layer">
+            <div class="stack-bar sl-app"><span>Applications</span><span class="stack-bar-desc">Generate the actual memory access patterns</span></div>
+          </div>
+        </div>
+
+        <div class="accent-box">
+          <div class="accent-box-label">Key insight</div>
+          <p>Firmware and Linux don't compete over memory — they operate on completely
+          different planes. Firmware works in nanoseconds and clock cycles; Linux works
+          in pages, nodes, and allocation decisions.</p>
+        </div>
+      </section>
+
+      <!-- §3 TIMINGS -->
+      <section class="section" id="timings">
+        <div class="section-number">03 — Reference</div>
+        <h2>The Critical Timing Parameters</h2>
+
+        <p>
+          Every DRAM timing parameter encodes a physical constraint: how long the silicon
+          needs to safely complete an operation. Violating them risks data corruption;
+          padding them wastes performance. Here's what each one governs.
+        </p>
+
+        <div class="data-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Parameter</th>
+                <th>What it governs</th>
+                <th>Tighter is better?</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>tCL (CAS Latency)</td>
+                <td>READ command → data availability delay</td>
+                <td><span class="table-badge good">Yes</span></td>
+                <td class="td-impact">The headline timing. Most quoted in marketing.</td>
+              </tr>
+              <tr>
+                <td>tRCD</td>
+                <td>Row activation → column access delay</td>
+                <td><span class="table-badge good">Yes</span></td>
+                <td class="td-impact">Critical for random access workloads with many row opens.</td>
+              </tr>
+              <tr>
+                <td>tRP</td>
+                <td>Precharge delay before switching rows</td>
+                <td><span class="table-badge good">Yes</span></td>
+                <td class="td-impact">Bottlenecks random access across banks.</td>
+              </tr>
+              <tr>
+                <td>tRAS</td>
+                <td>Minimum row active duration</td>
+                <td><span class="table-badge warn">Careful</span></td>
+                <td class="td-impact">Too low destabilizes DRAM. Usually not worth aggressive tuning.</td>
+              </tr>
+              <tr>
+                <td>tRFC</td>
+                <td>Refresh cycle completion time</td>
+                <td><span class="table-badge good">Yes</span></td>
+                <td class="td-impact">Explodes on large DDR5 DIMMs. 128GB+ DIMMs can see 400–800ns tRFC.</td>
+              </tr>
+              <tr>
+                <td>tREFI</td>
+                <td>Interval between refresh cycles</td>
+                <td><span class="table-badge warn">Risk</span></td>
+                <td class="td-impact">Higher boosts bandwidth but increases DRAM error risk (rowhammer).</td>
+              </tr>
+              <tr>
+                <td>tWR</td>
+                <td>Write recovery time</td>
+                <td><span class="table-badge good">Yes</span></td>
+                <td class="td-impact">Controls timing after a write before the row can be precharged.</td>
+              </tr>
+              <tr>
+                <td>Command Rate (1T/2T)</td>
+                <td>Clock cycles before command issuance</td>
+                <td><span class="table-badge warn">Careful</span></td>
+                <td class="td-impact">1T improves latency but reduces stability at high frequency.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="accent-box">
+          <div class="accent-box-label">Real-world note</div>
+          <p>
+            Absolute latency in nanoseconds is what matters for workloads, not clock cycles alone.
+            DDR5-6000 CL30 achieves ~10ns. DDR5-4800 CL40 achieves ~16.7ns. That 67% gap in
+            absolute latency is far larger than the 25% bandwidth difference, and it dominates
+            single-threaded workloads, gaming, and latency-sensitive databases.
+          </p>
+        </div>
+      </section>
+
+      <!-- §4 JEDEC vs XMP -->
+      <section class="section" id="jedec-xmp">
+        <div class="section-number">04 — Profiles</div>
+        <h2>JEDEC vs XMP / EXPO</h2>
+
+        <p>
+          Every DDR5 DIMM ships with an SPD EEPROM containing JEDEC-standardized timings —
+          conservative defaults guaranteed to work in any compliant system. XMP (Intel) and
+          EXPO (AMD) are separately stored overclocking profiles baked in by the memory
+          manufacturer, operating outside the JEDEC standard.
+        </p>
+
+        <div class="compare-row">
+          <div class="compare-col">
+            <div class="compare-col-head">Default profile</div>
+            <div class="compare-col-name">JEDEC DDR5</div>
+            <div class="compare-spec">
+              <span class="compare-spec-label">Frequency</span>
+              <span class="compare-spec-val">4800 MT/s</span>
+            </div>
+            <div class="compare-spec">
+              <span class="compare-spec-label">CAS Latency</span>
+              <span class="compare-spec-val">CL40</span>
+            </div>
+            <div class="compare-spec">
+              <span class="compare-spec-label">Voltage</span>
+              <span class="compare-spec-val">1.1V</span>
+            </div>
+            <div class="compare-spec">
+              <span class="compare-spec-label">Absolute latency</span>
+              <span class="compare-spec-val">~16.7ns</span>
+            </div>
+            <div class="compare-spec">
+              <span class="compare-spec-label">Stability risk</span>
+              <span class="compare-spec-val">None</span>
+            </div>
+          </div>
+          <div class="compare-col featured">
+            <div class="compare-col-head">Overclock profile</div>
+            <div class="compare-col-name">XMP / EXPO</div>
+            <div class="compare-spec">
+              <span class="compare-spec-label">Frequency</span>
+              <span class="compare-spec-val">6000 MT/s</span>
+            </div>
+            <div class="compare-spec">
+              <span class="compare-spec-label">CAS Latency</span>
+              <span class="compare-spec-val">CL30</span>
+            </div>
+            <div class="compare-spec">
+              <span class="compare-spec-label">Voltage</span>
+              <span class="compare-spec-val">1.35V</span>
+            </div>
+            <div class="compare-spec">
+              <span class="compare-spec-label">Absolute latency</span>
+              <span class="compare-spec-val">~10ns</span>
+            </div>
+            <div class="compare-spec">
+              <span class="compare-spec-label">Stability risk</span>
+              <span class="compare-spec-val">Validate with MemTest86</span>
+            </div>
+          </div>
+        </div>
+
+        <p>
+          That ~6.7ns difference compounds heavily. Redis, PostgreSQL, game engines, and
+          physics simulations that work heavily from CPU L3 and DRAM see 15–25% throughput
+          improvements on tight XMP configs. The main risk is stability — always run
+          MemTest86 or TestMem5 for several passes after enabling XMP/EXPO, particularly
+          on high-density kits.
+        </p>
+      </section>
+
+      <!-- §5 DRAM TRAINING -->
+      <section class="section" id="firmware-training">
+        <div class="section-number">05 — Firmware</div>
+        <h2>What Firmware Actually Does</h2>
+
+        <p>
+          DRAM training is the most underappreciated part of the memory stack. Before Linux
+          boots, firmware runs a calibration sequence that can take 30–90 seconds on servers
+          with many DIMMs. Here's every major stage.
+        </p>
+
+        <div class="pipeline">
+          <div class="pipeline-step">
+            <div class="pipeline-num">1</div>
+            <div class="pipeline-content">
+              <div class="pipeline-title">Power-on & SPD Read</div>
+              <p class="pipeline-desc">Firmware powers the DIMM and reads the Serial Presence Detect EEPROM to understand density, speed grade, ranks, width, and which XMP/EXPO profiles are present.</p>
+            </div>
+          </div>
+          <div class="pipeline-step">
+            <div class="pipeline-num gold">2</div>
+            <div class="pipeline-content">
+              <div class="pipeline-title">IMC Initialization</div>
+              <p class="pipeline-desc">The Integrated Memory Controller is configured with the target frequency and base timing parameters. The DDR PHY is brought up and clocks are established.</p>
+            </div>
+          </div>
+          <div class="pipeline-step">
+            <div class="pipeline-num gold">3</div>
+            <div class="pipeline-content">
+              <div class="pipeline-title">Write Leveling</div>
+              <p class="pipeline-desc">Because DRAM data strobe signals fly-by the memory bus, each DIMM sees the clock at a different phase. Write leveling finds the correct delay per-rank so write strobes align with the clock edge at each device.</p>
+            </div>
+          </div>
+          <div class="pipeline-step">
+            <div class="pipeline-num gold">4</div>
+            <div class="pipeline-content">
+              <div class="pipeline-title">Read Training & DQS Centering</div>
+              <p class="pipeline-desc">Firmware sweeps the read DQS (data strobe) window, finding the optimal sample point. The goal is maximum setup/hold margin — maximizing the eye opening — for reliable reads at the target frequency.</p>
+            </div>
+          </div>
+          <div class="pipeline-step">
+            <div class="pipeline-num gold">5</div>
+            <div class="pipeline-content">
+              <div class="pipeline-title">Vref Calibration</div>
+              <p class="pipeline-desc">Both the CA (command/address) Vref and DQ Vref are swept to find the center of the valid voltage window for reliable signaling.</p>
+            </div>
+          </div>
+          <div class="pipeline-step">
+            <div class="pipeline-num gold">6</div>
+            <div class="pipeline-content">
+              <div class="pipeline-title">ODT & ZQ Calibration</div>
+              <p class="pipeline-desc">On-die termination is tuned to match the board's transmission line impedance and minimize reflections. ZQ calibration sets the output driver impedance, which drifts with temperature.</p>
+            </div>
+          </div>
+          <div class="pipeline-step">
+            <div class="pipeline-num accent">7</div>
+            <div class="pipeline-content">
+              <div class="pipeline-title">Timing Register Programming</div>
+              <p class="pipeline-desc">All trained parameters are committed to the IMC's hardware registers. From this point on, the timing registers are effectively locked — Linux will inherit this configuration and cannot change the electrical parameters.</p>
+            </div>
+          </div>
+          <div class="pipeline-step">
+            <div class="pipeline-num">8</div>
+            <div class="pipeline-content">
+              <div class="pipeline-title">Handoff to Linux</div>
+              <p class="pipeline-desc">Firmware maps usable memory regions into the system address space, passes memory topology information to the kernel via ACPI/SRAT tables, and transfers control. Linux never retrains the electrical link.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §6 LINUX INTERFACES -->
+      <section class="section" id="linux-interfaces">
+        <div class="section-number">06 — Linux</div>
+        <h2>Linux Memory Interfaces</h2>
+
+        <p>
+          Linux does not retrain DRAM electrically — but it exposes a rich set of interfaces
+          that let you observe memory topology, monitor reliability, and control higher-level
+          placement behavior. Knowing where to look is half the job.
+        </p>
+
+        <h3>/proc interfaces</h3>
+        <div class="iface-group">
+          <div class="iface-item">
+            <div class="iface-path">/proc/meminfo</div>
+            <div class="iface-desc">System-wide memory summary: total, free, available, buffered, cached, swap. The canonical first stop.</div>
+          </div>
+          <div class="iface-item">
+            <div class="iface-path">/proc/zoneinfo</div>
+            <div class="iface-desc">Per-NUMA-zone memory accounting. Shows watermarks, free pages, and memory pressure per zone.</div>
+          </div>
+          <div class="iface-item">
+            <div class="iface-path">/proc/buddyinfo</div>
+            <div class="iface-desc">Buddy allocator order histogram. Fragmentation is visible here before <code>vm.compact_memory</code> has run.</div>
+          </div>
+          <div class="iface-item">
+            <div class="iface-path">/proc/vmstat</div>
+            <div class="iface-desc">VM event counters — page faults, swapped in/out, THP activity, direct reclaim events, NUMA migrations.</div>
+          </div>
+          <div class="iface-item">
+            <div class="iface-path">/proc/iomem</div>
+            <div class="iface-desc">Physical memory map including reserved regions, PCI BARs, and ACPI tables.</div>
+          </div>
+        </div>
+
+        <h3>/sys interfaces</h3>
+        <div class="iface-group">
+          <div class="iface-item">
+            <div class="iface-path">/sys/devices/system/node/</div>
+            <div class="iface-desc">NUMA topology — per-node distances, CPUs, and memory stats. Essential for multi-socket and CXL-attached memory analysis.</div>
+          </div>
+          <div class="iface-item">
+            <div class="iface-path">/sys/kernel/mm/</div>
+            <div class="iface-desc">Transparent hugepage controls, NUMA balancing knobs, memory compaction, and MGLRU settings.</div>
+          </div>
+          <div class="iface-item">
+            <div class="iface-path">/sys/devices/system/edac/</div>
+            <div class="iface-desc">Error Detection And Correction counters. <code>ce_count</code> (correctable) and <code>ue_count</code> (uncorrectable) are your DIMM health indicators.</div>
+          </div>
+        </div>
+
+        <h3>Essential commands</h3>
+        <div class="code-block">
+          <div class="code-block-header">
+            <div class="code-block-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            <div class="code-block-title">bash</div>
+          </div>
+          <pre><span class="cm"># Full DIMM details: manufacturer, speed, timings, size</span>
+<span class="ck">sudo</span> <span class="cv">dmidecode</span> --type memory
+
+<span class="cm"># Decode SPD EEPROM: exact tCL, tRCD, tRP, tRAS from hardware</span>
+<span class="ck">sudo</span> <span class="cv">decode-dimms</span>
+
+<span class="cm"># NUMA topology: nodes, distances, which CPUs are local to which RAM</span>
+<span class="cv">numactl</span> --hardware
+
+<span class="cm"># Correctable ECC errors per memory controller</span>
+<span class="ck">cat</span> /sys/devices/system/edac/mc/mc0/ce_count
+
+<span class="cm"># Memory-related kernel messages during boot</span>
+<span class="ck">dmesg</span> | grep -i <span class="cs">'memory\|ddr\|numa\|imc'</span>
+
+<span class="cm"># Live memory stats: reclaim events, THP faults, NUMA migrations</span>
+<span class="ck">watch</span> -n1 <span class="cs">'grep -E "pgmajfault|numa_pages|thp" /proc/vmstat'</span></pre>
+        </div>
+      </section>
+
+      <!-- §7 IMC -->
+      <section class="section" id="imc">
+        <div class="section-number">07 — Controller</div>
+        <h2>The Integrated Memory Controller</h2>
+
+        <p>
+          Linux does not speak directly to DRAM banks. Every read and write from the CPU
+          goes through the IMC, which translates physical addresses into DRAM row/bank/column
+          coordinates, schedules accesses across channels, handles refresh timing, and
+          arbitrates between competing reads and writes.
+        </p>
+        <p>
+          Firmware programs the IMC's timing registers once during training. Linux then
+          controls the higher-level decisions:
+        </p>
+
+        <div class="grid-3">
+          <div class="g-card">
+            <div class="g-card-title">NUMA Placement</div>
+            <p>Which NUMA node receives allocations. Local-node placement minimizes access latency across all CPUs on that node.</p>
+          </div>
+          <div class="g-card">
+            <div class="g-card-title">Huge Pages</div>
+            <p>2MB and 1GB pages reduce TLB pressure dramatically for large working-set workloads. Transparent Huge Pages automate this.</p>
+          </div>
+          <div class="g-card">
+            <div class="g-card-title">Page Migration</div>
+            <p>NUMA balancing migrates pages to the node where they're most accessed. Critical on multi-socket servers.</p>
+          </div>
+          <div class="g-card highlight">
+            <div class="g-card-title">MGLRU Reclaim</div>
+            <p>Multi-Gen LRU tracks page access generations rather than strict access order, leading to much smarter reclaim decisions.</p>
+          </div>
+          <div class="g-card highlight">
+            <div class="g-card-title">CXL Tiering</div>
+            <p>Promotes hot pages to local DRAM; demotes cold pages to slower CXL-attached memory, expanding effective capacity.</p>
+          </div>
+          <div class="g-card">
+            <div class="g-card-title">Memory Pressure</div>
+            <p>Watermark-based reclaim, kswapd, and direct reclaim cooperate to free memory under pressure without stalling processes.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §8 MGLRU + CXL -->
+      <section class="section" id="mglru-cxl">
+        <div class="section-number">08 — Modern Linux</div>
+        <h2>MGLRU and CXL Tiering</h2>
+
+        <p>
+          The most impactful changes in Linux memory management over the last three kernel
+          generations are not about timing registers — they're about intelligent orchestration
+          of a multi-tier memory hierarchy.
+        </p>
+
+        <p>
+          <strong>MGLRU</strong> (Multi-Generational LRU, mainlined in Linux 6.1) replaces
+          the old active/inactive LRU split with a generational tracking model. Rather than
+          a binary "recently accessed or not," MGLRU maintains a sliding window of access
+          generations that more accurately reflects true workload working sets. The result
+          is significantly reduced refault rates and better behavior under memory pressure —
+          particularly for mixed workloads like databases with large buffer caches running
+          alongside application servers.
+        </p>
+
+        <p>
+          <strong>CXL memory tiering</strong> changes the game for large-memory infrastructure.
+          Compute Express Link lets systems attach terabytes of DRAM-like memory over PCIe
+          at lower cost-per-bit than local DIMMs, but with higher latency (typically 2–4×
+          vs local DDR5). Linux's tiering daemon promotes frequently-accessed pages to local
+          DRAM and demotes cold pages to CXL memory automatically. For AI inference, vector
+          databases, and in-memory caches, this can expand usable working memory by 4–8×
+          without proportional cost.
+        </p>
+
+        <div class="grid-2">
+          <div class="g-card">
+            <div class="g-card-title">Hot page promotion</div>
+            <p>Frequently-accessed cold-tier pages are migrated to local DRAM. The kernel tracks access frequency using idle-page tracking and hardware access bits.</p>
+          </div>
+          <div class="g-card">
+            <div class="g-card-title">Cold page demotion</div>
+            <p>Pages that haven't been accessed within a tunable aging window are demoted from local DRAM to CXL or NVMe. Happens asynchronously via <code>memory_tier</code> infrastructure.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §9 BIOS MODES -->
+      <section class="section" id="bios-modes">
+        <div class="section-number">09 — Configuration</div>
+        <h2>Performance Modes in BIOS</h2>
+
+        <p>
+          Beyond XMP/EXPO, server and workstation firmware expose additional memory
+          configuration modes that significantly impact Linux memory behavior.
+        </p>
+
+        <div class="data-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Mode</th>
+                <th>What it does</th>
+                <th>Best for</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>XMP / EXPO</td>
+                <td>Enables manufacturer-tuned overclocking profile: higher frequency, tighter sub-timings, higher voltage.</td>
+                <td class="td-impact">Gaming, workstations, latency-sensitive Linux workloads</td>
+              </tr>
+              <tr>
+                <td>Performance Mode</td>
+                <td>Aggressive IMC tuning: tighter command scheduling, 1T command rate where stable.</td>
+                <td class="td-impact">Single-socket high-frequency workloads</td>
+              </tr>
+              <tr>
+                <td>Memory Interleaving</td>
+                <td>Distributes physical addresses across channels/DIMMs to maximize bandwidth utilization.</td>
+                <td class="td-impact">Sequential bandwidth workloads: HPC, video encoding, ML training</td>
+              </tr>
+              <tr>
+                <td>Gear Down / Gear 2</td>
+                <td>Halves the command clock rate relative to data clock for stability at high data rates.</td>
+                <td class="td-impact">DDR5-6400+ where Gear 1 is unstable</td>
+              </tr>
+              <tr>
+                <td>ECC Mode</td>
+                <td>Enables error detection and correction using extra DRAM bits. Slight bandwidth cost.</td>
+                <td class="td-impact">Server workloads, embedded, any production environment</td>
+              </tr>
+              <tr>
+                <td>Patrol Scrub</td>
+                <td>Background ECC scrubbing proactively reads and rewrites every memory cell on a schedule.</td>
+                <td class="td-impact">Long-running server environments with large DIMMs</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- §10 ACTIONABLE -->
+      <section class="section" id="takeaways">
+        <div class="section-number">10 — Takeaways</div>
+        <h2>What to Actually Do About It</h2>
+
+        <p>
+          The right intervention depends on where in the stack you're working. Here's the
+          practical summary by audience.
+        </p>
+
+        <div class="takeaway-grid">
+          <div class="takeaway-card c-red">
+            <div class="takeaway-audience">For gamers &amp; enthusiasts</div>
+            <div class="takeaway-main">Enable XMP or EXPO in BIOS, validate with MemTest86 (2+ passes) or TestMem5. Check that absolute latency in nanoseconds actually improved — not just MT/s. Consider manual subtiming tuning once stable.</div>
+          </div>
+          <div class="takeaway-card c-blue">
+            <div class="takeaway-audience">For Linux performance engineers</div>
+            <div class="takeaway-main">Latency is now dominated by placement, topology, and NUMA affinity. Profile with <code>perf mem</code> and <code>numastat</code> before blaming DRAM timings. Hugepages and NUMA binding often win more than any BIOS toggle.</div>
+          </div>
+          <div class="takeaway-card c-gold">
+            <div class="takeaway-audience">For AI infrastructure engineers</div>
+            <div class="takeaway-main">HBM locality, CXL tiering, hugepage pinning, DMA scheduling, and memory bandwidth partitioning dominate over raw CAS numbers. NUMA topology of GPU-to-CPU attachment matters more than JEDEC vs XMP.</div>
+          </div>
+          <div class="takeaway-card c-green">
+            <div class="takeaway-audience">For kernel engineers</div>
+            <div class="takeaway-main">MGLRU, memory tiering, <code>memory_tier</code> infrastructure, and CXL hot/cold demotion are the new frontier. Linux controls orchestration, not raw electrical timing — the abstraction is intentional.</div>
+          </div>
+          <div class="takeaway-card c-gray">
+            <div class="takeaway-audience">For server/cloud operators</div>
+            <div class="takeaway-main">Enable ECC unconditionally. Monitor <code>ce_count</code> via EDAC. Enable patrol scrub on large DDR5 DIMMs. Watch <code>tREFI</code> settings — relaxed refresh on dense DIMMs can silently increase error rates.</div>
+          </div>
+          <div class="takeaway-card c-teal">
+            <div class="takeaway-audience">For embedded developers</div>
+            <div class="takeaway-main">DRAM bring-up lives inside TF-A or U-Boot BSP packages. Training parameters are board-specific. Understand your DDR PHY's training output logs — they are the ground truth for signal integrity problems.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FINAL -->
+      <div class="final-callout">
+        <p class="final-quote">
+          The future of memory optimization is not tighter CAS numbers on a BIOS screen.<br>
+          It is <em>coordination</em> — across firmware, memory controllers, Linux,
+          runtimes, accelerators, and workload orchestration.
+        </p>
+        <p style="font-size:15px; color:var(--ink-3); max-width:600px; margin:0 auto;">
+          Modern systems optimize topology, placement, tiering, bandwidth, DMA scheduling,
+          and memory locality as a unified system — not a stack of independent layers.
+          The engineers who understand all six layers have a durable advantage.
+        </p>
+      </div>
+
+    </main>
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-sticky">
+        <div class="sidebar-label">In this article</div>
+        <ul class="toc-list">
+          <li><a href="#mental-model"><span class="toc-num">01</span>The Key Mental Model</a></li>
+          <li><a href="#the-stack"><span class="toc-num">02</span>The Modern Memory Stack</a></li>
+          <li><a href="#timings"><span class="toc-num">03</span>Critical Timing Parameters</a></li>
+          <li><a href="#jedec-xmp"><span class="toc-num">04</span>JEDEC vs XMP / EXPO</a></li>
+          <li><a href="#firmware-training"><span class="toc-num">05</span>What Firmware Does</a></li>
+          <li><a href="#linux-interfaces"><span class="toc-num">06</span>Linux Interfaces</a></li>
+          <li><a href="#imc"><span class="toc-num">07</span>The IMC</a></li>
+          <li><a href="#mglru-cxl"><span class="toc-num">08</span>MGLRU &amp; CXL Tiering</a></li>
+          <li><a href="#bios-modes"><span class="toc-num">09</span>BIOS Performance Modes</a></li>
+          <li><a href="#takeaways"><span class="toc-num">10</span>Takeaways</a></li>
+        </ul>
+
+        <div class="sidebar-card">
+          <div class="sidebar-card-label">At a glance</div>
+          <div class="sidebar-stat">
+            <div class="sidebar-stat-num">~10ns</div>
+            <div class="sidebar-stat-label">DDR5-6000 CL30 absolute latency</div>
+          </div>
+          <div class="sidebar-stat">
+            <div class="sidebar-stat-num">~16.7ns</div>
+            <div class="sidebar-stat-label">DDR5-4800 CL40 absolute latency</div>
+          </div>
+          <div class="sidebar-stat">
+            <div class="sidebar-stat-num">67%</div>
+            <div class="sidebar-stat-label">latency gap between JEDEC and XMP</div>
+          </div>
+          <div class="sidebar-stat" style="margin-bottom:0">
+            <div class="sidebar-stat-num">4–8×</div>
+            <div class="sidebar-stat-label">effective memory expansion via CXL tiering</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+  </div><!-- /article-body -->
+</div><!-- /wrap -->
+
+<footer class="site-footer" aria-label="Article footer">
+  <div class="site-footer-inner">
+    <span>© MANISH AI · Technical writing on Linux, memory systems, and AI infrastructure.</span>
+    <span><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></span>
+    <div id="webmentions" hidden></div>
+  </div>
+</footer>
+
+</body>
+</html>
