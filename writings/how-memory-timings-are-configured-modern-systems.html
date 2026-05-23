@@ -4,8 +4,8 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>How Memory Timings Are Actually Configured in Modern Systems | MANISH AI</title>
-<meta name="description" content="A practical deep dive into how DRAM timings are configured across BIOS, firmware training, memory controllers, Linux interfaces, NUMA, CXL tiering, HBM, and modern memory orchestration."/>
-<meta name="keywords" content="memory timings, DDR5 timings, Linux memory management, DRAM training, BIOS XMP EXPO, NUMA, CXL tiering, MGLRU, HBM, integrated memory controller, EDAC, memory performance"/>
+<meta name="description" content="A practical deep dive into how DRAM timings are configured across BIOS, firmware training, memory controllers, Linux interfaces, NUMA, CXL tiering, HBM, runtime tuning knobs, and modern memory orchestration."/>
+<meta name="keywords" content="memory timings, DDR5 timings, Linux memory management, DRAM training, BIOS XMP EXPO, NUMA, CXL tiering, MGLRU, HBM, swappiness, hugepages, numactl, integrated memory controller, EDAC, memory performance"/>
 <meta name="author" content="MANISH AI"/>
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
 <meta name="color-scheme" content="light dark"/>
@@ -13,7 +13,7 @@
 <meta property="og:locale" content="en_US"/>
 <meta property="og:type" content="article"/>
 <meta property="og:title" content="How Memory Timings Are Actually Configured in Modern Systems | MANISH AI"/>
-<meta property="og:description" content="A practical deep dive into how DRAM timings are configured across BIOS, firmware training, memory controllers, Linux interfaces, NUMA, CXL tiering, HBM, and modern memory orchestration."/>
+<meta property="og:description" content="A practical deep dive into how DRAM timings are configured across BIOS, firmware training, memory controllers, Linux interfaces, NUMA, CXL tiering, HBM, runtime tuning knobs, and modern memory orchestration."/>
 <meta property="og:url" content="https://manishklach.github.io/writings/how-memory-timings-are-configured-modern-systems.html"/>
 <meta property="og:site_name" content="MANISH AI Writings"/>
 <meta property="og:image" content="https://manishklach.github.io/og/how-memory-timings-are-configured-modern-systems.png"/>
@@ -27,7 +27,7 @@
 <meta property="article:section" content="Linux Memory Systems"/>
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:title" content="How Memory Timings Are Actually Configured in Modern Systems"/>
-<meta name="twitter:description" content="A practical deep dive into how DRAM timings are configured across BIOS, firmware training, memory controllers, Linux interfaces, NUMA, CXL tiering, HBM, and modern memory orchestration."/>
+<meta name="twitter:description" content="A practical deep dive into how DRAM timings are configured across BIOS, firmware training, memory controllers, Linux interfaces, NUMA, CXL tiering, HBM, runtime tuning knobs, and modern memory orchestration."/>
 <meta name="twitter:image" content="https://manishklach.github.io/og/how-memory-timings-are-configured-modern-systems.png"/>
 <meta name="twitter:image:alt" content="How Memory Timings Are Actually Configured in Modern Systems by MANISH AI"/>
 <script type="application/ld+json">
@@ -35,7 +35,7 @@
   "@context":"https://schema.org",
   "@type":"BlogPosting",
   "headline":"How Memory Timings Are Actually Configured in Modern Systems",
-  "description":"A practical deep dive into how DRAM timings are configured across BIOS, firmware training, memory controllers, Linux interfaces, NUMA, CXL tiering, HBM, and modern memory orchestration.",
+  "description":"A practical deep dive into how DRAM timings are configured across BIOS, firmware training, memory controllers, Linux interfaces, NUMA, CXL tiering, HBM, runtime tuning knobs, and modern memory orchestration.",
   "url":"https://manishklach.github.io/writings/how-memory-timings-are-configured-modern-systems.html",
   "mainEntityOfPage":"https://manishklach.github.io/writings/how-memory-timings-are-configured-modern-systems.html",
   "datePublished":"2026-05-23",
@@ -727,7 +727,7 @@ html.dark {
 html.dark body { background:var(--paper); color:var(--ink); }
 html.dark .article-header { background:rgba(11,15,22,.9); }
 html.dark .tag, html.dark .takeaway-card, html.dark .site-header-inner, html.dark .site-footer-inner { background:#111722; }
-html.dark .sidebar-card, html.dark .callout, html.dark .layer-card, html.dark .compare-col, html.dark .data-table-wrap, html.dark .formula-box, html.dark .final-callout { background:var(--paper-2); }
+html.dark .sidebar-card, html.dark .callout, html.dark .layer-card, html.dark .compare-col, html.dark .data-table-wrap, html.dark .formula-box, html.dark .final-callout, html.dark .accent-box, html.dark .code-block { background:var(--paper-2); }
 html.dark .compare-col.featured { background:#1e2634; }
 html.dark .pipeline-num { background:#eef2f7; color:#0b0f16; }
 html.dark .pipeline-step::after { background:linear-gradient(to bottom, rgba(255,255,255,.16), transparent); }
@@ -782,9 +782,9 @@ html.dark code { background:#1a2230; color:#ff9a91; }
   <div class="hero">
     <div class="hero-eyebrow">Memory Systems Engineering</div>
     <h1>How Memory Timings Are<br><em>Actually</em> Configured<br>in Modern Systems</h1>
-    <div class="byline">By <a href="/index.html">MANISH AI</a> · Published <time datetime="2026-05-23">May 23, 2026</time> · 16 min read</div>
+    <div class="byline">By <a href="/index.html">MANISH AI</a> · Published <time datetime="2026-05-23">May 23, 2026</time> · Updated v5 · 18 min read</div>
     <div class="hero-meta">
-      <span class="hero-meta-item"><strong>16 min read</strong></span>
+      <span class="hero-meta-item"><strong>18 min read</strong></span>
       <span class="hero-divider">·</span>
       <span class="hero-meta-item">DRAM · Firmware · Linux · NUMA · CXL</span>
       <span class="hero-divider">·</span>
@@ -1160,29 +1160,69 @@ html.dark code { background:#1a2230; color:#ff9a91; }
           </div>
         </div>
 
-        <h3>Essential commands</h3>
+        <h3>Inspect — what are your sticks actually running at?</h3>
         <div class="code-block">
           <div class="code-block-header">
             <div class="code-block-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-            <div class="code-block-title">bash</div>
+            <div class="code-block-title">bash — hardware inspection</div>
           </div>
-          <pre><span class="cm"># Full DIMM details: manufacturer, speed, timings, size</span>
+          <pre><span class="cm"># Full DIMM details: manufacturer, speed, configured speed, size, slots</span>
 <span class="ck">sudo</span> <span class="cv">dmidecode</span> --type memory
 
-<span class="cm"># Decode SPD EEPROM: exact tCL, tRCD, tRP, tRAS from hardware</span>
+<span class="cm"># Decode SPD EEPROM directly: exact tCL, tRCD, tRP, tRAS from the chip</span>
 <span class="ck">sudo</span> <span class="cv">decode-dimms</span>
 
-<span class="cm"># NUMA topology: nodes, distances, which CPUs are local to which RAM</span>
+<span class="cm"># Quick grep: configured vs rated speed (spot XMP not applied)</span>
+<span class="cv">dmidecode</span> -t memory | grep -E <span class="cs">"Speed:|Type:"</span> | sort | uniq -c
+
+<span class="cm"># NUMA topology: nodes, inter-node distances, CPUs per node</span>
 <span class="cv">numactl</span> --hardware
 
-<span class="cm"># Correctable ECC errors per memory controller</span>
+<span class="cm"># Memory-related kernel messages during boot (training results, errors)</span>
+<span class="ck">dmesg</span> | grep -i <span class="cs">'memory\|ddr\|numa\|imc\|edac'</span></pre>
+        </div>
+
+        <h3>ECC health monitoring</h3>
+        <div class="accent-box">
+          <div class="accent-box-label">Server operators — read this</div>
+          <p>Silently elevated correctable error counts are an early warning of a degrading DIMM. An uncorrectable error is a data integrity event — investigate immediately.</p>
+        </div>
+        <div class="code-block">
+          <div class="code-block-header">
+            <div class="code-block-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            <div class="code-block-title">bash — ECC / EDAC</div>
+          </div>
+          <pre><span class="cm"># Correctable errors (single-bit, ECC fixed) — rising count = degrading DIMM</span>
 <span class="ck">cat</span> /sys/devices/system/edac/mc/mc0/ce_count
 
-<span class="cm"># Memory-related kernel messages during boot</span>
-<span class="ck">dmesg</span> | grep -i <span class="cs">'memory\|ddr\|numa\|imc'</span>
+<span class="cm"># Uncorrectable errors — data may be corrupt. Investigate NOW.</span>
+<span class="ck">cat</span> /sys/devices/system/edac/mc/mc0/ue_count
 
-<span class="cm"># Live memory stats: reclaim events, THP faults, NUMA migrations</span>
-<span class="ck">watch</span> -n1 <span class="cs">'grep -E "pgmajfault|numa_pages|thp" /proc/vmstat'</span></pre>
+<span class="cm"># Per-DIMM slot breakdown (mc0/dimm0, dimm1, etc.)</span>
+<span class="ck">grep</span> -r <span class="cs">""</span> /sys/devices/system/edac/mc/mc0/ 2>/dev/null | grep <span class="cs">"ce_count\|ue_count"</span>
+
+<span class="cm"># EDAC events in the kernel log</span>
+<span class="ck">dmesg</span> | grep -i edac</pre>
+        </div>
+
+        <h3>Live performance monitoring</h3>
+        <div class="code-block">
+          <div class="code-block-header">
+            <div class="code-block-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            <div class="code-block-title">bash — runtime monitoring</div>
+          </div>
+          <pre><span class="cm"># Live: watch reclaim, major faults, NUMA migrations, THP events</span>
+<span class="ck">watch</span> -n1 <span class="cs">'grep -E "pgmajfault|numa_pages_migrated|thp_fault_alloc|pswpin" /proc/vmstat'</span>
+
+<span class="cm"># NUMA hit/miss ratio — cross-node misses tank latency</span>
+<span class="cv">numastat</span> -m
+
+<span class="cm"># Memory bandwidth and cache miss rate (system-wide, 5s sample)</span>
+<span class="ck">perf</span> stat -e cache-misses,cache-references,mem-loads,mem-stores -a sleep 5
+
+<span class="cm"># Per-process memory access profiling (requires perf with MEM support)</span>
+<span class="ck">perf</span> mem record -a sleep 10
+<span class="ck">perf</span> mem report</pre>
         </div>
       </section>
 
@@ -1271,6 +1311,26 @@ html.dark code { background:#1a2230; color:#ff9a91; }
             <p>Pages that haven't been accessed within a tunable aging window are demoted from local DRAM to CXL or NVMe. Happens asynchronously via <code>memory_tier</code> infrastructure.</p>
           </div>
         </div>
+
+        <h3>Enabling and checking MGLRU</h3>
+        <div class="code-block">
+          <div class="code-block-header">
+            <div class="code-block-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            <div class="code-block-title">bash — MGLRU (Linux 6.1+)</div>
+          </div>
+          <pre><span class="cm"># Check if MGLRU is active — 0xf means all features enabled</span>
+<span class="ck">cat</span> /sys/kernel/mm/lru_gen/enabled
+
+<span class="cm"># Enable MGLRU if not already on</span>
+<span class="ck">echo</span> <span class="cs">y</span> > /sys/kernel/mm/lru_gen/enabled
+
+<span class="cm"># Make it persistent across reboots</span>
+<span class="ck">echo</span> <span class="cs">"kernel.mm.lru_gen.enabled = 0xf"</span> >> /etc/sysctl.d/99-mglru.conf
+<span class="ck">sysctl</span> -p /etc/sysctl.d/99-mglru.conf
+
+<span class="cm"># View current generation stats per NUMA node</span>
+<span class="ck">cat</span> /sys/kernel/mm/lru_gen/lru_gen</pre>
+        </div>
       </section>
 
       <!-- §9 BIOS MODES -->
@@ -1328,9 +1388,110 @@ html.dark code { background:#1a2230; color:#ff9a91; }
         </div>
       </section>
 
-      <!-- §10 ACTIONABLE -->
+      <!-- §10 RUNTIME TUNING -->
+      <section class="section" id="runtime-tuning">
+        <div class="section-number">10 — Runtime Tuning</div>
+        <h2>Runtime Performance Knobs</h2>
+
+        <p>
+          These are the Linux-side interventions that actually move the needle on memory
+          performance — all tunable without a reboot, all reversible. Start here before
+          touching BIOS settings.
+        </p>
+
+        <h3>Swappiness — how aggressively Linux reclaims RAM</h3>
+        <p>
+          The default swappiness of 60 means Linux is comfortable moving memory to swap
+          even when RAM isn't critically full. For latency-sensitive workloads and
+          in-memory databases, dropping it close to zero keeps data in RAM longer.
+        </p>
+        <div class="code-block">
+          <div class="code-block-header">
+            <div class="code-block-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            <div class="code-block-title">bash — swappiness</div>
+          </div>
+          <pre><span class="cm"># Check current value (default: 60)</span>
+<span class="ck">cat</span> /proc/sys/vm/swappiness
+
+<span class="cm"># Set immediately (no reboot needed)</span>
+<span class="cm"># General servers / workstations: 10</span>
+<span class="cm"># Databases / latency-critical: 1</span>
+<span class="ck">sysctl</span> -w vm.swappiness=<span class="cv">1</span>
+
+<span class="cm"># Make it permanent</span>
+<span class="ck">echo</span> <span class="cs">"vm.swappiness=1"</span> >> /etc/sysctl.d/99-memory-perf.conf
+<span class="ck">sysctl</span> -p /etc/sysctl.d/99-memory-perf.conf</pre>
+        </div>
+
+        <h3>Hugepages — eliminating TLB pressure</h3>
+        <p>
+          Standard 4KB pages create enormous TLB pressure for large working-set workloads.
+          2MB hugepages reduce TLB misses dramatically. There are two approaches:
+          Transparent Huge Pages (automatic, kernel-managed) and static hugepages
+          (pre-allocated, guaranteed to apps that request them via <code>mmap</code>).
+          Databases typically prefer <code>madvise</code> mode so they can opt in
+          per-allocation; <code>always</code> can cause latency spikes during compaction.
+        </p>
+        <div class="code-block">
+          <div class="code-block-header">
+            <div class="code-block-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            <div class="code-block-title">bash — hugepages</div>
+          </div>
+          <pre><span class="cm"># Check current hugepage state</span>
+<span class="ck">cat</span> /proc/meminfo | grep -i huge
+<span class="ck">cat</span> /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+
+<span class="cm"># THP mode options: always | madvise | never</span>
+<span class="cm"># 'always'  — kernel decides everywhere (good default for most workloads)</span>
+<span class="cm"># 'madvise' — only where app calls madvise(MADV_HUGEPAGE) — best for DBs</span>
+<span class="cm"># 'never'   — disabled (for real-time/latency-deterministic workloads)</span>
+<span class="ck">echo</span> <span class="cs">madvise</span> > /sys/kernel/mm/transparent_hugepage/enabled
+
+<span class="cm"># Pre-allocate static 2MB hugepages (512 × 2MB = 1GB reserved)</span>
+<span class="ck">echo</span> <span class="cv">512</span> > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+
+<span class="cm"># Persistent static hugepages via sysctl</span>
+<span class="ck">echo</span> <span class="cs">"vm.nr_hugepages=512"</span> >> /etc/sysctl.d/99-memory-perf.conf</pre>
+        </div>
+
+        <h3>NUMA pinning — the highest-ROI tuning on multi-socket</h3>
+        <p>
+          Cross-NUMA-node memory accesses add 50–150ns of latency per access on typical
+          dual-socket systems. Pinning a process to a node so its memory and CPUs are
+          co-located is often the single biggest performance win available — and it costs
+          nothing. Auto NUMA balancing helps but adds jitter; explicit pinning is better
+          for latency-critical processes.
+        </p>
+        <div class="code-block">
+          <div class="code-block-header">
+            <div class="code-block-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            <div class="code-block-title">bash — NUMA pinning</div>
+          </div>
+          <pre><span class="cm"># Check NUMA hit/miss ratio — high remote hits = pin your process</span>
+<span class="cv">numastat</span> -m
+
+<span class="cm"># Check auto NUMA balancing state (1 = on)</span>
+<span class="ck">cat</span> /proc/sys/kernel/numa_balancing
+
+<span class="cm"># Launch a process pinned to NUMA node 0 (CPUs + memory local)</span>
+<span class="cv">numactl</span> --cpunodebind=<span class="cv">0</span> --membind=<span class="cv">0</span> ./myapp
+
+<span class="cm"># Pin an already-running process (PID) to node 0's CPUs</span>
+<span class="ck">taskset</span> -pc 0-$(nproc --all) $(pidof myapp)
+
+<span class="cm"># Interleave memory across all nodes (good for bandwidth-bound workloads)</span>
+<span class="cv">numactl</span> --interleave=all ./myapp</pre>
+        </div>
+
+        <div class="accent-box">
+          <div class="accent-box-label">Priority order for performance gains</div>
+          <p>In the author's experience across production Linux systems: <strong>NUMA pinning</strong> wins most often on multi-socket → <strong>hugepages</strong> next on large working-set apps → <strong>swappiness</strong> for anything memory-pressure-sensitive → MGLRU → then BIOS XMP/EXPO. Most engineers check BIOS first and Linux last. It should be the other way around.</p>
+        </div>
+      </section>
+
+      <!-- §11 ACTIONABLE -->
       <section class="section" id="takeaways">
-        <div class="section-number">10 — Takeaways</div>
+        <div class="section-number">11 — Takeaways</div>
         <h2>What to Actually Do About It</h2>
 
         <p>
@@ -1396,7 +1557,8 @@ html.dark code { background:#1a2230; color:#ff9a91; }
           <li><a href="#imc"><span class="toc-num">07</span>The IMC</a></li>
           <li><a href="#mglru-cxl"><span class="toc-num">08</span>MGLRU &amp; CXL Tiering</a></li>
           <li><a href="#bios-modes"><span class="toc-num">09</span>BIOS Performance Modes</a></li>
-          <li><a href="#takeaways"><span class="toc-num">10</span>Takeaways</a></li>
+          <li><a href="#runtime-tuning"><span class="toc-num">10</span>Runtime Tuning Knobs</a></li>
+          <li><a href="#takeaways"><span class="toc-num">11</span>Takeaways</a></li>
         </ul>
 
         <div class="sidebar-card">
