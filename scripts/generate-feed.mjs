@@ -74,7 +74,7 @@ const feed = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
     <title>MANISH AI RSS</title>
-    <link>${siteUrl}/writings/</link>
+    <link>${siteUrl}/writings.html</link>
     <description>Technical essays on AI infrastructure, memory systems, runtimes, and accelerator architecture.</description>
     <language>en-us</language>
     <lastBuildDate>${toRfc822(items[0]?.published || "2026-04-19")}</lastBuildDate>
@@ -94,7 +94,7 @@ fs.writeFileSync(path.join(root, "feed.xml"), feed, "utf8");
 const jsonFeed = {
   version: "https://jsonfeed.org/version/1.1",
   title: "MANISH AI RSS",
-  home_page_url: `${siteUrl}/writings/`,
+  home_page_url: `${siteUrl}/writings.html`,
   feed_url: `${siteUrl}/feed.json`,
   description: "Technical essays on AI infrastructure, memory systems, runtimes, and accelerator architecture.",
   language: "en-us",
@@ -113,9 +113,7 @@ fs.writeFileSync(path.join(root, "feed.json"), `${JSON.stringify(jsonFeed, null,
 
 const sitemapEntries = [
   { url: `${siteUrl}/`, lastmod: safeDate(gitDate("index.html")), changefreq: "weekly", priority: "1.0" },
-  { url: `${siteUrl}/writings/`, lastmod: safeDate(gitDate("writings/index.html")), changefreq: "weekly", priority: "0.95" },
-  { url: `${siteUrl}/patents/`, lastmod: safeDate(gitDate("patents/index.html")), changefreq: "weekly", priority: "0.95" },
-  { url: `${siteUrl}/writings.html`, lastmod: safeDate(gitDate("writings.html")), changefreq: "weekly", priority: "0.9" },
+  { url: `${siteUrl}/writings.html`, lastmod: safeDate(gitDate("writings.html")), changefreq: "weekly", priority: "0.95" },
   { url: `${siteUrl}/patents.html`, lastmod: safeDate(gitDate("patents.html")), changefreq: "weekly", priority: "0.9" },
   ...items.map((item) => ({
     url: item.link,
