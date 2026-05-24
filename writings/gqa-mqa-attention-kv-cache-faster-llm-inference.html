@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>GQA and MQA: Attention, KV Cache, and Faster LLM Inference | MANISH AI</title>
+<meta name="description" content="A clear guide to Multi-Query Attention and Grouped-Query Attention, explaining how MHA, MQA, and GQA change KV cache size, memory bandwidth, long-context serving, and LLM inference speed."/>
+<meta name="keywords" content="GQA, MQA, grouped query attention, multi query attention, KV cache, transformer inference, long context LLM, attention heads, MHA, LLM serving"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/gqa-mqa-attention-kv-cache-faster-llm-inference.html"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="GQA and MQA: Attention, KV Cache, and Faster LLM Inference | MANISH AI"/>
+<meta property="og:description" content="A clear guide to Multi-Query Attention and Grouped-Query Attention, explaining how MHA, MQA, and GQA change KV cache size, memory bandwidth, long-context serving, and LLM inference speed."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/gqa-mqa-attention-kv-cache-faster-llm-inference.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:image" content="https://manishklach.github.io/og/gqa-mqa-attention-kv-cache-faster-llm-inference.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="GQA and MQA: Attention, KV Cache, and Faster LLM Inference by MANISH AI"/>
+<meta property="article:published_time" content="2026-05-24T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-05-24T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="Transformer Inference"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="GQA and MQA: Attention, KV Cache, and Faster LLM Inference"/>
+<meta name="twitter:description" content="A clear guide to Multi-Query Attention and Grouped-Query Attention, explaining how MHA, MQA, and GQA change KV cache size, memory bandwidth, long-context serving, and LLM inference speed."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/gqa-mqa-attention-kv-cache-faster-llm-inference.png"/>
+<meta name="twitter:image:alt" content="GQA and MQA: Attention, KV Cache, and Faster LLM Inference by MANISH AI"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"GQA and MQA: Attention, KV Cache, and Faster LLM Inference",
+  "alternativeHeadline":"GQA and MQA, From the Ground Up",
+  "description":"A clear guide to Multi-Query Attention and Grouped-Query Attention, explaining how MHA, MQA, and GQA change KV cache size, memory bandwidth, long-context serving, and LLM inference speed.",
+  "url":"https://manishklach.github.io/writings/gqa-mqa-attention-kv-cache-faster-llm-inference.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/gqa-mqa-attention-kv-cache-faster-llm-inference.html",
+  "datePublished":"2026-05-24",
+  "dateModified":"2026-05-24",
+  "articleSection":"Transformer Inference",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="stylesheet" href="/assets/site.css"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+:root {
+      color-scheme: light;
+      --ink: #18212f;
+      --muted: #5e697b;
+      --paper: #ffffff;
+      --bg: #f6f8fb;
+      --soft: #eef4f8;
+      --line: #dbe3eb;
+      --accent: #0f766e;
+      --accent-2: #c2410c;
+      --accent-3: #1d4ed8;
+      --dark: #111827;
+      --code: #101724;
+      --code-ink: #e7eef8;
+      --shadow: 0 22px 60px rgba(27, 39, 58, 0.14);
+      --radius: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(15, 118, 110, 0.13), transparent 28rem),
+        radial-gradient(circle at 92% 4%, rgba(194, 65, 12, 0.11), transparent 30rem),
+        linear-gradient(180deg, #fbfcfd 0%, #eef3f7 45%, #f8fafc 100%);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.7;
+    }
+
+    a {
+      color: var(--accent-3);
+      text-decoration-thickness: 0.08em;
+      text-underline-offset: 0.18em;
+    }
+
+    .page {
+      width: min(1120px, calc(100% - 36px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      min-height: 92vh;
+      display: grid;
+      align-items: center;
+      padding: 52px 0 34px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.95fr);
+      gap: 34px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 12px;
+      border: 1px solid rgba(15, 118, 110, 0.22);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.76);
+      color: #0d5f59;
+      font-size: 0.78rem;
+      font-weight: 760;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.12);
+    }
+
+    h1 {
+      max-width: 860px;
+      margin: 22px 0 18px;
+      font-size: clamp(2.65rem, 7vw, 6rem);
+      line-height: 0.96;
+      letter-spacing: 0;
+    }
+
+    .dek {
+      max-width: 780px;
+      margin: 0;
+      color: #344154;
+      font-size: clamp(1.08rem, 2vw, 1.35rem);
+      line-height: 1.58;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 26px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .meta span {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.74);
+    }
+
+    .visual {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(24, 33, 47, 0.1);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(238, 244, 248, 0.8)),
+        repeating-linear-gradient(90deg, rgba(24, 33, 47, 0.05) 0 1px, transparent 1px 44px);
+      box-shadow: var(--shadow);
+      min-height: 410px;
+      padding: 26px;
+    }
+
+    .chip-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: center;
+      margin-bottom: 22px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 740;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .head-diagram {
+      display: grid;
+      gap: 16px;
+    }
+
+    .diagram-row {
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .row-label {
+      color: #475569;
+      font-size: 0.82rem;
+      font-weight: 750;
+    }
+
+    .heads {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(22px, 1fr));
+      gap: 7px;
+    }
+
+    .head {
+      min-height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      background: #dbeafe;
+      color: #1e3a8a;
+      font-size: 0.78rem;
+      font-weight: 780;
+      border: 1px solid rgba(29, 78, 216, 0.15);
+    }
+
+    .head.kv {
+      background: #ccfbf1;
+      color: #115e59;
+      border-color: rgba(15, 118, 110, 0.18);
+    }
+
+    .head.kv.warm {
+      background: #ffedd5;
+      color: #9a3412;
+      border-color: rgba(194, 65, 12, 0.18);
+    }
+
+    .head.empty {
+      opacity: 0.28;
+    }
+
+    .cache-meter {
+      margin-top: 26px;
+      padding-top: 22px;
+      border-top: 1px solid var(--line);
+    }
+
+    .meter {
+      display: grid;
+      grid-template-columns: 64px 1fr 44px;
+      gap: 10px;
+      align-items: center;
+      margin: 10px 0;
+      color: #475569;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    .bar {
+      height: 12px;
+      border-radius: 999px;
+      background: #e2e8f0;
+      overflow: hidden;
+    }
+
+    .fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent-3), var(--accent));
+    }
+
+    .toc-band {
+      border-top: 1px solid rgba(24, 33, 47, 0.08);
+      border-bottom: 1px solid rgba(24, 33, 47, 0.08);
+      background: rgba(255, 255, 255, 0.62);
+      backdrop-filter: blur(10px);
+    }
+
+    .toc {
+      display: grid;
+      grid-template-columns: 190px 1fr;
+      gap: 24px;
+      padding: 20px 0;
+      align-items: start;
+    }
+
+    .toc strong {
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #475569;
+    }
+
+    .toc nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .toc a {
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: #334155;
+      font-size: 0.9rem;
+      text-decoration: none;
+    }
+
+    main {
+      padding: 42px 0 68px;
+    }
+
+    .article-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 38px;
+      align-items: start;
+    }
+
+    article {
+      min-width: 0;
+    }
+
+    aside {
+      position: sticky;
+      top: 22px;
+    }
+
+    .side-note {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.8);
+      box-shadow: 0 14px 34px rgba(27, 39, 58, 0.08);
+      padding: 18px;
+      color: #475569;
+      font-size: 0.93rem;
+    }
+
+    .side-note h3 {
+      margin: 0 0 8px;
+      color: var(--ink);
+      font-size: 1rem;
+    }
+
+    section {
+      padding: 28px 0;
+      border-bottom: 1px solid rgba(24, 33, 47, 0.08);
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: clamp(1.75rem, 3vw, 2.5rem);
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 26px 0 8px;
+      font-size: 1.25rem;
+      line-height: 1.22;
+    }
+
+    p {
+      margin: 0 0 16px;
+      color: #2f3a4d;
+      font-size: 1.04rem;
+    }
+
+    .lead {
+      font-size: 1.18rem;
+      color: #253246;
+    }
+
+    ul {
+      margin: 0 0 18px;
+      padding-left: 22px;
+      color: #2f3a4d;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    .callout {
+      margin: 22px 0;
+      padding: 18px 20px;
+      border-left: 5px solid var(--accent);
+      border-radius: var(--radius);
+      background: #f0fdfa;
+      color: #134e4a;
+    }
+
+    .callout strong {
+      color: #0f3f3b;
+    }
+
+    .equation,
+    pre {
+      overflow-x: auto;
+      border-radius: var(--radius);
+      background: var(--code);
+      color: var(--code-ink);
+      padding: 18px 20px;
+      font: 0.95rem/1.65 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+    }
+
+    p code,
+    li code {
+      padding: 0.12em 0.34em;
+      border-radius: 5px;
+      background: #e9eef5;
+      color: #162033;
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin: 24px 0;
+    }
+
+    .compare-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      padding: 18px;
+      box-shadow: 0 14px 30px rgba(27, 39, 58, 0.07);
+    }
+
+    .compare-card h3 {
+      margin-top: 0;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 0.78rem;
+      font-weight: 760;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 22px 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: 0 14px 30px rgba(27, 39, 58, 0.06);
+    }
+
+    th,
+    td {
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f1f5f9;
+      color: #334155;
+      font-size: 0.82rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .formula-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin: 20px 0;
+    }
+
+    .mini {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 16px;
+    }
+
+    .mini strong {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--ink);
+    }
+
+    .mini span {
+      color: var(--muted);
+    }
+
+    .mapping {
+      display: grid;
+      gap: 10px;
+      margin: 20px 0;
+    }
+
+    .map-row {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .query-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 36px;
+      min-height: 30px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: #1e3a8a;
+      font-size: 0.8rem;
+      font-weight: 760;
+    }
+
+    .pill.kv {
+      background: #ccfbf1;
+      color: #115e59;
+    }
+
+    .footer {
+      padding: 34px 0 54px;
+      color: var(--muted);
+      border-top: 1px solid rgba(24, 33, 47, 0.1);
+    }
+
+    @media (max-width: 920px) {
+      .hero {
+        min-height: auto;
+      }
+
+      .hero-grid,
+      .article-grid,
+      .toc {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        position: static;
+      }
+
+      .visual {
+        min-height: auto;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .page {
+        width: min(100% - 28px, 1120px);
+      }
+
+      .hero {
+        padding-top: 34px;
+      }
+
+      .compare,
+      .formula-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .diagram-row,
+      .map-row {
+        grid-template-columns: 1fr;
+      }
+
+      .heads {
+        grid-template-columns: repeat(4, minmax(28px, 1fr));
+      }
+
+      th,
+      td {
+        padding: 11px 10px;
+      }
+    }
+
+html.dark {
+  color-scheme: dark;
+  --ink: #edf4ff;
+  --muted: #aeb9ca;
+  --paper: #111923;
+  --bg: #0b1018;
+  --soft: #151f2b;
+  --line: #2a394a;
+  --accent: #63d8cc;
+  --accent-2: #fb9a63;
+  --accent-3: #94b9ff;
+  --dark: #070b11;
+  --code: #070b11;
+  --code-ink: #e7eef8;
+  --shadow: 0 22px 60px rgba(0, 0, 0, 0.34);
+}
+html.dark body {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(99, 216, 204, 0.14), transparent 28rem),
+    radial-gradient(circle at 92% 4%, rgba(251, 154, 99, 0.12), transparent 30rem),
+    linear-gradient(180deg, #090e15 0%, #0d141e 45%, #090e15 100%);
+  color: var(--ink);
+}
+html.dark .eyebrow,
+html.dark .meta span,
+html.dark .toc a,
+html.dark .side-note,
+html.dark .compare-card,
+html.dark table,
+html.dark .mini,
+html.dark .visual {
+  background: rgba(17, 25, 35, 0.9);
+  border-color: var(--line);
+}
+html.dark .toc-band { background: rgba(9, 14, 21, 0.72); border-color: var(--line); }
+html.dark .eyebrow { color: #bff7ee; }
+html.dark .dek,
+html.dark p,
+html.dark ul,
+html.dark .side-note,
+html.dark .side-note p,
+html.dark .mini span,
+html.dark .row-label,
+html.dark .chip-title,
+html.dark .meter { color: var(--muted); }
+html.dark h1,
+html.dark h2,
+html.dark h3,
+html.dark .side-note h3,
+html.dark .mini strong { color: var(--ink); }
+html.dark .lead { color: #dbe6f5; }
+html.dark .callout { background: #0f2b28; color: #d7fff8; }
+html.dark .callout strong { color: #bff7ee; }
+html.dark p code,
+html.dark li code { background: #152335; color: #dbeafe; }
+html.dark th { background: #151f2b; color: #d9e6f7; }
+html.dark td { color: #dbe6f5; border-color: var(--line); }
+html.dark section,
+html.dark .footer { border-color: rgba(219, 227, 235, 0.12); }
+html.dark .head { background: #153052; color: #cfe2ff; border-color: #2b568c; }
+html.dark .head.kv { background: #0f3b37; color: #c6fff5; border-color: #236f67; }
+html.dark .head.kv.warm { background: #3f2411; color: #ffd9be; border-color: #7a421d; }
+html.dark .bar { background: #223144; }
+html.dark .tag { background: #20294b; color: #d6dcff; }
+.site-tools {
+  width: min(1120px, calc(100% - 36px));
+  margin: 18px auto 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.back-link { color: inherit; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
+#theme-toggle { border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 999px; padding: 6px 11px; font: inherit; cursor: pointer; }
+.reading-meta { width: min(1120px, calc(100% - 36px)); margin: 10px auto 0; color: var(--muted); font-size: 0.92rem; }
+.site-footer.site-global-footer { width: min(1120px, calc(100% - 36px)); margin: 0 auto 48px; padding: 24px 0 0; border-top: 1px solid rgba(24, 33, 47, 0.1); color: var(--muted); font-size: 0.92rem; }
+html.dark .site-footer.site-global-footer { border-color: rgba(219, 227, 235, 0.12); }
+.site-footer-inner { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.site-footer a { color: inherit; }
+.logo-word{display:inline-flex;align-items:baseline;gap:.01em;white-space:nowrap}.logo-i{display:inline-block;font-size:.84em;margin:0 .055em 0 .025em;font-style:normal;font-weight:900;line-height:.95;transform:translateY(-.02em)}
+
+</style>
+</head>
+<body>
+  <div class="site-tools" aria-label="Site tools">
+    <a class="back-link" href="/writings.html"><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span> / Writings</a>
+    <button id="theme-toggle" type="button" aria-label="Toggle light and dark mode">Theme</button>
+  </div>
+  <p class="reading-meta"><time datetime="2026-05-24">May 24, 2026</time> · Transformer Inference · 11 min read</p>
+<header class="hero">
+    <div class="page hero-grid">
+      <div>
+        <div class="eyebrow">Transformer inference, from first principles</div>
+        <h1>GQA and MQA, From the Ground Up</h1>
+        <p class="dek">
+          A clear guide to Multi-Query Attention and Grouped-Query Attention: why they exist,
+          how they shrink the KV cache, and why modern LLMs use them to make long-context
+          generation cheaper and faster.
+        </p>
+        <div class="meta">
+          <span>Basics to systems intuition</span>
+          <span>KV cache explained</span>
+          <span>MHA vs MQA vs GQA</span>
+        </div>
+      </div>
+
+      <div class="visual" aria-label="Attention head diagram">
+        <div class="chip-title">
+          <span>Query heads vs KV heads</span>
+          <span>less cache, faster decode</span>
+        </div>
+        <div class="head-diagram">
+          <div class="diagram-row">
+            <div class="row-label">Queries</div>
+            <div class="heads">
+              <div class="head">Q1</div><div class="head">Q2</div><div class="head">Q3</div><div class="head">Q4</div>
+              <div class="head">Q5</div><div class="head">Q6</div><div class="head">Q7</div><div class="head">Q8</div>
+            </div>
+          </div>
+          <div class="diagram-row">
+            <div class="row-label">MHA KV</div>
+            <div class="heads">
+              <div class="head kv">K/V1</div><div class="head kv">K/V2</div><div class="head kv">K/V3</div><div class="head kv">K/V4</div>
+              <div class="head kv">K/V5</div><div class="head kv">K/V6</div><div class="head kv">K/V7</div><div class="head kv">K/V8</div>
+            </div>
+          </div>
+          <div class="diagram-row">
+            <div class="row-label">GQA KV</div>
+            <div class="heads">
+              <div class="head kv warm">K/V1</div><div class="head empty"></div><div class="head empty"></div><div class="head empty"></div>
+              <div class="head kv warm">K/V2</div><div class="head empty"></div><div class="head empty"></div><div class="head empty"></div>
+            </div>
+          </div>
+          <div class="diagram-row">
+            <div class="row-label">MQA KV</div>
+            <div class="heads">
+              <div class="head kv warm">K/V1</div><div class="head empty"></div><div class="head empty"></div><div class="head empty"></div>
+              <div class="head empty"></div><div class="head empty"></div><div class="head empty"></div><div class="head empty"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cache-meter">
+          <div class="meter"><span>MHA</span><div class="bar"><div class="fill" style="width: 100%"></div></div><span>32x</span></div>
+          <div class="meter"><span>GQA</span><div class="bar"><div class="fill" style="width: 25%"></div></div><span>8x</span></div>
+          <div class="meter"><span>MQA</span><div class="bar"><div class="fill" style="width: 4%"></div></div><span>1x</span></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="toc-band">
+    <div class="page toc">
+      <strong>Contents</strong>
+      <nav aria-label="Table of contents">
+        <a href="#attention">Attention Basics</a>
+        <a href="#kv-cache">KV Cache</a>
+        <a href="#mha">MHA</a>
+        <a href="#mqa">MQA</a>
+        <a href="#gqa">GQA</a>
+        <a href="#tradeoffs">Tradeoffs</a>
+        <a href="#implementation">Implementation</a>
+        <a href="#summary">Summary</a>
+      </nav>
+    </div>
+  </div>
+
+  <main class="page">
+    <div class="article-grid">
+      <article>
+        <section id="attention">
+          <h2>Start With the Problem: Tokens Need Context</h2>
+          <p class="lead">
+            A language model predicts the next token by looking at the tokens before it. The hard
+            part is deciding which earlier tokens matter.
+          </p>
+          <p>
+            In the sentence <code>The trophy does not fit in the suitcase because it is too large</code>,
+            a model must decide what <code>it</code> refers to. The answer depends on relationships between
+            words, not just the words in isolation. Attention is the mechanism that lets every token
+            compare itself with other tokens and pull in useful information.
+          </p>
+
+          <h3>Queries, Keys, and Values</h3>
+          <p>
+            A Transformer turns each token into a vector. Inside an attention layer, that vector is
+            projected into three related vectors:
+          </p>
+          <ul>
+            <li><strong>Query:</strong> what this token is looking for.</li>
+            <li><strong>Key:</strong> what this token offers as searchable metadata.</li>
+            <li><strong>Value:</strong> the information this token contributes if selected.</li>
+          </ul>
+
+          <div class="equation">Attention(Q, K, V) = softmax(QK^T / sqrt(d)) V</div>
+
+          <p>
+            The query is compared against keys. Those scores become weights. The weights are used
+            to mix values. That is the core of attention.
+          </p>
+        </section>
+
+        <section id="kv-cache">
+          <h2>Why the KV Cache Exists</h2>
+          <p>
+            During training, Transformers can process many tokens in parallel. During generation,
+            an autoregressive model emits one token at a time. At step 500, it must attend to the
+            previous 499 tokens. At step 501, it must attend to the previous 500 tokens.
+          </p>
+          <p>
+            Recomputing keys and values for every previous token on every step would waste enormous
+            compute. Instead, inference systems store keys and values from earlier tokens in a
+            <strong>KV cache</strong>.
+          </p>
+
+          <div class="callout">
+            <strong>The KV cache is a speed optimization that becomes a memory problem.</strong>
+            It prevents repeated computation, but it grows with batch size, context length, layer
+            count, head dimension, and the number of key/value heads.
+          </div>
+
+          <div class="equation">KV cache size scales with:
+batch_size x sequence_length x layers x kv_heads x head_dim</div>
+
+          <p>
+            The important term for GQA and MQA is <code>kv_heads</code>. Standard attention stores one
+            key head and one value head for every query head. GQA and MQA reduce that number.
+          </p>
+        </section>
+
+        <section id="mha">
+          <h2>Multi-Head Attention: Expressive, but Expensive</h2>
+          <p>
+            Standard Multi-Head Attention, or MHA, gives every query head its own key and value
+            head. If the model has 32 attention heads, it usually has 32 query heads, 32 key heads,
+            and 32 value heads.
+          </p>
+
+          <div class="mapping">
+            <div class="map-row">
+              <span class="pill kv">MHA</span>
+              <div class="query-group">
+                <span class="pill">Q1</span><span class="pill kv">K/V1</span>
+                <span class="pill">Q2</span><span class="pill kv">K/V2</span>
+                <span class="pill">Q3</span><span class="pill kv">K/V3</span>
+                <span class="pill">Q4</span><span class="pill kv">K/V4</span>
+              </div>
+            </div>
+          </div>
+
+          <p>
+            This is flexible because every head can learn its own representation space. One head may
+            specialize in syntax, another in long-distance references, another in formatting, and
+            another in local phrase structure.
+          </p>
+          <p>
+            The cost is that all those key/value heads must be stored and read during decoding.
+            For long contexts, that cache can dominate memory use and memory bandwidth.
+          </p>
+        </section>
+
+        <section id="mqa">
+          <h2>Multi-Query Attention: Share One KV Head</h2>
+          <p>
+            Multi-Query Attention, or MQA, keeps many query heads but uses one shared key head and
+            one shared value head. The model can still ask many different questions, but those
+            questions all search the same shared key/value representation.
+          </p>
+
+          <div class="mapping">
+            <div class="map-row">
+              <span class="pill kv">MQA</span>
+              <div class="query-group">
+                <span class="pill">Q1</span><span class="pill">Q2</span><span class="pill">Q3</span><span class="pill">Q4</span>
+                <span class="pill kv">shared K/V</span>
+              </div>
+            </div>
+          </div>
+
+          <p>
+            If MHA has 32 KV heads and MQA has 1 KV head, the KV cache for keys and values is
+            roughly 32 times smaller. That can improve latency, increase batch size, and make
+            long-context serving much more practical.
+          </p>
+
+          <div class="callout">
+            <strong>MQA is the aggressive compression point.</strong> It is excellent for inference
+            efficiency, but it can lose quality because all query heads must share the same K/V view.
+          </div>
+        </section>
+
+        <section id="gqa">
+          <h2>Grouped-Query Attention: The Practical Middle Ground</h2>
+          <p>
+            Grouped-Query Attention, or GQA, sits between MHA and MQA. It divides query heads into
+            groups. Each group shares one key head and one value head.
+          </p>
+
+          <div class="mapping">
+            <div class="map-row">
+              <span class="pill kv">GQA</span>
+              <div class="query-group">
+                <span class="pill">Q1</span><span class="pill">Q2</span><span class="pill">Q3</span><span class="pill">Q4</span>
+                <span class="pill kv">K/V1</span>
+              </div>
+            </div>
+            <div class="map-row">
+              <span></span>
+              <div class="query-group">
+                <span class="pill">Q5</span><span class="pill">Q6</span><span class="pill">Q7</span><span class="pill">Q8</span>
+                <span class="pill kv">K/V2</span>
+              </div>
+            </div>
+          </div>
+
+          <p>
+            For example, a model might use 32 query heads and 8 key/value heads. Each KV head serves
+            4 query heads. The cache becomes one quarter the size of full MHA, while preserving more
+            representational diversity than MQA.
+          </p>
+
+          <div class="formula-grid">
+            <div class="mini">
+              <strong>MHA</strong>
+              <span><code>num_attention_heads = num_key_value_heads</code></span>
+            </div>
+            <div class="mini">
+              <strong>MQA</strong>
+              <span><code>num_key_value_heads = 1</code></span>
+            </div>
+            <div class="mini">
+              <strong>GQA</strong>
+              <span><code>1 &lt; num_key_value_heads &lt; num_attention_heads</code></span>
+            </div>
+            <div class="mini">
+              <strong>Group size</strong>
+              <span><code>query_heads / kv_heads</code></span>
+            </div>
+          </div>
+        </section>
+
+        <section id="tradeoffs">
+          <h2>MHA vs MQA vs GQA</h2>
+          <p>
+            The entire design space is a tradeoff between attention expressivity and inference
+            efficiency. More KV heads give the model more representational freedom. Fewer KV heads
+            reduce cache size and memory traffic.
+          </p>
+
+          <div class="compare">
+            <div class="compare-card">
+              <span class="tag">MHA</span>
+              <h3>Most expressive</h3>
+              <p>Every query head has its own K/V head. Quality baseline is strong, but the KV cache is largest.</p>
+            </div>
+            <div class="compare-card">
+              <span class="tag">GQA</span>
+              <h3>Balanced</h3>
+              <p>Groups of query heads share K/V heads. Much smaller cache, often close to MHA quality.</p>
+            </div>
+            <div class="compare-card">
+              <span class="tag">MQA</span>
+              <h3>Most efficient</h3>
+              <p>All query heads share one K/V head. Fast and memory-light, but more compressed.</p>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Attention Type</th>
+                <th>Query Heads</th>
+                <th>KV Heads</th>
+                <th>KV Cache</th>
+                <th>Typical Use</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>MHA</strong></td>
+                <td>Many</td>
+                <td>Same as query heads</td>
+                <td>Largest</td>
+                <td>Maximum flexibility</td>
+              </tr>
+              <tr>
+                <td><strong>GQA</strong></td>
+                <td>Many</td>
+                <td>Fewer than query heads</td>
+                <td>Medium</td>
+                <td>Modern LLM serving balance</td>
+              </tr>
+              <tr>
+                <td><strong>MQA</strong></td>
+                <td>Many</td>
+                <td>One</td>
+                <td>Smallest</td>
+                <td>Maximum decode efficiency</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p>
+            A simple mental model: MHA gives every analyst private notes, MQA makes everyone share
+            one set of notes, and GQA creates teams that each share their own notes.
+          </p>
+        </section>
+
+        <section id="implementation">
+          <h2>Implementation Intuition</h2>
+          <p>
+            In a GQA model, queries and keys/values have different head counts:
+          </p>
+
+          <div class="equation">Q: [batch, sequence, query_heads, head_dim]
+K: [batch, sequence, kv_heads, head_dim]
+V: [batch, sequence, kv_heads, head_dim]</div>
+
+          <p>
+            Attention kernels need each query head to use the correct KV head. Conceptually, each
+            KV head is repeated across its assigned query heads. Production systems try to avoid
+            physically copying data, but the logical mapping is easy to understand.
+          </p>
+
+          <pre><code>def repeat_kv(x, num_repeats):
+    # x: [batch, sequence, kv_heads, head_dim]
+    batch, sequence, kv_heads, head_dim = x.shape
+    x = x[:, :, :, None, :]
+    x = x.expand(batch, sequence, kv_heads, num_repeats, head_dim)
+    return x.reshape(batch, sequence, kv_heads * num_repeats, head_dim)
+
+num_query_heads = 32
+num_kv_heads = 8
+num_repeats = num_query_heads // num_kv_heads
+
+k = repeat_kv(k, num_repeats)
+v = repeat_kv(v, num_repeats)</code></pre>
+
+          <p>
+            The decoder then behaves as though it has one K/V view per query head, while the actual
+            cache only stores the smaller number of KV heads.
+          </p>
+        </section>
+
+        <section id="summary">
+          <h2>The Short Version</h2>
+          <p>
+            Standard Multi-Head Attention is expressive but stores a large KV cache. Multi-Query
+            Attention shares one key/value head across all query heads, making inference much
+            cheaper but more compressed. Grouped-Query Attention shares key/value heads within
+            groups, giving a practical balance between quality and serving efficiency.
+          </p>
+          <div class="equation">MHA: many Q, many K/V
+GQA: many Q, fewer K/V
+MQA: many Q, one K/V</div>
+          <p>
+            As context windows grow, the KV cache becomes one of the central constraints in LLM
+            inference. GQA and MQA matter because they attack that constraint directly.
+          </p>
+        </section>
+      </article>
+
+      <aside>
+        <div class="side-note">
+          <h3>Core takeaway</h3>
+          <p>
+            GQA and MQA do not remove attention. They make attention cheaper by sharing keys and
+            values across query heads, shrinking the KV cache used during generation.
+          </p>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+<footer class="site-footer site-global-footer" aria-label="Article footer">
+  <div class="site-footer-inner">
+    <span>© MANISH AI · Technical writing on AI infrastructure, memory systems, and accelerator architecture.</span>
+    <span><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></span>
+    <div id="webmentions" hidden></div>
+  </div>
+</footer>
+</body>
+</html>
