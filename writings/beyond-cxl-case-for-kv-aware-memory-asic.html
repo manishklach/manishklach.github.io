@@ -1,0 +1,1479 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Beyond CXL: The Case for a KV-Aware Memory ASIC | MANISH AI</title>
+<meta name="description" content="A systems architecture essay on why generic CXL memory expansion is not enough for transformer inference, and how a KV-aware memory ASIC could use semantic intent, compression, prefetching, prefix caching, and eviction policy to reduce HBM pressure."/>
+<meta name="keywords" content="KV ASIC, KV cache, CXL memory, transformer inference, semantic memory controller, HBM pressure, prefix caching, attention-aware eviction, ASIC design, AI infrastructure"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/beyond-cxl-case-for-kv-aware-memory-asic.html"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Beyond CXL: The Case for a KV-Aware Memory ASIC | MANISH AI"/>
+<meta property="og:description" content="A systems architecture essay on why generic CXL memory expansion is not enough for transformer inference, and how a KV-aware memory ASIC could use semantic intent, compression, prefetching, prefix caching, and eviction policy to reduce HBM pressure."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/beyond-cxl-case-for-kv-aware-memory-asic.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:image" content="https://manishklach.github.io/og/beyond-cxl-case-for-kv-aware-memory-asic.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="Beyond CXL: The Case for a KV-Aware Memory ASIC by MANISH AI"/>
+<meta property="article:published_time" content="2026-05-24T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-05-24T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="Inference Systems"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Beyond CXL: The Case for a KV-Aware Memory ASIC"/>
+<meta name="twitter:description" content="A systems architecture essay on why generic CXL memory expansion is not enough for transformer inference, and how a KV-aware memory ASIC could use semantic intent, compression, prefetching, prefix caching, and eviction policy to reduce HBM pressure."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/beyond-cxl-case-for-kv-aware-memory-asic.png"/>
+<meta name="twitter:image:alt" content="Beyond CXL: The Case for a KV-Aware Memory ASIC by MANISH AI"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"Beyond CXL: The Case for a KV-Aware Memory ASIC",
+  "description":"A systems architecture essay on why generic CXL memory expansion is not enough for transformer inference, and how a KV-aware memory ASIC could use semantic intent, compression, prefetching, prefix caching, and eviction policy to reduce HBM pressure.",
+  "url":"https://manishklach.github.io/writings/beyond-cxl-case-for-kv-aware-memory-asic.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/beyond-cxl-case-for-kv-aware-memory-asic.html",
+  "datePublished":"2026-05-24",
+  "dateModified":"2026-05-24",
+  "articleSection":"Inference Systems",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;1,8..60,300;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #1a1a1a;
+    --ink-muted: #4a4a4a;
+    --ink-faint: #8a8a8a;
+    --surface: #f4f2ed;
+    --surface-card: #ffffff;
+    --border: #e0ddd6;
+    --border-md: #ccc9c0;
+    --accent: #185FA5;
+    --accent-light: #E6F1FB;
+    --accent-mid: #B5D4F4;
+    --accent-dark: #0C447C;
+    --code-bg: #0D1117;
+    --code-fg: #e6edf3;
+    --code-blue: #79c0ff;
+    --code-orange: #ffa657;
+    --code-red: #ff7b72;
+    --code-gray: #8b949e;
+    --code-purple: #d2a8ff;
+    --code-green: #a5d6ff;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: #faf9f6;
+    color: var(--ink);
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 17px;
+    line-height: 1.8;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Header ── */
+  .site-header {
+    border-bottom: 0.5px solid var(--border-md);
+    padding: 1.25rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: rgba(250,249,246,0.92);
+    backdrop-filter: blur(8px);
+    z-index: 100;
+  }
+
+  .site-logo {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    text-decoration: none;
+  }
+
+  .header-tags {
+    display: flex;
+    gap: 8px;
+  }
+
+  .header-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: var(--accent-light);
+    color: var(--accent-dark);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 5rem 2rem 3rem;
+  }
+
+  .kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .kicker::before {
+    content: '';
+    display: inline-block;
+    width: 24px;
+    height: 1px;
+    background: var(--accent);
+  }
+
+  h1 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: clamp(32px, 5.5vw, 56px);
+    font-weight: 900;
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    color: var(--ink);
+    margin-bottom: 1.5rem;
+  }
+
+  .subtitle {
+    font-family: 'Source Serif 4', serif;
+    font-size: 20px;
+    font-weight: 300;
+    font-style: italic;
+    color: var(--ink-muted);
+    line-height: 1.55;
+    margin-bottom: 2.5rem;
+    max-width: 640px;
+  }
+
+  .meta-bar {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 1.25rem 0;
+    border-top: 0.5px solid var(--border-md);
+    border-bottom: 0.5px solid var(--border-md);
+    flex-wrap: wrap;
+  }
+
+  .meta-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    background: var(--accent-light);
+    color: var(--accent-dark);
+    font-weight: 500;
+  }
+
+  .meta-sep {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--border-md);
+  }
+
+  .meta-info {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Layout ── */
+  .content-wrap {
+    display: grid;
+    grid-template-columns: 1fr min(680px, 100%) 1fr;
+    column-gap: 0;
+  }
+
+  .content-wrap > * {
+    grid-column: 2;
+  }
+
+  .article-body {
+    padding: 0 2rem 6rem;
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  /* ── Typography ── */
+  .lede {
+    font-size: 20px;
+    font-weight: 400;
+    line-height: 1.65;
+    color: var(--ink);
+    margin: 2.5rem 0 2rem;
+    padding-left: 1.5rem;
+    border-left: 3px solid var(--accent);
+  }
+
+  p { margin-bottom: 1.5rem; }
+
+  h2 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+    margin: 3.5rem 0 1.25rem;
+    line-height: 1.25;
+  }
+
+  h3 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 2.5rem 0 0.75rem;
+  }
+
+  em { font-style: italic; }
+
+  strong {
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    background: var(--surface);
+    padding: 2px 7px;
+    border-radius: 4px;
+    color: var(--accent);
+    border: 0.5px solid var(--border);
+  }
+
+  /* ── Code blocks ── */
+  pre {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.75;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    border-radius: 12px;
+    padding: 1.5rem 1.75rem;
+    overflow-x: auto;
+    margin: 1.75rem 0;
+    tab-size: 2;
+  }
+
+  pre code {
+    background: none;
+    padding: 0;
+    border: none;
+    color: inherit;
+    font-size: inherit;
+  }
+
+  .c  { color: var(--code-gray); }
+  .k  { color: var(--code-red); }
+  .t  { color: var(--code-blue); }
+  .s  { color: var(--code-green); }
+  .v  { color: var(--code-orange); }
+  .m  { color: var(--code-purple); }
+
+  /* ── Architecture diagram ── */
+  .arch-diagram {
+    background: var(--surface);
+    border: 0.5px solid var(--border-md);
+    border-radius: 12px;
+    padding: 1.5rem 1.75rem;
+    margin: 2rem 0;
+  }
+
+  .arch-diagram .diag-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 1rem;
+  }
+
+  .arch-diagram pre {
+    background: transparent;
+    color: var(--ink-muted);
+    padding: 0;
+    border-radius: 0;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+
+  /* ── Tier table ── */
+  .tier-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    margin: 2rem 0;
+  }
+
+  .tier-row {
+    display: grid;
+    grid-template-columns: 150px 1fr auto;
+    align-items: center;
+    gap: 14px;
+    padding: 11px 16px;
+    border-radius: 9px;
+    border: 0.5px solid transparent;
+    transition: transform 0.15s ease;
+  }
+
+  .tier-row:hover { transform: translateX(3px); }
+
+  .tier-row.t-hot  { background: #FAEEDA; border-color: #FAC775; }
+  .tier-row.t-warm { background: #E6F1FB; border-color: #B5D4F4; }
+  .tier-row.t-cool { background: #E1F5EE; border-color: #9FE1CB; }
+  .tier-row.t-cold { background: #F1EFE8; border-color: #D3D1C7; }
+  .tier-row.t-arch { background: #FBEAF0; border-color: #F4C0D1; }
+
+  .tier-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+
+  .t-hot  .tier-label { color: #633806; }
+  .t-warm .tier-label { color: #0C447C; }
+  .t-cool .tier-label { color: #085041; }
+  .t-cold .tier-label { color: #444441; }
+  .t-arch .tier-label { color: #72243E; }
+
+  .tier-desc {
+    font-family: 'Source Serif 4', serif;
+    font-size: 14px;
+    color: var(--ink-muted);
+    line-height: 1.4;
+  }
+
+  .tier-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+
+  .t-hot  .tier-badge { background: #FAC775; color: #412402; }
+  .t-warm .tier-badge { background: #B5D4F4; color: #042C53; }
+  .t-cool .tier-badge { background: #9FE1CB; color: #04342C; }
+  .t-cold .tier-badge { background: #D3D1C7; color: #2C2C2A; }
+  .t-arch .tier-badge { background: #F4C0D1; color: #4B1528; }
+
+  /* ── Comparison table ── */
+  .cmp-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 2rem 0;
+    font-size: 14px;
+  }
+
+  .cmp-table thead th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-align: left;
+    padding: 11px 16px;
+    background: var(--surface);
+    color: var(--ink-faint);
+    border-bottom: 0.5px solid var(--border-md);
+  }
+
+  .cmp-table thead th:last-child { color: var(--accent); }
+
+  .cmp-table tbody td {
+    padding: 11px 16px;
+    border-bottom: 0.5px solid var(--border);
+    font-family: 'Source Serif 4', serif;
+    color: var(--ink);
+    vertical-align: middle;
+  }
+
+  .cmp-table tbody td:first-child {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+
+  .cmp-table tbody tr:last-child td { border-bottom: none; }
+  .cmp-table tbody tr:hover td { background: #f9f8f5; }
+
+  .yes { color: #0F6E56; font-weight: 500; }
+  .no  { color: var(--ink-faint); }
+  .lim { color: #854F0B; }
+
+  /* ── Engine grid ── */
+  .engine-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin: 1.75rem 0;
+  }
+
+  .engine-card {
+    background: var(--surface-card);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+  }
+
+  .engine-card:hover {
+    border-color: var(--accent-mid);
+    transform: translateY(-2px);
+  }
+
+  .engine-card .e-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--accent);
+    margin-bottom: 6px;
+    letter-spacing: 0.04em;
+  }
+
+  .engine-card .e-desc {
+    font-size: 13.5px;
+    color: var(--ink-muted);
+    line-height: 1.55;
+  }
+
+  /* ── Pull quote ── */
+  .pullquote {
+    margin: 2.5rem -1rem;
+    padding: 1.75rem 2.25rem;
+    border-left: 3px solid var(--accent);
+    background: var(--accent-light);
+    border-radius: 0 12px 12px 0;
+  }
+
+  .pullquote p {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-style: italic;
+    color: var(--accent-dark);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  /* ── Callout ── */
+  .callout {
+    background: var(--surface);
+    border: 0.5px solid var(--border-md);
+    border-radius: 11px;
+    padding: 1.25rem 1.5rem;
+    margin: 1.75rem 0;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .callout svg {
+    flex-shrink: 0;
+    margin-top: 3px;
+    color: var(--accent);
+  }
+
+  .callout-body {
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--ink-muted);
+  }
+
+  .callout-body strong {
+    font-weight: 500;
+    color: var(--ink);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  /* ── Verdict ── */
+  .verdict {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    border-radius: 14px;
+    padding: 2rem 2.25rem;
+    margin: 3rem 0;
+  }
+
+  .verdict .v-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--code-gray);
+    margin-bottom: 1rem;
+  }
+
+  .verdict .v-line {
+    font-family: 'Source Serif 4', serif;
+    font-size: 17px;
+    line-height: 1.75;
+    color: var(--code-blue);
+  }
+
+  .verdict .v-line .hl { color: var(--code-orange); }
+
+  /* ── Divider ── */
+  hr {
+    border: none;
+    border-top: 0.5px solid var(--border-md);
+    margin: 3.5rem 0;
+  }
+
+  /* ── Footer ── */
+  .footnote {
+    font-size: 14px;
+    color: var(--ink-faint);
+    font-style: italic;
+    line-height: 1.65;
+    padding-top: 2rem;
+    border-top: 0.5px solid var(--border);
+  }
+
+  .site-footer {
+    border-top: 0.5px solid var(--border);
+    padding: 2rem;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: 0.06em;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  /* ── Progress bar ── */
+  .progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 2px;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.1s linear;
+    z-index: 200;
+  }
+
+  /* ── Animations ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .hero > * {
+    animation: fadeUp 0.6s ease both;
+  }
+
+  .hero .kicker        { animation-delay: 0.05s; }
+  .hero h1             { animation-delay: 0.15s; }
+  .hero .subtitle      { animation-delay: 0.25s; }
+  .hero .meta-bar      { animation-delay: 0.35s; }
+
+  /* ── Responsive ── */
+  @media (max-width: 640px) {
+    h1 { font-size: 30px; }
+    h2 { font-size: 24px; }
+    .subtitle { font-size: 17px; }
+    .tier-row { grid-template-columns: 1fr; }
+    .tier-badge { display: none; }
+    .pullquote { margin: 2rem 0; }
+    .site-header { padding: 1rem; }
+    .hero { padding: 3rem 1.25rem 2rem; }
+    .article-body { padding: 0 1.25rem 4rem; }
+    pre { font-size: 12px; padding: 1.1rem 1.25rem; }
+  }
+
+  /* ── Die block diagram ── */
+  .die-wrap {
+    margin: 2rem 0;
+    overflow-x: auto;
+  }
+
+  .die-wrap svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* ── Benchmark box ── */
+  .benchmark {
+    background: var(--surface);
+    border: 0.5px solid var(--border-md);
+    border-radius: 12px;
+    padding: 1.5rem 1.75rem;
+    margin: 2rem 0;
+  }
+
+  .benchmark .bm-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 1rem;
+  }
+
+  .bm-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 1.25rem;
+  }
+
+  .bm-card {
+    background: var(--surface-card);
+    border: 0.5px solid var(--border);
+    border-radius: 9px;
+    padding: 0.9rem 1rem;
+  }
+
+  .bm-card .bm-stat {
+    font-family: 'Playfair Display', serif;
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .bm-card .bm-stat.pos { color: #0F6E56; }
+  .bm-card .bm-stat.neg { color: #854F0B; }
+  .bm-card .bm-stat.neu { color: var(--accent); }
+
+  .bm-card .bm-desc {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: 0.04em;
+    line-height: 1.5;
+  }
+
+  .bm-assumption {
+    font-family: 'Source Serif 4', serif;
+    font-size: 13px;
+    color: var(--ink-faint);
+    font-style: italic;
+    border-top: 0.5px solid var(--border);
+    padding-top: 0.9rem;
+    line-height: 1.6;
+  }
+
+  /* ── Bear case ── */
+  .bear-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 1.75rem 0;
+  }
+
+  .bear-item {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 1rem 1.25rem;
+    background: var(--surface-card);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    transition: border-color 0.15s;
+  }
+
+  .bear-item:hover { border-color: var(--border-md); }
+
+  .bear-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink-faint);
+    padding-top: 2px;
+  }
+
+  .bear-body .bear-title {
+    font-family: 'Source Serif 4', serif;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+
+  .bear-body .bear-desc {
+    font-family: 'Source Serif 4', serif;
+    font-size: 14px;
+    color: var(--ink-muted);
+    line-height: 1.6;
+  }
+
+  /* ── Go/no-go criteria ── */
+  .criteria-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 1.75rem 0;
+    counter-reset: criteria;
+  }
+
+  .criterion {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 0.9rem 1.25rem;
+    border-radius: 9px;
+    border-left: 3px solid transparent;
+    background: var(--surface);
+    transition: background 0.15s;
+  }
+
+  .criterion:hover { background: #eeecea; }
+  .criterion.c-must { border-left-color: #0F6E56; }
+  .criterion.c-watch { border-left-color: #854F0B; }
+  .criterion.c-risk  { border-left-color: #A32D2D; }
+
+  .criterion-icon {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    margin-top: 1px;
+    flex-shrink: 0;
+  }
+
+  .c-must  .criterion-icon { background: #EAF3DE; color: #3B6D11; }
+  .c-watch .criterion-icon { background: #FAEEDA; color: #633806; }
+  .c-risk  .criterion-icon { background: #FCEBEB; color: #791F1F; }
+
+  .criterion-text {
+    font-family: 'Source Serif 4', serif;
+    font-size: 15px;
+    color: var(--ink-muted);
+    line-height: 1.6;
+  }
+
+  .criterion-text strong { color: var(--ink); font-weight: 500; }
+
+  /* ── Footnote superscript ── */
+  sup.fn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    cursor: default;
+    vertical-align: super;
+    line-height: 0;
+    margin-left: 1px;
+  }
+
+  .fn-block {
+    font-family: 'Source Serif 4', serif;
+    font-size: 13px;
+    color: var(--ink-faint);
+    line-height: 1.65;
+    padding-top: 1rem;
+    margin-top: 1rem;
+    border-top: 0.5px solid var(--border);
+  }
+
+  .fn-block span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    margin-right: 6px;
+  }
+
+  @media print {
+    .site-header, .progress-bar { display: none; }
+    body { font-size: 12pt; }
+    h1 { font-size: 28pt; }
+    h2 { font-size: 18pt; }
+    pre { background: #f5f5f5; color: #1a1a1a; border: 1px solid #ddd; }
+    a { color: inherit; text-decoration: none; }
+  }
+
+html.dark {
+  --ink: #edf2ef;
+  --ink-muted: #b8c3bd;
+  --ink-faint: #8f9d96;
+  --surface: #141a17;
+  --surface-card: #101512;
+  --border: #2a352f;
+  --border-md: #3a4740;
+  --accent: #8fc7ff;
+  --accent-light: #102033;
+  --accent-mid: #315d88;
+  --accent-dark: #d5eaff;
+  --code-bg: #090d12;
+  --code-fg: #e6edf3;
+}
+html.dark body {
+  background: #0b0f0d;
+  color: var(--ink);
+  color-scheme: dark;
+}
+html.dark .site-header {
+  background: rgba(11, 15, 13, 0.92);
+  border-color: var(--border-md);
+}
+html.dark .meta-bar,
+html.dark hr,
+html.dark .footnote,
+html.dark .site-footer { border-color: var(--border-md); }
+html.dark h1,
+html.dark h2,
+html.dark strong,
+html.dark .lede,
+html.dark .cmp-table tbody td,
+html.dark .criterion-text strong,
+html.dark .bear-title { color: var(--ink); }
+html.dark p,
+html.dark .subtitle,
+html.dark .tier-desc,
+html.dark .engine-card .e-desc,
+html.dark .callout-body,
+html.dark .bear-desc,
+html.dark .criterion-text,
+html.dark .bm-assumption { color: var(--ink-muted); }
+html.dark code { background: #121c27; border-color: #284158; color: #a9d4ff; }
+html.dark .arch-diagram,
+html.dark .benchmark,
+html.dark .callout,
+html.dark .criterion { background: var(--surface); border-color: var(--border-md); }
+html.dark .engine-card,
+html.dark .bm-card,
+html.dark .bear-item { background: var(--surface-card); border-color: var(--border); }
+html.dark .cmp-table thead th { background: #101713; color: var(--ink-faint); border-color: var(--border-md); }
+html.dark .cmp-table tbody td { border-color: var(--border); }
+html.dark .cmp-table tbody tr:hover td,
+html.dark .criterion:hover { background: #162019; }
+html.dark .arch-diagram pre { color: var(--ink-muted); }
+html.dark .pullquote { background: #102033; }
+html.dark .pullquote p { color: #d5eaff; }
+html.dark .tier-row.t-hot { background: #2a1f0c; border-color: #725116; }
+html.dark .tier-row.t-warm { background: #102033; border-color: #315d88; }
+html.dark .tier-row.t-cool { background: #0d261e; border-color: #24745d; }
+html.dark .tier-row.t-cold { background: #1b1d1b; border-color: #4a4d48; }
+html.dark .tier-row.t-arch { background: #2a1119; border-color: #71334a; }
+html.dark .t-hot .tier-label { color: #f7cf88; }
+html.dark .t-warm .tier-label { color: #b8d8ff; }
+html.dark .t-cool .tier-label { color: #9fe5cf; }
+html.dark .t-cold .tier-label { color: #d8d7d0; }
+html.dark .t-arch .tier-label { color: #f4b7ca; }
+html.dark .t-hot .tier-badge { background: #725116; color: #fff0d2; }
+html.dark .t-warm .tier-badge { background: #315d88; color: #edf6ff; }
+html.dark .t-cool .tier-badge { background: #24745d; color: #edfff9; }
+html.dark .t-cold .tier-badge { background: #4a4d48; color: #f4f3ed; }
+html.dark .t-arch .tier-badge { background: #71334a; color: #fff0f5; }
+html.dark .yes { color: #91e6cb; }
+html.dark .no { color: #9ca7a1; }
+html.dark .lim { color: #f7cf88; }
+html.dark .bm-card .bm-stat.pos { color: #91e6cb; }
+html.dark .bm-card .bm-stat.neg { color: #f7cf88; }
+html.dark .bm-card .bm-stat.neu { color: #8fc7ff; }
+html.dark .c-must .criterion-icon { background: #17331f; color: #b6efac; }
+html.dark .c-watch .criterion-icon { background: #34250f; color: #f7cf88; }
+html.dark .c-risk .criterion-icon { background: #3a1515; color: #ffb9b9; }
+.site-tools {
+  max-width: 800px;
+  margin: 18px auto 0;
+  padding: 0 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+.back-link { color: inherit; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
+#theme-toggle {
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  padding: 6px 11px;
+  font: inherit;
+  cursor: pointer;
+}
+.reading-meta {
+  max-width: 800px;
+  margin: 10px auto 0;
+  padding: 0 2rem;
+  color: var(--ink-faint);
+  font: 12px/1.5 'JetBrains Mono', monospace;
+  letter-spacing: 0.04em;
+}
+.site-footer.site-global-footer {
+  max-width: 800px;
+  margin: 0 auto 48px;
+  padding: 2rem;
+  border-top: 0.5px solid var(--border);
+  text-align: left;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.02em;
+}
+.site-footer-inner { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.site-footer a { color: inherit; }
+.logo-word{display:inline-flex;align-items:baseline;gap:.01em;white-space:nowrap}.logo-i{display:inline-block;font-size:.84em;margin:0 .055em 0 .025em;font-style:normal;font-weight:900;line-height:.95;transform:translateY(-.02em)}
+@media (max-width: 640px) {
+  .site-tools, .reading-meta { padding: 0 1.25rem; }
+}
+
+</style>
+</head>
+<body>
+  <div class="site-tools" aria-label="Site tools">
+    <a class="back-link" href="/writings.html"><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span> / Writings</a>
+    <button id="theme-toggle" type="button" aria-label="Toggle light and dark mode">Theme</button>
+  </div>
+  <p class="reading-meta"><time datetime="2026-05-24">May 24, 2026</time> · Inference Systems · 20 min read</p>
+<div class="progress-bar" id="progress"></div>
+
+<header class="site-header">
+  <span class="site-logo">Systems &amp; Architecture</span>
+  <div class="header-tags">
+    <span class="header-tag">Inference</span>
+    <span class="header-tag">ASIC Design</span>
+    <span class="header-tag">KV Cache</span>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="kicker">Deep Dive · Systems Architecture</div>
+    <h1>Beyond CXL: The Case for a KV-Aware Memory ASIC</h1>
+    <p class="subtitle">Generic memory expansion is the wrong answer for transformer inference. Here's what the right answer looks like — and why semantic intent beats raw bandwidth every time.</p>
+    <div class="meta-bar">
+      <span class="meta-pill">Inference Systems</span>
+      <span class="meta-pill">ASIC Design</span>
+      <span class="meta-pill">KV Cache</span>
+      <span class="meta-sep"></span>
+      <span class="meta-info">20 min read</span>
+    </div>
+  </div>
+
+  <article class="article-body">
+
+    <p class="lede">The default assumption is that the memory problem in LLM inference is a bandwidth problem — that if we could just push more bytes per second to the GPU, everything gets faster. This framing leads to CXL DRAM: faster, cheaper, more of it. It's the wrong answer.</p>
+
+    <p>HBM — the stacked memory sitting directly on your GPU — delivers bandwidth in the range of 3–4 TB/s. CXL, even in its best configurations, tops out somewhere around 100 GB/s and carries latencies measured in microseconds. You cannot win a bandwidth race against HBM by buying more DRAM and slapping a CXL controller on it.</p>
+
+    <p>But here's the insight that changes everything: you don't have to. The goal is not to beat HBM. The goal is to <em>reduce how often HBM is needed at all.</em></p>
+
+    <p>That insight is the seed of a different kind of device — not a memory expander, but a <strong>KV-aware memory appliance</strong>: a semantic controller that understands transformer inference at the cache block level, compresses and deduplicates KV data inline, prefetches the next decode window before the GPU asks for it, and exposes runtime intent instead of raw addresses.</p>
+
+    <h2>Why HBM Is Under Pressure</h2>
+
+    <p>To understand why this matters, it helps to understand what KV cache actually is and why it's eating your GPU's memory alive.</p>
+
+    <p>During autoregressive inference, every new token requires attending over every previous token. The keys and values for those previous tokens need to live somewhere. For a long context — say, 128K tokens — the KV cache for a single request can occupy gigabytes. For a serving system handling hundreds of concurrent sessions, this scales into dozens of gigabytes, rapidly consuming the entirety of available HBM.</p>
+
+    <p>Once HBM is full, one of two things happens: requests get queued (latency goes up), or prefill is recomputed on the fly (compute is wasted). Both outcomes are expensive. The naive fix — buy a GPU with more HBM — is expensive hardware and doesn't scale well.</p>
+
+    <p>The smarter fix is to ask: <em>does all this KV data need to live in HBM?</em> And more importantly: <em>does the system moving it around have to be blind to what it's moving?</em></p>
+
+    <h2>The Architecture: A Semantic Memory Controller</h2>
+
+    <p>Imagine a dedicated ASIC — not a GPU, not a CPU, not a standard CXL controller — that sits between the GPU's HBM and a pool of cheaper memory (HBM3e, LPDDR5X, DDR5, or CXL DRAM). It has its own SRAM for metadata, its own DMA engines, its own compression hardware, and most importantly, it understands that the bytes it's managing are KV cache blocks belonging to transformer sessions.</p>
+
+    <div class="arch-diagram">
+      <div class="diag-label">System topology</div>
+      <pre>GPU HBM
+  │
+  │  NVLink / PCIe / CXL
+  │
+KV-ASIC ──── SRAM (metadata, hot directory)
+  │
+  ├─── HBM3e / LPDDR5X (warm KV pool)
+  ├─── CXL DRAM (cold spill)
+  └─── NVMe / object store (archival)</pre>
+    </div>
+
+    <p>The key architectural principle is tiering. Not page-level tiering — semantic tiering, based on the nature of the data, not its address.</p>
+
+    <p>One critical nuance: large-scale LLM inference rarely runs on a single GPU. Tensor-parallel and pipeline-parallel deployments span multiple nodes, multiple PCIe roots, sometimes multiple racks. A <code>kv_prefetch</code> or a multicast prefix-cache operation that crosses node boundaries needs to route over a global fabric — NVLink switches in the NVIDIA ecosystem, or an RDMA-capable Ethernet/InfiniBand fabric in more heterogeneous clusters. The KV-ASIC exposes a flat logical address space for KV blocks, but the physical routing layer underneath must be topology-aware: the ASIC's DMA engines tag each outbound transfer with a fabric destination derived from a cluster membership table, and the prefetch scheduler accounts for inter-node latency (typically 1–5 µs over NVLink vs. sub-microsecond for local PCIe) when computing how far ahead to speculate.</p>
+
+    <div class="tier-grid">
+      <div class="tier-row t-hot">
+        <span class="tier-label">GPU HBM</span>
+        <span class="tier-desc">Active decode KV for current tokens and live beams</span>
+        <span class="tier-badge">~3–4 TB/s</span>
+      </div>
+      <div class="tier-row t-warm">
+        <span class="tier-label">ASIC SRAM</span>
+        <span class="tier-desc">Metadata, routing tables, hot-block directory</span>
+        <span class="tier-badge">instant lookup</span>
+      </div>
+      <div class="tier-row t-cool">
+        <span class="tier-label">ASIC memory</span>
+        <span class="tier-desc">Reusable KV blocks, compressed warm sessions</span>
+        <span class="tier-badge">high capacity</span>
+      </div>
+      <div class="tier-row t-cold">
+        <span class="tier-label">CXL / DRAM pool</span>
+        <span class="tier-desc">Cold long-context KV, inactive conversations</span>
+        <span class="tier-badge">cheap $/GB</span>
+      </div>
+      <div class="tier-row t-arch">
+        <span class="tier-label">SSD / object store</span>
+        <span class="tier-desc">Session persistence and archival spill</span>
+        <span class="tier-badge">persistence</span>
+      </div>
+    </div>
+
+    <h2>The Moat: KV Metadata</h2>
+
+    <p>Generic memory sees anonymous pages. The KV-ASIC sees something completely different.</p>
+
+    <p>Every KV block is tagged with rich metadata at ingestion time — session identity, layer index, head index, token range, precision, compression mode, reuse probability, eviction class, and a semantic category hint. The on-chip SRAM directory makes these lookups near-instant.</p>
+
+<pre><span class="k">struct</span> <span class="t">kv_block_meta</span> {
+    <span class="t">uint64_t</span> <span class="v">session_id</span>;
+    <span class="t">uint32_t</span> <span class="v">layer_id</span>;
+    <span class="t">uint32_t</span> <span class="v">head_id</span>;
+    <span class="t">uint32_t</span> <span class="v">token_start</span>;
+    <span class="t">uint32_t</span> <span class="v">token_count</span>;
+    <span class="t">uint16_t</span> <span class="v">precision</span>;        <span class="c">// FP16, FP8, INT8…</span>
+    <span class="t">uint16_t</span> <span class="v">compression_mode</span>;
+    <span class="t">uint8_t</span>  <span class="v">reuse_score</span>;       <span class="c">// predicted reuse probability</span>
+    <span class="t">uint8_t</span>  <span class="v">eviction_class</span>;    <span class="c">// HOT / COLD / EPHEMERAL…</span>
+    <span class="t">uint8_t</span>  <span class="v">locality_hint</span>;
+    <span class="t">uint8_t</span>  <span class="v">semantic_class</span>;    <span class="c">// SYSTEM_PROMPT / USER_TURN / TOOL…</span>
+};</pre>
+
+    <p>This is not a small difference. It transforms the memory subsystem from a passive bucket of bytes into an active participant in inference scheduling. The ASIC now knows that a particular block is layer 22, head 14, tokens 8192–8448, belonging to session X, likely to be reused soon, and safe to compress. No generic CXL controller can reason about any of that.</p>
+
+    <div class="callout">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      <div class="callout-body">
+        <strong>On SRAM area budget.</strong>
+        Tracking millions of fine-grained KV blocks naively would blow out on-chip SRAM. The metadata directory instead uses a hierarchical, two-level structure: a compact hardware hash-table (cuckoo-hash variant) stores coarse session-level descriptors in a small fixed SRAM array, with per-block tags stored in a compressed side table indexed by {session, layer, token_range}. Lookup is O(1) with bounded worst-case probing — critical for meeting the tight latency window between a prefetch hint and the DMA kickoff.
+      </div>
+    </div>
+
+    <h2>Runtime Intent: A Better API</h2>
+
+    <p>The corresponding change on the software side is equally important. Instead of issuing raw load/store instructions to a memory address, the runtime issues semantic operations — putting KV data with a reuse hint, prefetching a token window for an upcoming decode step, releasing a token range when a session ends.</p>
+
+<pre><span class="c">// Register a new session</span>
+<span class="m">kv_register_session</span>(session_id, model_id);
+
+<span class="c">// Store KV with semantic hints</span>
+<span class="m">kv_put</span>(
+  session_id,
+  layer_id,
+  head_id,
+  token_range,
+  gpu_ptr,
+  reuse_hint  = <span class="s">HIGH</span>,
+  compression = <span class="s">FP8</span>
+);
+
+<span class="c">// Async prefetch before GPU needs it</span>
+<span class="m">kv_prefetch</span>(
+  session_id,
+  next_token_window,
+  target_gpu
+);
+
+<span class="c">// Release with eviction class</span>
+<span class="m">kv_release</span>(
+  session_id,
+  token_range,
+  eviction_class = <span class="s">EPHEMERAL</span>
+);</pre>
+
+    <p>This API surface is the interface between "generic memory expansion" and "KV-aware infrastructure." The controller can now make intelligent decisions: compress aggressively on <code>reuse_hint = LOW</code>, keep data warm on <code>reuse_hint = HIGH</code>, and start DMA transfers proactively when a prefetch is registered.</p>
+
+    <h2>Inline Compression: Multiplying Effective Bandwidth</h2>
+
+    <p>The most direct way to make a 1 TB/s link behave like a 2 TB/s link is to compress data 2:1 before it crosses the link. For KV cache, this is very achievable — and the ASIC is the natural place to do it.</p>
+
+    <div class="engine-grid">
+      <div class="engine-card">
+        <div class="e-title">FP16 → FP8</div>
+        <div class="e-desc">Halves memory footprint with minimal accuracy loss for most layers</div>
+      </div>
+      <div class="engine-card">
+        <div class="e-title">INT8 quantization</div>
+        <div class="e-desc">Cheaper storage for cold sessions; quality degrades gracefully</div>
+      </div>
+      <div class="engine-card">
+        <div class="e-title">Prefix dedup</div>
+        <div class="e-desc">Store one copy of shared system prompts; multicast on demand</div>
+      </div>
+      <div class="engine-card">
+        <div class="e-title">Delta encoding</div>
+        <div class="e-desc">Similar conversation prefixes compress extremely well</div>
+      </div>
+      <div class="engine-card">
+        <div class="e-title">Sparsity filter</div>
+        <div class="e-desc">Skip low-attention heads; don't store what won't be read</div>
+      </div>
+      <div class="engine-card">
+        <div class="e-title">Layer-aware</div>
+        <div class="e-desc">Deeper layers tolerate more aggressive compression</div>
+      </div>
+    </div>
+
+    <p>These aren't theoretical — each of these has been demonstrated to work at the model level. The ASIC makes them transparent to the runtime and applies them inline with zero CPU involvement. A 2:1 average compression ratio effectively doubles the usable capacity of every tier in the hierarchy.</p>
+
+    <h2>Prefetch Scheduling: Hiding Latency</h2>
+
+    <p>CXL latency is a real constraint. But for autoregressive inference, the access pattern is highly predictable. When the GPU is computing token N, the ASIC can be streaming the KV window for token N+1 with high confidence.</p>
+
+    <div class="callout">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <div class="callout-body">
+        <strong>Autoregressive access is structured, not random.</strong>
+        The next decode step will almost certainly need: the same session, the same layers, the same heads, and the previous token window. This regularity is exactly what a prefetch scheduler can exploit — it can eliminate the CXL latency penalty entirely if the pipeline is tuned correctly.
+      </div>
+    </div>
+
+    <p>The pipeline looks like this: while the GPU attends over token N, the ASIC's scheduler observes the access pattern, predicts the next window, and begins DMA transfers asynchronously. By the time the GPU finishes computing token N and begins attention for token N+1, the relevant KV blocks are already staged in HBM. The CXL latency is completely hidden in the GPU's compute time.</p>
+
+    <p>But autoregressive decode is not always a straight line. Branch points exist: beam search spawns multiple parallel hypotheses, speculative decoding validates draft tokens that may be rejected, and user-driven early termination can invalidate an entire in-flight prefetch. The ASIC handles mispredictions with a lightweight speculative-prefetch buffer — a staging area separate from the main HBM allocation that holds speculatively fetched blocks under a TTL. On a confirmed misprediction (beam abandoned, speculative token rejected), the buffer is flushed without touching the hot KV region. The CPU-visible cost of a miss is bounded to the buffer drain latency, not a full HBM eviction cycle. Prefetch accuracy is continuously tracked per-session; sessions with high branch rates are throttled to conservative look-ahead depth to avoid wasting fabric bandwidth.</p>
+
+    <h2>Inside the Die: What the ASIC Actually Contains</h2>
+
+    <p>To make this concrete, here is a first-principles block diagram of what the KV-ASIC silicon would contain. The "secret sauce" blocks are the ones that no generic CXL or DRAM controller ships today.</p>
+
+    <div class="die-wrap">
+      <svg viewBox="0 0 680 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="KV-ASIC die block diagram showing PCIe/CXL interface, KV address translation, compression engine, prefetch predictor, DMA fabric, and DRAM/NAND controllers">
+        <title>KV-ASIC die block diagram</title>
+
+        <defs>
+          <marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L6,3 z" fill="#ccc9c0"/>
+          </marker>
+          <marker id="arr-acc" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L6,3 z" fill="#185FA5"/>
+          </marker>
+        </defs>
+
+        <!-- Die outline -->
+        <rect x="10" y="10" width="660" height="400" rx="12" fill="#faf9f6" stroke="#ccc9c0" stroke-width="1"/>
+        <text x="26" y="32" font-family="JetBrains Mono, monospace" font-size="10" fill="#8a8a8a" letter-spacing="2">KV-ASIC DIE</text>
+
+        <!-- PCIe/CXL Interface -->
+        <rect x="30" y="50" width="140" height="70" rx="7" fill="#E6F1FB" stroke="#B5D4F4" stroke-width="1"/>
+        <text x="100" y="78" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="500" fill="#0C447C">PCIe / CXL / NVLink</text>
+        <text x="100" y="96" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#185FA5">Protocol Front End</text>
+        <text x="100" y="111" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#185FA5">· CXL.mem + CXL.io</text>
+
+        <!-- Arrow PCIe → KV Translate -->
+        <line x1="170" y1="85" x2="210" y2="85" stroke="#ccc9c0" stroke-width="1" marker-end="url(#arr)"/>
+
+        <!-- KV Address Translation — SECRET SAUCE -->
+        <rect x="210" y="50" width="160" height="70" rx="7" fill="#0C447C" stroke="#185FA5" stroke-width="1"/>
+        <text x="290" y="72" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="500" fill="#E6F1FB">KV Address Translation</text>
+        <text x="290" y="88" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#B5D4F4">session × layer × head</text>
+        <text x="290" y="103" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#B5D4F4">→ physical block addr</text>
+        <rect x="214" y="112" width="60" height="14" rx="3" fill="#185FA5"/>
+        <text x="244" y="123" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#E6F1FB">★ secret sauce</text>
+
+        <!-- Arrow KV Translate → Compression -->
+        <line x1="370" y1="85" x2="408" y2="85" stroke="#ccc9c0" stroke-width="1" marker-end="url(#arr)"/>
+
+        <!-- Compression Engine — SECRET SAUCE -->
+        <rect x="408" y="50" width="150" height="70" rx="7" fill="#0C447C" stroke="#185FA5" stroke-width="1"/>
+        <text x="483" y="72" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="500" fill="#E6F1FB">Compression Engine</text>
+        <text x="483" y="88" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#B5D4F4">FP16→FP8 · INT8 quant</text>
+        <text x="483" y="103" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#B5D4F4">prefix dedup · delta enc</text>
+        <rect x="412" y="112" width="60" height="14" rx="3" fill="#185FA5"/>
+        <text x="442" y="123" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#E6F1FB">★ secret sauce</text>
+
+        <!-- SRAM Directory -->
+        <rect x="30" y="175" width="140" height="70" rx="7" fill="#E1F5EE" stroke="#9FE1CB" stroke-width="1"/>
+        <text x="100" y="199" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="500" fill="#085041">SRAM Directory</text>
+        <text x="100" y="215" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#0F6E56">cuckoo hash · 2-level</text>
+        <text x="100" y="230" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#0F6E56">metadata + hot tags</text>
+        <text x="100" y="246" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#0F6E56">O(1) lookup</text>
+
+        <!-- Prefetch Predictor — SECRET SAUCE -->
+        <rect x="210" y="175" width="160" height="70" rx="7" fill="#0C447C" stroke="#185FA5" stroke-width="1"/>
+        <text x="290" y="199" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="500" fill="#E6F1FB">Prefetch Predictor</text>
+        <text x="290" y="215" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#B5D4F4">decode-window lookahead</text>
+        <text x="290" y="230" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#B5D4F4">speculative buf + TTL</text>
+        <text x="290" y="245" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#B5D4F4">miss-rate throttle</text>
+        <rect x="214" y="238" width="60" height="13" rx="3" fill="#185FA5"/>
+        <text x="244" y="248" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#E6F1FB">★ secret sauce</text>
+
+        <!-- DMA Fabric -->
+        <rect x="408" y="175" width="150" height="70" rx="7" fill="#FAEEDA" stroke="#FAC775" stroke-width="1"/>
+        <text x="483" y="199" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="500" fill="#633806">DMA Fabric</text>
+        <text x="483" y="215" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#854F0B">multi-engine · multicast</text>
+        <text x="483" y="230" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#854F0B">cluster topology table</text>
+        <text x="483" y="245" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#854F0B">NVLink / RDMA routing</text>
+
+        <!-- Security / QoS / Telemetry row -->
+        <rect x="30" y="300" width="200" height="55" rx="7" fill="#F1EFE8" stroke="#D3D1C7" stroke-width="1"/>
+        <text x="130" y="322" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="500" fill="#444441">Security / QoS</text>
+        <text x="130" y="338" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#5F5E5A">session isolation · rate limits</text>
+        <text x="130" y="352" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#5F5E5A">tenant accounting</text>
+
+        <rect x="245" y="300" width="195" height="55" rx="7" fill="#F1EFE8" stroke="#D3D1C7" stroke-width="1"/>
+        <text x="343" y="322" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="500" fill="#444441">Telemetry Engine</text>
+        <text x="343" y="338" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#5F5E5A">prefetch hit/miss rates</text>
+        <text x="343" y="352" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#5F5E5A">compression ratios · BW util</text>
+
+        <rect x="455" y="300" width="205" height="55" rx="7" fill="#F1EFE8" stroke="#D3D1C7" stroke-width="1"/>
+        <text x="558" y="322" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="500" fill="#444441">Memory Controllers</text>
+        <text x="558" y="338" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#5F5E5A">HBM3e · LPDDR5X · DDR5</text>
+        <text x="558" y="352" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="#5F5E5A">CXL DRAM · NVMe</text>
+
+        <!-- Vertical connectors — column 1 -->
+        <line x1="100" y1="120" x2="100" y2="175" stroke="#ccc9c0" stroke-width="1" marker-end="url(#arr)"/>
+        <!-- col 2 -->
+        <line x1="290" y1="120" x2="290" y2="175" stroke="#185FA5" stroke-width="1" marker-end="url(#arr-acc)"/>
+        <!-- col 3 -->
+        <line x1="483" y1="120" x2="483" y2="175" stroke="#185FA5" stroke-width="1" marker-end="url(#arr-acc)"/>
+
+        <!-- Horizontal bus -->
+        <line x1="170" y1="210" x2="210" y2="210" stroke="#ccc9c0" stroke-width="1" marker-end="url(#arr)"/>
+        <line x1="370" y1="210" x2="408" y2="210" stroke="#ccc9c0" stroke-width="1" marker-end="url(#arr)"/>
+
+        <!-- Vertical to bottom row -->
+        <line x1="100" y1="245" x2="100" y2="300" stroke="#ccc9c0" stroke-width="1" marker-end="url(#arr)"/>
+        <line x1="290" y1="245" x2="343" y2="300" stroke="#ccc9c0" stroke-width="1" marker-end="url(#arr)"/>
+        <line x1="483" y1="245" x2="558" y2="300" stroke="#ccc9c0" stroke-width="1" marker-end="url(#arr)"/>
+
+        <!-- Legend -->
+        <rect x="30" y="372" width="12" height="12" rx="2" fill="#0C447C"/>
+        <text x="48" y="383" font-family="JetBrains Mono, monospace" font-size="10" fill="#8a8a8a">Novel / secret sauce blocks</text>
+        <rect x="200" y="372" width="12" height="12" rx="2" fill="#E1F5EE" stroke="#9FE1CB" stroke-width="1"/>
+        <text x="218" y="383" font-family="JetBrains Mono, monospace" font-size="10" fill="#8a8a8a">Standard blocks (enhanced)</text>
+        <rect x="390" y="372" width="12" height="12" rx="2" fill="#F1EFE8" stroke="#D3D1C7" stroke-width="1"/>
+        <text x="408" y="383" font-family="JetBrains Mono, monospace" font-size="10" fill="#8a8a8a">Infrastructure blocks</text>
+      </svg>
+    </div>
+
+    <h2>The Hot-Prefix Cache: The Killer Feature</h2>
+
+    <p>If one capability earns this device its cost, it's this one.</p>
+
+    <p>In real AI serving workloads, enormous amounts of KV computation are duplicated. Every request to a customer-facing assistant starts with the same multi-thousand-token system prompt. Every coding assistant session loads the same repository context header. Every RAG pipeline prepends the same retrieval instruction template. Every tool-using agent carries the same tool schema for every turn.</p>
+
+    <p>The ASIC maintains a hash map: <code>prefix_hash → [kv_block_list]</code>. When a new request arrives, the runtime computes a prefix hash and queries the ASIC. If the prefix matches, the KV blocks already exist — there is no compute to do, no HBM allocation needed. The ASIC multicasts those blocks to whichever GPUs need them.</p>
+
+    <div class="pullquote">
+      <p>Skipping the recompute of a shared system prompt doesn't just save memory — it saves the prefill FLOPs, the HBM allocation, and the time-to-first-token latency for every single request that shares that prefix.</p>
+    </div>
+
+    <p>For a serving cluster processing thousands of requests per minute, the compounding effect of this single feature can be enormous. It is arguably more impactful than any raw bandwidth improvement — because it eliminates entire categories of work rather than making existing work marginally faster.</p>
+
+    <h2>Attention-Aware Eviction</h2>
+
+    <p>Generic memory evicts pages using LRU. LRU doesn't know that the block it's evicting is the shared prefix for the next 500 requests, or that another block — accessed more recently — belongs to a tool call that will never be attended to again.</p>
+
+    <p>The KV-ASIC evicts based on semantic eviction classes that the runtime populates. A block tagged <code>REUSABLE_PREFIX</code> is almost never evicted. A block tagged <code>EPHEMERAL_TOOL_CALL</code> is the first to go. A block tagged <code>LOW_ATTENTION</code> (computed via attention scoring) can be dropped or recomputed cheaply.</p>
+
+    <p>The eviction policy optimizes for a single objective: <em>minimize the impact on future decode quality.</em> LRU doesn't do this. Only a controller with semantic knowledge of the data can.</p>
+
+    <h2>How It Compares to Plain CXL</h2>
+
+    <table class="cmp-table">
+      <thead>
+        <tr>
+          <th>Capability</th>
+          <th>Plain CXL</th>
+          <th>KV-ASIC</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Page-level memory access</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+        <tr><td>Understands KV cache structure</td><td class="no">No</td><td class="yes">Yes</td></tr>
+        <tr><td>Inline compression / decompression</td><td class="no">No</td><td class="yes">Yes</td></tr>
+        <tr><td>Decode-window prefetching</td><td class="lim">Limited <sup class="fn">1</sup></td><td class="yes">Yes</td></tr>
+        <tr><td>Shared prefix deduplication</td><td class="no">No</td><td class="yes">Yes</td></tr>
+        <tr><td>Multicast to multiple GPUs</td><td class="no">No</td><td class="yes">Yes</td></tr>
+        <tr><td>Semantic eviction policy</td><td class="no">No</td><td class="yes">Yes</td></tr>
+        <tr><td>Runtime-intent API</td><td class="no">No</td><td class="yes">Yes</td></tr>
+      </tbody>
+    </table>
+
+    <div class="fn-block">
+      <span>1</span> Plain CXL relies on standard CPU/OS hardware prefetchers — spatial (adjacent cache lines) and temporal (recent access history) — which are blind to token boundaries, session identity, and layer structure. They cannot speculate across a KV block boundary the way the KV-ASIC's decode-window predictor can, because they have no concept of what a "token window" is.
+    </div>
+
+    <h2>The Hard Reality</h2>
+
+    <p>None of this means the KV-ASIC beats HBM on raw latency. It won't — and claiming otherwise would be dishonest. HBM is a different class of memory, physically attached to the GPU die, operating at bandwidths no external device can match.</p>
+
+    <p>The goal is not to replace HBM. The goal is to change the problem so that HBM sees less pressure.</p>
+
+    <div class="callout">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <div class="callout-body">
+        <strong>The six levers of effective bandwidth.</strong>
+        Store less (compression). Move less (deduplication). Move earlier (prefetch). Reuse more (prefix cache). Evict smarter (semantic eviction). Compress inline (effective bandwidth multiplication). None of these require raw throughput that rivals HBM — and they compound.
+      </div>
+    </div>
+
+    <p>If the ASIC can achieve a 2:1 compression ratio across the KV pool, the effective capacity of HBM doubles. If the prefix cache eliminates 30% of prefill work, 30% of HBM traffic simply never happens. If the prefetch scheduler achieves a 90% hit rate, CXL latency is invisible to the GPU. These are the real performance numbers.</p>
+
+    <p>To make this tangible, here is back-of-the-envelope modeling for a representative serving workload:</p>
+
+    <div class="benchmark">
+      <div class="bm-label">Napkin benchmark · Llama-3-70B, 128K context, 64 concurrent users, 8× H100</div>
+      <div class="bm-grid">
+        <div class="bm-card">
+          <div class="bm-stat neg">~2 ms</div>
+          <div class="bm-desc">per-token latency on cache miss<br>Plain CXL · 400 ns access · 64 GB/s</div>
+        </div>
+        <div class="bm-card">
+          <div class="bm-stat pos">~0.8 ms</div>
+          <div class="bm-desc">per-token latency on cache miss<br>KV-ASIC · 4:1 compression · prefetch hit</div>
+        </div>
+        <div class="bm-card">
+          <div class="bm-stat neu">2.5×</div>
+          <div class="bm-desc">throughput gain at same<br>user count and GPU count</div>
+        </div>
+        <div class="bm-card">
+          <div class="bm-stat pos">~60%</div>
+          <div class="bm-desc">TCO reduction at equivalent<br>served requests per second</div>
+        </div>
+      </div>
+      <div class="bm-assumption">Assumptions: effective bandwidth 250 GB/s post-compression; 90% prefetch hit rate; 30% of requests share a common system-prompt prefix eliminated by hot-prefix cache. Numbers are illustrative order-of-magnitude estimates, not benchmarked results.</div>
+    </div>
+
+    <h2>The Architectural Leap</h2>
+
+    <p>The deepest idea here is not about hardware — it's about the interface between software and memory.</p>
+
+    <p>CXL exposes memory as a generic address space. The GPU asks for bytes at an address; the controller returns bytes. There is no channel for the runtime to communicate intent, for the controller to understand semantics, or for the system to make intelligent decisions about placement, compression, or multicast.</p>
+
+    <p>The KV-ASIC replaces this with a <em>semantic protocol</em>. The runtime does not ask for bytes at an address. It asks for the KV blocks belonging to a session, at a layer and head range, for a token window. The controller responds with exactly that — possibly decompressed from FP8, possibly prefetched from a cold tier, possibly multicasted from a single stored copy to multiple GPU targets simultaneously.</p>
+
+    <p>This is what "smart memory" actually means for transformer inference. Not faster DRAM. Not wider buses. A controller that understands what it's storing and makes principled decisions about every byte it manages.</p>
+
+    <div class="verdict">
+      <div class="v-label">Architecture in one sentence</div>
+      <div class="v-line">A KV-ASIC is a <span class="hl">semantic memory controller</span> for transformer inference: it sits between GPU HBM and pooled memory, understands KV-cache structure, <span class="hl">compresses and deduplicates</span> blocks, prefetches decode windows, multicasts shared prefixes, and exposes <span class="hl">runtime intent</span> instead of raw addresses.</div>
+    </div>
+
+    <h2>The Bear Case: Why This Might Not Happen</h2>
+
+    <p>Any serious architecture thesis requires red-teaming its own assumptions. There are three credible scenarios in which the KV-ASIC never ships — or ships and loses.</p>
+
+    <div class="bear-grid">
+      <div class="bear-item">
+        <span class="bear-num">01</span>
+        <div class="bear-body">
+          <div class="bear-title">NVIDIA vertical integration</div>
+          <div class="bear-desc">If NVIDIA builds KV-tiering, prefix caching, and semantic eviction directly into the Hopper or Blackwell memory subsystem — or into NVLink Switch firmware — a merchant ASIC loses its addressable market overnight. NVIDIA already controls the NVLink fabric, the GPU memory controller, and the inference software stack (TensorRT-LLM). The surface area for a wedge product narrows if they choose to own this layer. Watch the GB200 NVL72 architecture closely.</div>
+        </div>
+      </div>
+      <div class="bear-item">
+        <span class="bear-num">02</span>
+        <div class="bear-body">
+          <div class="bear-title">Model efficiency kills the KV cache</div>
+          <div class="bear-desc">The entire thesis rests on the KV cache being large, persistent, and expensive. Mamba-class SSMs, linear attention variants, and 1-bit quantized models all attack this assumption from different angles. If the dominant model architecture shifts away from quadratic-attention transformers — even partially, for long-context tasks — the total KV footprint shrinks dramatically. An ASIC designed for a problem that shrinks is a stranded asset.</div>
+        </div>
+      </div>
+      <div class="bear-item">
+        <span class="bear-num">03</span>
+        <div class="bear-body">
+          <div class="bear-title">CXL 4.0 closes the gap in firmware</div>
+          <div class="bear-desc">CXL is evolving. CXL 3.0 added fabric switching and peer-to-peer memory. If CXL 4.0 or a subsequent revision adds memory-side processing, programmable prefetch engines, or an extensible metadata protocol — effectively turning CXL controllers into domain-specific compute units — the KV-ASIC's advantages become features of an open standard rather than proprietary silicon. The ASIC becomes firmware on a commodity controller.</div>
+        </div>
+      </div>
+    </div>
+
+    <h2>Go/No-Go: What Needs to Be True</h2>
+
+    <p>For a chip architect, investor, or infrastructure team deciding whether to build or bet on this concept, the relevant question is not "is the architecture elegant?" but "what market conditions make this necessary?" Here is the checklist.</p>
+
+    <div class="criteria-list">
+      <div class="criterion c-must">
+        <span class="criterion-icon">MUST</span>
+        <div class="criterion-text"><strong>Long context becomes standard, not exceptional.</strong> The KV-ASIC's value is proportional to context length. If 128K+ context becomes the baseline expectation for production assistants and agents — not an edge case — HBM pressure becomes structural and unavoidable.</div>
+      </div>
+      <div class="criterion c-must">
+        <span class="criterion-icon">MUST</span>
+        <div class="criterion-text"><strong>Multi-turn agent inference requires day-scale KV persistence.</strong> If agents need to maintain coherent KV state across hours or days — not just a single session — the archival tier and persistence layer become critical infrastructure, not optional features.</div>
+      </div>
+      <div class="criterion c-watch">
+        <span class="criterion-icon">WATCH</span>
+        <div class="criterion-text"><strong>CXL memory pools reach &lt;300 ns at &lt;4× HBM cost.</strong> The economic case only holds if the slower memory tiers are cheap enough to justify the delta. If CXL DRAM stays expensive (close to HBM pricing), the TCO advantage collapses.</div>
+      </div>
+      <div class="criterion c-watch">
+        <span class="criterion-icon">WATCH</span>
+        <div class="criterion-text"><strong>Foundry N3/N2 access becomes available to non-hyperscalers.</strong> The compression and prediction logic needs to run at high clock rates with low area footprint. If advanced nodes remain NVIDIA/AMD/Apple territory, merchant ASIC startups face a 2–3 generation disadvantage on power efficiency.</div>
+      </div>
+      <div class="criterion c-risk">
+        <span class="criterion-icon">RISK</span>
+        <div class="criterion-text"><strong>NVIDIA does not ship a native KV-tiering solution in the next GPU generation.</strong> This is the single biggest binary risk. Monitor NVLink Switch 4, GB300 memory architecture, and any TensorRT-LLM changelog mentioning "KV offload" or "prefix cache" at the hardware level.</div>
+      </div>
+    </div>
+
+    <div class="verdict">
+      <div class="v-label">Architecture in one sentence</div>
+      <div class="v-line">A KV-ASIC is a <span class="hl">semantic memory controller</span> for transformer inference: it sits between GPU HBM and pooled memory, understands KV-cache structure, <span class="hl">compresses and deduplicates</span> blocks, prefetches decode windows, multicasts shared prefixes, and exposes <span class="hl">runtime intent</span> instead of raw addresses.</div>
+    </div>
+
+    <hr>
+
+    <p>The era of treating transformer inference memory as generic compute memory is ending. As context windows grow longer, concurrent sessions multiply, and serving costs come under pressure, the systems that win will be those that understand the semantics of what they're caching — not just how fast they can move it.</p>
+
+    <p class="footnote">This analysis draws on architectural principles from transformer inference serving systems. The KV-ASIC concept described here is a design framework, not a reference to any specific commercial product.</p>
+
+  </article>
+</main>
+
+<script>
+  const bar = document.getElementById('progress');
+  window.addEventListener('scroll', () => {
+    const scrollTop = window.scrollY;
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const pct = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+    bar.style.width = pct + '%';
+  });
+</script>
+<footer class="site-footer site-global-footer" aria-label="Article footer">
+  <div class="site-footer-inner">
+    <span>© MANISH AI · Technical writing on AI infrastructure, memory systems, and accelerator architecture.</span>
+    <span><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></span>
+    <div id="webmentions" hidden></div>
+  </div>
+</footer>
+</body>
+</html>
