@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>CXL and the Search for a New Memory Tier in AI Inference | MANISH AI</title>
+<meta name="description" content="A systems essay on CXL memory as a new warm tier for AI inference, explaining where it fits between GPU HBM, CPU DRAM, NVMe storage, and long-context KV cache pressure."/>
+<meta name="keywords" content="CXL memory, AI inference, KV cache, HBM, CXL Type 3, memory tiering, long context inference, GPU memory, CPU DRAM, NVMe offload, AI infrastructure"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/cxl-memory-tier-ai-inference.html"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="CXL and the Search for a New Memory Tier in AI Inference | MANISH AI"/>
+<meta property="og:description" content="A systems essay on CXL memory as a new warm tier for AI inference, explaining where it fits between GPU HBM, CPU DRAM, NVMe storage, and long-context KV cache pressure."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/cxl-memory-tier-ai-inference.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:image" content="https://manishklach.github.io/og/cxl-memory-tier-ai-inference.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="CXL and the Search for a New Memory Tier in AI Inference by MANISH AI"/>
+<meta property="article:published_time" content="2026-05-24T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-05-24T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="AI Memory Systems"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="CXL and the Search for a New Memory Tier in AI Inference"/>
+<meta name="twitter:description" content="A systems essay on CXL memory as a new warm tier for AI inference, explaining where it fits between GPU HBM, CPU DRAM, NVMe storage, and long-context KV cache pressure."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/cxl-memory-tier-ai-inference.png"/>
+<meta name="twitter:image:alt" content="CXL and the Search for a New Memory Tier in AI Inference by MANISH AI"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"CXL and the Search for a New Memory Tier in AI Inference",
+  "description":"A systems essay on CXL memory as a new warm tier for AI inference, explaining where it fits between GPU HBM, CPU DRAM, NVMe storage, and long-context KV cache pressure.",
+  "url":"https://manishklach.github.io/writings/cxl-memory-tier-ai-inference.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/cxl-memory-tier-ai-inference.html",
+  "datePublished":"2026-05-24",
+  "dateModified":"2026-05-24",
+  "articleSection":"AI Memory Systems",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="stylesheet" href="/assets/site.css"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+:root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #5d667a;
+      --soft: #f5f7fb;
+      --paper: #ffffff;
+      --line: #d9deea;
+      --accent: #246bfe;
+      --accent-2: #0e9f6e;
+      --warm: #b45309;
+      --code-bg: #111827;
+      --code-ink: #e5edf9;
+      --shadow: 0 18px 50px rgba(25, 36, 62, 0.13);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(36, 107, 254, 0.12), transparent 34rem),
+        linear-gradient(180deg, #f7f9fd 0%, #eef2f8 42%, #f9fafc 100%);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.68;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    .page {
+      width: calc(100% - 36px);
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    header {
+      padding: 54px 0 24px;
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      color: #0b5cc9;
+      background: rgba(36, 107, 254, 0.09);
+      border: 1px solid rgba(36, 107, 254, 0.18);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 0.82rem;
+      font-weight: 720;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .kicker::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-2);
+      box-shadow: 0 0 0 5px rgba(14, 159, 110, 0.12);
+    }
+
+    h1 {
+      margin: 22px 0 16px;
+      max-width: 920px;
+      font-size: clamp(2.45rem, 6vw, 5.7rem);
+      line-height: 0.98;
+      letter-spacing: 0;
+    }
+
+    .dek {
+      max-width: 820px;
+      color: #354056;
+      font-size: clamp(1.08rem, 2vw, 1.35rem);
+      line-height: 1.58;
+      margin: 0;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .meta span {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .hero-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 22px;
+      margin: 22px 0 34px;
+      align-items: stretch;
+    }
+
+    .summary {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 26px;
+      min-width: 0;
+    }
+
+    .summary h2,
+    .toc h2 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #2d3a53;
+    }
+
+    .summary p {
+      margin: 0;
+      color: #344059;
+      font-size: 1.04rem;
+    }
+
+    .toc {
+      background: #172033;
+      color: #f8fbff;
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .toc h2 {
+      color: #dbe7ff;
+    }
+
+    .toc ol {
+      margin: 0;
+      padding-left: 22px;
+    }
+
+    .toc li {
+      margin: 7px 0;
+      color: #d4dced;
+    }
+
+    .toc a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 22px;
+      padding-bottom: 64px;
+    }
+
+    article {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 10px 36px rgba(25, 36, 62, 0.08);
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    section {
+      padding: clamp(24px, 4vw, 42px);
+      border-top: 1px solid var(--line);
+      min-width: 0;
+    }
+
+    section:first-child {
+      border-top: 0;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: clamp(1.48rem, 3vw, 2.25rem);
+      line-height: 1.16;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 26px 0 9px;
+      font-size: 1.14rem;
+      line-height: 1.28;
+    }
+
+    p {
+      margin: 14px 0;
+    }
+
+    .lead {
+      color: #344059;
+      font-size: 1.1rem;
+      line-height: 1.72;
+    }
+
+    .callout {
+      margin: 22px 0;
+      padding: 18px 20px;
+      border-left: 4px solid var(--accent);
+      background: #f1f5ff;
+      color: #293752;
+      border-radius: 0 8px 8px 0;
+    }
+
+    .callout strong {
+      color: #153e98;
+    }
+
+    pre {
+      margin: 20px 0;
+      padding: 18px 20px;
+      overflow-x: auto;
+      background:
+        linear-gradient(90deg, rgba(36, 107, 254, 0.18), transparent 34%),
+        var(--code-bg);
+      color: var(--code-ink);
+      border-radius: 8px;
+      border: 1px solid rgba(36, 107, 254, 0.32);
+      box-shadow: inset 4px 0 0 rgba(36, 107, 254, 0.84);
+      line-height: 1.5;
+      font-size: 0.92rem;
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .metric-table {
+      width: 100%;
+      margin: 24px 0;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.95rem;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 8px 28px rgba(25, 36, 62, 0.07);
+    }
+
+    .metric-table caption {
+      caption-side: bottom;
+      padding-top: 10px;
+      color: var(--muted);
+      font-size: 0.84rem;
+      text-align: left;
+    }
+
+    .metric-table th,
+    .metric-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    .metric-table th {
+      background: var(--soft);
+      color: #243049;
+      font-size: 0.82rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .metric-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .metric-table td:first-child {
+      font-weight: 720;
+      color: #172033;
+    }
+
+    .metric-table tr.highlight-cxl td {
+      background: #f1f5ff;
+      box-shadow: inset 4px 0 0 var(--accent);
+    }
+
+    .diagram {
+      margin: 24px 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, #fbfcff 0%, #f4f7fc 100%);
+      padding: 20px;
+      overflow-x: auto;
+      max-width: 100%;
+      min-width: 0;
+    }
+
+    .diagram svg {
+      display: block;
+      width: 100%;
+      min-width: 720px;
+      height: auto;
+    }
+
+    .diagram-title {
+      margin: 0 0 14px;
+      color: #2b3650;
+      font-size: 0.9rem;
+      font-weight: 760;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .vendor-table td:nth-child(2),
+    .vendor-table td:nth-child(3) {
+      color: #36435b;
+    }
+
+    .sources {
+      margin: 12px 0 0;
+      padding-left: 20px;
+      color: #3d4860;
+      font-size: 0.95rem;
+    }
+
+    .sources li {
+      margin: 8px 0;
+    }
+
+    .tile {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      background: var(--soft);
+    }
+
+    .tile h3 {
+      margin-top: 0;
+    }
+
+    .tile p {
+      margin-bottom: 0;
+      color: #3f4a61;
+    }
+
+    .hierarchy {
+      display: grid;
+      gap: 10px;
+      margin: 22px 0 8px;
+    }
+
+    .tier {
+      display: grid;
+      grid-template-columns: 170px 1fr;
+      gap: 14px;
+      align-items: center;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcff;
+    }
+
+    .tier strong {
+      color: #152039;
+    }
+
+    .tier span {
+      color: var(--muted);
+    }
+
+    .fast {
+      border-left: 5px solid #ef4444;
+    }
+
+    .balanced {
+      border-left: 5px solid var(--accent);
+    }
+
+    .capacity {
+      border-left: 5px solid var(--accent-2);
+    }
+
+    .future {
+      border-left: 5px solid var(--warm);
+    }
+
+    footer {
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding: 0 0 42px;
+    }
+
+    @media (min-width: 781px) {
+      main {
+        grid-template-columns: minmax(0, 1fr) 280px;
+        align-items: start;
+      }
+
+      .toc {
+        position: sticky;
+        top: 24px;
+      }
+    }
+
+    @media (max-width: 780px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .tier {
+        grid-template-columns: 1fr;
+      }
+
+      header {
+        padding-top: 34px;
+      }
+
+      h1 {
+        font-size: clamp(2.05rem, 10vw, 2.7rem);
+      }
+
+      .metric-table {
+        display: block;
+        overflow-x: auto;
+        max-width: 100%;
+      }
+
+      .metric-table th,
+      .metric-table td {
+        min-width: 160px;
+      }
+
+      pre {
+        max-width: 100%;
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .page {
+        width: auto;
+        margin: 0;
+      }
+
+      header,
+      section {
+        padding-left: 0;
+        padding-right: 0;
+      }
+
+      .summary,
+      .toc,
+      article {
+        box-shadow: none;
+      }
+
+      .toc {
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--line);
+      }
+
+      .toc h2,
+      .toc li {
+        color: var(--ink);
+      }
+    }
+
+html.dark {
+  color-scheme: dark;
+  --ink: #edf3ff;
+  --muted: #aab6ca;
+  --soft: #151d2b;
+  --paper: #101722;
+  --line: #2a374d;
+  --accent: #8fb7ff;
+  --accent-2: #6ee7bf;
+  --warm: #f3b66d;
+  --code-bg: #080c13;
+  --code-ink: #e5edf9;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
+}
+html.dark body {
+  background:
+    radial-gradient(circle at top left, rgba(87, 139, 255, 0.15), transparent 34rem),
+    linear-gradient(180deg, #0b1019 0%, #0d1320 42%, #0a0e15 100%);
+  color: var(--ink);
+}
+html.dark .site-header,
+html.dark .summary,
+html.dark article,
+html.dark .metric-table,
+html.dark .tile,
+html.dark .tier,
+html.dark .diagram,
+html.dark .callout,
+html.dark .meta span {
+  background: var(--paper);
+  border-color: var(--line);
+}
+html.dark .kicker { color: #c8dcff; background: rgba(143, 183, 255, 0.12); border-color: rgba(143, 183, 255, 0.26); }
+html.dark .dek,
+html.dark .summary p,
+html.dark .lead,
+html.dark .tile p,
+html.dark .sources,
+html.dark .vendor-table td:nth-child(2),
+html.dark .vendor-table td:nth-child(3) { color: var(--muted); }
+html.dark .summary h2,
+html.dark .diagram-title,
+html.dark .metric-table th,
+html.dark .metric-table td:first-child,
+html.dark .tier strong,
+html.dark h1,
+html.dark h2,
+html.dark h3 { color: var(--ink); }
+html.dark .toc { background: #0a111c; color: #f8fbff; border: 1px solid var(--line); }
+html.dark .toc h2 { color: #dbe7ff; }
+html.dark .toc li { color: #d4dced; }
+html.dark .metric-table th { background: #151d2b; }
+html.dark .metric-table td { border-color: var(--line); color: #d9e4f6; }
+html.dark .metric-table tr.highlight-cxl td { background: #102038; box-shadow: inset 4px 0 0 var(--accent); }
+html.dark .diagram { background: linear-gradient(180deg, #111927 0%, #0f1724 100%); }
+html.dark .diagram svg text[fill="#172033"],
+html.dark .diagram svg text[fill="#2b3650"] { fill: #edf3ff; }
+html.dark .diagram svg text[fill="#5d667a"],
+html.dark .diagram svg text[fill="#3d4860"] { fill: #aab6ca; }
+html.dark .diagram svg rect[fill="#ffffff"],
+html.dark .diagram svg rect[fill="#f8fafc"] { fill: #111927; stroke: #2a374d; }
+html.dark .diagram svg rect[fill="#fbfcff"] { fill: #111927; }
+html.dark .diagram svg rect[fill="#f4f7fc"] { fill: #151d2b; }
+html.dark .callout { color: #dbe7ff; background: #102038; }
+html.dark .callout strong { color: #c8dcff; }
+html.dark .callout p { color: #d9e4f6; }
+html.dark .metric-table caption,
+html.dark footer { color: var(--muted); }
+html.dark .tier span { color: var(--muted); }
+html.dark .fast { border-left-color: #ff8e8e; }
+html.dark .balanced { border-left-color: var(--accent); }
+html.dark .capacity { border-left-color: var(--accent-2); }
+html.dark .future { border-left-color: var(--warm); }
+.site-tools {
+  width: calc(100% - 36px);
+  max-width: 1120px;
+  margin: 18px auto 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.back-link { color: inherit; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
+#theme-toggle {
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  padding: 6px 11px;
+  font: inherit;
+  cursor: pointer;
+}
+.reading-meta {
+  width: calc(100% - 36px);
+  max-width: 1120px;
+  margin: 10px auto 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.site-footer.site-global-footer {
+  width: calc(100% - 36px);
+  max-width: 1120px;
+  margin: 0 auto 48px;
+  padding: 24px 0 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.site-footer-inner { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.site-footer a { color: inherit; }
+.logo-word{display:inline-flex;align-items:baseline;gap:.01em;white-space:nowrap}.logo-i{display:inline-block;font-size:.84em;margin:0 .055em 0 .025em;font-style:normal;font-weight:900;line-height:.95;transform:translateY(-.02em)}
+
+</style>
+</head>
+<body>
+  <div class="site-tools" aria-label="Site tools">
+    <a class="back-link" href="/writings.html"><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span> / Writings</a>
+    <button id="theme-toggle" type="button" aria-label="Toggle light and dark mode">Theme</button>
+  </div>
+  <p class="reading-meta"><time datetime="2026-05-24">May 24, 2026</time> · AI Memory Systems · 16 min read</p>
+<div class="page">
+    <header>
+      <div class="kicker">AI Infrastructure Essay</div>
+      <h1>CXL and the Search for a New Memory Tier in AI Inference</h1>
+      <p class="dek">As AI inference shifts from short prompts to long-context, high-concurrency, agentic workloads, the limiting factor is no longer just compute. Increasingly, the decisive constraint is memory: how much is available, how fast it can be accessed, and how intelligently it can be tiered.</p>
+      <div class="meta">
+        <span>Topic: CXL memory, KV cache, AI inference</span>
+        <span>Format: standalone HTML essay</span>
+        <span>Use: readable in browser or printable to PDF</span>
+      </div>
+    </header>
+
+    <div class="hero-panel">
+      <aside class="summary" aria-label="Executive summary">
+        <h2>Core Argument</h2>
+        <p>CXL is not trying to replace GPU HBM. It is trying to create a practical middle tier: larger and cheaper than HBM, faster and more memory-like than storage, and more standardized than proprietary fabric memory. Its value depends on whether AI inference remains memory-hungry enough to justify that new tier.</p>
+      </aside>
+    </div>
+
+    <main>
+      <article>
+        <section id="memory-problem">
+          <h2>The Memory Problem Behind Modern AI Inference</h2>
+          <p class="lead">Modern AI inference is increasingly constrained not just by compute, but by memory. GPUs can perform enormous numbers of operations per second, but large language models require fast access to model weights, activations, and, most importantly for long-context inference, the KV cache.</p>
+          <p>The KV cache stores the attention keys and values generated from previous tokens. It allows the model to avoid recomputing the full history every time it produces a new token. This is essential for efficient inference. But the cache grows with sequence length, number of layers, number of attention heads, batch size, and precision.</p>
+          <p>As context windows expand and many users are served concurrently, the KV cache can consume a massive amount of memory. This creates a practical infrastructure question:</p>
+          <pre><code>Where should the KV cache live?</code></pre>
+          <div class="callout">
+            <strong>Do the math: why HBM alone breaks</strong>
+            <p>For a transformer using grouped-query attention, the practical KV cache estimate is:</p>
+            <pre><code>KV cache per sequence =
+2 x layers x KV_heads x head_dim x seq_len x bytes_per_value</code></pre>
+            <p>For a Llama-3-class 70B model with 80 layers, 8 KV heads, 128 head dimension, 128K context, and FP16 KV storage, that is roughly <strong>40 GB per active sequence</strong>. At 32 concurrent users, the KV cache alone is about <strong>1.25 TiB</strong>, before model weights, runtime buffers, fragmentation, and scheduling headroom.</p>
+            <p>The simpler full-attention shortcut, <code>2 x layers x hidden_dim x seq_len x bytes</code>, produces a much larger <strong>~335 GB per sequence</strong> estimate because it assumes every query head has its own KV state. That is useful as a worst-case intuition, but GQA/MQA is exactly why modern LLMs avoid that full blow-up.</p>
+          </div>
+          <p>The fastest place is GPU HBM. The cheapest and largest place is storage. But neither extreme is perfect. HBM is fast but expensive and limited. Storage is abundant but too slow for many real-time inference paths.</p>
+        </section>
+
+        <section id="where-cxl-fits">
+          <h2>Where CXL Fits</h2>
+          <p>CXL, or Compute Express Link, is an open interconnect standard that allows CPUs, accelerators, and memory devices to communicate with low latency and cache or memory semantics over PCIe-based physical links. In simpler terms, it can make additional memory appear closer to the compute system than traditional storage, while allowing more flexible memory expansion and pooling than conventional server DRAM.</p>
+          <p>For memory expansion, the relevant hardware category is usually a <strong>CXL Type 3 device</strong>. Type 3 devices expose device-attached memory to a host through <code>CXL.mem</code>, alongside <code>CXL.io</code> for discovery, configuration, and management. That is the specification domain behind most CXL memory expanders, persistent memory modules, and memory pooling appliances.</p>
+          <table class="metric-table">
+            <caption>CXL sits in the missing middle: materially cheaper and larger than HBM, much lower latency and more memory-like than NVMe. Values are approximate, platform-dependent ranges meant for tier comparison rather than procurement.</caption>
+            <thead>
+              <tr>
+                <th>Memory Tier</th>
+                <th>Bandwidth</th>
+                <th>Latency</th>
+                <th>Capacity per Server</th>
+                <th>Relative $/GB</th>
+                <th>Best Use Case</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>GPU HBM3e</td>
+                <td>~3-5 TB/s per high-end GPU class</td>
+                <td>~100 ns class, closest to GPU compute</td>
+                <td>80-192 GB per GPU</td>
+                <td>Highest</td>
+                <td>Active weights, hottest KV cache, latency-critical decode path.</td>
+              </tr>
+              <tr class="highlight-cxl">
+                <td>CXL 3.0 Memory</td>
+                <td>~64-128 GB/s class with link aggregation</td>
+                <td>~250-500 ns class depending on topology</td>
+                <td>1-8 TB+ per server or appliance class</td>
+                <td>Middle</td>
+                <td>Warm KV cache, context spill, memory expansion, model-serving headroom.</td>
+              </tr>
+              <tr>
+                <td>DDR5 DRAM</td>
+                <td>~200-400 GB/s aggregate server class</td>
+                <td>~80-120 ns CPU-local class</td>
+                <td>1-2 TB common, higher in dense servers</td>
+                <td>Baseline</td>
+                <td>CPU host memory, preprocessing, retrieval, orchestration, staging.</td>
+              </tr>
+              <tr>
+                <td>NVMe SSD</td>
+                <td>~7-14 GB/s per high-end Gen4/Gen5 drive</td>
+                <td>~10,000-50,000 ns through storage path</td>
+                <td>30-60 TB+ per server</td>
+                <td>Lowest</td>
+                <td>Cold cache, checkpointing, persistence, archival context.</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>For AI inference, CXL is attractive because it may create a new memory tier:</p>
+          <pre><code>GPU HBM  ->  CXL memory  ->  CPU DRAM  ->  NVMe / storage</code></pre>
+          <div class="callout">
+            <strong>The key idea:</strong> CXL is not the premium tier for the hottest data. GPU HBM remains that tier. CXL is a candidate for warm, large, memory-like capacity, especially for KV cache blocks that do not need to occupy scarce HBM at every moment.
+          </div>
+          <p>The goal is to reduce pressure on HBM by moving some memory-heavy data, such as less immediately needed KV cache blocks, into a larger external memory pool that is still much faster and more memory-like than SSD storage.</p>
+          <div class="diagram" aria-label="KV cache tiering diagram">
+            <p class="diagram-title">KV Cache Tiering Path</p>
+            <svg viewBox="0 0 980 260" role="img" aria-labelledby="kv-title kv-desc">
+              <title id="kv-title">KV cache movement across memory tiers</title>
+              <desc id="kv-desc">Tokens flow into GPUs, hottest KV blocks stay in HBM, warm blocks spill to CXL memory, and cold blocks fall back to NVMe storage.</desc>
+              <defs>
+                <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L0,6 L9,3 z" fill="#246bfe"></path>
+                </marker>
+                <linearGradient id="hot" x1="0" x2="1">
+                  <stop offset="0%" stop-color="#fee2e2"></stop>
+                  <stop offset="100%" stop-color="#fff7ed"></stop>
+                </linearGradient>
+                <linearGradient id="warm" x1="0" x2="1">
+                  <stop offset="0%" stop-color="#dbeafe"></stop>
+                  <stop offset="100%" stop-color="#ecfdf5"></stop>
+                </linearGradient>
+              </defs>
+              <rect x="20" y="48" width="140" height="82" rx="8" fill="#ffffff" stroke="#d9deea"></rect>
+              <text x="90" y="82" text-anchor="middle" font-size="16" font-weight="700" fill="#172033">Tokens</text>
+              <text x="90" y="106" text-anchor="middle" font-size="12" fill="#5d667a">prompt + decode</text>
+              <line x1="165" y1="89" x2="238" y2="89" stroke="#246bfe" stroke-width="3" marker-end="url(#arrow)"></line>
+
+              <rect x="250" y="28" width="170" height="122" rx="8" fill="url(#hot)" stroke="#fca5a5"></rect>
+              <text x="335" y="65" text-anchor="middle" font-size="17" font-weight="800" fill="#172033">GPU HBM</text>
+              <text x="335" y="91" text-anchor="middle" font-size="12" fill="#5d667a">model weights</text>
+              <text x="335" y="111" text-anchor="middle" font-size="12" fill="#5d667a">hottest KV blocks</text>
+              <text x="335" y="132" text-anchor="middle" font-size="12" fill="#991b1b">lowest latency</text>
+
+              <line x1="425" y1="89" x2="498" y2="89" stroke="#246bfe" stroke-width="3" marker-end="url(#arrow)"></line>
+              <rect x="510" y="28" width="180" height="122" rx="8" fill="url(#warm)" stroke="#93c5fd"></rect>
+              <text x="600" y="65" text-anchor="middle" font-size="17" font-weight="800" fill="#172033">CXL Type 3</text>
+              <text x="600" y="91" text-anchor="middle" font-size="12" fill="#5d667a">CXL.mem expander</text>
+              <text x="600" y="111" text-anchor="middle" font-size="12" fill="#5d667a">warm KV pool</text>
+              <text x="600" y="132" text-anchor="middle" font-size="12" fill="#1d4ed8">capacity relief</text>
+
+              <line x1="695" y1="89" x2="768" y2="89" stroke="#246bfe" stroke-width="3" marker-end="url(#arrow)"></line>
+              <rect x="780" y="48" width="160" height="82" rx="8" fill="#f8fafc" stroke="#d9deea"></rect>
+              <text x="860" y="82" text-anchor="middle" font-size="16" font-weight="700" fill="#172033">NVMe SSD</text>
+              <text x="860" y="106" text-anchor="middle" font-size="12" fill="#5d667a">cold spillover</text>
+
+              <path d="M600 162 C585 205, 395 205, 335 162" fill="none" stroke="#0e9f6e" stroke-width="3" stroke-dasharray="7 7" marker-end="url(#arrow)"></path>
+              <text x="468" y="224" text-anchor="middle" font-size="13" font-weight="700" fill="#0f766e">runtime pulls reused KV blocks back toward HBM</text>
+            </svg>
+          </div>
+        </section>
+
+        <section id="alternatives">
+          <h2>Alternatives to CXL</h2>
+          <p>CXL is only one answer to the memory bottleneck. It competes with several other approaches, each with a different balance of speed, cost, capacity, maturity, and operational complexity.</p>
+
+          <h3>1. Keeping Everything in GPU HBM</h3>
+          <p>The simplest and highest-performance approach is to keep the model and KV cache inside GPU HBM.</p>
+          <pre><code>model weights + active KV cache = GPU HBM</code></pre>
+          <p>HBM offers extremely high bandwidth and low latency. For latency-sensitive workloads, this is ideal. There is no need to fetch KV blocks from slower external memory tiers, and system complexity is reduced.</p>
+          <p>The drawback is cost and capacity. GPU HBM is expensive and limited. If a workload mainly needs more memory capacity rather than more compute, buying more GPUs just to get more HBM can be inefficient. A cluster may end up with underutilized compute simply because memory is the bottleneck.</p>
+
+          <h3>2. CPU DRAM Offload</h3>
+          <p>A common alternative is to offload KV cache from GPU memory into regular server DRAM.</p>
+          <pre><code>hot KV cache  = GPU HBM
+warm KV cache = CPU DRAM</code></pre>
+          <p>CPU DRAM is far cheaper and more abundant than GPU HBM. It is also already present in conventional servers, which makes this approach practical and accessible.</p>
+          <p>The problem is bandwidth and latency. Moving data between GPU and CPU memory usually involves PCIe or a similar interconnect. That is much slower than accessing local HBM. If the inference runtime frequently needs KV blocks that have been offloaded to CPU memory, performance can degrade.</p>
+
+          <h3>3. NVMe and SSD Offload</h3>
+          <p>Another alternative is to spill KV cache to fast SSDs. This offers much greater capacity and lower cost per gigabyte.</p>
+          <pre><code>hot KV cache  = GPU HBM
+warm KV cache = CPU DRAM or CXL memory
+cold KV cache = NVMe SSD</code></pre>
+          <p>NVMe storage is dramatically cheaper per gigabyte than HBM or DRAM. It can support very large context windows and large numbers of stored sessions. But latency is the key limitation. SSDs are fast compared with older storage, but they are slow compared with memory.</p>
+          <p>Therefore, NVMe is better thought of as a cold tier. It may be useful for very long-running sessions, archival context, checkpointing, or workloads where latency is less strict. It is usually not the preferred place for active KV cache in high-performance inference.</p>
+
+          <h3>4. CXL Memory Expansion and Pooling</h3>
+          <p>CXL attempts to occupy the middle ground. It is not as fast as GPU HBM, but it can be much larger and cheaper. It is not as cheap as SSD storage, but it is far faster and more memory-like.</p>
+          <pre><code>GPU HBM    = hottest KV blocks and model-critical data
+CXL memory = large shared pool for warm KV cache
+NVMe       = cold spillover and persistence</code></pre>
+          <p>The main promise is better utilization. Instead of buying more GPUs just to obtain more HBM, an operator can attach or pool additional memory. This can help serve longer contexts, more concurrent users, or agentic workflows that maintain larger working histories.</p>
+          <p>CXL also matters because it is a standard. Proprietary memory fabrics can be powerful, but standards tend to encourage broader ecosystems: memory modules, switches, CPUs, accelerators, servers, and software stacks that interoperate.</p>
+          <p>However, CXL is not magic. It still has latency, bandwidth, software, topology, and adoption constraints. Performance depends heavily on how the inference runtime decides what data should live in HBM versus CXL memory. Poor placement can erase the benefits. Good placement can make CXL a useful pressure valve for memory-bound inference.</p>
+
+          <h3>5. Distributed KV Cache Across GPUs or Nodes</h3>
+          <p>Another strategy is to distribute KV cache across multiple GPUs or servers.</p>
+          <pre><code>GPU 1 stores part of the KV cache
+GPU 2 stores part of the KV cache
+GPU 3 stores part of the KV cache</code></pre>
+          <p>This can work well in large-scale systems, especially when paired with high-speed interconnects such as NVLink, NVSwitch, InfiniBand, or high-performance Ethernet with RDMA.</p>
+          <p>The upside is that the system uses memory already present across the cluster. The downside is complexity. Distributed cache management, network traffic, synchronization, and failure handling all become harder. Performance also depends on the quality of the interconnect.</p>
+
+          <h3>6. KV Cache Compression</h3>
+          <p>Instead of expanding memory, another path is to reduce how much memory the KV cache consumes.</p>
+          <pre><code>FP16 KV cache  ->  INT8 KV cache  ->  INT4 KV cache</code></pre>
+          <p>Lower precision reduces the number of bytes per cached key/value entry. Other methods selectively evict less important tokens, keep only recent context, compress older context, or use approximate attention techniques.</p>
+          <p>The advantage is obvious: if the KV cache becomes smaller, the system needs less HBM, less DRAM, less CXL memory, and less storage. The tradeoff is quality and complexity. More aggressive compression may reduce model accuracy, degrade recall over long contexts, or introduce edge-case behavior.</p>
+
+          <h3>7. Model Architecture Changes</h3>
+          <p>Another way to reduce KV pressure is to change the model itself. Standard transformer attention creates large KV caches. Newer or modified architectures can reduce this burden.</p>
+          <pre><code>Multi-Query Attention
+Grouped-Query Attention
+sliding-window attention
+sparse attention
+state-space models
+linear attention variants
+hybrid architectures</code></pre>
+          <p>These architectural changes are powerful because they attack the root cause. But they also require model-level choices. Infrastructure providers cannot always assume customers will use a specific architecture. Many high-value workloads will continue to run transformer models with large KV caches, especially when long-context accuracy matters.</p>
+
+          <h3>8. Photonic and Optical Memory Interconnects</h3>
+          <p>A more future-facing alternative is photonic memory connectivity. Photonics uses light rather than electrical signaling for data movement. In AI infrastructure, the most relevant near-term use is not necessarily all-optical memory, but optical interconnects that move data between compute and memory with higher bandwidth and potentially better power efficiency.</p>
+          <p>The motivation is clear: as AI clusters scale, moving data becomes one of the dominant constraints. Electrical links face limits in bandwidth, reach, heat, and energy efficiency. Optical links may help connect memory pools, accelerators, and racks more efficiently.</p>
+          <p>For now, photonic memory systems are less mature than GPU HBM, CPU DRAM offload, NVMe tiering, or CXL memory expansion. But the direction is important. If AI workloads continue to become more memory-bound, optical interconnects may become central to next-generation memory architectures.</p>
+        </section>
+
+        <section id="software">
+          <h2>The Software Bottleneck: NUMA, Pages, and Jitter</h2>
+          <p>CXL memory expansion is not only a hardware story. It becomes useful for inference only when the software stack can place memory intentionally. If a CXL pool is exposed to Linux as a slower NUMA node and the inference runtime treats it as ordinary anonymous memory, the kernel may migrate pages reactively, compact huge pages, or fault data into the wrong tier at exactly the wrong time.</p>
+          <p>That matters because token generation is latency-sensitive. A background page migration, a reactive page fault, or a poorly timed huge-page operation can create tail-latency spikes that are much more damaging than a modest average-latency penalty. For high-concurrency serving, jitter can be as important as raw bandwidth.</p>
+          <div class="callout">
+            <strong>Runtime implication:</strong> Systems such as vLLM, SGLang, TensorRT-LLM, or custom serving stacks need explicit awareness of memory tiers. The practical pattern is to pin hot KV blocks in HBM, allocate warm blocks in CXL memory through a deliberate block manager, and avoid letting generic OS policies make token-path placement decisions implicitly.
+          </div>
+          <pre><code>bad path:
+anonymous allocation -> page fault -> kernel migrates into slow tier -> decode jitter
+
+better path:
+runtime block manager -> explicit HBM/CXL placement -> predictable token latency</code></pre>
+        </section>
+
+        <section id="vendors">
+          <h2>Vendor Reality Check</h2>
+          <p>The CXL ecosystem is no longer purely theoretical, but it is also not yet as mature as PCIe SSDs or conventional DDR memory. The market is in the early deployment phase: modules, controllers, platform validation, and software stacks are converging, with adoption led by hyperscale, cloud, HPC, in-memory database, and AI inference use cases.</p>
+          <table class="metric-table vendor-table">
+            <caption>Status is summarized from public product pages and announcements available as of May 2026. Exact availability can vary by region, OEM platform, and customer qualification cycle.</caption>
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Representative CXL Offering</th>
+                <th>Status / Signal</th>
+                <th>Relevant Use Case</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Samsung</td>
+                <td>CMM-D and CMM-H memory modules</td>
+                <td>CMM-D sampling; CMM-H positioned as a DRAM + NAND CXL Type 3 device for tiered memory and persistence.</td>
+                <td>Memory expansion, tiered memory, AI inference, analytics, in-memory databases.</td>
+              </tr>
+              <tr>
+                <td>Micron</td>
+                <td>CZ120 CXL memory expansion module</td>
+                <td>Publicly positioned for Supermicro Petascale platforms and CXL 2.0 adoption.</td>
+                <td>Server memory expansion for AI, HPC, and memory-intensive platforms.</td>
+              </tr>
+              <tr>
+                <td>Astera Labs</td>
+                <td>Leo CXL Smart Memory Controllers</td>
+                <td>Controller and add-in-card platform for memory expansion, sharing, and pooling; public cloud validation signals emerging platform adoption.</td>
+                <td>CXL controller layer, pooling, sharing, diagnostics, cloud server memory scaling.</td>
+              </tr>
+              <tr>
+                <td>Marvell</td>
+                <td>Structera CXL controllers</td>
+                <td>Interoperability-focused memory expansion controller platform aimed at high-capacity server memory.</td>
+                <td>CXL controller silicon, memory expansion, near-memory compute direction.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="tradeoffs">
+          <h2>The Tradeoff Map</h2>
+          <p>The memory hierarchy for AI inference can be understood as a tradeoff between speed, capacity, cost, and complexity.</p>
+          <table class="metric-table">
+            <caption>Approximate order-of-magnitude figures. Actual latency and bandwidth depend on GPU, CPU, memory media, PCIe/CXL generation, topology, switch hops, NUMA placement, firmware, and software scheduling.</caption>
+            <thead>
+              <tr>
+                <th>Memory Tier</th>
+                <th>Typical Bandwidth</th>
+                <th>Approximate Latency Class</th>
+                <th>Engineering Interpretation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>GPU HBM3e</td>
+                <td>Several TB/s per GPU, roughly ~1 TB/s+ per HBM stack class</td>
+                <td>Lowest practical tier for GPU-resident data</td>
+                <td>Best for model-critical state and hottest KV blocks.</td>
+              </tr>
+              <tr>
+                <td>Local CPU DDR5</td>
+                <td>~40-60 GB/s per channel, platform aggregate in the hundreds of GB/s</td>
+                <td>~tens to low hundreds of ns CPU-local access class</td>
+                <td>Cheap and mature, but crossing into GPU use adds interconnect cost.</td>
+              </tr>
+              <tr>
+                <td>CXL 2.0 / 3.0 Type 3</td>
+                <td>~32-64 GB/s class per PCIe Gen5 x16 link, higher with aggregation</td>
+                <td>Often modeled as a slower NUMA memory tier, roughly hundreds of ns depending on topology</td>
+                <td>A warm tier: much slower than HBM, much more memory-like than SSD.</td>
+              </tr>
+              <tr>
+                <td>NVMe Gen5 SSD</td>
+                <td>~10-14 GB/s sequential class per high-end drive</td>
+                <td>Microseconds to tens of microseconds through the block/storage path</td>
+                <td>Excellent cold capacity tier, dangerous for active token-path KV reuse.</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="hierarchy">
+            <div class="tier fast">
+              <strong>GPU HBM</strong>
+              <span>Fastest and most expensive. Best for the hottest data and strict latency paths.</span>
+            </div>
+            <div class="tier balanced">
+              <strong>CXL Memory</strong>
+              <span>Large and memory-like. A potential warm tier for KV cache and memory expansion.</span>
+            </div>
+            <div class="tier balanced">
+              <strong>CPU DRAM</strong>
+              <span>Widely available and cheaper than HBM, but slower across the CPU-GPU boundary.</span>
+            </div>
+            <div class="tier capacity">
+              <strong>NVMe / SSD</strong>
+              <span>Huge and cheap, but much slower. Better for cold spillover and persistence.</span>
+            </div>
+            <div class="tier future">
+              <strong>Photonic Links</strong>
+              <span>Future bandwidth and efficiency layer for scaling memory movement across systems.</span>
+            </div>
+          </div>
+
+          <div class="grid">
+            <div class="tile">
+              <h3>When HBM Wins</h3>
+              <p>Shorter contexts, strict latency targets, premium workloads, and deployments where cost is secondary to speed.</p>
+            </div>
+            <div class="tile">
+              <h3>When CXL Becomes Interesting</h3>
+              <p>Long context, high concurrency, large active sessions, and cases where buying more GPUs just for memory is inefficient.</p>
+            </div>
+            <div class="tile">
+              <h3>When NVMe Helps</h3>
+              <p>Cold cache, persistence, archival context, checkpointing, and workloads that can tolerate higher access latency.</p>
+            </div>
+            <div class="tile">
+              <h3>When Software Wins</h3>
+              <p>Compression, better attention patterns, and new model architectures can reduce the memory burden before hardware is added.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="conclusion">
+          <h2>Conclusion</h2>
+          <p>There is no single universal winner. The right architecture depends on workload. For a low-latency chatbot with short prompts, GPU HBM may be enough. For enterprise agents reading long documents while serving many users, HBM alone may become too expensive. For long-context workloads with moderate latency tolerance, DRAM or NVMe offload may be acceptable.</p>
+          <p>For high-concurrency enterprise inference, CXL is compelling because it offers a larger memory tier without falling all the way down to storage-like latency. It represents a serious attempt to introduce a new layer into the AI memory hierarchy: larger than HBM, faster than storage, more flexible than conventional server DRAM, and more standardized than proprietary memory fabrics.</p>
+          <div class="callout">
+            <strong>The deeper point:</strong> AI inference is evolving from a pure compute problem into a memory architecture problem. Long-context, high-concurrency AI needs more than faster GPUs. It needs smarter memory.
+          </div>
+          <p>The sharper stance is this: if context windows keep growing, if agent loops retain longer working state, and if enterprises expect many concurrent users with low latency, a middle memory tier becomes very hard to avoid. CXL is the most credible open-standard candidate for that tier in the near term.</p>
+          <p>The counter-case is equally clear. If model architectures reduce KV cache by an order of magnitude, if compression preserves quality at very low precision, or if GPU HBM capacity expands faster than inference demand, CXL remains important but more specialized. The market will be decided by the gap between model memory appetite and affordable HBM supply.</p>
+        </section>
+
+        <section id="sources">
+          <h2>Sources and Notes</h2>
+          <p>Performance figures are approximate engineering ranges, not guaranteed product specifications. They are included to establish order-of-magnitude boundaries between HBM, DRAM, CXL memory, and NVMe storage.</p>
+          <ul class="sources">
+            <li><a href="https://www.kernel.org/doc/html/latest/driver-api/cxl/devices/device-types.html">Linux kernel CXL device type documentation</a> for CXL device categories and protocol framing.</li>
+            <li><a href="https://semiconductor.samsung.com/us/news-events/tech-blog/samsung-cxl-solutions-cmm-h/">Samsung CMM-H technical blog</a> for CXL Type 3, DRAM + NAND tiered memory, and CXL.mem positioning.</li>
+            <li><a href="https://www.micron.com/about/blog/memory/dram/powering-the-next-generation-of-supermicro-petascale-platforms-with-micron-cz120-memory-expansion-using-cxl">Micron CZ120 and Supermicro Petascale announcement</a> for CXL memory expansion module status.</li>
+            <li><a href="https://www.asteralabs.com/products/cxl-memory-platform/leo-cxl-memory-connectivity-platform/">Astera Labs Leo CXL Memory Connectivity Platform</a> for CXL controller, expansion, sharing, and pooling positioning.</li>
+            <li><a href="https://www.marvell.com/company/newsroom/marvell-extends-cxl-ecosystem-leadership-with-structera-interoperability-across-platforms.html">Marvell Structera interoperability announcement</a> for CXL controller and near-memory compute ecosystem status.</li>
+            <li><a href="https://arxiv.org/abs/2412.12491">Optimizing System Memory Bandwidth with Micron CXL Memory Expansion Modules on Intel Xeon 6 Processors</a> for CXL Type 3 bandwidth and system-level evaluation context.</li>
+          </ul>
+        </section>
+      </article>
+      <nav class="toc" aria-label="Table of contents">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#memory-problem">The Memory Problem</a></li>
+          <li><a href="#where-cxl-fits">Where CXL Fits</a></li>
+          <li><a href="#alternatives">Alternatives to CXL</a></li>
+          <li><a href="#software">Software Bottleneck</a></li>
+          <li><a href="#vendors">Vendor Reality Check</a></li>
+          <li><a href="#tradeoffs">The Tradeoff Map</a></li>
+          <li><a href="#conclusion">Conclusion</a></li>
+          <li><a href="#sources">Sources</a></li>
+        </ol>
+      </nav>
+    </main>
+</div>
+<footer class="site-footer site-global-footer" aria-label="Article footer">
+  <div class="site-footer-inner">
+    <span>© MANISH AI · Technical writing on AI infrastructure, memory systems, and accelerator architecture.</span>
+    <span><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></span>
+    <div id="webmentions" hidden></div>
+  </div>
+</footer>
+</body>
+</html>
