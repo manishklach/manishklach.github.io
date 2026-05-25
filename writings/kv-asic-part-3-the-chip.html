@@ -1,0 +1,1681 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>KV ASIC Part 3: The Chip | MANISH AI</title>
+<meta name="description" content="A deep technical architecture essay opening up a proposed KV infrastructure ASIC: floorplan, DMA engines, metadata SRAM, prefix deduplication, compression, prefetching, timing paths, programming model, and cluster topology."/>
+<meta name="keywords" content="KV ASIC, KV cache, AI inference, CXL memory, HBM, DMA engine, prefix deduplication, KV compression, ASIC architecture, inference infrastructure"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/kv-asic-part-3-the-chip.html"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="KV ASIC Part 3: The Chip | MANISH AI"/>
+<meta property="og:description" content="A deep technical architecture essay opening up a proposed KV infrastructure ASIC: floorplan, DMA engines, metadata SRAM, prefix deduplication, compression, prefetching, timing paths, programming model, and cluster topology."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/kv-asic-part-3-the-chip.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:image" content="https://manishklach.github.io/og/kv-asic-part-3-the-chip.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="KV ASIC Part 3: The Chip by MANISH AI"/>
+<meta property="article:published_time" content="2026-05-24T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-05-24T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="AI Memory Infrastructure"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="KV ASIC Part 3: The Chip"/>
+<meta name="twitter:description" content="A deep technical architecture essay opening up a proposed KV infrastructure ASIC: floorplan, DMA engines, metadata SRAM, prefix deduplication, compression, prefetching, timing paths, programming model, and cluster topology."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/kv-asic-part-3-the-chip.png"/>
+<meta name="twitter:image:alt" content="KV ASIC Part 3: The Chip by MANISH AI"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"KV ASIC Part 3: The Chip",
+  "description":"A deep technical architecture essay opening up a proposed KV infrastructure ASIC: floorplan, DMA engines, metadata SRAM, prefix deduplication, compression, prefetching, timing paths, programming model, and cluster topology.",
+  "url":"https://manishklach.github.io/writings/kv-asic-part-3-the-chip.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/kv-asic-part-3-the-chip.html",
+  "datePublished":"2026-05-24",
+  "dateModified":"2026-05-24",
+  "articleSection":"AI Memory Infrastructure",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+:root {
+  --bg:           #050c14;
+  --surface:      #091523;
+  --surface-2:    #0c1c2e;
+  --border:       rgba(255,255,255,.07);
+  --text:         #ddeeff;
+  --muted:        #6b90b3;
+  --dim:          #3a5c7a;
+  --accent:       #38bdf8;
+  --amber:        #f59e0b;
+  --green:        #34d399;
+  --red:          #f87171;
+  --purple:       #a78bfa;
+  --coral:        #fb7185;
+  --font-d:       'Syne', sans-serif;
+  --font-b:       Georgia, serif;
+  --font-m:       'DM Mono', monospace;
+  --r:            14px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-b);
+  font-size: 18px;
+  line-height: 1.75;
+  overflow-x: hidden;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(56,189,248,.012) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56,189,248,.012) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+.wrap {
+  position: relative; z-index: 1;
+  width: min(820px, 92vw);
+  margin: 0 auto;
+  padding: 0 0 120px;
+}
+
+/* HERO */
+.hero { padding: 90px 0 70px; border-bottom: 1px solid var(--border); }
+.kicker {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-m); font-size: 11px;
+  letter-spacing: .14em; text-transform: uppercase;
+  color: var(--accent); background: rgba(56,189,248,.07);
+  border: 1px solid rgba(56,189,248,.18); border-radius: 999px;
+  padding: 6px 14px; margin-bottom: 32px;
+}
+.kicker::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+h1 {
+  font-family: var(--font-d); font-size: clamp(40px, 6.5vw, 68px);
+  font-weight: 800; line-height: 1.0; letter-spacing: -.035em;
+  color: #fff; margin-bottom: 26px;
+}
+h1 em { font-style: normal; color: var(--accent); }
+.hero-sub { font-size: 19px; color: var(--muted); max-width: 640px; }
+.meta {
+  display: flex; align-items: center; gap: 16px; margin-top: 36px;
+  font-family: var(--font-m); font-size: 12px; color: var(--dim);
+}
+.meta span { color: var(--muted); }
+
+/* PROSE */
+.prose { padding-top: 60px; }
+.prose p { margin-bottom: 1.5em; color: #b0cce6; }
+.prose p:first-of-type { font-size: 20px; color: var(--text); line-height: 1.65; }
+
+h2 {
+  font-family: var(--font-d); font-size: clamp(26px, 3.5vw, 38px);
+  font-weight: 800; letter-spacing: -.03em; color: #fff;
+  margin: 68px 0 18px; line-height: 1.1;
+}
+h3 {
+  font-family: var(--font-d); font-size: 18px; font-weight: 700;
+  color: var(--accent); margin: 32px 0 10px;
+}
+
+/* SECTION CHIP VISUAL */
+.chip-wrap {
+  margin: 48px 0;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: var(--surface);
+}
+.chip-header {
+  padding: 13px 22px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-m);
+  font-size: 11px; color: var(--muted);
+  letter-spacing: .1em; text-transform: uppercase;
+  display: flex; align-items: center; gap: 8px;
+}
+.chip-header::before {
+  content: ''; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--green); box-shadow: 0 0 6px var(--green);
+}
+
+/* INTERACTIVE CHIP DIAGRAM */
+#chip-diagram {
+  padding: 32px 28px;
+  overflow-x: auto;
+}
+#chip-svg { display: block; width: 100%; max-width: 760px; margin: 0 auto; }
+
+/* TOOLTIP */
+#tooltip {
+  display: none;
+  position: absolute;
+  background: #0c1c2e;
+  border: 1px solid rgba(56,189,248,.25);
+  border-radius: 10px;
+  padding: 12px 16px;
+  max-width: 240px;
+  font-family: var(--font-m);
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+  pointer-events: none;
+  z-index: 100;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+#tooltip strong { color: var(--accent); display: block; margin-bottom: 4px; font-size: 13px; }
+
+/* BLOCK PANEL */
+.block-info {
+  margin: 0 28px 28px;
+  padding: 18px 20px;
+  border-radius: 10px;
+  border: 1px solid rgba(56,189,248,.15);
+  background: rgba(56,189,248,.04);
+  font-family: var(--font-m); font-size: 13px;
+  color: var(--muted); transition: all .3s ease;
+  min-height: 64px;
+}
+.block-info.active {
+  border-color: rgba(56,189,248,.3);
+  background: rgba(56,189,248,.07);
+  color: var(--text);
+}
+.block-info strong { color: var(--accent); font-size: 14px; display: block; margin-bottom: 4px; }
+
+/* SCHEMATIC */
+.schematic-wrap {
+  margin: 48px 0;
+  border-radius: 20px; border: 1px solid var(--border);
+  overflow: hidden; background: var(--surface);
+}
+.sch-tabs {
+  display: flex; border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.sch-tab {
+  padding: 12px 22px; font-family: var(--font-m);
+  font-size: 12px; letter-spacing: .08em; color: var(--muted);
+  cursor: pointer; border-bottom: 2px solid transparent;
+  text-transform: uppercase; transition: all .2s;
+}
+.sch-tab:hover { color: var(--text); }
+.sch-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.sch-panel { display: none; padding: 28px; }
+.sch-panel.active { display: block; }
+
+/* PERF SECTION */
+.perf-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 14px; margin: 36px 0;
+}
+.perf-card {
+  padding: 22px 24px; border-radius: var(--r);
+  border: 1px solid var(--border); background: var(--surface);
+  transition: border-color .2s;
+}
+.perf-card:hover { border-color: rgba(56,189,248,.2); }
+.perf-num {
+  font-family: var(--font-d); font-size: 38px;
+  font-weight: 800; letter-spacing: -.04em; line-height: 1;
+  margin-bottom: 6px;
+}
+.perf-label {
+  font-family: var(--font-m); font-size: 11px;
+  color: var(--muted); text-transform: uppercase; letter-spacing: .1em;
+  margin-bottom: 8px;
+}
+.perf-sub { font-size: 13px; color: var(--dim); font-family: var(--font-m); }
+
+/* BAR CHART */
+.bar-wrap { margin: 40px 0; }
+.bar-row { display: flex; align-items: center; gap: 12px; margin: 10px 0; }
+.bar-label { font-family: var(--font-m); font-size: 12px; color: var(--muted); width: 180px; flex-shrink: 0; }
+.bar-track { flex: 1; height: 28px; background: var(--surface-2); border-radius: 6px; overflow: hidden; position: relative; }
+.bar-fill {
+  height: 100%; border-radius: 6px;
+  display: flex; align-items: center; padding: 0 10px;
+  font-family: var(--font-m); font-size: 11px; font-weight: 500;
+  color: #fff; transition: width 1s cubic-bezier(.4,0,.2,1);
+}
+.bar-baseline { background: rgba(255,255,255,.15); }
+.bar-kv { background: linear-gradient(90deg, rgba(56,189,248,.7), rgba(56,189,248,.9)); }
+
+/* PULLQUOTE */
+.pullquote {
+  margin: 52px -20px;
+  padding: 32px 36px;
+  border-left: 3px solid var(--accent);
+  background: linear-gradient(135deg, rgba(56,189,248,.05) 0%, transparent 55%);
+  border-radius: 0 16px 16px 0;
+}
+.pullquote p {
+  font-family: var(--font-d); font-size: clamp(20px, 2.8vw, 28px) !important;
+  font-weight: 700 !important; color: #fff !important;
+  line-height: 1.3; letter-spacing: -.02em;
+}
+.pullquote cite {
+  display: block; margin-top: 12px;
+  font-family: var(--font-m); font-size: 11px;
+  color: var(--muted); font-style: normal;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+
+/* TABLE */
+.tbl-wrap { margin: 36px 0; border-radius: var(--r); border: 1px solid var(--border); overflow: hidden; }
+table { width: 100%; border-collapse: collapse; font-family: var(--font-m); font-size: 13px; }
+thead tr { background: rgba(56,189,248,.07); }
+th { padding: 13px 16px; text-align: left; color: var(--accent); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; border-bottom: 1px solid rgba(56,189,248,.15); }
+td { padding: 13px 16px; border-bottom: 1px solid var(--border); color: #8ab0cc; vertical-align: top; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: rgba(56,189,248,.025); color: var(--text); }
+td:first-child { color: var(--text); font-weight: 500; }
+
+/* CALLOUT */
+.callout { margin: 32px 0; padding: 22px 26px; border-radius: var(--r); border: 1px solid; }
+.callout-label { font-family: var(--font-m); font-size: 10px; letter-spacing: .15em; text-transform: uppercase; margin-bottom: 8px; }
+.callout.info { background: rgba(56,189,248,.04); border-color: rgba(56,189,248,.2); color: #90c8e8; }
+.callout.info .callout-label { color: var(--accent); }
+
+/* FOOTER */
+.footer {
+  margin-top: 90px; padding-top: 32px; border-top: 1px solid var(--border);
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+}
+.footer-copy { font-family: var(--font-m); font-size: 12px; color: var(--dim); line-height: 1.9; }
+.footer-copy strong { display: block; color: var(--muted); font-size: 14px; font-family: var(--font-d); font-weight: 700; margin-bottom: 2px; }
+
+/* POWER BUDGET */
+.power-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.power-name { font-family: var(--font-m); font-size: 12px; color: var(--muted); width: 200px; flex-shrink: 0; }
+.power-bar { flex: 1; height: 20px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.power-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding: 0 8px; font-family: var(--font-m); font-size: 11px; }
+.power-val { font-family: var(--font-m); font-size: 12px; color: var(--muted); width: 52px; text-align: right; flex-shrink: 0; }
+
+hr.sep { border: none; border-top: 1px solid var(--border); margin: 52px 0; }
+
+@media (max-width: 600px) {
+  .perf-grid { grid-template-columns: 1fr; }
+  .bar-label { width: 120px; font-size: 11px; }
+}
+
+
+html:not(.dark) {
+  color-scheme: light;
+  --bg: #f7fafc;
+  --surface: #ffffff;
+  --surface-2: #eef5fb;
+  --border: rgba(12, 26, 43, .12);
+  --text: #102033;
+  --muted: #4b637a;
+  --dim: #7890a8;
+  --accent: #087ea4;
+  --amber: #b45309;
+  --green: #047857;
+  --red: #dc2626;
+  --purple: #6d28d9;
+  --coral: #be123c;
+}
+html:not(.dark) body {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(8,126,164,.12), transparent 28rem),
+    linear-gradient(180deg, #fbfdff 0%, #edf4f9 48%, #f7fafc 100%);
+  color: var(--text);
+}
+html:not(.dark) body::before {
+  background-image:
+    linear-gradient(rgba(8,126,164,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(8,126,164,.035) 1px, transparent 1px);
+}
+html:not(.dark) h1,
+html:not(.dark) h2,
+html:not(.dark) h3,
+html:not(.dark) .card-title,
+html:not(.dark) .metric-value,
+html:not(.dark) .perf-value,
+html:not(.dark) .step-title,
+html:not(.dark) .footer-copy strong { color: #102033 !important; }
+html:not(.dark) h1 em,
+html:not(.dark) .kicker,
+html:not(.dark) .perf-label { color: var(--accent) !important; }
+html:not(.dark) p,
+html:not(.dark) li,
+html:not(.dark) .hero-sub,
+html:not(.dark) .metric-label,
+html:not(.dark) .perf-sub,
+html:not(.dark) .step-desc,
+html:not(.dark) .card-title + div,
+html:not(.dark) .footer-copy { color: #39536b !important; }
+html:not(.dark) .meta,
+html:not(.dark) .meta span,
+html:not(.dark) figcaption,
+html:not(.dark) td,
+html:not(.dark) th { color: #4b637a !important; }
+html:not(.dark) .hero,
+html:not(.dark) .chip-stage,
+html:not(.dark) .schematic,
+html:not(.dark) .perf-card,
+html:not(.dark) .model-card,
+html:not(.dark) .step,
+html:not(.dark) table,
+html:not(.dark) .callout,
+html:not(.dark) .chip-header,
+html:not(.dark) .footer { border-color: var(--border) !important; }
+html:not(.dark) .kicker { background: rgba(8,126,164,.08); border-color: rgba(8,126,164,.18); }
+html:not(.dark) .chip-stage,
+html:not(.dark) .schematic,
+html:not(.dark) .perf-card,
+html:not(.dark) .model-card,
+html:not(.dark) .step,
+html:not(.dark) table { background: rgba(255,255,255,.72) !important; }
+html:not(.dark) .chip-header,
+html:not(.dark) th,
+html:not(.dark) .sch-tabs { background: rgba(238,245,251,.92) !important; }
+html:not(.dark) svg text[fill="#fff"],
+html:not(.dark) svg text[fill="white"] { fill: #102033 !important; }
+html:not(.dark) svg text[fill="rgba(221,238,255,.6)"],
+html:not(.dark) svg text[fill="rgba(221,238,255,.55)"],
+html:not(.dark) svg text[fill="rgba(221,238,255,.45)"],
+html:not(.dark) svg text[fill="rgba(221,238,255,.4)"] { fill: #4b637a !important; }
+html:not(.dark) strong[style],
+html:not(.dark) div[style*="color:#fff"],
+html:not(.dark) span[style*="color:#fff"] { color: #102033 !important; }
+html.dark { color-scheme: dark; }
+html.dark .site-tools,
+html.dark .reading-meta,
+html.dark .site-footer.site-global-footer { color: var(--muted); }
+.site-tools {
+  position: relative;
+  z-index: 2;
+  width: min(820px, 92vw);
+  margin: 18px auto 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font: 14px/1.5 var(--font-m);
+}
+.back-link { color: inherit; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
+#theme-toggle { border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 999px; padding: 6px 11px; font: inherit; cursor: pointer; }
+.reading-meta { position: relative; z-index: 2; width: min(820px, 92vw); margin: 10px auto 0; color: var(--muted); font: 13px/1.5 var(--font-m); }
+.site-footer.site-global-footer { position: relative; z-index: 2; width: min(820px, 92vw); margin: 0 auto 48px; padding: 28px 0 0; border-top: 1px solid var(--border); color: var(--muted); font: 13px/1.6 var(--font-m); }
+.site-footer-inner { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.site-footer a { color: inherit; }
+.logo-word{display:inline-flex;align-items:baseline;gap:.01em;white-space:nowrap}.logo-i{display:inline-block;font-size:.84em;margin:0 .055em 0 .025em;font-style:normal;font-weight:900;line-height:.95;transform:translateY(-.02em)}
+</style>
+</head>
+<body>
+  <div class="site-tools" aria-label="Site tools">
+    <a class="back-link" href="/writings.html"><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span> / Writings</a>
+    <button id="theme-toggle" type="button" aria-label="Toggle light and dark mode">Theme</button>
+  </div>
+  <p class="reading-meta"><time datetime="2026-05-24">May 24, 2026</time> · AI Memory Infrastructure · 18 min read</p>
+<div class="wrap">
+
+<!-- HERO -->
+<header class="hero">
+  <div class="kicker">Part 3 · KV ASIC Architecture · Deep Dive</div>
+  <h1>Inside the<br><em>KV ASIC:</em><br>Silicon, Schematics<br>&amp; Performance</h1>
+  <p class="hero-sub">
+    Parts 1 and 2 made the case for dedicated KV infrastructure. Part 3 opens the hood — what the chip actually looks like, how its internal blocks connect, and what performance gains are plausible.
+  </p>
+  <div class="meta">
+    <span>Deep Technical</span> · <span>~18 min read</span> · <span>Architecture Series</span>
+  </div>
+</header>
+
+<!-- PROSE -->
+<article class="prose">
+
+<p>
+  Dedicated silicon is not an inevitable step — it's a specific bet. The bet is that the KV workload is stable enough to justify fixed-function hardware, and distinct enough from general compute that a GPU or CPU can't serve it efficiently. Before that bet is made, you need to know exactly what the chip is doing.
+</p>
+
+<p>
+  This piece walks through the KV ASIC block by block: the die floorplan, the internal data paths, the schematic for each functional unit, and a grounded estimate of the performance uplift against a baseline software-only stack.
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>The Die Floorplan</h2>
+
+<p>
+  Click any block in the diagram below to see what it does and why it's where it is. The floorplan is designed around one constraint: DMA engines must be adjacent to both the fabric interface and the memory controllers, because every KV transfer must pass through them.
+</p>
+
+<!-- INTERACTIVE CHIP DIAGRAM -->
+<div class="chip-wrap">
+  <div class="chip-header">KV Infrastructure ASIC — Interactive Floorplan · Click any block</div>
+  <div id="chip-diagram">
+    <svg id="chip-svg" viewBox="0 0 760 520" role="img">
+      <title>KV ASIC Die Floorplan</title>
+      <desc>Interactive floorplan showing the functional blocks of a KV Infrastructure ASIC. Click blocks to learn more.</desc>
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- Die outline -->
+      <rect x="20" y="20" width="720" height="480" rx="18" fill="rgba(9,21,35,.9)" stroke="rgba(56,189,248,.25)" stroke-width="1.5"/>
+
+      <!-- Die title -->
+      <text x="380" y="46" text-anchor="middle" font-family="'DM Mono',monospace" font-size="11" fill="rgba(56,189,248,.5)" letter-spacing="3">KV-1 INFRASTRUCTURE ASIC  ·  7nm  ·  ~180mm²</text>
+
+      <!-- ── FABRIC INTERFACE (top strip) ── -->
+      <g id="b-fabric" class="chip-block" style="cursor:pointer" onclick="showBlock('fabric')">
+        <rect x="40" y="56" width="680" height="52" rx="6" fill="rgba(56,189,248,.1)" stroke="rgba(56,189,248,.35)" stroke-width="1"/>
+        <text x="380" y="79" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#7dd3fc">PCIe Gen5 / CXL 3.0 / NVLink 4 Front End</text>
+        <text x="380" y="97" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.5)">256 lanes  ·  ~1.6 TB/s aggregate bandwidth  ·  Hardware credit flow control</text>
+      </g>
+
+      <!-- ── DMA ENGINES (left column) ── -->
+      <g id="b-dma" class="chip-block" style="cursor:pointer" onclick="showBlock('dma')">
+        <rect x="40" y="120" width="130" height="200" rx="6" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.35)" stroke-width="1"/>
+        <text x="105" y="195" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#c4b5fd">DMA</text>
+        <text x="105" y="213" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#c4b5fd">Engines</text>
+        <text x="105" y="233" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(196,181,253,.5)">×32 channels</text>
+      </g>
+
+      <!-- ── METADATA SRAM (center-left) ── -->
+      <g id="b-meta" class="chip-block" style="cursor:pointer" onclick="showBlock('meta')">
+        <rect x="184" y="120" width="160" height="92" rx="6" fill="rgba(251,113,133,.1)" stroke="rgba(251,113,133,.35)" stroke-width="1"/>
+        <text x="264" y="163" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#fda4af">Session Metadata</text>
+        <text x="264" y="179" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#fda4af">SRAM</text>
+        <text x="264" y="197" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(253,164,175,.5)">256 MB on-die</text>
+      </g>
+
+      <!-- ── PREFIX DEDUP (center) ── -->
+      <g id="b-dedup" class="chip-block" style="cursor:pointer" onclick="showBlock('dedup')">
+        <rect x="358" y="120" width="150" height="92" rx="6" fill="rgba(52,211,153,.1)" stroke="rgba(52,211,153,.35)" stroke-width="1"/>
+        <text x="433" y="163" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#6ee7b7">Prefix Dedup</text>
+        <text x="433" y="179" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#6ee7b7">Engine</text>
+        <text x="433" y="197" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(110,231,183,.5)">SimHash + ref-count</text>
+      </g>
+
+      <!-- ── PREFETCH SCHEDULER (center-right) ── -->
+      <g id="b-prefetch" class="chip-block" style="cursor:pointer" onclick="showBlock('prefetch')">
+        <rect x="522" y="120" width="198" height="92" rx="6" fill="rgba(245,158,11,.1)" stroke="rgba(245,158,11,.35)" stroke-width="1"/>
+        <text x="621" y="163" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#fcd34d">Prefetch</text>
+        <text x="621" y="179" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#fcd34d">Scheduler</text>
+        <text x="621" y="197" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(252,211,77,.5)">urgency model</text>
+      </g>
+
+      <!-- ── COMPRESSION UNITS (center strip) ── -->
+      <g id="b-comp" class="chip-block" style="cursor:pointer" onclick="showBlock('comp')">
+        <rect x="184" y="226" width="536" height="80" rx="6" fill="rgba(56,189,248,.08)" stroke="rgba(56,189,248,.28)" stroke-width="1"/>
+        <text x="452" y="261" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#7dd3fc">KV Compression / Decompression Array</text>
+        <text x="452" y="279" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.45)">INT4 / FP8 quantisation  ·  Head-aware codec  ·  ×16 parallel units  ·  ~1.2 TB/s throughput</text>
+      </g>
+
+      <!-- ── QoS / TELEMETRY (bottom left) ── -->
+      <g id="b-qos" class="chip-block" style="cursor:pointer" onclick="showBlock('qos')">
+        <rect x="40" y="334" width="250" height="80" rx="6" fill="rgba(167,139,250,.08)" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+        <text x="165" y="371" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#c4b5fd">QoS + Isolation</text>
+        <text x="165" y="389" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(196,181,253,.45)">per-session SLAs  ·  priority queuing</text>
+      </g>
+
+      <!-- ── EVICTION POLICY ENGINE (bottom center) ── -->
+      <g id="b-evict" class="chip-block" style="cursor:pointer" onclick="showBlock('evict')">
+        <rect x="304" y="334" width="210" height="80" rx="6" fill="rgba(251,113,133,.08)" stroke="rgba(251,113,133,.25)" stroke-width="1"/>
+        <text x="409" y="371" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#fda4af">Eviction Policy</text>
+        <text x="409" y="389" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(253,164,175,.45)">decode-urgency-aware</text>
+      </g>
+
+      <!-- ── TELEMETRY (bottom right) ── -->
+      <g id="b-tele" class="chip-block" style="cursor:pointer" onclick="showBlock('tele')">
+        <rect x="528" y="334" width="192" height="80" rx="6" fill="rgba(52,211,153,.08)" stroke="rgba(52,211,153,.25)" stroke-width="1"/>
+        <text x="624" y="371" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#6ee7b7">Telemetry</text>
+        <text x="624" y="389" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(110,231,183,.45)">HW perf counters  ·  tracing</text>
+      </g>
+
+      <!-- ── MEMORY CONTROLLERS (bottom strip) ── -->
+      <g id="b-mem" class="chip-block" style="cursor:pointer" onclick="showBlock('mem')">
+        <rect x="40" y="428" width="680" height="52" rx="6" fill="rgba(245,158,11,.08)" stroke="rgba(245,158,11,.28)" stroke-width="1"/>
+        <text x="380" y="451" text-anchor="middle" font-family="'Syne',sans-serif" font-size="13" font-weight="700" fill="#fcd34d">Memory Controllers</text>
+        <text x="380" y="469" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(252,211,77,.45)">HBM3e  ·  DDR5  ·  CXL 3.0 attached pool  ·  NVMe P2P DMA</text>
+      </g>
+
+      <!-- Internal data bus -->
+      <line x1="170" y1="120" x2="170" y2="428" stroke="rgba(56,189,248,.15)" stroke-width="8" stroke-dasharray="3 5"/>
+      <text x="158" y="290" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(56,189,248,.3)" transform="rotate(-90,158,290)">INTERNAL CROSSBAR  512-bit</text>
+
+      <!-- Signal arrows (fabric → DMA) -->
+      <line x1="380" y1="108" x2="105" y2="120" stroke="rgba(56,189,248,.3)" stroke-width="1" marker-end="url(#ar)" fill="none"/>
+      <line x1="380" y1="108" x2="264" y2="120" stroke="rgba(56,189,248,.2)" stroke-width="1" marker-end="url(#ar)" fill="none"/>
+      <!-- DMA → mem -->
+      <line x1="105" y1="320" x2="105" y2="428" stroke="rgba(167,139,250,.3)" stroke-width="1" marker-end="url(#ar)" fill="none"/>
+      <!-- Comp → mem -->
+      <line x1="380" y1="306" x2="380" y2="428" stroke="rgba(56,189,248,.2)" stroke-width="1" marker-end="url(#ar)" fill="none"/>
+    </svg>
+  </div>
+
+  <div id="block-info" class="block-info">
+    <em style="color:var(--dim);font-family:var(--font-m);font-size:12px">↑ Click any block above to explore its function</em>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>Block-Level Schematics</h2>
+<p>
+  Each functional block has a distinct internal architecture. The tabs below walk through the four most architecturally interesting units.
+</p>
+
+<div class="schematic-wrap">
+  <div class="sch-tabs">
+    <div class="sch-tab active" onclick="switchTab('dma-sch')">DMA Engine</div>
+    <div class="sch-tab" onclick="switchTab('dedup-sch')">Prefix Dedup</div>
+    <div class="sch-tab" onclick="switchTab('comp-sch')">Compression</div>
+    <div class="sch-tab" onclick="switchTab('evict-sch')">Eviction</div>
+  </div>
+
+  <!-- DMA Schematic -->
+  <div id="dma-sch" class="sch-panel active">
+    <svg viewBox="0 0 760 300" width="100%" role="img">
+      <title>DMA Engine schematic</title>
+      <desc>Internal block diagram of the KV ASIC DMA Engine showing channel arbiter, scatter-gather, and memory interface</desc>
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <!-- Outer container -->
+      <rect x="20" y="20" width="720" height="260" rx="10" fill="rgba(167,139,250,.04)" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+      <text x="380" y="42" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="rgba(196,181,253,.6)" letter-spacing="2">DMA ENGINE  ×32 CHANNELS</text>
+      <!-- Channel arbiter -->
+      <rect x="50" y="60" width="140" height="70" rx="6" fill="rgba(167,139,250,.12)" stroke="rgba(167,139,250,.4)" stroke-width="1"/>
+      <text x="120" y="93" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#c4b5fd">Channel</text>
+      <text x="120" y="109" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#c4b5fd">Arbiter</text>
+      <text x="120" y="121" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(196,181,253,.5)">priority queue</text>
+      <!-- Scatter-Gather -->
+      <rect x="230" y="60" width="150" height="70" rx="6" fill="rgba(167,139,250,.12)" stroke="rgba(167,139,250,.4)" stroke-width="1"/>
+      <text x="305" y="93" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#c4b5fd">Scatter-Gather</text>
+      <text x="305" y="109" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#c4b5fd">Engine</text>
+      <text x="305" y="121" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(196,181,253,.5)">KV page map</text>
+      <!-- Credit flow -->
+      <rect x="430" y="60" width="140" height="70" rx="6" fill="rgba(167,139,250,.12)" stroke="rgba(167,139,250,.4)" stroke-width="1"/>
+      <text x="500" y="93" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#c4b5fd">Credit Flow</text>
+      <text x="500" y="109" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#c4b5fd">Control</text>
+      <text x="500" y="121" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(196,181,253,.5)">back-pressure</text>
+      <!-- Completion -->
+      <rect x="610" y="60" width="110" height="70" rx="6" fill="rgba(167,139,250,.12)" stroke="rgba(167,139,250,.4)" stroke-width="1"/>
+      <text x="665" y="95" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#c4b5fd">Completion</text>
+      <text x="665" y="111" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#c4b5fd">Queue</text>
+      <!-- Arrows -->
+      <line x1="190" y1="95" x2="228" y2="95" stroke="rgba(196,181,253,.5)" stroke-width="1" marker-end="url(#ar2)"/>
+      <line x1="380" y1="95" x2="428" y2="95" stroke="rgba(196,181,253,.5)" stroke-width="1" marker-end="url(#ar2)"/>
+      <line x1="570" y1="95" x2="608" y2="95" stroke="rgba(196,181,253,.5)" stroke-width="1" marker-end="url(#ar2)"/>
+      <!-- Bottom buses -->
+      <rect x="50" y="180" width="340" height="40" rx="4" fill="rgba(56,189,248,.08)" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+      <text x="220" y="205" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.7)">Memory Read/Write Bus  ·  512-bit @ 4 GHz</text>
+      <rect x="410" y="180" width="310" height="40" rx="4" fill="rgba(56,189,248,.08)" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+      <text x="565" y="205" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.7)">Fabric Interface Bus  ·  PCIe/CXL TLP</text>
+      <line x1="220" y1="130" x2="220" y2="178" stroke="rgba(56,189,248,.3)" stroke-width="1" marker-end="url(#ar2)"/>
+      <line x1="565" y1="130" x2="565" y2="178" stroke="rgba(56,189,248,.3)" stroke-width="1" marker-end="url(#ar2)"/>
+      <!-- Perf note -->
+      <text x="380" y="250" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(167,139,250,.4)">Target: 32 simultaneous KV block transfers  ·  sub-500 ns initiation latency per channel</text>
+    </svg>
+  </div>
+
+  <!-- Prefix Dedup Schematic -->
+  <div id="dedup-sch" class="sch-panel">
+    <svg viewBox="0 0 760 300" width="100%" role="img">
+      <title>Prefix dedup engine schematic</title>
+      <desc>Internal block diagram of the prefix deduplication engine showing hash pipeline, ref-count store and pointer indirection</desc>
+      <defs>
+        <marker id="ar3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <rect x="20" y="20" width="720" height="260" rx="10" fill="rgba(52,211,153,.04)" stroke="rgba(52,211,153,.2)" stroke-width="1"/>
+      <text x="380" y="42" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="rgba(110,231,183,.6)" letter-spacing="2">PREFIX DEDUPLICATION ENGINE</text>
+      <!-- Stages -->
+      <rect x="50" y="65" width="130" height="65" rx="6" fill="rgba(52,211,153,.12)" stroke="rgba(52,211,153,.4)" stroke-width="1"/>
+      <text x="115" y="95" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">Token</text>
+      <text x="115" y="111" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">Ingress</text>
+      <text x="115" y="123" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(110,231,183,.5)">boundary detect</text>
+
+      <rect x="220" y="65" width="140" height="65" rx="6" fill="rgba(52,211,153,.12)" stroke="rgba(52,211,153,.4)" stroke-width="1"/>
+      <text x="290" y="95" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">SimHash</text>
+      <text x="290" y="111" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">Pipeline</text>
+      <text x="290" y="123" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(110,231,183,.5)">64-bit fingerprint</text>
+
+      <rect x="410" y="65" width="140" height="65" rx="6" fill="rgba(52,211,153,.12)" stroke="rgba(52,211,153,.4)" stroke-width="1"/>
+      <text x="480" y="95" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">Ref-Count</text>
+      <text x="480" y="111" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">Store</text>
+      <text x="480" y="123" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(110,231,183,.5)">SRAM hash table</text>
+
+      <rect x="600" y="65" width="130" height="65" rx="6" fill="rgba(52,211,153,.12)" stroke="rgba(52,211,153,.4)" stroke-width="1"/>
+      <text x="665" y="95" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">Pointer</text>
+      <text x="665" y="111" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">Indirection</text>
+      <text x="665" y="123" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(110,231,183,.5)">copy-on-write</text>
+
+      <line x1="180" y1="97" x2="218" y2="97" stroke="rgba(110,231,183,.5)" stroke-width="1" marker-end="url(#ar3)"/>
+      <line x1="360" y1="97" x2="408" y2="97" stroke="rgba(110,231,183,.5)" stroke-width="1" marker-end="url(#ar3)"/>
+      <line x1="550" y1="97" x2="598" y2="97" stroke="rgba(110,231,183,.5)" stroke-width="1" marker-end="url(#ar3)"/>
+
+      <!-- Result paths -->
+      <rect x="200" y="185" width="170" height="40" rx="4" fill="rgba(52,211,153,.06)" stroke="rgba(52,211,153,.2)" stroke-width="1"/>
+      <text x="285" y="210" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(110,231,183,.6)">HIT → return pointer</text>
+      <rect x="390" y="185" width="170" height="40" rx="4" fill="rgba(245,158,11,.06)" stroke="rgba(245,158,11,.2)" stroke-width="1"/>
+      <text x="475" y="210" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(252,211,77,.6)">MISS → allocate block</text>
+
+      <line x1="480" y1="130" x2="480" y2="183" stroke="rgba(52,211,153,.3)" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#ar3)"/>
+      <line x1="480" y1="183" x2="476" y2="183" stroke="none"/>
+
+      <text x="380" y="248" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(52,211,153,.4)">Typical system prompt hit rate in production: 70–95%  ·  Each hit avoids full HBM allocation</text>
+    </svg>
+  </div>
+
+  <!-- Compression Schematic -->
+  <div id="comp-sch" class="sch-panel">
+    <svg viewBox="0 0 760 300" width="100%" role="img">
+      <title>KV compression unit schematic</title>
+      <desc>Shows the per-head codec pipeline with INT4 quantisation and head-volatility routing</desc>
+      <defs>
+        <marker id="ar4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <rect x="20" y="20" width="720" height="260" rx="10" fill="rgba(56,189,248,.04)" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+      <text x="380" y="42" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="rgba(125,211,252,.6)" letter-spacing="2">KV COMPRESSION ARRAY  ×16 UNITS</text>
+      <!-- Volatility classifier -->
+      <rect x="50" y="65" width="150" height="65" rx="6" fill="rgba(56,189,248,.12)" stroke="rgba(56,189,248,.4)" stroke-width="1"/>
+      <text x="125" y="95" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#7dd3fc">Head Volatility</text>
+      <text x="125" y="111" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#7dd3fc">Classifier</text>
+      <text x="125" y="123" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(125,211,252,.5)">per-layer profile</text>
+      <!-- Router -->
+      <rect x="250" y="65" width="120" height="65" rx="6" fill="rgba(56,189,248,.1)" stroke="rgba(56,189,248,.3)" stroke-width="1"/>
+      <text x="310" y="95" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#7dd3fc">Codec</text>
+      <text x="310" y="111" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#7dd3fc">Router</text>
+      <!-- INT4 path -->
+      <rect x="430" y="50" width="130" height="45" rx="6" fill="rgba(52,211,153,.1)" stroke="rgba(52,211,153,.3)" stroke-width="1"/>
+      <text x="495" y="71" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" font-weight="700" fill="#6ee7b7">INT4 Quantiser</text>
+      <text x="495" y="85" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(110,231,183,.5)">low-volatility heads</text>
+      <!-- FP8 path -->
+      <rect x="430" y="108" width="130" height="45" rx="6" fill="rgba(245,158,11,.1)" stroke="rgba(245,158,11,.3)" stroke-width="1"/>
+      <text x="495" y="129" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" font-weight="700" fill="#fcd34d">FP8 Quantiser</text>
+      <text x="495" y="143" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(252,211,77,.5)">high-volatility heads</text>
+      <!-- Output merge -->
+      <rect x="620" y="65" width="100" height="65" rx="6" fill="rgba(56,189,248,.12)" stroke="rgba(56,189,248,.4)" stroke-width="1"/>
+      <text x="670" y="95" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#7dd3fc">Output</text>
+      <text x="670" y="111" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#7dd3fc">Merge</text>
+      <!-- Arrows -->
+      <line x1="200" y1="97" x2="248" y2="97" stroke="rgba(125,211,252,.4)" stroke-width="1" marker-end="url(#ar4)"/>
+      <line x1="370" y1="80" x2="428" y2="72" stroke="rgba(110,231,183,.4)" stroke-width="1" marker-end="url(#ar4)"/>
+      <line x1="370" y1="110" x2="428" y2="130" stroke="rgba(252,211,77,.4)" stroke-width="1" marker-end="url(#ar4)"/>
+      <line x1="560" y1="72" x2="618" y2="85" stroke="rgba(125,211,252,.4)" stroke-width="1" marker-end="url(#ar4)"/>
+      <line x1="560" y1="130" x2="618" y2="110" stroke="rgba(125,211,252,.4)" stroke-width="1" marker-end="url(#ar4)"/>
+      <!-- Ratio display -->
+      <rect x="50" y="185" width="290" height="60" rx="6" fill="rgba(52,211,153,.06)" stroke="rgba(52,211,153,.2)" stroke-width="1"/>
+      <text x="195" y="207" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(110,231,183,.7)">INT4 compression ratio:  ~4–8×</text>
+      <text x="195" y="225" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(110,231,183,.5)">perplexity delta: &lt;0.5% on most tasks</text>
+      <text x="195" y="238" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(110,231,183,.35)">(task-specific; characterise empirically)</text>
+      <rect x="370" y="185" width="270" height="60" rx="6" fill="rgba(245,158,11,.06)" stroke="rgba(245,158,11,.2)" stroke-width="1"/>
+      <text x="505" y="207" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(252,211,77,.7)">FP8 compression ratio:  ~2×</text>
+      <text x="505" y="225" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(252,211,77,.5)">preserves sensitive attention heads</text>
+      <text x="505" y="238" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(252,211,77,.35)">used where quality matters most</text>
+    </svg>
+  </div>
+
+  <!-- Eviction Schematic -->
+  <div id="evict-sch" class="sch-panel">
+    <svg viewBox="0 0 760 300" width="100%" role="img">
+      <title>Eviction policy engine schematic</title>
+      <desc>Decode-urgency-aware eviction policy showing urgency scoring, priority queue and tier routing</desc>
+      <defs>
+        <marker id="ar5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <rect x="20" y="20" width="720" height="260" rx="10" fill="rgba(251,113,133,.04)" stroke="rgba(251,113,133,.2)" stroke-width="1"/>
+      <text x="380" y="42" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="rgba(253,164,175,.6)" letter-spacing="2">EVICTION POLICY ENGINE</text>
+      <!-- Score inputs -->
+      <rect x="40" y="60" width="130" height="160" rx="6" fill="rgba(251,113,133,.08)" stroke="rgba(251,113,133,.2)" stroke-width="1"/>
+      <text x="105" y="84" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" font-weight="700" fill="#fda4af">Score Inputs</text>
+      <text x="105" y="104" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.45)">decode_urgency</text>
+      <text x="105" y="120" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.45)">reuse_potential</text>
+      <text x="105" y="136" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.45)">prefix_refcount</text>
+      <text x="105" y="152" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.45)">last_access_age</text>
+      <text x="105" y="168" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.45)">session_priority</text>
+      <text x="105" y="184" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.45)">qos_tier</text>
+      <!-- Scorer -->
+      <rect x="220" y="80" width="140" height="70" rx="6" fill="rgba(251,113,133,.12)" stroke="rgba(251,113,133,.4)" stroke-width="1"/>
+      <text x="290" y="112" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#fda4af">Composite</text>
+      <text x="290" y="128" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#fda4af">Scorer</text>
+      <text x="290" y="142" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.5)">weighted logit</text>
+      <!-- Priority heap -->
+      <rect x="410" y="80" width="130" height="70" rx="6" fill="rgba(251,113,133,.12)" stroke="rgba(251,113,133,.4)" stroke-width="1"/>
+      <text x="475" y="112" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#fda4af">Priority</text>
+      <text x="475" y="128" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#fda4af">Heap</text>
+      <text x="475" y="142" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.5)">min-heap 256k entries</text>
+      <!-- Tier router -->
+      <rect x="595" y="60" width="120" height="160" rx="6" fill="rgba(251,113,133,.08)" stroke="rgba(251,113,133,.2)" stroke-width="1"/>
+      <text x="655" y="84" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" font-weight="700" fill="#fda4af">Tier Router</text>
+      <text x="655" y="106" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.45)">KEEP in HBM</text>
+      <text x="655" y="124" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.45)">DEMOTE → CXL</text>
+      <text x="655" y="142" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.45)">ARCHIVE → NVMe</text>
+      <text x="655" y="160" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.45)">EVICT (free)</text>
+      <text x="655" y="178" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.45)">PRESERVE prefix</text>
+      <!-- Arrows -->
+      <line x1="170" y1="140" x2="218" y2="120" stroke="rgba(253,164,175,.4)" stroke-width="1" marker-end="url(#ar5)"/>
+      <line x1="360" y1="115" x2="408" y2="115" stroke="rgba(253,164,175,.4)" stroke-width="1" marker-end="url(#ar5)"/>
+      <line x1="540" y1="115" x2="593" y2="115" stroke="rgba(253,164,175,.4)" stroke-width="1" marker-end="url(#ar5)"/>
+      <text x="380" y="272" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(251,113,133,.35)">Key invariant: a session in active decode is NEVER evicted  ·  Prefix blocks are NEVER deleted while refcount > 0</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>Performance Projections</h2>
+
+<p>
+  These numbers are modelled estimates based on published hardware specs, comparable workloads, and conservative architectural assumptions. They are not silicon measurements — treat them as the upper envelope of what well-engineered dedicated hardware could achieve against a software-only baseline running on a CPU-managed DRAM hierarchy.
+</p>
+
+<div class="callout info">
+  <div class="callout-label">Baseline Definition</div>
+  Baseline = vLLM with PagedAttention on 8× H100 SXM, KV managed in host DRAM via CPU, PCIe Gen4 interconnect. No prefix dedup. No hardware compression. Eviction via LRU.
+</div>
+
+<div class="perf-grid">
+  <div class="perf-card">
+    <div class="perf-label">Decode throughput gain</div>
+    <div class="perf-num" style="color:var(--green)">2.4–3.1×</div>
+    <div class="perf-sub">vs. baseline at 128k context, 100 sessions. Primary driver: prefix dedup eliminates ~70% of redundant HBM allocations.</div>
+  </div>
+  <div class="perf-card">
+    <div class="perf-label">TTFT (time-to-first-token)</div>
+    <div class="perf-num" style="color:var(--accent)">−58%</div>
+    <div class="perf-sub">Prefetch scheduler hides CXL read latency behind prompt processing. Cold-start penalty drops from ~120 ms to ~50 ms median.</div>
+  </div>
+  <div class="perf-card">
+    <div class="perf-label">HBM footprint reduction</div>
+    <div class="perf-num" style="color:var(--amber)">4–8×</div>
+    <div class="perf-sub">INT4 compression on low-volatility heads. Allows 4–8× more concurrent sessions per GPU node before HBM spill.</div>
+  </div>
+  <div class="perf-card">
+    <div class="perf-label">KV movement energy</div>
+    <div class="perf-num" style="color:var(--purple)">−70%</div>
+    <div class="perf-sub">Compression reduces bytes transferred. Dedup avoids transfers entirely for shared prefixes. DMA coalescing reduces PCIe overhead.</div>
+  </div>
+</div>
+
+<h3>Throughput Comparison by Workload</h3>
+<p>Estimated tokens/second per GPU node, relative to software baseline (1.0×). KV ASIC offload assumes the chip sits on a PCIe Gen5 slot adjacent to each GPU.</p>
+
+<div class="bar-wrap" id="bars">
+  <div class="bar-row">
+    <div class="bar-label">Short ctx, low concurrency</div>
+    <div class="bar-track">
+      <div class="bar-fill bar-baseline" style="width:30%">Baseline</div>
+      <div class="bar-fill bar-kv" style="width:38%;position:absolute;top:0;left:0;opacity:.9">1.3×</div>
+    </div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">32k ctx, 100 sessions</div>
+    <div class="bar-track">
+      <div class="bar-fill bar-baseline" style="width:30%">Baseline</div>
+      <div class="bar-fill bar-kv" style="width:57%;position:absolute;top:0;left:0;opacity:.9">1.9×</div>
+    </div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">128k ctx, 100 sessions</div>
+    <div class="bar-track">
+      <div class="bar-fill bar-baseline" style="width:30%">Baseline</div>
+      <div class="bar-fill bar-kv" style="width:90%;position:absolute;top:0;left:0;opacity:.9">3.0×</div>
+    </div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Agentic, shared prefixes</div>
+    <div class="bar-track">
+      <div class="bar-fill bar-baseline" style="width:30%">Baseline</div>
+      <div class="bar-fill bar-kv" style="width:100%;position:absolute;top:0;left:0;opacity:.9">&gt;3.5×</div>
+    </div>
+  </div>
+  <div style="margin-top:10px;font-family:var(--font-m);font-size:11px;color:var(--dim)">
+    Blue = estimated with KV ASIC offload &nbsp;·&nbsp; Gain amplifies with context length and prefix reuse rate
+  </div>
+</div>
+
+<h3>Approximate Power Budget</h3>
+<p>Estimated TDP for a production KV ASIC at 7nm. Comparison point: H100 SXM TDP ≈ 700W.</p>
+
+<div style="margin:28px 0">
+  <div class="power-row">
+    <div class="power-name">DMA Engines (×32)</div>
+    <div class="power-bar"><div class="power-fill" style="width:35%;background:rgba(167,139,250,.4);color:#c4b5fd;font-family:var(--font-m);font-size:11px">35W</div></div>
+    <div class="power-val" style="color:var(--purple)">35W</div>
+  </div>
+  <div class="power-row">
+    <div class="power-name">Compression array (×16)</div>
+    <div class="power-bar"><div class="power-fill" style="width:40%;background:rgba(56,189,248,.4);color:#7dd3fc;font-family:var(--font-m);font-size:11px">40W</div></div>
+    <div class="power-val" style="color:var(--accent)">40W</div>
+  </div>
+  <div class="power-row">
+    <div class="power-name">Memory controllers</div>
+    <div class="power-bar"><div class="power-fill" style="width:25%;background:rgba(245,158,11,.4);color:#fcd34d;font-family:var(--font-m);font-size:11px">25W</div></div>
+    <div class="power-val" style="color:var(--amber)">25W</div>
+  </div>
+  <div class="power-row">
+    <div class="power-name">Metadata SRAM + dedup</div>
+    <div class="power-bar"><div class="power-fill" style="width:20%;background:rgba(52,211,153,.4);color:#6ee7b7;font-family:var(--font-m);font-size:11px">20W</div></div>
+    <div class="power-val" style="color:var(--green)">20W</div>
+  </div>
+  <div class="power-row">
+    <div class="power-name">Fabric interface + misc</div>
+    <div class="power-bar"><div class="power-fill" style="width:18%;background:rgba(251,113,133,.4);color:#fda4af;font-family:var(--font-m);font-size:11px">18W</div></div>
+    <div class="power-val" style="color:var(--coral)">18W</div>
+  </div>
+  <div style="margin-top:14px;padding:14px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03);display:flex;justify-content:space-between;align-items:center">
+    <span style="font-family:var(--font-m);font-size:12px;color:var(--muted)">Estimated total TDP</span>
+    <span style="font-family:var(--font-d);font-size:28px;font-weight:800;color:#fff;letter-spacing:-.03em">~138W</span>
+  </div>
+  <div style="margin-top:8px;font-family:var(--font-m);font-size:11px;color:var(--dim)">~20% of H100 power · enables 1 KV ASIC per 4 GPUs in standard rack power budgets</div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>Comparison: ASIC vs. Software-Only vs. CXL-Only</h2>
+
+<div class="tbl-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Capability</th>
+        <th>Software Only</th>
+        <th>CXL Expansion</th>
+        <th>KV ASIC</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Prefix deduplication</td>
+        <td style="color:var(--red)">SW, high CPU cost</td>
+        <td style="color:var(--red)">None</td>
+        <td style="color:var(--green)">HW, &lt;100ns</td>
+      </tr>
+      <tr>
+        <td>KV compression</td>
+        <td style="color:var(--amber)">SW, latency hit</td>
+        <td style="color:var(--red)">None</td>
+        <td style="color:var(--green)">HW, inline, 1.2 TB/s</td>
+      </tr>
+      <tr>
+        <td>Eviction policy</td>
+        <td style="color:var(--amber)">LRU / custom SW</td>
+        <td style="color:var(--red)">Generic LRU</td>
+        <td style="color:var(--green)">Decode-urgency-aware</td>
+      </tr>
+      <tr>
+        <td>Prefetch scheduling</td>
+        <td style="color:var(--red)">None / manual</td>
+        <td style="color:var(--red)">None</td>
+        <td style="color:var(--green)">Urgency model, HW</td>
+      </tr>
+      <tr>
+        <td>Topology awareness</td>
+        <td style="color:var(--red)">None</td>
+        <td style="color:var(--amber)">Partial (CXL only)</td>
+        <td style="color:var(--green)">Full hierarchy</td>
+      </tr>
+      <tr>
+        <td>Session isolation / QoS</td>
+        <td style="color:var(--amber)">SW, coarse</td>
+        <td style="color:var(--red)">None</td>
+        <td style="color:var(--green)">Per-session SLA</td>
+      </tr>
+      <tr>
+        <td>Observability</td>
+        <td style="color:var(--amber)">SW tracing</td>
+        <td style="color:var(--red)">None</td>
+        <td style="color:var(--green)">HW perf counters</td>
+      </tr>
+      <tr>
+        <td>Complexity / risk</td>
+        <td style="color:var(--green)">Low</td>
+        <td style="color:var(--green)">Low</td>
+        <td style="color:var(--amber)">High (new silicon)</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="pullquote">
+  <p>The gains are real — but they compound only when the workload demands them. At short context and low concurrency, the ASIC is an expensive NIC. At 128k context and high concurrency, it may be the difference between viable and not.</p>
+  <cite>— architectural tradeoff summary</cite>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>Memory Timing Deep Dive</h2>
+
+<p>
+  Every claim about latency hides a ladder of sub-operations. Here is what actually happens, in order, when a GPU decode step requests a KV block that has been demoted to CXL:
+</p>
+
+<div class="schematic-wrap" style="margin-top:28px">
+  <div class="chip-header" style="padding:13px 22px">KV Block Retrieval — Full Timing Breakdown (CXL warm tier)</div>
+  <div style="padding:28px;overflow-x:auto">
+    <svg viewBox="0 0 760 420" width="100%" role="img">
+      <title>KV block retrieval timing breakdown from CXL warm tier</title>
+      <desc>Waterfall diagram showing the sequence of operations and their latencies when fetching a KV block from CXL warm tier</desc>
+      <defs>
+        <marker id="art" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- Y-axis label -->
+      <text x="14" y="50" font-family="'DM Mono',monospace" font-size="9" fill="rgba(56,189,248,.4)" transform="rotate(-90,14,210)">OPERATION SEQUENCE</text>
+
+      <!-- timeline header -->
+      <text x="220" y="28" font-family="'DM Mono',monospace" font-size="9" fill="rgba(56,189,248,.35)" text-anchor="middle">0 µs</text>
+      <text x="370" y="28" font-family="'DM Mono',monospace" font-size="9" fill="rgba(56,189,248,.35)" text-anchor="middle">1 µs</text>
+      <text x="520" y="28" font-family="'DM Mono',monospace" font-size="9" fill="rgba(56,189,248,.35)" text-anchor="middle">2 µs</text>
+      <text x="670" y="28" font-family="'DM Mono',monospace" font-size="9" fill="rgba(56,189,248,.35)" text-anchor="middle">3 µs</text>
+      <line x1="220" y1="32" x2="220" y2="395" stroke="rgba(56,189,248,.08)" stroke-width="1"/>
+      <line x1="370" y1="32" x2="370" y2="395" stroke="rgba(56,189,248,.08)" stroke-width="1"/>
+      <line x1="520" y1="32" x2="520" y2="395" stroke="rgba(56,189,248,.08)" stroke-width="1"/>
+      <line x1="670" y1="32" x2="670" y2="395" stroke="rgba(56,189,248,.08)" stroke-width="1"/>
+
+      <!-- Row helper: label x=30 text-anchor=start, bar starts at 220+offset*150 -->
+      <!-- Row 1: GPU issues miss -->
+      <text x="30" y="57" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.7)">1. GPU issues TLP miss</text>
+      <rect x="220" y="44" width="15" height="20" rx="3" fill="rgba(56,189,248,.5)"/>
+      <text x="240" y="57" font-family="'DM Mono',monospace" font-size="9" fill="rgba(56,189,248,.5)">~100 ns</text>
+
+      <!-- Row 2: ASIC metadata lookup -->
+      <text x="30" y="90" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.7)">2. ASIC metadata SRAM lookup</text>
+      <rect x="235" y="77" width="7" height="20" rx="3" fill="rgba(167,139,250,.6)"/>
+      <text x="248" y="90" font-family="'DM Mono',monospace" font-size="9" fill="rgba(167,139,250,.5)">~50 ns</text>
+
+      <!-- Row 3: DMA channel acquire -->
+      <text x="30" y="123" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.7)">3. DMA channel arbitration</text>
+      <rect x="242" y="110" width="5" height="20" rx="3" fill="rgba(52,211,153,.5)"/>
+      <text x="253" y="123" font-family="'DM Mono',monospace" font-size="9" fill="rgba(52,211,153,.5)">~30 ns</text>
+
+      <!-- Row 4: CXL read issued -->
+      <text x="30" y="156" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.7)">4. CXL 3.0 read request issued</text>
+      <rect x="247" y="143" width="8" height="20" rx="3" fill="rgba(245,158,11,.6)"/>
+      <text x="260" y="156" font-family="'DM Mono',monospace" font-size="9" fill="rgba(245,158,11,.5)">~50 ns</text>
+
+      <!-- Row 5: CXL fabric transit -->
+      <text x="30" y="189" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.7)">5. CXL fabric traversal</text>
+      <rect x="255" y="176" width="120" height="20" rx="3" fill="rgba(245,158,11,.25)"/>
+      <text x="380" y="189" font-family="'DM Mono',monospace" font-size="9" fill="rgba(245,158,11,.6)">~800 ns (round trip)</text>
+
+      <!-- Row 6: DDR read -->
+      <text x="30" y="222" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.7)">6. CXL-attached DDR5 read</text>
+      <rect x="375" y="209" width="75" height="20" rx="3" fill="rgba(245,158,11,.4)"/>
+      <text x="456" y="222" font-family="'DM Mono',monospace" font-size="9" fill="rgba(245,158,11,.6)">~500 ns</text>
+
+      <!-- Row 7: Decompression -->
+      <text x="30" y="255" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.7)">7. Inline decompression (INT4→FP16)</text>
+      <rect x="450" y="242" width="30" height="20" rx="3" fill="rgba(56,189,248,.5)"/>
+      <text x="486" y="255" font-family="'DM Mono',monospace" font-size="9" fill="rgba(56,189,248,.5)">~200 ns</text>
+
+      <!-- Row 8: DMA to HBM -->
+      <text x="30" y="288" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.7)">8. DMA write to GPU HBM</text>
+      <rect x="480" y="275" width="60" height="20" rx="3" fill="rgba(167,139,250,.5)"/>
+      <text x="546" y="288" font-family="'DM Mono',monospace" font-size="9" fill="rgba(167,139,250,.5)">~400 ns</text>
+
+      <!-- Row 9: completion signal -->
+      <text x="30" y="321" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.7)">9. Completion interrupt to GPU</text>
+      <rect x="540" y="308" width="10" height="20" rx="3" fill="rgba(52,211,153,.5)"/>
+      <text x="556" y="321" font-family="'DM Mono',monospace" font-size="9" fill="rgba(52,211,153,.5)">~80 ns</text>
+
+      <!-- Total bar -->
+      <rect x="220" y="346" width="330" height="24" rx="4" fill="rgba(56,189,248,.12)" stroke="rgba(56,189,248,.3)" stroke-width="1"/>
+      <text x="385" y="362" text-anchor="middle" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.8)">Total (cold): ~2.2 µs end-to-end</text>
+
+      <!-- Prefetch saves bar -->
+      <rect x="220" y="376" width="100" height="14" rx="3" fill="rgba(52,211,153,.15)" stroke="rgba(52,211,153,.25)" stroke-width="1"/>
+      <text x="326" y="387" font-family="'DM Mono',monospace" font-size="9" fill="rgba(52,211,153,.6)">← prefetch hides this ~1.6 µs behind compute</text>
+
+      <!-- Prefetch annotation arrow -->
+      <line x1="320" y1="383" x2="220" y2="383" stroke="rgba(52,211,153,.3)" stroke-width="1" marker-end="url(#art)"/>
+    </svg>
+  </div>
+</div>
+
+<p>
+  Two microseconds is a long time at GPU speeds — an H100 decodes roughly 10,000 FLOPs in that window. The prefetch scheduler's job is to ensure that the CXL read (steps 5–6, the longest segment) is in flight before the GPU finishes the preceding decode step. When it succeeds, the effective latency seen by the GPU is just the final DMA write: ~400 ns. That is the difference between a stall and transparency.
+</p>
+
+<p>
+  The NVMe cold tier is worse by roughly 2 orders of magnitude — a full NVMe read adds ~100 µs. This is why archived sessions must be explicitly warmed into CXL before a session resumes, not fetched on-demand. The prefetch scheduler handles this: when a session is scheduled to resume, a warm-up prefetch is issued 500 µs in advance.
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>The Programming Model</h2>
+
+<p>
+  Hardware is only as useful as the software contract above it. The KV ASIC exposes four surfaces to the inference stack:
+</p>
+
+<div class="schematic-wrap" style="margin-top:28px">
+  <div class="chip-header" style="padding:13px 22px">KV ASIC Programming Model — Interface Layers</div>
+  <div style="padding:28px;overflow-x:auto">
+    <svg viewBox="0 0 760 360" width="100%" role="img">
+      <title>KV ASIC programming model showing four interface layers</title>
+      <desc>Four stacked layers: kernel driver, session API, block API, and telemetry API, with their key operations</desc>
+      <defs>
+        <marker id="arp" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- Layer 4: Inference runtime (top) -->
+      <rect x="30" y="20" width="700" height="52" rx="8" fill="rgba(52,211,153,.08)" stroke="rgba(52,211,153,.25)" stroke-width="1"/>
+      <text x="200" y="43" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">Inference Runtime</text>
+      <text x="200" y="59" font-family="'DM Mono',monospace" font-size="9" fill="rgba(110,231,183,.5)">vLLM · SGLang · TGI · custom</text>
+      <text x="500" y="43" font-family="'DM Mono',monospace" font-size="10" fill="rgba(110,231,183,.6)">issues: kv_session_begin / kv_block_fetch / kv_session_end</text>
+      <text x="500" y="59" font-family="'DM Mono',monospace" font-size="9" fill="rgba(110,231,183,.4)">speaks KV semantic API — knows nothing about tiers</text>
+
+      <line x1="380" y1="72" x2="380" y2="88" stroke="rgba(56,189,248,.3)" stroke-width="1" marker-end="url(#arp)"/>
+
+      <!-- Layer 3: KV Session API -->
+      <rect x="30" y="90" width="700" height="52" rx="8" fill="rgba(56,189,248,.08)" stroke="rgba(56,189,248,.25)" stroke-width="1"/>
+      <text x="200" y="113" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#7dd3fc">KV Session API  (userspace lib)</text>
+      <text x="200" y="129" font-family="'DM Mono',monospace" font-size="9" fill="rgba(125,211,252,.5)">libkvcache.so · CUDA extension</text>
+      <text x="500" y="113" font-family="'DM Mono',monospace" font-size="10" fill="rgba(125,211,252,.6)">session_create / prefix_register / block_hint</text>
+      <text x="500" y="129" font-family="'DM Mono',monospace" font-size="9" fill="rgba(125,211,252,.4)">mmap'd control registers  ·  zero-copy hints</text>
+
+      <line x1="380" y1="142" x2="380" y2="158" stroke="rgba(56,189,248,.3)" stroke-width="1" marker-end="url(#arp)"/>
+
+      <!-- Layer 2: Kernel driver -->
+      <rect x="30" y="160" width="700" height="52" rx="8" fill="rgba(167,139,250,.08)" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+      <text x="200" y="183" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#c4b5fd">KV ASIC Kernel Driver</text>
+      <text x="200" y="199" font-family="'DM Mono',monospace" font-size="9" fill="rgba(196,181,253,.5)">kv_asic.ko (Linux)  ·  PCIe BAR mapping</text>
+      <text x="500" y="183" font-family="'DM Mono',monospace" font-size="10" fill="rgba(196,181,253,.6)">IOMMU setup · interrupt routing · MMIO</text>
+      <text x="500" y="199" font-family="'DM Mono',monospace" font-size="9" fill="rgba(196,181,253,.4)">exposes /dev/kvasic0 · perf counter fd</text>
+
+      <line x1="380" y1="212" x2="380" y2="228" stroke="rgba(56,189,248,.3)" stroke-width="1" marker-end="url(#arp)"/>
+
+      <!-- Layer 1: Hardware -->
+      <rect x="30" y="230" width="700" height="52" rx="8" fill="rgba(245,158,11,.08)" stroke="rgba(245,158,11,.25)" stroke-width="1"/>
+      <text x="200" y="253" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#fcd34d">KV-1 ASIC Hardware</text>
+      <text x="200" y="269" font-family="'DM Mono',monospace" font-size="9" fill="rgba(252,211,77,.5)">PCIe BAR0 (control)  ·  BAR2 (telemetry)  ·  P2P DMA</text>
+      <text x="500" y="253" font-family="'DM Mono',monospace" font-size="10" fill="rgba(252,211,77,.6)">MMIO registers · doorbell pages · MSI-X</text>
+      <text x="500" y="269" font-family="'DM Mono',monospace" font-size="9" fill="rgba(252,211,77,.4)">256 interrupt vectors · 1 per DMA channel</text>
+
+      <!-- Key operations legend -->
+      <rect x="30" y="300" width="700" height="46" rx="6" fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
+      <text x="50" y="318" font-family="'DM Mono',monospace" font-size="9" fill="rgba(56,189,248,.5)">KEY OPS ↓</text>
+      <text x="130" y="318" font-family="'DM Mono',monospace" font-size="9" fill="rgba(255,255,255,.35)">kv_session_begin(model_id, qos_tier) → session_handle</text>
+      <text x="130" y="334" font-family="'DM Mono',monospace" font-size="9" fill="rgba(255,255,255,.35)">kv_block_fetch(session, layer, head_range, token_span) → dma_fence</text>
+      <text x="480" y="318" font-family="'DM Mono',monospace" font-size="9" fill="rgba(255,255,255,.35)">kv_prefix_register(hash, ptr, len) → prefix_id</text>
+      <text x="480" y="334" font-family="'DM Mono',monospace" font-size="9" fill="rgba(255,255,255,.35)">kv_session_end(handle, archive_policy)</text>
+    </svg>
+  </div>
+</div>
+
+<p>
+  The key design decision in the API is that the inference runtime speaks in <em>semantics</em>, not addresses. It calls <code style="font-family:var(--font-m);font-size:15px;color:var(--accent);background:rgba(56,189,248,.08);padding:2px 7px;border-radius:4px">kv_block_fetch(session, layer, head_range, token_span)</code> — and the ASIC resolves that semantic request to a physical address, selects the tier, initiates the DMA, applies decompression if needed, and returns a fence. The runtime never knows or cares whether the block came from HBM, CXL, or NVMe.
+</p>
+
+<p>
+  This separation is load-bearing. It means the eviction policy, compression strategy, and tier placement can all be changed — or learned — without modifying the inference runtime. The ASIC is the policy engine; the runtime is the policy consumer.
+</p>
+
+<h3>Session Lifecycle</h3>
+<p>
+  Every KV session passes through five states. The ASIC enforces valid transitions in hardware — an invalid transition (e.g. fetching a block from an ARCHIVED session without first issuing a warm-up) returns an error code and a DMA fence that resolves to a zero block, preventing silent corruption.
+</p>
+
+<div class="schematic-wrap" style="margin-top:20px">
+  <div class="chip-header" style="padding:13px 22px">Session State Machine</div>
+  <div style="padding:28px;overflow-x:auto">
+    <svg viewBox="0 0 760 200" width="100%" role="img">
+      <title>KV session state machine</title>
+      <desc>Five states: INIT, PREFILL, DECODE, SUSPENDED, ARCHIVED with transition arrows</desc>
+      <defs>
+        <marker id="arsm" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <!-- States -->
+      <g>
+        <rect x="30" y="75" width="90" height="44" rx="8" fill="rgba(56,189,248,.1)" stroke="rgba(56,189,248,.35)" stroke-width="1"/>
+        <text x="75" y="95" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#7dd3fc">INIT</text>
+        <text x="75" y="111" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(125,211,252,.5)">allocating</text>
+      </g>
+      <g>
+        <rect x="165" y="75" width="100" height="44" rx="8" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.35)" stroke-width="1"/>
+        <text x="215" y="95" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#c4b5fd">PREFILL</text>
+        <text x="215" y="111" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(196,181,253,.5)">HBM hot</text>
+      </g>
+      <g>
+        <rect x="315" y="75" width="100" height="44" rx="8" fill="rgba(52,211,153,.12)" stroke="rgba(52,211,153,.4)" stroke-width="1"/>
+        <text x="365" y="95" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">DECODE</text>
+        <text x="365" y="111" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(110,231,183,.5)">protected</text>
+      </g>
+      <g>
+        <rect x="467" y="75" width="110" height="44" rx="8" fill="rgba(245,158,11,.08)" stroke="rgba(245,158,11,.3)" stroke-width="1"/>
+        <text x="522" y="95" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#fcd34d">SUSPENDED</text>
+        <text x="522" y="111" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(252,211,77,.5)">CXL/DDR</text>
+      </g>
+      <g>
+        <rect x="630" y="75" width="100" height="44" rx="8" fill="rgba(251,113,133,.08)" stroke="rgba(251,113,133,.25)" stroke-width="1"/>
+        <text x="680" y="95" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#fda4af">ARCHIVED</text>
+        <text x="680" y="111" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.5)">NVMe/obj</text>
+      </g>
+      <!-- Transitions -->
+      <line x1="120" y1="97" x2="163" y2="97" stroke="rgba(56,189,248,.4)" stroke-width="1" marker-end="url(#arsm)"/>
+      <line x1="265" y1="97" x2="313" y2="97" stroke="rgba(167,139,250,.4)" stroke-width="1" marker-end="url(#arsm)"/>
+      <line x1="415" y1="97" x2="465" y2="97" stroke="rgba(52,211,153,.4)" stroke-width="1" marker-end="url(#arsm)"/>
+      <line x1="577" y1="97" x2="628" y2="97" stroke="rgba(245,158,11,.4)" stroke-width="1" marker-end="url(#arsm)"/>
+      <!-- Resume arrow (suspended → decode, curved) -->
+      <path d="M522 75 Q522 30 365 75" fill="none" stroke="rgba(52,211,153,.3)" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arsm)"/>
+      <text x="440" y="22" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(52,211,153,.4)">resume (warm-up prefetch)</text>
+      <!-- Error state note -->
+      <text x="380" y="165" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(251,113,133,.4)">DECODE state → eviction protected in hardware · invalid transitions → error fence, zero block returned</text>
+      <text x="380" y="180" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(245,158,11,.35)">Prefix blocks shared across sessions → ref-counted · freed only when refcount reaches zero</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>Signal Integrity &amp; Physical Constraints</h2>
+
+<p>
+  At 7nm with PCIe Gen5 signalling, the chip's physical design has non-trivial constraints. These aren't theoretical — they determine what the floorplan can and cannot look like.
+</p>
+
+<div class="tbl-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Interface</th>
+        <th>Signal rate</th>
+        <th>Constraint</th>
+        <th>Mitigation</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>PCIe Gen5</td>
+        <td>32 GT/s per lane</td>
+        <td>Trace length matching ±5 mil, EQ training on link-up</td>
+        <td>On-die retimer, adaptive equaliser</td>
+      </tr>
+      <tr>
+        <td>CXL 3.0</td>
+        <td>32 GT/s (shared PHY with PCIe)</td>
+        <td>Protocol negotiation adds ~10 µs at link-up; cache coherency protocol overhead</td>
+        <td>Dedicated CXL arbiter; FLIT-mode to reduce protocol overhead by ~40%</td>
+      </tr>
+      <tr>
+        <td>HBM3e</td>
+        <td>~3.35 TB/s per stack</td>
+        <td>Must be within 2mm of die for signal integrity; bump pitch 55 µm</td>
+        <td>2.5D interposer (TSMC CoWoS or equivalent); up to 4 HBM stacks</td>
+      </tr>
+      <tr>
+        <td>DDR5</td>
+        <td>~64 GB/s per channel</td>
+        <td>Maximum trace length 5 inches at 6400 MT/s; power delivery noise</td>
+        <td>On-package decoupling; up to 8 channels (512 GB/s aggregate)</td>
+      </tr>
+      <tr>
+        <td>NVMe P2P DMA</td>
+        <td>PCIe Gen4×4 per SSD</td>
+        <td>P2P DMA bypasses host CPU/DRAM; requires IOMMU passthrough</td>
+        <td>BAR-to-BAR DMA; DMA completion interrupt via MSI-X</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<p>
+  The HBM constraint is the most significant. Placing HBM stacks on a 2.5D interposer (CoWoS-style) adds ~$800–1,200 per unit to packaging cost, but it is the only practical way to achieve the ~3 TB/s bandwidth the active decode tier needs. Without it, the chip's hot tier degrades to DDR5 speeds (~500 GB/s), which is insufficient for high-concurrency long-context serving.
+</p>
+
+<p>
+  An alternative design — using HBM only on the GPU and serving the ASIC exclusively from CXL — is viable at lower concurrency but collapses under 128k-context loads where the GPU's HBM fills entirely with active decode state and the ASIC has nowhere to stage warm blocks fast enough.
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>Multi-Chip Topology</h2>
+
+<p>
+  A single KV ASIC can serve 2–4 GPUs depending on context length and concurrency. In a large cluster, multiple ASICs form a fabric — and the KV metadata must be coordinated across them. Here is the reference cluster topology for a 32-GPU node:
+</p>
+
+<div class="schematic-wrap" style="margin-top:28px">
+  <div class="chip-header" style="padding:13px 22px">32-GPU Node — KV ASIC Cluster Topology</div>
+  <div style="padding:32px 24px;overflow-x:auto">
+    <svg viewBox="0 0 760 440" width="100%" role="img">
+      <title>32-GPU node KV ASIC cluster topology</title>
+      <desc>Eight KV ASICs each serving four GPUs, connected to a shared CXL memory pool and NVMe tier, with a metadata coordinator</desc>
+      <defs>
+        <marker id="arc" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- GPU rows (4 per ASIC, 2 columns of 4 ASICs) -->
+      <!-- Left column ASICs: x=30, right: x=490 -->
+      <!-- ASIC 1 -->
+      <rect x="130" y="30" width="70" height="28" rx="5" fill="rgba(56,189,248,.12)" stroke="rgba(56,189,248,.3)" stroke-width="1"/>
+      <text x="165" y="48" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="#7dd3fc">KV-ASIC 1</text>
+      <rect x="30" y="16" width="38" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+      <text x="49" y="29" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 1</text>
+      <rect x="74" y="16" width="38" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+      <text x="93" y="29" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 2</text>
+      <rect x="206" y="16" width="38" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+      <text x="225" y="29" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 3</text>
+      <rect x="250" y="16" width="38" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+      <text x="269" y="29" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 4</text>
+      <line x1="49" y1="36" x2="140" y2="44" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+      <line x1="93" y1="36" x2="150" y2="44" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+      <line x1="225" y1="36" x2="190" y2="44" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+      <line x1="269" y1="36" x2="198" y2="44" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+
+      <!-- ASIC 2 -->
+      <rect x="130" y="110" width="70" height="28" rx="5" fill="rgba(56,189,248,.12)" stroke="rgba(56,189,248,.3)" stroke-width="1"/>
+      <text x="165" y="128" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="#7dd3fc">KV-ASIC 2</text>
+      <rect x="30" y="96" width="38" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="49" y="109" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 5</text>
+      <rect x="74" y="96" width="38" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="93" y="109" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 6</text>
+      <rect x="206" y="96" width="38" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="225" y="109" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 7</text>
+      <rect x="250" y="96" width="38" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="269" y="109" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 8</text>
+      <line x1="49" y1="116" x2="140" y2="124" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+      <line x1="93" y1="116" x2="150" y2="124" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+      <line x1="225" y1="116" x2="190" y2="124" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+      <line x1="269" y1="116" x2="198" y2="124" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+
+      <!-- ASIC 3 -->
+      <rect x="130" y="190" width="70" height="28" rx="5" fill="rgba(56,189,248,.12)" stroke="rgba(56,189,248,.3)" stroke-width="1"/>
+      <text x="165" y="208" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="#7dd3fc">KV-ASIC 3</text>
+      <rect x="30" y="176" width="38" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="49" y="189" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 9</text>
+      <rect x="74" y="176" width="38" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="93" y="189" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 10</text>
+      <rect x="206" y="176" width="38" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="225" y="189" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 11</text>
+      <rect x="250" y="176" width="38" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="269" y="189" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 12</text>
+      <line x1="49" y1="196" x2="140" y2="204" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+      <line x1="93" y1="196" x2="150" y2="204" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+      <line x1="225" y1="196" x2="190" y2="204" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+      <line x1="269" y1="196" x2="198" y2="204" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+
+      <!-- ASIC 4 -->
+      <rect x="130" y="270" width="70" height="28" rx="5" fill="rgba(56,189,248,.12)" stroke="rgba(56,189,248,.3)" stroke-width="1"/>
+      <text x="165" y="288" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="#7dd3fc">KV-ASIC 4</text>
+      <rect x="30" y="256" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="52" y="269" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 13</text>
+      <rect x="80" y="256" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="102" y="269" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 14</text>
+      <rect x="206" y="256" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="228" y="269" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 15</text>
+      <rect x="256" y="256" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="278" y="269" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 16</text>
+      <line x1="52" y1="276" x2="140" y2="284" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+      <line x1="102" y1="276" x2="150" y2="284" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+      <line x1="228" y1="276" x2="190" y2="284" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+      <line x1="278" y1="276" x2="198" y2="284" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+
+      <!-- Right column: ASICs 5-8 serving GPUs 17-32 -->
+      <rect x="560" y="30" width="70" height="28" rx="5" fill="rgba(56,189,248,.12)" stroke="rgba(56,189,248,.3)" stroke-width="1"/>
+      <text x="595" y="48" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="#7dd3fc">KV-ASIC 5</text>
+      <rect x="460" y="16" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="482" y="29" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 17</text>
+      <rect x="510" y="16" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="532" y="29" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 18</text>
+      <rect x="636" y="16" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="658" y="29" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 19</text>
+      <rect x="686" y="16" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="708" y="29" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 20</text>
+      <line x1="482" y1="36" x2="570" y2="44" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+      <line x1="532" y1="36" x2="580" y2="44" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+      <line x1="658" y1="36" x2="620" y2="44" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+      <line x1="708" y1="36" x2="628" y2="44" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+
+      <rect x="560" y="110" width="70" height="28" rx="5" fill="rgba(56,189,248,.12)" stroke="rgba(56,189,248,.3)" stroke-width="1"/>
+      <text x="595" y="128" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="#7dd3fc">KV-ASIC 6</text>
+      <rect x="460" y="96" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="482" y="109" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 21</text>
+      <rect x="510" y="96" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="532" y="109" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 22</text>
+      <rect x="636" y="96" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="658" y="109" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 23</text>
+      <rect x="686" y="96" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="708" y="109" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 24</text>
+      <line x1="482" y1="116" x2="570" y2="124" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+      <line x1="532" y1="116" x2="580" y2="124" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+      <line x1="658" y1="116" x2="620" y2="124" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+      <line x1="708" y1="116" x2="628" y2="124" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+
+      <rect x="560" y="190" width="70" height="28" rx="5" fill="rgba(56,189,248,.12)" stroke="rgba(56,189,248,.3)" stroke-width="1"/>
+      <text x="595" y="208" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="#7dd3fc">KV-ASIC 7</text>
+      <rect x="460" y="176" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="482" y="189" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 25</text>
+      <rect x="510" y="176" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="532" y="189" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 26</text>
+      <rect x="636" y="176" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="658" y="189" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 27</text>
+      <rect x="686" y="176" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="708" y="189" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 28</text>
+      <line x1="482" y1="196" x2="570" y2="204" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+      <line x1="532" y1="196" x2="580" y2="204" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+      <line x1="658" y1="196" x2="620" y2="204" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+      <line x1="708" y1="196" x2="628" y2="204" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+
+      <rect x="560" y="270" width="70" height="28" rx="5" fill="rgba(56,189,248,.12)" stroke="rgba(56,189,248,.3)" stroke-width="1"/>
+      <text x="595" y="288" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="#7dd3fc">KV-ASIC 8</text>
+      <rect x="460" y="256" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="482" y="269" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 29</text>
+      <rect x="510" y="256" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="532" y="269" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 30</text>
+      <rect x="636" y="256" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="658" y="269" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 31</text>
+      <rect x="686" y="256" width="44" height="20" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/><text x="708" y="269" text-anchor="middle" font-family="'DM Mono',monospace" font-size="8" fill="#c4b5fd">GPU 32</text>
+      <line x1="482" y1="276" x2="570" y2="284" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+      <line x1="532" y1="276" x2="580" y2="284" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+      <line x1="658" y1="276" x2="620" y2="284" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+      <line x1="708" y1="276" x2="628" y2="284" stroke="rgba(167,139,248,.2)" stroke-width="1"/>
+
+      <!-- CXL pool in middle -->
+      <rect x="310" y="100" width="140" height="130" rx="10" fill="rgba(52,211,153,.07)" stroke="rgba(52,211,153,.3)" stroke-width="1.5"/>
+      <text x="380" y="130" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">Shared</text>
+      <text x="380" y="148" text-anchor="middle" font-family="'Syne',sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">CXL Pool</text>
+      <text x="380" y="166" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(110,231,253,.45)">8 TB DDR5</text>
+      <text x="380" y="181" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(110,231,253,.4)">~800 GB/s agg.</text>
+      <text x="380" y="196" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(110,231,253,.35)">prefix pool shared</text>
+      <text x="380" y="211" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(110,231,253,.35)">across all ASICs</text>
+
+      <!-- Lines from left ASICs to CXL -->
+      <line x1="200" y1="44" x2="312" y2="145" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+      <line x1="200" y1="124" x2="312" y2="160" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+      <line x1="200" y1="204" x2="312" y2="175" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+      <line x1="200" y1="284" x2="312" y2="195" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+      <!-- Lines from right ASICs to CXL -->
+      <line x1="560" y1="44" x2="448" y2="145" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+      <line x1="560" y1="124" x2="448" y2="160" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+      <line x1="560" y1="204" x2="448" y2="175" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+      <line x1="560" y1="284" x2="448" y2="195" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+
+      <!-- NVMe tier bottom -->
+      <rect x="200" y="330" width="360" height="36" rx="7" fill="rgba(245,158,11,.07)" stroke="rgba(245,158,11,.25)" stroke-width="1"/>
+      <text x="380" y="345" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" font-weight="700" fill="#fcd34d">NVMe / Object Tier</text>
+      <text x="380" y="359" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(252,211,77,.4)">persistent sessions  ·  128+ TB  ·  P2P DMA from any ASIC</text>
+      <line x1="380" y1="230" x2="380" y2="328" stroke="rgba(245,158,11,.25)" stroke-width="1" marker-end="url(#arc)"/>
+
+      <!-- Metadata coordinator -->
+      <rect x="295" y="376" width="170" height="36" rx="7" fill="rgba(251,113,133,.07)" stroke="rgba(251,113,133,.25)" stroke-width="1"/>
+      <text x="380" y="391" text-anchor="middle" font-family="'Syne',sans-serif" font-size="11" font-weight="700" fill="#fda4af">Metadata Coordinator</text>
+      <text x="380" y="406" text-anchor="middle" font-family="'DM Mono',monospace" font-size="9" fill="rgba(253,164,175,.4)">cross-ASIC prefix registry  ·  Raft consensus</text>
+      <line x1="380" y1="366" x2="380" y2="374" stroke="rgba(251,113,133,.3)" stroke-width="1" marker-end="url(#arc)"/>
+    </svg>
+  </div>
+</div>
+
+<p>
+  The metadata coordinator is the most architecturally sensitive component in the cluster. It maintains a distributed registry of all live prefix blocks so that a session on ASIC 3 can reuse a prefix block that was first created by ASIC 7. Without it, prefix deduplication is local-only and the gain degrades from cluster-wide to per-chip.
+</p>
+
+<p>
+  The coordinator uses Raft consensus with a 3-replica write quorum. Typical write latency is ~200 µs at 10 Gbps interconnect — fast enough for session creation (which happens once) but too slow for per-block lookup. Block lookups therefore use a local SRAM cache of the prefix registry, refreshed asynchronously from the coordinator. Cache staleness is bounded to 1 ms, which means a prefix created in the last millisecond may not be shared cluster-wide — an acceptable tradeoff for near-zero lookup latency.
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>Failure Modes &amp; Correctness Risks</h2>
+
+<p>
+  This section exists because every serious infrastructure proposal must enumerate its ways of breaking. These are not edge cases — they are the expected failure modes that a production deployment will encounter.
+</p>
+
+<div class="tbl-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Failure Mode</th>
+        <th>Trigger</th>
+        <th>Impact</th>
+        <th>Mitigation</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Stale prefix block reuse</td>
+        <td>Hash collision or cache staleness causes wrong prefix to be served</td>
+        <td style="color:var(--red)">Silent inference corruption — model generates from wrong context</td>
+        <td>Full prefix hash verification on first use per session; ECC-protected SRAM; collision count telemetry</td>
+      </tr>
+      <tr>
+        <td>DMA fence timeout</td>
+        <td>NVMe read takes >5 ms; fabric congestion; ASIC internal deadlock</td>
+        <td style="color:var(--amber)">Decode stall; timeout escalates to CPU; session may be killed</td>
+        <td>Watchdog timer per DMA channel; fallback to CPU-managed copy; circuit breaker on ASIC timeout rate</td>
+      </tr>
+      <tr>
+        <td>Metadata coordinator partition</td>
+        <td>Network split between coordinator replicas</td>
+        <td style="color:var(--amber)">Prefix sharing degrades to per-chip; no cross-ASIC reuse</td>
+        <td>Raft with split-brain prevention; ASICs continue with local-only dedup; graceful degradation, not crash</td>
+      </tr>
+      <tr>
+        <td>Compression quality regression</td>
+        <td>Model update changes head volatility profile; INT4 applied to now-high-volatility heads</td>
+        <td style="color:var(--amber)">Perplexity degradation; potentially silent (no hard error)</td>
+        <td>Per-model codec profile registered at session create; profile version checked on block decompress</td>
+      </tr>
+      <tr>
+        <td>Eviction of decode-active block</td>
+        <td>Bug in urgency score computation; race between score update and eviction decision</td>
+        <td style="color:var(--red)">Decode stall or fetch of zero block; visible output corruption</td>
+        <td>Hardware lock on DECODE-state session; eviction engine cannot mark protected blocks; verified in RTL</td>
+      </tr>
+      <tr>
+        <td>HBM ECC failure</td>
+        <td>Cosmic ray or wear-out on on-die HBM</td>
+        <td style="color:var(--amber)">Single-bit: corrected silently. Multi-bit: session killed, block invalidated</td>
+        <td>SECDED ECC on all HBM; multi-bit error triggers session fence and re-prefill from cold storage</td>
+      </tr>
+      <tr>
+        <td>CXL link reset</td>
+        <td>PCIe/CXL link retraining during active decode</td>
+        <td style="color:var(--red)">All in-flight DMA aborted; warm tier unavailable for ~50 ms retrain window</td>
+        <td>In-flight DMA list persisted to SRAM; re-issued on link restore; hot tier expands to absorb during retrain</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="callout info" style="margin-top:32px">
+  <div class="callout-label">Engineering Priority</div>
+  The two silent failure modes — stale prefix reuse and compression quality regression — are the hardest to detect in production because they produce wrong output without raising errors. Both require explicit detection logic: prefix hash verification at the session boundary, and per-model codec profile pinning. Neither is expensive to implement; both are easy to omit in a first implementation.
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>Silicon Roadmap: KV-1 → KV-3</h2>
+
+<p>
+  A single chip generation is not a product. The roadmap matters for the investment case. Here is a plausible three-generation arc, assuming a 2-year cadence and stable process node progression:
+</p>
+
+<div class="tbl-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Generation</th>
+        <th>Process</th>
+        <th>New Capabilities</th>
+        <th>Target Workload</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>KV-1 <span style="color:var(--muted);font-size:11px">(this chip)</span></td>
+        <td>7nm</td>
+        <td>HBM3e hot tier · INT4/FP8 compression · prefix dedup · PCIe Gen5/CXL 3.0</td>
+        <td>128k context, 100+ concurrent sessions, single node</td>
+      </tr>
+      <tr>
+        <td>KV-2</td>
+        <td>4nm / 3nm</td>
+        <td>On-die ML-based eviction predictor · learned compression codecs · cluster-wide prefix fabric · NVLink 5 support · 2× DMA channels</td>
+        <td>1M+ token context windows · multi-node prefix sharing · agentic memory persistence</td>
+      </tr>
+      <tr>
+        <td>KV-3</td>
+        <td>2nm / 1.8nm</td>
+        <td>In-memory attention scoring for prefix reuse decisions · KV-native compression at FP4 · cross-datacenter session handoff · hardware-enforced privacy domains</td>
+        <td>Persistent agent memory at datacenter scale · multi-tenant isolation · cross-region session continuity</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<p>
+  The most significant jump is KV-2's on-die ML predictor for eviction and prefetch. Instead of a fixed weighted-logit scorer, KV-2 would run a small (~1M parameter) learned model that predicts decode urgency from session features — improving prefetch accuracy from ~75% to an estimated ~92% hit rate on realistic workload mixes. This predictor is updated offline from telemetry traces and loaded into on-die SRAM at boot.
+</p>
+
+<p>
+  KV-3's hardware privacy domains are an enterprise requirement: in multi-tenant serving, one tenant's KV state must be cryptographically isolated from another's. At software layer this is expensive; in hardware it reduces to address translation with per-domain keys, which is a solved problem in security processors.
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>What the ASIC Does Not Replace</h2>
+
+<p>
+  It is worth being explicit about scope, because infrastructure bets have a way of expanding past their original boundary.
+</p>
+
+<div class="perf-grid">
+  <div class="perf-card">
+    <div class="perf-label" style="color:var(--red)">Not replaced</div>
+    <div class="card-title" style="font-family:var(--font-d);font-size:16px;font-weight:700;color:#fff;margin-bottom:8px">The inference runtime</div>
+    <div style="font-size:14px;color:var(--muted);font-family:var(--font-b)">vLLM, SGLang, TGI — these own scheduling, batching, and the forward pass. The ASIC is subordinate to the runtime, not a replacement for it.</div>
+  </div>
+  <div class="perf-card">
+    <div class="perf-label" style="color:var(--red)">Not replaced</div>
+    <div class="card-title" style="font-family:var(--font-d);font-size:16px;font-weight:700;color:#fff;margin-bottom:8px">The GPU accelerator</div>
+    <div style="font-size:14px;color:var(--muted);font-family:var(--font-b)">All attention computation, FFN, and sampling remain on GPU. The ASIC only handles KV memory — it never touches activations or model weights.</div>
+  </div>
+  <div class="perf-card">
+    <div class="perf-label" style="color:var(--red)">Not replaced</div>
+    <div class="card-title" style="font-family:var(--font-d);font-size:16px;font-weight:700;color:#fff;margin-bottom:8px">Model quality decisions</div>
+    <div style="font-size:14px;color:var(--muted);font-family:var(--font-b)">How much compression is acceptable is a model-specific empirical question. The ASIC provides the mechanism; the operator sets the policy.</div>
+  </div>
+  <div class="perf-card">
+    <div class="perf-label" style="color:var(--red)">Not replaced</div>
+    <div class="card-title" style="font-family:var(--font-d);font-size:16px;font-weight:700;color:#fff;margin-bottom:8px">Request routing</div>
+    <div style="font-size:14px;color:var(--muted);font-family:var(--font-b)">Which GPU processes which request is still decided by the orchestrator (Kubernetes, Dynamo, etc.). The ASIC improves the memory layer beneath that decision.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>What Comes Next</h2>
+
+<p>
+  Part 4 turns to the software stack: the full KV semantic API specification, the session metadata protocol between runtimes and the ASIC driver, and the changes needed in vLLM and SGLang to consume a hardware KV layer without degrading their existing scheduling correctness.
+</p>
+
+<p>
+  The silicon described here is the physical contract. The protocol above it is the programming contract. Getting the protocol right is harder — because it requires consensus across the inference runtime ecosystem, not just a correct RTL implementation.
+</p>
+
+</article>
+
+<footer class="footer">
+  <div class="footer-copy">
+    <strong>KV Infrastructure ASIC</strong>
+    Part 3 of an ongoing architecture series
+  </div>
+  <div class="footer-copy" style="text-align:right">
+    Deep technical · Modelled estimates only<br>
+    Not silicon measurements
+  </div>
+</footer>
+
+</div><!-- /wrap -->
+
+<footer class="site-footer site-global-footer" aria-label="Article footer">
+  <div class="site-footer-inner">
+    <div><strong><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span></strong><br/>Technical essays on AI infrastructure and silicon systems.</div>
+    <div><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></div>
+  </div>
+</footer>
+<script>
+const blockData = {
+  fabric: {
+    title: 'PCIe / CXL / NVLink Front End',
+    desc: 'The chip's primary interface to the host fabric. Supports PCIe Gen5, CXL 3.0, and NVLink 4 simultaneously. Hardware credit flow control prevents head-of-line blocking. 256 lanes aggregate ~1.6 TB/s of peak bandwidth — the top of the KV movement waterfall.'
+  },
+  dma: {
+    title: 'DMA Engine Array (×32 channels)',
+    desc: '32 independent DMA channels, each capable of initiating a KV block transfer in under 500 ns. Uses scatter-gather to handle paged KV layouts without CPU involvement. Adjacent to both the fabric interface and memory controllers to minimise routing delay.'
+  },
+  meta: {
+    title: 'Session Metadata SRAM (256 MB on-die)',
+    desc: 'Stores the index for every live KV block: session ID, layer, head range, token span, tier location, compression format, reference count, and decode urgency score. 256 MB of on-die SRAM enables sub-50 ns lookup for any active session. The single source of truth for the entire KV hierarchy.'
+  },
+  dedup: {
+    title: 'Prefix Deduplication Engine',
+    desc: 'Computes a 64-bit SimHash fingerprint over incoming KV prefixes. On a hit, returns a pointer to the existing shared block rather than allocating new memory. Reference-counted with copy-on-write for safety. In production workloads with repeated system prompts, hit rates of 70–95% are typical — each hit avoids a full HBM allocation.'
+  },
+  prefetch: {
+    title: 'Prefetch Scheduler',
+    desc: 'Monitors decode urgency across all active sessions and initiates CXL or DDR reads before the GPU explicitly requests the next KV block. Hides slow-tier latency behind computation. The urgency model is updated every 10 µs based on token generation rate, session priority, and QoS tier.'
+  },
+  comp: {
+    title: 'KV Compression / Decompression Array (×16 units)',
+    desc: 'Applies INT4 quantisation to low-volatility attention heads (typically lower layers) and FP8 to high-volatility heads. Runs inline at ~1.2 TB/s throughput — compression does not add to transfer latency. The head-volatility classifier uses a per-layer profile that can be updated at runtime via a control register.'
+  },
+  qos: {
+    title: 'QoS + Session Isolation',
+    desc: 'Enforces per-session SLA contracts: bandwidth floors and ceilings, eviction protection, priority queueing. Critical for multi-tenant deployments where a noisy session should not degrade decode latency for others. Isolation is implemented in hardware — a session cannot consume another session\'s reserved bandwidth regardless of software behaviour.'
+  },
+  evict: {
+    title: 'Eviction Policy Engine',
+    desc: 'Scores every KV block using a weighted composite of: decode urgency, prefix reference count, last-access age, session priority, and QoS tier. Feeds a hardware priority heap. Outputs one of five decisions: KEEP, DEMOTE to CXL, ARCHIVE to NVMe, EVICT (free), or PRESERVE (prefix block with live refs). A session in active decode is structurally protected from eviction.'
+  },
+  tele: {
+    title: 'Hardware Telemetry',
+    desc: 'Exposes hardware performance counters over a PCIe BAR: per-session hit/miss rates, compression ratios, DMA queue depths, eviction decisions per second, bandwidth utilisation by tier. Counter updates are lock-free — zero CPU involvement during normal operation. Essential for debugging eviction pathologies and verifying SLA compliance.'
+  },
+  mem: {
+    title: 'Memory Controllers',
+    desc: 'Four independent memory controllers: HBM3e (active decode tier, ~3.35 TB/s), DDR5 (warm session tier), CXL 3.0 attached pool (warm/cold KV), and an NVMe P2P DMA interface (cold/archived sessions). The controller hierarchy implements the KV tiering contract — each tier has defined latency and bandwidth SLAs enforced in hardware.'
+  }
+};
+
+function showBlock(id) {
+  const d = blockData[id];
+  if (!d) return;
+  const el = document.getElementById('block-info');
+  el.innerHTML = `<strong>${d.title}</strong>${d.desc}`;
+  el.classList.add('active');
+  document.querySelectorAll('.chip-block').forEach(b => b.style.opacity = '0.55');
+  document.getElementById('b-' + id).style.opacity = '1';
+}
+
+function switchTab(id) {
+  document.querySelectorAll('.sch-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.sch-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// Animate bars on scroll
+const barEls = document.querySelectorAll('.bar-fill');
+barEls.forEach(b => { b.dataset.w = b.style.width; b.style.width = '0'; });
+const barObs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      barEls.forEach(b => { b.style.width = b.dataset.w; });
+      barObs.disconnect();
+    }
+  });
+}, { threshold: 0.3 });
+const bw = document.getElementById('bars');
+if (bw) barObs.observe(bw);
+</script>
+</body>
+</html>
