@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Disaggregated Memory for Long-Context AI Systems | MANISH AI</title>
+<meta name="description" content="A vendor-neutral reference architecture for standalone DRAM racks: capacity, bandwidth, fabric topology, KV-cache offload, GPU and TPU attachment, failure modes, and deployment decision criteria."/>
+<meta name="keywords" content="disaggregated memory, DRAM rack, long-context AI, KV cache, CXL memory, AI inference, GPU memory, TPU memory, rack-scale memory, memory orchestration"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/disaggregated-memory-long-context-ai-systems.html"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Disaggregated Memory for Long-Context AI Systems | MANISH AI"/>
+<meta property="og:description" content="A vendor-neutral reference architecture for standalone DRAM racks: capacity, bandwidth, fabric topology, KV-cache offload, GPU and TPU attachment, failure modes, and deployment decision criteria."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/disaggregated-memory-long-context-ai-systems.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:image" content="https://manishklach.github.io/og/disaggregated-memory-long-context-ai-systems.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="Disaggregated Memory for Long-Context AI Systems by MANISH AI"/>
+<meta property="article:published_time" content="2026-05-25T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-05-25T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="AI Memory Infrastructure"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Disaggregated Memory for Long-Context AI Systems"/>
+<meta name="twitter:description" content="A vendor-neutral reference architecture for standalone DRAM racks: capacity, bandwidth, fabric topology, KV-cache offload, GPU and TPU attachment, failure modes, and deployment decision criteria."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/disaggregated-memory-long-context-ai-systems.png"/>
+<meta name="twitter:image:alt" content="Disaggregated Memory for Long-Context AI Systems by MANISH AI"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"Disaggregated Memory for Long-Context AI Systems",
+  "description":"A vendor-neutral reference architecture for standalone DRAM racks: capacity, bandwidth, fabric topology, KV-cache offload, GPU and TPU attachment, failure modes, and deployment decision criteria.",
+  "url":"https://manishklach.github.io/writings/disaggregated-memory-long-context-ai-systems.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/disaggregated-memory-long-context-ai-systems.html",
+  "datePublished":"2026-05-25",
+  "dateModified":"2026-05-25",
+  "articleSection":"AI Memory Infrastructure",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+    /* ─── Design tokens ─────────────────────────────────── */
+    :root {
+      --bg:       #04070f;
+      --bg2:      #070d1a;
+      --surface:  rgba(255,255,255,.055);
+      --line:     rgba(255,255,255,.10);
+      --line2:    rgba(255,255,255,.06);
+      --text:     #d8e4f4;
+      --muted:    #8899b0;
+      --faint:    #5a6a80;
+      --ice:      #a8d8ff;
+      --cyan:     #00d4c8;
+      --violet:   #9d7bff;
+      --green:    #3dffa0;
+      --amber:    #ffcc44;
+      --red:      #ff5577;
+      --r:        20px;
+      --r-lg:     28px;
+      --mono:     'DM Mono', ui-monospace, monospace;
+      --sans:     'DM Sans', ui-sans-serif, sans-serif;
+      --display:  'Syne', ui-sans-serif, sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; font-size: 16px; }
+
+    /* ─── Scrollbar ─────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: rgba(168,216,255,.25); border-radius: 99px; }
+
+    /* ─── Scroll progress bar ───────────────────────────── */
+    #progress { position: fixed; top: 0; left: 0; height: 2px; width: 0%; background: linear-gradient(90deg, var(--cyan), var(--violet)); z-index: 1000; transition: width .1s linear; }
+
+    /* ─── Body / background ─────────────────────────────── */
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.7;
+      font-weight: 300;
+      overflow-x: hidden;
+    }
+
+    /* Ambient blobs */
+    body::before, body::after {
+      content: '';
+      position: fixed;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 0;
+      filter: blur(120px);
+    }
+    body::before {
+      width: 900px; height: 600px;
+      top: -200px; left: -300px;
+      background: radial-gradient(ellipse, rgba(0,212,200,.09) 0%, transparent 70%);
+    }
+    body::after {
+      width: 700px; height: 700px;
+      top: 100px; right: -250px;
+      background: radial-gradient(ellipse, rgba(157,123,255,.09) 0%, transparent 70%);
+    }
+
+    /* ─── Layout ─────────────────────────────────────────── */
+    .wrap { position: relative; z-index: 1; max-width: 1080px; margin: 0 auto; padding: 0 28px 120px; }
+
+    /* ─── Nav ────────────────────────────────────────────── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 32px 0 0;
+      gap: 20px;
+      border-bottom: 1px solid var(--line2);
+      padding-bottom: 24px;
+    }
+    .brand {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+    .tag-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .tag {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 5px 10px;
+    }
+    .tag.live { color: var(--green); border-color: rgba(61,255,160,.25); background: rgba(61,255,160,.06); }
+
+    /* ─── Hero ───────────────────────────────────────────── */
+    .hero {
+      padding: 80px 0 60px;
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      gap: 56px;
+      align-items: start;
+    }
+    .hero-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .eyebrow-line { height: 1px; width: 40px; background: var(--cyan); }
+    .eyebrow-text {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--cyan);
+    }
+    h1 {
+      font-family: var(--display);
+      font-size: clamp(40px, 5.5vw, 68px);
+      line-height: 1.0;
+      letter-spacing: -.04em;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 24px;
+    }
+    h1 em { font-style: normal; color: var(--cyan); }
+    .hero-sub {
+      font-size: 18px;
+      color: var(--muted);
+      max-width: 560px;
+      line-height: 1.7;
+      margin-bottom: 32px;
+    }
+    .hero-meta {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .hero-meta span {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--faint);
+    }
+    .hero-meta .sep { color: var(--line); }
+
+    /* Rack illustration */
+    .rack-vis {
+      background: linear-gradient(180deg, rgba(0,212,200,.06), rgba(157,123,255,.04));
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: var(--r-lg);
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .rack-vis::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 200px; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    }
+    .rack-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .rack-label { font-family: var(--mono); font-size: 11px; color: var(--cyan); letter-spacing: .12em; text-transform: uppercase; }
+    .rack-cap { font-family: var(--display); font-size: 32px; font-weight: 800; color: #fff; line-height: 1; }
+    .rack-unit { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+    .blades { display: flex; flex-direction: column; gap: 6px; }
+    .blade {
+      height: 32px;
+      border: 1px solid rgba(255,255,255,.09);
+      border-radius: 8px;
+      background: linear-gradient(90deg, rgba(0,212,200,.10), rgba(157,123,255,.07));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      position: relative;
+      overflow: hidden;
+      animation: blade-pulse 3s ease-in-out infinite;
+    }
+    .blade:nth-child(even) { animation-delay: .5s; }
+    .blade:nth-child(3n) { animation-delay: 1s; }
+    @keyframes blade-pulse {
+      0%, 100% { border-color: rgba(255,255,255,.09); }
+      50% { border-color: rgba(0,212,200,.20); }
+    }
+    .blade-bar {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      border-radius: 8px 0 0 8px;
+      opacity: .25;
+    }
+    .lights { display: flex; gap: 5px; align-items: center; }
+    .light {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: blink 2.5s ease-in-out infinite;
+    }
+    .light:nth-child(2) { animation-delay: .8s; }
+    .light:nth-child(3) { animation-delay: 1.6s; }
+    @keyframes blink {
+      0%, 90%, 100% { opacity: 1; }
+      95% { opacity: .2; }
+    }
+    .rack-footer { margin-top: 18px; font-family: var(--mono); font-size: 11px; color: var(--faint); line-height: 1.6; }
+
+    /* ─── Stats bar ──────────────────────────────────────── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      overflow: hidden;
+      margin-bottom: 80px;
+      background: var(--bg2);
+    }
+    .stat {
+      padding: 28px 24px;
+      border-right: 1px solid var(--line);
+      position: relative;
+    }
+    .stat:last-child { border-right: none; }
+    .stat::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--cyan), transparent);
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    .stat:hover::after { opacity: 1; }
+    .stat-num {
+      font-family: var(--display);
+      font-size: 28px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -.04em;
+      margin-bottom: 6px;
+    }
+    .stat-label { font-family: var(--mono); font-size: 11px; color: var(--faint); letter-spacing: .08em; text-transform: uppercase; line-height: 1.5; }
+
+    /* ─── Sections ───────────────────────────────────────── */
+    section { margin-bottom: 88px; }
+    .section-tag {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .section-tag::before {
+      content: '';
+      display: block;
+      width: 24px; height: 1px;
+      background: var(--cyan);
+    }
+    .section-tag span {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--cyan);
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+    h2 {
+      font-family: var(--display);
+      font-size: clamp(28px, 3.5vw, 44px);
+      font-weight: 800;
+      letter-spacing: -.04em;
+      color: #fff;
+      line-height: 1.1;
+      margin-bottom: 20px;
+    }
+    h3 {
+      font-family: var(--display);
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -.02em;
+      color: #fff;
+      margin: 32px 0 12px;
+    }
+    .lead {
+      font-size: 17px;
+      color: var(--muted);
+      max-width: 720px;
+      margin-bottom: 32px;
+      line-height: 1.75;
+    }
+    p { color: var(--text); font-size: 16px; line-height: 1.8; margin-bottom: 16px; }
+
+    /* ─── Pull quote ─────────────────────────────────────── */
+    .pull {
+      border-left: 3px solid var(--cyan);
+      padding: 20px 28px;
+      margin: 40px 0;
+      background: linear-gradient(90deg, rgba(0,212,200,.07), transparent);
+      border-radius: 0 var(--r) var(--r) 0;
+    }
+    .pull p {
+      font-family: var(--display);
+      font-size: 19px;
+      font-weight: 600;
+      letter-spacing: -.02em;
+      color: #e0f0ff;
+      line-height: 1.5;
+      margin: 0;
+    }
+    .pull strong { color: var(--cyan); }
+
+    /* ─── Table ──────────────────────────────────────────── */
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: var(--r);
+      border: 1px solid var(--line);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(255,255,255,.025);
+      font-size: 14.5px;
+    }
+    thead { background: rgba(255,255,255,.04); }
+    th {
+      padding: 14px 20px;
+      text-align: left;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    td {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line2);
+      color: var(--text);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+    td:first-child { font-family: var(--mono); font-size: 13px; color: var(--ice); white-space: nowrap; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,.02); }
+
+    /* ─── Cards ──────────────────────────────────────────── */
+    .cards { display: grid; gap: 16px; }
+    .cards.two { grid-template-columns: repeat(2, 1fr); }
+    .cards.three { grid-template-columns: repeat(3, 1fr); }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: 28px;
+      background: rgba(255,255,255,.03);
+      position: relative;
+      overflow: hidden;
+      transition: border-color .2s, transform .2s;
+    }
+    .card:hover { border-color: rgba(255,255,255,.18); transform: translateY(-2px); }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    .card:hover::before { opacity: 1; }
+    .card.ice::before { background: linear-gradient(90deg, transparent, var(--cyan), transparent); }
+    .card.violet::before { background: linear-gradient(90deg, transparent, var(--violet), transparent); }
+    .card.green-c::before { background: linear-gradient(90deg, transparent, var(--green), transparent); }
+    .card.ice { background: linear-gradient(180deg, rgba(0,212,200,.06), rgba(255,255,255,.02)); }
+    .card.violet { background: linear-gradient(180deg, rgba(157,123,255,.07), rgba(255,255,255,.02)); }
+    .card.green-c { background: linear-gradient(180deg, rgba(61,255,160,.06), rgba(255,255,255,.02)); }
+    .card-eyebrow {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .card-eyebrow.ice { color: var(--cyan); }
+    .card-eyebrow.violet { color: var(--violet); }
+    .card-eyebrow.green { color: var(--green); }
+    .card h3 { margin: 0 0 10px; font-size: 17px; }
+    .card p { font-size: 14.5px; color: var(--muted); margin: 0; line-height: 1.7; }
+
+    /* ─── Topology diagram ───────────────────────────────── */
+    .diagram-wrap {
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      background: var(--bg2);
+    }
+    .diagram-wrap svg { display: block; width: 100%; height: auto; }
+
+    /* ─── Code blocks ────────────────────────────────────── */
+    pre {
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.75;
+      background: #020815;
+      border: 1px solid var(--line2);
+      border-radius: var(--r);
+      padding: 24px;
+      color: var(--ice);
+      overflow-x: auto;
+    }
+    .code-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line2);
+      border-bottom: none;
+      border-radius: var(--r) var(--r) 0 0;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--faint);
+      letter-spacing: .1em;
+    }
+    .code-header + pre {
+      border-radius: 0 0 var(--r) var(--r);
+    }
+    .cm { color: #5a7a9a; }
+    .ck { color: #9d7bff; }
+    .cv { color: #3dffa0; }
+    .cs { color: #ffcc44; }
+    .cn { color: #00d4c8; }
+
+    /* ─── Alert boxes ────────────────────────────────────── */
+    .alert {
+      border-radius: var(--r);
+      padding: 20px 24px;
+      font-size: 15px;
+      line-height: 1.7;
+      margin-bottom: 14px;
+    }
+    .alert strong { font-weight: 600; }
+    .alert.warn { border-left: 3px solid var(--amber); background: rgba(255,204,68,.07); color: #ffe9a0; }
+    .alert.danger { border-left: 3px solid var(--red); background: rgba(255,85,119,.07); color: #ffb0bf; }
+    .alert.ok { border-left: 3px solid var(--green); background: rgba(61,255,160,.07); color: #b0ffe0; }
+
+    /* ─── Decision grid ──────────────────────────────────── */
+    .decision-card {
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: 32px;
+    }
+    .decision-card h3 { margin-top: 0; }
+    .decision-card ul { list-style: none; padding: 0; }
+    .decision-card ul li {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line2);
+      font-size: 15px;
+      color: var(--muted);
+      display: flex;
+      gap: 12px;
+      line-height: 1.6;
+    }
+    .decision-card ul li:last-child { border-bottom: none; }
+    .decision-card ul li::before { content: '→'; font-family: var(--mono); flex-shrink: 0; }
+    .decision-card.yes { background: rgba(61,255,160,.04); border-color: rgba(61,255,160,.20); }
+    .decision-card.yes ul li::before { color: var(--green); }
+    .decision-card.yes h3 { color: var(--green); }
+    .decision-card.no { background: rgba(157,123,255,.04); border-color: rgba(157,123,255,.20); }
+    .decision-card.no ul li::before { color: var(--violet); }
+    .decision-card.no h3 { color: var(--violet); }
+
+    /* ─── Final thesis ───────────────────────────────────── */
+    .thesis {
+      border: 1px solid rgba(0,212,200,.25);
+      border-radius: var(--r-lg);
+      padding: 48px;
+      background: linear-gradient(135deg, rgba(0,212,200,.07), rgba(157,123,255,.05));
+      position: relative;
+      overflow: hidden;
+    }
+    .thesis::before {
+      content: '"';
+      position: absolute;
+      top: -30px; left: 30px;
+      font-family: var(--display);
+      font-size: 200px;
+      color: rgba(0,212,200,.07);
+      line-height: 1;
+      pointer-events: none;
+    }
+    .thesis p {
+      font-family: var(--display);
+      font-size: clamp(18px, 2.5vw, 24px);
+      font-weight: 600;
+      letter-spacing: -.03em;
+      color: #dff0ff;
+      line-height: 1.6;
+      max-width: 800px;
+      position: relative;
+    }
+    .thesis strong { color: var(--cyan); }
+    .thesis .thesis-note {
+      font-family: var(--sans);
+      font-size: 15px;
+      font-weight: 300;
+      color: var(--muted);
+      margin-top: 24px;
+      letter-spacing: 0;
+    }
+
+    /* ─── Research anchors ───────────────────────────────── */
+    .anchor-item {
+      display: flex;
+      gap: 24px;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--line2);
+      align-items: flex-start;
+    }
+    .anchor-item:last-child { border-bottom: none; }
+    .anchor-num {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--faint);
+      flex-shrink: 0;
+      padding-top: 3px;
+      width: 28px;
+    }
+    .anchor-name {
+      font-family: var(--display);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--ice);
+      margin-bottom: 4px;
+    }
+    .anchor-desc { font-size: 14.5px; color: var(--muted); line-height: 1.6; }
+
+    /* ─── TOC ────────────────────────────────────────────── */
+    .toc {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 36px;
+    }
+    .toc a {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-decoration: none;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 7px 12px;
+      transition: color .2s, border-color .2s, background .2s;
+    }
+    .toc a:hover {
+      color: var(--cyan);
+      border-color: rgba(0,212,200,.35);
+      background: rgba(0,212,200,.06);
+    }
+
+    /* ─── Footer ─────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--line2);
+      padding-top: 36px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+    footer p {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--faint);
+      line-height: 1.7;
+      max-width: 540px;
+      margin: 0;
+    }
+    .footer-mark {
+      font-family: var(--display);
+      font-size: 13px;
+      font-weight: 800;
+      color: rgba(255,255,255,.12);
+      letter-spacing: -.02em;
+      white-space: nowrap;
+    }
+
+    /* ─── Divider ────────────────────────────────────────── */
+    .divider { height: 1px; background: var(--line2); margin: 56px 0; }
+
+    /* ─── Responsive ─────────────────────────────────────── */
+    @media (max-width: 860px) {
+      .hero { grid-template-columns: 1fr; gap: 40px; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .cards.two, .cards.three { grid-template-columns: 1fr; }
+      h1 { font-size: 42px; }
+      .thesis { padding: 32px; }
+    }
+    @media (max-width: 560px) {
+      .stats { grid-template-columns: 1fr 1fr; }
+      nav { flex-direction: column; align-items: flex-start; }
+    }
+
+    /* ─── Fade-in animations ─────────────────────────────── */
+    .fade-in { opacity: 0; transform: translateY(22px); transition: opacity .6s ease, transform .6s ease; }
+    .fade-in.visible { opacity: 1; transform: translateY(0); }
+  
+
+html:not(.dark) {
+  color-scheme: light;
+  --bg: #f7fafc;
+  --bg2: #edf4f9;
+  --surface: rgba(255,255,255,.78);
+  --line: rgba(12,26,43,.14);
+  --line2: rgba(12,26,43,.09);
+  --text: #102033;
+  --muted: #4b637a;
+  --faint: #7890a8;
+  --ice: #075985;
+  --cyan: #087e8b;
+  --violet: #6d28d9;
+  --green: #047857;
+  --amber: #b45309;
+  --red: #be123c;
+}
+html:not(.dark) body {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(8,126,139,.13), transparent 30rem),
+    linear-gradient(180deg, #fbfdff 0%, #edf4f9 48%, #f7fafc 100%);
+  color: var(--text);
+}
+html:not(.dark) body::before,
+html:not(.dark) body::after { opacity: .28; filter: blur(140px); }
+html:not(.dark) h1,
+html:not(.dark) h2,
+html:not(.dark) h3,
+html:not(.dark) .brand,
+html:not(.dark) .stat-num,
+html:not(.dark) .rack-cap,
+html:not(.dark) .anchor-name,
+html:not(.dark) .footer-mark { color: #102033 !important; }
+html:not(.dark) h1 em,
+html:not(.dark) .section-tag,
+html:not(.dark) .eyebrow-text { color: var(--cyan) !important; }
+html:not(.dark) p,
+html:not(.dark) li,
+html:not(.dark) .hero-sub,
+html:not(.dark) .lead,
+html:not(.dark) .stat-label,
+html:not(.dark) .rack-label,
+html:not(.dark) .rack-unit,
+html:not(.dark) .rack-footer,
+html:not(.dark) .anchor-desc,
+html:not(.dark) footer p { color: #39536b !important; }
+html:not(.dark) .hero-meta,
+html:not(.dark) .tag,
+html:not(.dark) td,
+html:not(.dark) th,
+html:not(.dark) .toc a { color: #4b637a !important; }
+html:not(.dark) nav,
+html:not(.dark) .hero,
+html:not(.dark) .stat,
+html:not(.dark) .rack-vis,
+html:not(.dark) .card,
+html:not(.dark) .cards > div,
+html:not(.dark) .table-wrap,
+html:not(.dark) .alert,
+html:not(.dark) .decision-card,
+html:not(.dark) .anchor-item,
+html:not(.dark) .thesis,
+html:not(.dark) footer { border-color: var(--line) !important; }
+html:not(.dark) .stat,
+html:not(.dark) .rack-vis,
+html:not(.dark) .card,
+html:not(.dark) .cards > div,
+html:not(.dark) .table-wrap,
+html:not(.dark) .alert,
+html:not(.dark) .decision-card,
+html:not(.dark) .anchor-item,
+html:not(.dark) .thesis,
+html:not(.dark) .blade { background: rgba(255,255,255,.74) !important; }
+html:not(.dark) .code,
+html:not(.dark) pre { background: #102033 !important; color: #d8e4f4 !important; }
+html:not(.dark) table,
+html:not(.dark) th { background: rgba(238,245,251,.9) !important; }
+html:not(.dark) svg text[fill="#e5edf7"],
+html:not(.dark) svg text[fill="#fff"],
+html:not(.dark) svg text[fill="white"] { fill: #102033 !important; }
+html:not(.dark) svg text[fill="#94a3b8"],
+html:not(.dark) svg text[fill="#5a6a80"] { fill: #4b637a !important; }
+html:not(.dark) strong[style],
+html:not(.dark) div[style*="color:#fff"],
+html:not(.dark) span[style*="color:#fff"] { color: #102033 !important; }
+html.dark { color-scheme: dark; }
+html.dark .site-tools,
+html.dark .reading-meta,
+html.dark .site-footer.site-global-footer { color: var(--muted); }
+.site-tools {
+  position: relative;
+  z-index: 1001;
+  width: min(1080px, calc(100vw - 56px));
+  margin: 18px auto 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font: 14px/1.5 var(--mono);
+}
+.back-link { color: inherit; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
+#theme-toggle { border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 999px; padding: 6px 11px; font: inherit; cursor: pointer; }
+.reading-meta { position: relative; z-index: 1001; width: min(1080px, calc(100vw - 56px)); margin: 10px auto 0; color: var(--muted); font: 13px/1.5 var(--mono); }
+.site-footer.site-global-footer { position: relative; z-index: 2; width: min(1080px, calc(100vw - 56px)); margin: 0 auto 48px; padding: 28px 0 0; border-top: 1px solid var(--line); color: var(--muted); font: 13px/1.6 var(--mono); }
+.site-footer-inner { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.site-footer a { color: inherit; }
+.logo-word{display:inline-flex;align-items:baseline;gap:.01em;white-space:nowrap}.logo-i{display:inline-block;font-size:.84em;margin:0 .055em 0 .025em;font-style:normal;font-weight:900;line-height:.95;transform:translateY(-.02em)}
+</style>
+</head>
+<body>
+  <div class="site-tools" aria-label="Site tools">
+    <a class="back-link" href="/writings.html"><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span> / Writings</a>
+    <button id="theme-toggle" type="button" aria-label="Toggle light and dark mode">Theme</button>
+  </div>
+  <p class="reading-meta"><time datetime="2026-05-25">May 25, 2026</time> · AI Memory Infrastructure · 12 min read</p>
+<div id="progress"></div>
+
+  <div class="wrap">
+    <!-- Nav -->
+    <nav>
+      <div class="brand">Memory-Orchestrated AI Infrastructure</div>
+      <div class="tag-row">
+        <span class="tag live">● Reference Architecture</span>
+        <span class="tag">Vendor Neutral</span>
+        <span class="tag">v2.0</span>
+      </div>
+    </nav>
+
+    <!-- Hero -->
+    <header class="hero">
+      <div>
+        <div class="hero-eyebrow">
+          <span class="eyebrow-line"></span>
+          <span class="eyebrow-text">Standalone DRAM Rack</span>
+        </div>
+        <h1>Disaggregated<br><em>Memory</em> for<br>Long-Context AI</h1>
+        <p class="hero-sub">A pooled DRAM tier for GPU and TPU inference clusters — large enough for KV-cache, fast enough for block-level prefetch, programmable enough to avoid remote-memory stalls.</p>
+        <div class="hero-meta">
+          <span>Reference Architecture</span>
+          <span class="sep">·</span>
+          <span>~12 min read</span>
+          <span class="sep">·</span>
+          <span>Updated 2026</span>
+        </div>
+        <nav class="toc">
+          <a href="#spec">Spec</a>
+          <a href="#topology">Topology</a>
+          <a href="#kv">KV-cache</a>
+          <a href="#software">Software</a>
+          <a href="#gotchas">Gotchas</a>
+          <a href="#decision">Decision tree</a>
+          <a href="#research">Research</a>
+        </nav>
+      </div>
+
+      <!-- Rack vis -->
+      <div class="rack-vis" aria-label="Illustration of a standalone DRAM memory rack with 8 memory blades">
+        <div class="rack-header">
+          <div>
+            <div class="rack-label">42U / 48U Memory Appliance</div>
+            <div class="rack-cap">64–160 TB</div>
+          </div>
+          <div class="rack-unit">DDR5 / MRDIMM<br>LPDDR5X blades</div>
+        </div>
+        <div class="blades">
+          <div class="blade"><span style="position:relative;z-index:1">Memory Blade 01 — DDR5 RDIMM ×16</span><span class="lights"><span class="light"></span><span class="light"></span><span class="light"></span></span><div class="blade-bar" style="width:88%;background:var(--cyan)"></div></div>
+          <div class="blade"><span style="position:relative;z-index:1">Memory Blade 02 — DDR5 RDIMM ×16</span><span class="lights"><span class="light"></span><span class="light"></span><span class="light"></span></span><div class="blade-bar" style="width:72%;background:var(--cyan)"></div></div>
+          <div class="blade"><span style="position:relative;z-index:1">Memory Blade 03 — MRDIMM ×16</span><span class="lights"><span class="light"></span><span class="light"></span><span class="light"></span></span><div class="blade-bar" style="width:95%;background:var(--violet)"></div></div>
+          <div class="blade"><span style="position:relative;z-index:1">Memory Blade 04 — MRDIMM ×16</span><span class="lights"><span class="light"></span><span class="light"></span><span class="light"></span></span><div class="blade-bar" style="width:61%;background:var(--violet)"></div></div>
+          <div class="blade"><span style="position:relative;z-index:1">Memory Blade 05 — DDR5 RDIMM ×16</span><span class="lights"><span class="light"></span><span class="light"></span><span class="light"></span></span><div class="blade-bar" style="width:80%;background:var(--cyan)"></div></div>
+          <div class="blade"><span style="position:relative;z-index:1">Memory Blade 06 — DDR5 RDIMM ×16</span><span class="lights"><span class="light"></span><span class="light"></span><span class="light"></span></span><div class="blade-bar" style="width:44%;background:var(--green)"></div></div>
+          <div class="blade"><span style="position:relative;z-index:1">Memory Blade 07 — LPDDR5X ×12</span><span class="lights"><span class="light"></span><span class="light"></span><span class="light"></span></span><div class="blade-bar" style="width:56%;background:var(--green)"></div></div>
+          <div class="blade"><span style="position:relative;z-index:1">Controller ASIC — Dual Fabric</span><span class="lights"><span class="light"></span><span class="light"></span><span class="light"></span></span><div class="blade-bar" style="width:100%;background:var(--amber)"></div></div>
+        </div>
+        <div class="rack-footer">ECC · Patrol Scrub · Per-tenant Encryption · Dual Fabric Planes</div>
+      </div>
+    </header>
+
+    <!-- Stats -->
+    <div class="stats fade-in" id="spec">
+      <div class="stat">
+        <div class="stat-num">64–160 TB</div>
+        <div class="stat-label">Usable rack<br>DRAM capacity</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">1–5 µs</div>
+        <div class="stat-label">Target block<br>access / DMA path</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">8–50 TB/s</div>
+        <div class="stat-label">Aggregate external<br>fabric class</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">20–60 kW</div>
+        <div class="stat-label">Rack power<br>envelope</div>
+      </div>
+    </div>
+
+    <!-- System spec -->
+    <section class="fade-in">
+      <div class="section-tag"><span>01 — System Specification</span></div>
+      <h2>One-page system spec</h2>
+      <p class="lead">Numbers are design targets, not product claims. Validate against your actual fabric, controller, workload, and SLO requirements.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Layer</th><th>Reference target</th><th>Why it matters</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Rack capacity</td>
+              <td>32–40 memory blades × 2–4 TB each = 64–160 TB usable</td>
+              <td>Large enough to absorb KV-cache, embeddings, long prompts, and multi-tenant working sets without buying more GPU nodes just for memory.</td>
+            </tr>
+            <tr>
+              <td>Blade memory</td>
+              <td>DDR5 RDIMM / MRDIMM / LPDDR5X-class packages; 8–16 memory channels per blade</td>
+              <td>Optimized for capacity and cost per GB, not HBM-class bandwidth.</td>
+            </tr>
+            <tr>
+              <td>External fabric</td>
+              <td>CXL 3.x fabric, PCIe 6-class switching, or ultra-low-latency RDMA / InfiniBand / Ethernet</td>
+              <td>CXL 3.0 adds advanced switching, fabric capabilities, peer-to-peer communication, and resource sharing; RDMA designs can expose explicit object transfer semantics.</td>
+            </tr>
+            <tr>
+              <td>Per-node bandwidth</td>
+              <td>128–512 GB/s target into an accelerator server</td>
+              <td>Enough for scheduled KV block movement, still far below local HBM — software placement matters.</td>
+            </tr>
+            <tr>
+              <td>Access granularity</td>
+              <td>256 KB–1 MB object pages for KV blocks; 2–16 MB for bulk prompt segments</td>
+              <td>Amortizes fabric latency and avoids cache-line-sized remote misses.</td>
+            </tr>
+            <tr>
+              <td>Cost goal</td>
+              <td>Materially lower $/GB than HBM; higher $/GB than SSD/HBF</td>
+              <td>Designed as a warm memory tier between accelerator HBM and storage.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Topology -->
+    <section id="topology" class="fade-in">
+      <div class="section-tag"><span>02 — Topology</span></div>
+      <h2>Memory rack beside accelerator racks</h2>
+      <p class="lead">The rack should not behave like a transparent, slow extension of HBM. It should behave like a programmable warm-memory appliance. GPUs and TPUs keep hot tensors in local HBM, while the runtime issues explicit block transfers for warm KV-cache, embeddings, and prompt segments.</p>
+
+      <div class="pull">
+        <p>The winning abstraction is not <strong>"remote memory"</strong> — it is <strong>memory intent</strong>: the runtime tells the infrastructure what an object is, when it will be reused, how urgent it is, and where it should live next.</p>
+      </div>
+
+      <div class="diagram-wrap">
+        <svg viewBox="0 0 1080 540" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Rack-scale disaggregated memory topology showing GPU racks connected through dual fabric planes to a standalone DRAM rack and SSD cold tier">
+          <defs>
+            <linearGradient id="gflow" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0%" stop-color="#00d4c8"/>
+              <stop offset="100%" stop-color="#9d7bff"/>
+            </linearGradient>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="3" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M0,0 L8,4 L0,8 Z" fill="url(#gflow)" opacity=".7"/>
+            </marker>
+          </defs>
+          <rect width="1080" height="540" fill="#070d1a"/>
+
+          <!-- Title -->
+          <text x="40" y="46" fill="#e5edf7" font-family="Syne, system-ui" font-size="22" font-weight="800">Rack-scale disaggregated memory topology</text>
+          <text x="40" y="70" fill="#8899b0" font-family="DM Mono, monospace" font-size="12">Hot compute stays local — warm memory is explicitly scheduled across the fabric</text>
+
+          <!-- GPU Rack A -->
+          <rect x="36" y="102" width="210" height="290" rx="18" fill="#0b1628" stroke="#1e3a5f" stroke-width="1.5"/>
+          <text x="57" y="134" fill="#7dd3fc" font-family="Syne, system-ui" font-size="15" font-weight="800">GPU / TPU Rack A</text>
+          <rect x="60" y="150" width="162" height="40" rx="10" fill="#0f2040" stroke="#1e4a80"/>
+          <text x="100" y="175" fill="#dbeafe" font-family="DM Mono, monospace" font-size="12">HBM Hot Set</text>
+          <rect x="60" y="202" width="162" height="40" rx="10" fill="#0f2040" stroke="#1e4a80"/>
+          <text x="88" y="227" fill="#dbeafe" font-family="DM Mono, monospace" font-size="12">GPU DMA Engine</text>
+          <rect x="60" y="254" width="162" height="40" rx="10" fill="#0f2040" stroke="#1e4a80"/>
+          <text x="78" y="279" fill="#dbeafe" font-family="DM Mono, monospace" font-size="12">Runtime Scheduler</text>
+          <rect x="60" y="308" width="162" height="40" rx="10" fill="#0f2040" stroke="#1e4a80"/>
+          <text x="94" y="333" fill="#dbeafe" font-family="DM Mono, monospace" font-size="12">Prefetch Manager</text>
+
+          <!-- Rack B -->
+          <rect x="36" y="412" width="210" height="100" rx="18" fill="#0b1628" stroke="#1e3a5f" stroke-width="1.5"/>
+          <text x="68" y="451" fill="#94a3b8" font-family="Syne, system-ui" font-size="14" font-weight="700">Accelerator Rack B</text>
+          <text x="68" y="473" fill="#5a6a80" font-family="DM Mono, monospace" font-size="11">+ Rack C/D/N...</text>
+
+          <!-- Fabric Plane 0 -->
+          <rect x="390" y="118" width="240" height="104" rx="18" fill="#061c35" stroke="#0369a1" stroke-width="1.5"/>
+          <text x="432" y="160" fill="#7dd3fc" font-family="Syne, system-ui" font-size="17" font-weight="800">Fabric Plane 0</text>
+          <text x="420" y="182" fill="#7dd3fc" font-family="DM Mono, monospace" font-size="11" opacity=".7">CXL 3.x / RDMA / Optical</text>
+          <text x="412" y="205" fill="#38bdf8" font-family="DM Mono, monospace" font-size="10">PRIMARY PATH</text>
+
+          <!-- Fabric Plane 1 -->
+          <rect x="390" y="316" width="240" height="104" rx="18" fill="#170d38" stroke="#6d28d9" stroke-width="1.5"/>
+          <text x="432" y="358" fill="#c4b5fd" font-family="Syne, system-ui" font-size="17" font-weight="800">Fabric Plane 1</text>
+          <text x="414" y="380" fill="#c4b5fd" font-family="DM Mono, monospace" font-size="11" opacity=".7">Redundant path + failover</text>
+          <text x="428" y="402" fill="#a78bfa" font-family="DM Mono, monospace" font-size="10">STANDBY / MULTIPATH</text>
+
+          <!-- DRAM Rack -->
+          <rect x="770" y="96" width="274" height="320" rx="20" fill="#071a0e" stroke="#166534" stroke-width="1.5"/>
+          <text x="810" y="135" fill="#4ade80" font-family="Syne, system-ui" font-size="17" font-weight="800">Standalone DRAM Rack</text>
+          <text x="818" y="157" fill="#86efac" font-family="DM Mono, monospace" font-size="11">64–160 TB warm memory tier</text>
+          <rect x="800" y="178" width="214" height="32" rx="8" fill="#052e16" stroke="#15803d"/>
+          <text x="844" y="199" fill="#dcfce7" font-family="DM Mono, monospace" font-size="11">Memory Blade (DDR5)</text>
+          <rect x="800" y="220" width="214" height="32" rx="8" fill="#052e16" stroke="#15803d"/>
+          <text x="844" y="241" fill="#dcfce7" font-family="DM Mono, monospace" font-size="11">Memory Blade (MRDIMM)</text>
+          <rect x="800" y="262" width="214" height="32" rx="8" fill="#052e16" stroke="#15803d"/>
+          <text x="844" y="283" fill="#dcfce7" font-family="DM Mono, monospace" font-size="11">Memory Blade (DDR5)</text>
+          <rect x="800" y="304" width="214" height="32" rx="8" fill="#052e16" stroke="#15803d"/>
+          <text x="844" y="325" fill="#dcfce7" font-family="DM Mono, monospace" font-size="11">Memory Blade (LPDDR5X)</text>
+          <rect x="800" y="352" width="214" height="32" rx="8" fill="#1a0e3f" stroke="#7c3aed"/>
+          <text x="836" y="373" fill="#e9d5ff" font-family="DM Mono, monospace" font-size="11">Controller ASIC + ECC</text>
+
+          <!-- SSD cold tier -->
+          <rect x="770" y="440" width="274" height="60" rx="16" fill="#111827" stroke="#374151" stroke-width="1.5"/>
+          <text x="852" y="466" fill="#9ca3af" font-family="Syne, system-ui" font-size="13" font-weight="700">SSD / HBF Cold Tier</text>
+          <text x="870" y="484" fill="#6b7280" font-family="DM Mono, monospace" font-size="10">durable, slow, cheap</text>
+
+          <!-- Connections GPU→Fabric0 -->
+          <path d="M246 195 C310 195 330 170 390 170" stroke="url(#gflow)" stroke-width="3.5" fill="none" stroke-linecap="round" marker-end="url(#arrow)"/>
+          <!-- GPU→Fabric1 -->
+          <path d="M246 305 C310 305 330 368 390 368" stroke="url(#gflow)" stroke-width="3.5" fill="none" stroke-linecap="round" marker-end="url(#arrow)"/>
+          <!-- Fabric0→DRAM -->
+          <path d="M630 170 C700 170 730 240 770 260" stroke="url(#gflow)" stroke-width="3.5" fill="none" stroke-linecap="round" marker-end="url(#arrow)"/>
+          <!-- Fabric1→DRAM -->
+          <path d="M630 368 C700 368 730 320 770 300" stroke="url(#gflow)" stroke-width="3.5" fill="none" stroke-linecap="round" marker-end="url(#arrow)"/>
+          <!-- RackB→Fabric1 -->
+          <path d="M246 455 C310 455 330 390 390 390" stroke="url(#gflow)" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-dasharray="6 4" opacity=".6" marker-end="url(#arrow)"/>
+          <!-- DRAM→SSD -->
+          <path d="M907 416 L907 440" stroke="#4b5563" stroke-width="2.5" stroke-dasharray="6 4" fill="none" marker-end="url(#arrow)"/>
+
+          <!-- Annotation labels -->
+          <text x="286" y="158" fill="#8899b0" font-family="DM Mono, monospace" font-size="10">prefetch / recall</text>
+          <text x="640" y="155" fill="#8899b0" font-family="DM Mono, monospace" font-size="10">object-aware DMA</text>
+          <text x="804" y="434" fill="#4b5563" font-family="DM Mono, monospace" font-size="10">evict / cold-tier</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- KV cache section -->
+    <section id="kv" class="fade-in">
+      <div class="section-tag"><span>03 — KV-Cache Offload</span></div>
+      <h2>What changes for ML engineers</h2>
+      <p class="lead">For large-model inference, KV-cache can become the capacity limiter before raw compute saturates. A DRAM rack gives the runtime an explicit warm tier.</p>
+
+      <div class="cards three">
+        <div class="card ice">
+          <div class="card-eyebrow ice">Long context</div>
+          <h3>More tokens before HBM pressure dominates</h3>
+          <p>For 70B-class and larger models, KV-cache can become the limiter before raw compute. A DRAM rack gives the runtime a warm tier for older prompt segments while keeping active decode windows in HBM.</p>
+        </div>
+        <div class="card violet">
+          <div class="card-eyebrow violet">Batching</div>
+          <h3>Higher serving density</h3>
+          <p>Schedulers can place sessions near their existing KV blocks, batch requests with compatible memory locality, and reduce memory stranding across accelerator nodes.</p>
+        </div>
+        <div class="card green-c">
+          <div class="card-eyebrow green">MoE / Agents</div>
+          <h3>Better memory for sparse workflows</h3>
+          <p>Mixture-of-experts, retrieval-heavy agents, and rerank pipelines often have bursty memory demand. Pooled DRAM absorbs working-set spikes without dedicating HBM to idle state.</p>
+        </div>
+      </div>
+
+      <h3>KV object descriptor</h3>
+      <div class="code-header">
+        <span>KV_OBJECT_DESCRIPTOR · YAML-like</span>
+        <span>reference schema</span>
+      </div>
+      <pre><span class="ck">object_type</span><span class="cm">:       </span><span class="cv">KV_CACHE</span>
+<span class="ck">model_id</span><span class="cm">:          </span><span class="cv">llama-class-70b-or-larger</span>
+<span class="ck">session_id</span><span class="cm">:        </span><span class="cs">tenantA/request-39281</span>
+<span class="ck">layer_range</span><span class="cm">:       </span><span class="cn">0..79</span>
+<span class="ck">token_range</span><span class="cm">:       </span><span class="cn">8192..16384</span>
+<span class="ck">precision</span><span class="cm">:         </span><span class="cv">fp8 | int8 | fp16</span>
+<span class="ck">placement</span><span class="cm">:         </span><span class="cv">HBM_HOT | LOCAL_DRAM | RACK_DRAM | SSD_COLD</span>
+<span class="ck">reuse_probability</span><span class="cm">: </span><span class="cn">0.74</span>
+<span class="ck">deadline_us</span><span class="cm">:       </span><span class="cn">150</span>
+<span class="ck">replication</span><span class="cm">:       </span><span class="cs">metadata=2x, data=optional</span></pre>
+
+      <div class="alert ok">
+        <strong>Core rule:</strong> Do not make the accelerator randomly page-fault into remote memory. Move semantic blocks before the decode loop needs them.
+      </div>
+    </section>
+
+    <!-- Software stack -->
+    <section id="software" class="fade-in">
+      <div class="section-tag"><span>04 — Software Stack</span></div>
+      <h2>Control plane &amp; runtime API</h2>
+      <p class="lead">Two layers: a control plane that manages placement decisions, and a runtime API that exposes explicit object lifecycle operations to the serving framework.</p>
+
+      <div class="cards two">
+        <div class="card">
+          <h3>Control plane</h3>
+          <div class="code-header">Inference scheduler → blade controller</div>
+          <pre><span class="cm">Inference Scheduler</span>
+  ↓
+<span class="cn">KV / Object Placement Manager</span>
+  ↓
+<span class="cv">Memory Rack Allocator</span>
+  ↓
+<span class="ck">Fabric Driver / CXL / RDMA Path</span>
+  ↓
+<span class="cs">Blade Controller ASIC</span></pre>
+        </div>
+        <div class="card">
+          <h3>Runtime API</h3>
+          <div class="code-header">Object lifecycle · C-style pseudocode</div>
+          <pre><span class="cn">memrack_alloc</span>(<span class="ck">type</span>, <span class="ck">bytes</span>, <span class="ck">policy</span>)
+<span class="cn">memrack_put</span>(<span class="ck">object_id</span>, <span class="ck">src</span>, <span class="ck">bytes</span>)
+<span class="cn">memrack_get</span>(<span class="ck">object_id</span>, <span class="ck">dst</span>, <span class="ck">deadline_us</span>)
+<span class="cn">memrack_prefetch</span>(<span class="ck">object_id</span>, <span class="ck">target_accel</span>)
+<span class="cn">memrack_pin</span>(<span class="ck">object_id</span>, <span class="ck">duration_ms</span>)
+<span class="cn">memrack_evict</span>(<span class="ck">object_id</span>, <span class="ck">target_tier</span>)
+<span class="cn">memrack_release</span>(<span class="ck">object_id</span>)</pre>
+        </div>
+      </div>
+
+      <h3>Controller ASIC responsibilities</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Function</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td>Object lookup</td><td>Maps semantic object IDs to physical blade / channel / page locations.</td></tr>
+            <tr><td>DMA scheduling</td><td>Prioritizes transfers by decode deadline, QoS class, and fabric congestion.</td></tr>
+            <tr><td>Compression / quantized storage</td><td>Optional KV compression for cold or warm blocks where quality permits.</td></tr>
+            <tr><td>Encryption / isolation</td><td>Per-tenant keys, link encryption, secure erase, and object-level quotas.</td></tr>
+            <tr><td>RAS</td><td>ECC, poison forwarding, patrol scrub, page retirement, blade failover.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Gotchas -->
+    <section id="gotchas" class="fade-in">
+      <div class="section-tag"><span>05 — Failure Modes</span></div>
+      <h2>Gotchas and failure modes</h2>
+      <p class="lead">Real deployments surface four categories of failure worth designing for explicitly.</p>
+
+      <div class="cards two">
+        <div class="alert danger"><strong>Tail latency:</strong> Average remote DRAM latency is not enough. Decode performance is dominated by p99 fabric congestion, queueing, and scheduler misses.</div>
+        <div class="alert danger"><strong>Thundering herd:</strong> Many GPU racks may pull the same prompt/KV segments after prefill. The controller needs admission control, multicast for shared blocks, and per-tenant shaping.</div>
+        <div class="alert warn"><strong>Memory stranding:</strong> Pooling helps only if allocation spans enough hosts without creating hot blades. Placement must consider temperature, bandwidth, and tenant locality.</div>
+        <div class="alert warn"><strong>Failover:</strong> A blade failure should degrade latency, not crash serving. Metadata should be replicated; data replication should be policy-based because KV can sometimes be recomputed.</div>
+      </div>
+    </section>
+
+    <!-- Decision tree -->
+    <section id="decision" class="fade-in">
+      <div class="section-tag"><span>06 — Decision Tree</span></div>
+      <h2>DRAM rack vs HBM-only</h2>
+      <p class="lead">Both architectures are valid. The choice turns on working-set size, reuse patterns, and whether your serving stack can predict and schedule memory movement.</p>
+
+      <div class="cards two">
+        <div class="decision-card yes">
+          <h3>Use a DRAM rack when…</h3>
+          <ul>
+            <li>Long-context inference is HBM-capacity-bound.</li>
+            <li>KV-cache or embeddings are warm, reusable, and block-transfer-friendly.</li>
+            <li>Serving has many tenants and stranded memory across nodes.</li>
+            <li>The runtime can explicitly prefetch and demote objects.</li>
+            <li>Cost per GB matters more than nanosecond latency.</li>
+          </ul>
+        </div>
+        <div class="decision-card no">
+          <h3>Stay HBM-only when…</h3>
+          <ul>
+            <li>The working set is small enough to remain hot in HBM.</li>
+            <li>The workload is dense training dominated by collectives and matmul.</li>
+            <li>The software stack cannot predict reuse or prefetch deadlines.</li>
+            <li>Remote-memory p99 latency would violate token latency SLOs.</li>
+            <li>Operational complexity is not justified by utilization gains.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Research anchors -->
+    <section id="research" class="fade-in">
+      <div class="section-tag"><span>07 — Research Anchors</span></div>
+      <h2>Prior work and alignment</h2>
+      <p class="lead">This architecture is aligned with several public trends: CXL fabric and resource sharing, memory pooling research, and LLM runtimes that treat KV-cache management as a first-class serving problem.</p>
+
+      <div class="anchor-item">
+        <div class="anchor-num">01</div>
+        <div>
+          <div class="anchor-name">CXL 3.x</div>
+          <div class="anchor-desc">Adds advanced switching, fabric capabilities, peer-to-peer communication, and fine-grained resource sharing across compute domains. The standard's evolution directly enables disaggregated memory at rack scale.</div>
+        </div>
+      </div>
+      <div class="anchor-item">
+        <div class="anchor-num">02</div>
+        <div>
+          <div class="anchor-name">Pond (Microsoft Research)</div>
+          <div class="anchor-desc">Demonstrates the cloud economics and performance challenges of CXL-based memory pooling in production-scale data centers, including TCO analysis for the warm tier.</div>
+        </div>
+      </div>
+      <div class="anchor-item">
+        <div class="anchor-num">03</div>
+        <div>
+          <div class="anchor-name">vLLM / PagedAttention</div>
+          <div class="anchor-desc">Shows why KV-cache memory efficiency is central to high-throughput LLM serving. PagedAttention's block-based KV management is a natural fit for an object-aware DRAM rack.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Thesis -->
+    <section class="fade-in">
+      <div class="section-tag"><span>08 — Final Architecture</span></div>
+      <h2>The strongest design</h2>
+      <div class="thesis">
+        <p>The strongest design is not <strong>transparent remote paging</strong>. It is an object-aware DRAM rack with explicit runtime and compiler-managed movement. HBM remains the active compute tier; local DRAM handles staging and metadata; rack DRAM becomes warm semantic memory; SSD/HBF becomes the cold durable tier.</p>
+        <p class="thesis-note">The winning abstraction is not "remote memory." It is memory intent: the runtime tells the infrastructure what an object is, when it will be reused, how urgent it is, and where it should live next.</p>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <p>Vendor-neutral reference architecture. Design values are illustrative engineering targets and should be validated against actual fabric, controller, workload, and SLO measurements.</p>
+      <div class="footer-mark">Memory-Orchestrated AI</div>
+    </footer>
+  </div>
+
+<footer class="site-footer site-global-footer" aria-label="Article footer">
+  <div class="site-footer-inner">
+    <div><strong><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span></strong><br/>Technical essays on AI infrastructure and silicon systems.</div>
+    <div><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></div>
+  </div>
+</footer>
+<script>
+    // Scroll progress
+    const bar = document.getElementById('progress');
+    window.addEventListener('scroll', () => {
+      const h = document.documentElement;
+      const pct = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100;
+      bar.style.width = pct + '%';
+    });
+
+    // Fade-in observer
+    const obs = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          obs.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.08 });
+    document.querySelectorAll('.fade-in').forEach(el => obs.observe(el));
+  </script>
+</body>
+</html>
