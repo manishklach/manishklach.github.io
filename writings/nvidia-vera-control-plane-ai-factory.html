@@ -1,0 +1,1753 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>NVIDIA Vera and the Control Plane of the AI Factory | MANISH AI</title>
+<meta name="description" content="A systems-level analysis of NVIDIA Vera CPU, Rubin, and the shift from GPU-centric acceleration to AI factory orchestration, memory movement, and control-plane ownership."/>
+<meta name="keywords" content="NVIDIA Vera, Rubin, AI factory, control plane, AI infrastructure, NVL72, host CPU, GPU orchestration, memory movement, NVIDIA systems"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/nvidia-vera-control-plane-ai-factory.html"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="NVIDIA Vera and the Control Plane of the AI Factory | MANISH AI"/>
+<meta property="og:description" content="A systems-level analysis of NVIDIA Vera CPU, Rubin, and the shift from GPU-centric acceleration to AI factory orchestration, memory movement, and control-plane ownership."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/nvidia-vera-control-plane-ai-factory.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:image" content="https://manishklach.github.io/og/nvidia-vera-control-plane-ai-factory.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="NVIDIA Vera and the Control Plane of the AI Factory by MANISH AI"/>
+<meta property="article:published_time" content="2026-05-26T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-05-26T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="AI Infrastructure"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="NVIDIA Vera and the Control Plane of the AI Factory"/>
+<meta name="twitter:description" content="A systems-level analysis of NVIDIA Vera CPU, Rubin, and the shift from GPU-centric acceleration to AI factory orchestration, memory movement, and control-plane ownership."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/nvidia-vera-control-plane-ai-factory.png"/>
+<meta name="twitter:image:alt" content="NVIDIA Vera and the Control Plane of the AI Factory by MANISH AI"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"NVIDIA Vera and the Control Plane of the AI Factory",
+  "description":"A systems-level analysis of NVIDIA Vera CPU, Rubin, and the shift from GPU-centric acceleration to AI factory orchestration, memory movement, and control-plane ownership.",
+  "url":"https://manishklach.github.io/writings/nvidia-vera-control-plane-ai-factory.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/nvidia-vera-control-plane-ai-factory.html",
+  "datePublished":"2026-05-26",
+  "dateModified":"2026-05-26",
+  "articleSection":"AI Infrastructure",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300;1,9..40,400&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+    /* ─── tokens ─────────────────────────────────────────── */
+    :root {
+      --bg:          #080b09;
+      --bg2:         #0d1210;
+      --surface:     rgba(14, 22, 18, 0.88);
+      --surface2:    rgba(20, 32, 26, 0.7);
+      --text:        #e8f2ec;
+      --text2:       #c4d9cc;
+      --muted:       #7fa08c;
+      --jade:        #4dff8a;
+      --jade2:       #2dcc6a;
+      --jade-glow:   rgba(77, 255, 138, 0.15);
+      --amber:       #f5c842;
+      --cyan:        #7df4f0;
+      --red:         #ff6b6b;
+      --line:        rgba(77, 255, 138, 0.14);
+      --line2:       rgba(232, 242, 236, 0.08);
+      --mono:        'IBM Plex Mono', monospace;
+      --sans:        'DM Sans', sans-serif;
+      --r-sm:        14px;
+      --r-md:        20px;
+      --r-lg:        28px;
+      --r-xl:        36px;
+    }
+
+    /* ─── reset / base ───────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 17px;
+      line-height: 1.72;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* noise overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      opacity: 0.028;
+      pointer-events: none;
+      z-index: 9999;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      background-size: 160px 160px;
+    }
+
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    ::selection { background: rgba(77,255,138,0.25); }
+
+    .wrap { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
+
+    /* ─── scroll-reveal ──────────────────────────────────── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity 0.65s ease, transform 0.65s ease;
+    }
+    .reveal.visible { opacity: 1; transform: none; }
+
+    /* ─── progress bar ───────────────────────────────────── */
+    #progress {
+      position: fixed;
+      top: 0; left: 0;
+      height: 2px;
+      width: 0%;
+      background: linear-gradient(90deg, var(--jade), var(--cyan));
+      z-index: 1000;
+      transition: width 0.1s linear;
+    }
+
+    /* ─── nav ────────────────────────────────────────────── */
+    .topnav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 900;
+      padding: 0;
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.3s, background 0.3s;
+    }
+    .topnav.scrolled {
+      background: rgba(8, 11, 9, 0.85);
+      border-color: var(--line);
+    }
+    .topnav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 58px;
+    }
+    .nav-logo {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--jade);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .nav-links {
+      display: flex;
+      gap: 28px;
+      list-style: none;
+      padding: 0;
+    }
+    .nav-links a {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--jade); text-decoration: none; }
+    .nav-badge {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--jade);
+      border: 1px solid var(--line);
+      background: var(--jade-glow);
+      padding: 5px 10px;
+      border-radius: 999px;
+    }
+
+    /* ─── hero ───────────────────────────────────────────── */
+    .hero {
+      min-height: 100svh;
+      display: grid;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+      padding-top: 58px;
+    }
+
+    /* dot grid */
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(circle, rgba(77,255,138,0.25) 1px, transparent 1px);
+      background-size: 36px 36px;
+      mask-image: radial-gradient(ellipse 80% 70% at 50% 0%, black 40%, transparent 100%);
+      pointer-events: none;
+      opacity: 0.5;
+    }
+
+    /* ambient glow blobs */
+    .glow-blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+    }
+    .glow-blob-1 {
+      width: 600px; height: 500px;
+      top: -100px; left: -200px;
+      background: radial-gradient(circle, rgba(77,255,138,0.12), transparent 70%);
+    }
+    .glow-blob-2 {
+      width: 400px; height: 400px;
+      top: 60px; right: -80px;
+      background: radial-gradient(circle, rgba(125,244,240,0.09), transparent 70%);
+    }
+
+    .hero-layout {
+      display: grid;
+      grid-template-columns: 1fr 440px;
+      gap: 56px;
+      align-items: center;
+      padding: 80px 0 70px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* eyebrow */
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--jade);
+      background: var(--jade-glow);
+      border: 1px solid var(--line);
+      padding: 7px 14px;
+      border-radius: 999px;
+      margin-bottom: 28px;
+    }
+    .eyebrow-dot {
+      width: 6px; height: 6px;
+      background: var(--jade);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.7); }
+    }
+
+    h1 {
+      font-family: var(--mono);
+      font-size: clamp(2.6rem, 5.5vw, 5.2rem);
+      line-height: 1.0;
+      letter-spacing: -0.04em;
+      font-weight: 700;
+      margin-bottom: 28px;
+    }
+
+    .h1-accent {
+      background: linear-gradient(100deg, #ffffff 0%, var(--jade) 55%, var(--cyan) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .hero-sub {
+      font-size: clamp(1.05rem, 1.8vw, 1.22rem);
+      color: var(--text2);
+      max-width: 680px;
+      line-height: 1.7;
+      margin-bottom: 36px;
+      font-weight: 300;
+    }
+
+    .meta-row {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+    .meta-item {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+    }
+    .meta-sep { color: var(--line); }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tag-pill {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--text2);
+      border: 1px solid var(--line2);
+      background: rgba(255,255,255,0.03);
+      padding: 6px 12px;
+      border-radius: 999px;
+      letter-spacing: 0.03em;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .tag-pill:hover { border-color: var(--jade); color: var(--jade); }
+
+    /* ─── hero diagram card ──────────────────────────────── */
+    .hero-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--r-xl);
+      padding: 28px;
+      box-shadow: 0 40px 100px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+      backdrop-filter: blur(20px);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-card::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 200px; height: 200px;
+      background: radial-gradient(circle, rgba(77,255,138,0.18), transparent 65%);
+      pointer-events: none;
+    }
+    .hero-card-label {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    .stack-diagram {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .stack-node {
+      border-radius: var(--r-md);
+      padding: 16px 18px;
+      border: 1px solid;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s;
+    }
+    .stack-node:hover { transform: translateX(4px); }
+    .stack-node::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .stack-node:hover::before { opacity: 1; }
+
+    .stack-node.vera {
+      border-color: rgba(77,255,138,0.4);
+      background: linear-gradient(135deg, rgba(77,255,138,0.09), rgba(77,255,138,0.03));
+    }
+    .stack-node.vera::before {
+      background: linear-gradient(135deg, rgba(77,255,138,0.06), transparent);
+    }
+    .stack-node.gpu {
+      border-color: rgba(125,244,240,0.32);
+      background: linear-gradient(135deg, rgba(125,244,240,0.07), rgba(125,244,240,0.02));
+    }
+    .stack-node.fabric {
+      border-color: rgba(245,200,66,0.28);
+      background: linear-gradient(135deg, rgba(245,200,66,0.07), rgba(245,200,66,0.02));
+    }
+
+    .stack-node-name {
+      font-family: var(--mono);
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+    .stack-node-desc {
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .connector {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+      margin: -4px 0;
+    }
+    .connector-line {
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--jade), transparent);
+      opacity: 0.35;
+    }
+    .connector-arrow {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      color: var(--jade);
+      opacity: 0.6;
+    }
+
+    .hero-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .stat-box {
+      text-align: center;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--line2);
+      border-radius: var(--r-sm);
+      padding: 14px 8px;
+    }
+    .stat-val {
+      font-family: var(--mono);
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .stat-label {
+      font-size: 0.68rem;
+      color: var(--muted);
+      line-height: 1.3;
+    }
+
+    /* ─── main layout ────────────────────────────────────── */
+    .page-body {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 52px;
+      align-items: start;
+      padding: 72px 0 100px;
+    }
+
+    /* ─── sticky toc ─────────────────────────────────────── */
+    .sidebar {
+      position: sticky;
+      top: 80px;
+    }
+    .toc-panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      padding: 24px;
+    }
+    .toc-heading {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--jade);
+      margin-bottom: 16px;
+    }
+    .toc-list {
+      list-style: none;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .toc-list a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      padding: 6px 8px;
+      border-radius: 8px;
+      transition: color 0.2s, background 0.2s;
+      line-height: 1.3;
+    }
+    .toc-list a:hover, .toc-list a.active {
+      color: var(--jade);
+      background: var(--jade-glow);
+      text-decoration: none;
+    }
+    .toc-num {
+      font-size: 0.6rem;
+      color: rgba(77,255,138,0.35);
+      min-width: 14px;
+    }
+
+    /* ─── article ────────────────────────────────────────── */
+    .article { min-width: 0; }
+
+    /* thesis block */
+    .thesis-block {
+      background: linear-gradient(135deg, rgba(77,255,138,0.08), rgba(125,244,240,0.04));
+      border: 1px solid rgba(77,255,138,0.28);
+      border-radius: var(--r-xl);
+      padding: 36px 40px;
+      margin-bottom: 60px;
+      position: relative;
+      overflow: hidden;
+    }
+    .thesis-block::after {
+      content: '"';
+      font-family: var(--mono);
+      font-size: 160px;
+      position: absolute;
+      right: 24px; top: -20px;
+      color: rgba(77,255,138,0.06);
+      line-height: 1;
+      pointer-events: none;
+    }
+    .thesis-block h2 {
+      font-family: var(--mono);
+      font-size: clamp(1.4rem, 2.5vw, 2rem);
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+      color: #fff;
+      margin-bottom: 18px;
+    }
+    .thesis-block p {
+      color: var(--text2);
+      font-size: 1.05rem;
+      line-height: 1.75;
+    }
+    .thesis-block p + p { margin-top: 14px; }
+    .thesis-emphasis {
+      color: var(--jade);
+      font-style: italic;
+    }
+
+    /* sections */
+    .section {
+      margin-bottom: 72px;
+      padding-top: 52px;
+      border-top: 1px solid var(--line);
+    }
+
+    .section-label {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--jade);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
+
+    h2 {
+      font-family: var(--mono);
+      font-size: clamp(1.7rem, 3.5vw, 2.8rem);
+      line-height: 1.1;
+      letter-spacing: -0.04em;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 20px;
+    }
+
+    h3 {
+      font-family: var(--mono);
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: #fff;
+      margin: 36px 0 12px;
+      letter-spacing: -0.02em;
+    }
+
+    p {
+      color: var(--text2);
+      margin-bottom: 18px;
+      font-weight: 300;
+    }
+    .lead {
+      font-size: 1.12rem;
+      color: var(--text);
+      font-weight: 400;
+      line-height: 1.75;
+    }
+
+    /* ─── callout ────────────────────────────────────────── */
+    .callout {
+      display: grid;
+      grid-template-columns: 4px 1fr;
+      gap: 18px;
+      background: rgba(77,255,138,0.05);
+      border-radius: var(--r-md);
+      padding: 20px 22px;
+      margin: 28px 0;
+      align-items: start;
+    }
+    .callout-bar {
+      width: 4px;
+      background: var(--jade);
+      border-radius: 4px;
+      align-self: stretch;
+    }
+    .callout-body { color: var(--text); font-size: 0.97rem; line-height: 1.7; }
+    .callout-body strong { color: var(--jade); font-family: var(--mono); font-size: 0.85rem; }
+
+    /* amber callout variant */
+    .callout-amber .callout-bar { background: var(--amber); }
+    .callout-amber { background: rgba(245,200,66,0.05); }
+    .callout-amber .callout-body strong { color: var(--amber); }
+
+    /* ─── card grids ─────────────────────────────────────── */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+      margin: 28px 0;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin: 28px 0;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line2);
+      border-radius: var(--r-lg);
+      padding: 24px;
+      transition: border-color 0.25s, transform 0.25s;
+      position: relative;
+      overflow: hidden;
+    }
+    .card:hover {
+      border-color: var(--jade);
+      transform: translateY(-3px);
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(77,255,138,0.5), transparent);
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    .card:hover::before { opacity: 1; }
+
+    .card-tag {
+      font-family: var(--mono);
+      font-size: 0.64rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .card-tag.jade { color: var(--jade); }
+    .card-tag.cyan { color: var(--cyan); }
+    .card-tag.amber { color: var(--amber); }
+    .card-tag.red { color: var(--red); }
+    .card-tag.muted { color: var(--muted); }
+
+    .card h3 {
+      font-size: 1rem;
+      margin: 0 0 10px;
+      color: #fff;
+    }
+    .card p {
+      font-size: 0.88rem;
+      color: var(--muted);
+      margin: 0;
+      line-height: 1.6;
+    }
+
+    /* timeline-style evolution cards */
+    .evolution-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      margin: 28px 0;
+      position: relative;
+    }
+    .evolution-row::before {
+      content: '';
+      position: absolute;
+      top: 50px;
+      left: 16.67%;
+      right: 16.67%;
+      height: 1px;
+      background: linear-gradient(90deg, var(--jade), var(--cyan));
+      opacity: 0.35;
+    }
+    .evo-card {
+      padding: 24px 20px;
+      text-align: center;
+      position: relative;
+    }
+    .evo-num {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      color: var(--jade);
+      border: 1px solid var(--line);
+      background: var(--bg);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      margin-bottom: 14px;
+      position: relative;
+      z-index: 1;
+    }
+    .evo-card h3 {
+      font-size: 0.92rem;
+      margin: 0 0 8px;
+      color: #fff;
+      text-align: center;
+    }
+    .evo-card p { font-size: 0.8rem; color: var(--muted); text-align: center; margin: 0; }
+
+    /* ─── arch diagram ───────────────────────────────────── */
+    .diagram-wrap {
+      background: rgba(4,8,6,0.7);
+      border: 1px solid var(--line);
+      border-radius: var(--r-xl);
+      padding: 28px;
+      margin: 28px 0;
+      overflow-x: auto;
+    }
+
+    /* ─── comparison table ───────────────────────────────── */
+    .comp-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 24px 0;
+      font-size: 0.9rem;
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      border: 1px solid var(--line2);
+    }
+    .comp-table th {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--text);
+      background: rgba(77,255,138,0.07);
+      padding: 14px 18px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+    }
+    .comp-table td {
+      padding: 14px 18px;
+      color: var(--text2);
+      border-bottom: 1px solid var(--line2);
+      vertical-align: top;
+      line-height: 1.5;
+    }
+    .comp-table tr:last-child td { border-bottom: none; }
+    .comp-table tr:hover td { background: rgba(255,255,255,0.015); }
+    .comp-table td:first-child {
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      color: #fff;
+      font-weight: 500;
+    }
+    .cell-jade { color: var(--jade) !important; font-weight: 600; }
+    .cell-amber { color: var(--amber) !important; font-weight: 600; }
+
+    /* ─── memory tiers visual ────────────────────────────── */
+    .memory-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 28px 0;
+    }
+    .mem-tier {
+      display: grid;
+      grid-template-columns: 120px 1fr auto;
+      gap: 16px;
+      align-items: center;
+      padding: 14px 18px;
+      border-radius: var(--r-md);
+      border: 1px solid;
+      font-size: 0.88rem;
+    }
+    .mem-tier.t1 { border-color: rgba(77,255,138,0.35); background: rgba(77,255,138,0.05); }
+    .mem-tier.t2 { border-color: rgba(125,244,240,0.28); background: rgba(125,244,240,0.04); }
+    .mem-tier.t3 { border-color: rgba(245,200,66,0.25); background: rgba(245,200,66,0.04); }
+    .mem-tier.t4 { border-color: rgba(232,242,236,0.1); background: rgba(232,242,236,0.02); }
+
+    .mem-name {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #fff;
+    }
+    .mem-desc { color: var(--muted); font-size: 0.82rem; }
+    .mem-speed {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      white-space: nowrap;
+    }
+    .t1 .mem-speed { color: var(--jade); }
+    .t2 .mem-speed { color: var(--cyan); }
+    .t3 .mem-speed { color: var(--amber); }
+    .t4 .mem-speed { color: var(--muted); }
+
+    /* bandwidth bar */
+    .bw-bar-wrap { display: flex; align-items: center; gap: 10px; }
+    .bw-bar {
+      height: 4px;
+      border-radius: 999px;
+      background: currentColor;
+      opacity: 0.4;
+    }
+
+    /* ─── prediction ─────────────────────────────────────── */
+    .prediction-block {
+      background: linear-gradient(135deg, rgba(77,255,138,0.06), rgba(125,244,240,0.04));
+      border: 1px solid rgba(77,255,138,0.2);
+      border-radius: var(--r-xl);
+      padding: 40px;
+      margin: 28px 0;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .prediction-block::before {
+      content: '2027';
+      font-family: var(--mono);
+      font-size: 140px;
+      font-weight: 700;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(77,255,138,0.04);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .prediction-block p {
+      font-size: 1.15rem;
+      color: var(--text);
+      font-weight: 400;
+      position: relative;
+      z-index: 1;
+      max-width: 620px;
+      margin: 0 auto 14px;
+      line-height: 1.7;
+    }
+    .prediction-block p:last-child { margin-bottom: 0; color: var(--text2); font-size: 0.95rem; }
+
+    /* ─── final thesis ───────────────────────────────────── */
+    .final-thesis {
+      background: linear-gradient(135deg, rgba(77,255,138,0.1), rgba(125,244,240,0.06), rgba(77,255,138,0.04));
+      border: 1px solid rgba(77,255,138,0.35);
+      border-radius: var(--r-xl);
+      padding: 40px;
+      margin: 28px 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .final-thesis::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 50% 60% at 80% 50%, rgba(125,244,240,0.06), transparent);
+      pointer-events: none;
+    }
+    .final-thesis p {
+      font-size: 1.08rem;
+      color: var(--text);
+      line-height: 1.75;
+      position: relative;
+      z-index: 1;
+    }
+    .final-thesis strong { color: var(--jade); }
+
+    /* ─── references ─────────────────────────────────────── */
+    .refs {
+      padding-left: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .ref-item {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    .ref-num {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--jade);
+      margin-top: 2px;
+    }
+    .ref-text { font-size: 0.86rem; color: var(--muted); line-height: 1.6; }
+    .ref-text a { color: var(--cyan); font-size: 0.78rem; word-break: break-all; }
+
+    /* ─── footer ─────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 48px 0 64px;
+    }
+    .footer-inner {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 40px;
+      flex-wrap: wrap;
+    }
+    .footer-brand {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--jade);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .footer-desc {
+      font-size: 0.84rem;
+      color: var(--muted);
+      max-width: 420px;
+      line-height: 1.65;
+    }
+    .footer-right {
+      text-align: right;
+    }
+    .footer-disclaimer {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: rgba(127, 160, 140, 0.5);
+      line-height: 1.8;
+      text-align: right;
+    }
+
+    /* ─── code ───────────────────────────────────────────── */
+    code {
+      font-family: var(--mono);
+      font-size: 0.84em;
+      color: var(--jade);
+      background: rgba(77,255,138,0.07);
+      border: 1px solid rgba(77,255,138,0.15);
+      border-radius: 5px;
+      padding: 1px 6px;
+    }
+
+    /* ─── responsive ─────────────────────────────────────── */
+    @media (max-width: 1000px) {
+      .hero-layout { grid-template-columns: 1fr; gap: 40px; }
+      .hero-card { max-width: 500px; }
+      .page-body { grid-template-columns: 1fr; }
+      .sidebar { position: static; }
+      .toc-list { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+      .toc-list a { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
+    }
+    @media (max-width: 700px) {
+      .grid-2, .grid-3, .evolution-row { grid-template-columns: 1fr; }
+      .evolution-row::before { display: none; }
+      .hero-stats { grid-template-columns: repeat(3, 1fr); }
+      .mem-tier { grid-template-columns: 1fr; gap: 8px; }
+      .footer-inner { flex-direction: column; }
+      .footer-right { text-align: left; }
+      .footer-disclaimer { text-align: left; }
+    }
+
+    /* ─── animations ─────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: none; }
+    }
+    .hero-content > * {
+      animation: fadeUp 0.7s ease both;
+    }
+    .hero-content > *:nth-child(1) { animation-delay: 0.1s; }
+    .hero-content > *:nth-child(2) { animation-delay: 0.2s; }
+    .hero-content > *:nth-child(3) { animation-delay: 0.3s; }
+    .hero-content > *:nth-child(4) { animation-delay: 0.4s; }
+    .hero-content > *:nth-child(5) { animation-delay: 0.5s; }
+    .hero-card {
+      animation: fadeUp 0.8s ease 0.35s both;
+    }
+  
+
+html.dark { color-scheme: dark; }
+html:not(.dark) {
+  color-scheme: light;
+  --bg: #f7faf8;
+  --bg2: #edf5f0;
+  --surface: rgba(255,255,255,0.9);
+  --surface2: rgba(239,247,242,0.92);
+  --text: #102319;
+  --text2: #375245;
+  --muted: #567565;
+  --jade: #0f9d58;
+  --jade2: #16a86a;
+  --jade-glow: rgba(15,157,88,0.09);
+  --amber: #b7791f;
+  --cyan: #0f766e;
+  --red: #dc2626;
+  --line: rgba(16,35,25,0.12);
+  --line2: rgba(16,35,25,0.07);
+}
+html:not(.dark) body {
+  background:
+    radial-gradient(circle at top left, rgba(15,157,88,0.08), transparent 26rem),
+    linear-gradient(180deg, #fbfefc 0%, #edf5f0 100%);
+  color: var(--text2);
+}
+html:not(.dark) body::before { opacity: 0.018; }
+html:not(.dark) .topnav {
+  background: rgba(251,254,252,0.9);
+  border-bottom-color: transparent;
+}
+html:not(.dark) a { color: var(--cyan); }
+html:not(.dark) .nav-title,
+html:not(.dark) h1,
+html:not(.dark) h2,
+html:not(.dark) h3,
+html:not(.dark) .section-label,
+html:not(.dark) .stack-node-name,
+html:not(.dark) .stat-value,
+html:not(.dark) .footer-brand { color: var(--text) !important; }
+html:not(.dark) p,
+html:not(.dark) li,
+html:not(.dark) .hero-copy,
+html:not(.dark) .lead,
+html:not(.dark) .card p,
+html:not(.dark) .footer-desc,
+html:not(.dark) .footer-disclaimer,
+html:not(.dark) .ref-text { color: var(--text2) !important; }
+html:not(.dark) .nav-badge,
+html:not(.dark) .kicker,
+html:not(.dark) .byline-meta,
+html:not(.dark) .toc-list a,
+html:not(.dark) .section-label,
+html:not(.dark) .stat-label,
+html:not(.dark) .ref-num { color: var(--muted) !important; }
+html:not(.dark) .topnav,
+html:not(.dark) .article,
+html:not(.dark) .card,
+html:not(.dark) .stack,
+html:not(.dark) .stack-node,
+html:not(.dark) .stat,
+html:not(.dark) .comparison-table,
+html:not(.dark) .prediction-block,
+html:not(.dark) .refs,
+html:not(.dark) footer,
+html:not(.dark) .toc,
+html:not(.dark) .quote,
+html:not(.dark) .grid-2 .card { border-color: var(--line) !important; }
+html:not(.dark) .article,
+html:not(.dark) .card,
+html:not(.dark) .stack,
+html:not(.dark) .stack-node,
+html:not(.dark) .stat,
+html:not(.dark) .comparison-table,
+html:not(.dark) .prediction-block,
+html:not(.dark) .refs,
+html:not(.dark) footer,
+html:not(.dark) .toc,
+html:not(.dark) .quote,
+html:not(.dark) .grid-2 .card { background: var(--surface) !important; }
+html:not(.dark) th { background: var(--surface2) !important; color: var(--text); }
+html:not(.dark) td { color: var(--text2); }
+html:not(.dark) svg text[fill="#ffffff"],
+html:not(.dark) svg text[fill="white"] { fill: #102319 !important; }
+html:not(.dark) strong[style],
+html:not(.dark) div[style*="color:#fff"],
+html:not(.dark) span[style*="color:#fff"] { color: #102319 !important; }
+html:not(.dark) .site-tools,
+html:not(.dark) .reading-meta,
+html:not(.dark) .site-footer.site-global-footer { color: var(--muted); }
+.site-tools {
+  position: relative;
+  z-index: 1001;
+  width: min(1160px, calc(100vw - 40px));
+  margin: 18px auto 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font: 14px/1.5 var(--mono);
+}
+.back-link { color: inherit; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
+#theme-toggle { border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 999px; padding: 6px 11px; font: inherit; cursor: pointer; }
+.reading-meta { position: relative; z-index: 1001; width: min(1160px, calc(100vw - 40px)); margin: 10px auto 0; color: var(--muted); font: 13px/1.5 var(--mono); }
+.site-footer.site-global-footer { position: relative; z-index: 2; width: min(1160px, calc(100vw - 40px)); margin: 0 auto 48px; padding: 28px 0 0; border-top: 1px solid var(--line); color: var(--muted); font: 13px/1.6 var(--mono); }
+.site-footer-inner { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.site-footer a { color: inherit; }
+.logo-word{display:inline-flex;align-items:baseline;gap:.01em;white-space:nowrap}.logo-i{display:inline-block;font-size:.84em;margin:0 .055em 0 .025em;font-style:normal;font-weight:900;line-height:.95;transform:translateY(-.02em)}
+</style>
+</head>
+<body>
+  <div class="site-tools" aria-label="Site tools">
+    <a class="back-link" href="/writings.html"><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span> / Writings</a>
+    <button id="theme-toggle" type="button" aria-label="Toggle light and dark mode">Theme</button>
+  </div>
+  <p class="reading-meta"><time datetime="2026-05-26">May 26, 2026</time> · AI Infrastructure · 10 min read</p>
+<!-- read progress -->
+  <div id="progress"></div>
+
+  <!-- nav -->
+  <nav class="topnav" id="topnav">
+    <div class="wrap topnav-inner">
+      <span class="nav-logo">AI · Infrastructure · Analysis</span>
+      <ul class="nav-links">
+        <li><a href="#why-cpu">CPU Role</a></li>
+        <li><a href="#memory">Memory</a></li>
+        <li><a href="#agentic">Agentic</a></li>
+        <li><a href="#implications">Implications</a></li>
+      </ul>
+      <span class="nav-badge">~10 min read</span>
+    </div>
+  </nav>
+
+  <!-- ─── HERO ─────────────────────────────────────────── -->
+  <header class="hero">
+    <div class="glow-blob glow-blob-1"></div>
+    <div class="glow-blob glow-blob-2"></div>
+    <div class="wrap hero-layout">
+
+      <div class="hero-content">
+        <div class="eyebrow">
+          <span class="eyebrow-dot"></span>
+          AI Factory Architecture &nbsp;·&nbsp; Vera CPU &nbsp;·&nbsp; Rubin
+        </div>
+        <h1>
+          <span class="h1-accent">NVIDIA Vera</span><br />
+          and the Control Plane<br />
+          of the AI Factory
+        </h1>
+        <p class="hero-sub">
+          The real story is not that NVIDIA wants another general-purpose CPU.
+          It is that AI factories are becoming orchestration machines — and the CPU
+          is becoming the memory, scheduling, and data-movement control plane that
+          keeps expensive GPUs fed.
+        </p>
+        <div class="meta-row">
+          <span class="meta-item">Systems Analysis</span>
+          <span class="meta-sep">·</span>
+          <span class="meta-item">Published 2025</span>
+          <span class="meta-sep">·</span>
+          <span class="meta-item">~2,800 words</span>
+        </div>
+        <div class="tags">
+          <span class="tag-pill">GPU Utilization</span>
+          <span class="tag-pill">KV-Cache Management</span>
+          <span class="tag-pill">NVLink Domains</span>
+          <span class="tag-pill">Agentic Reasoning</span>
+          <span class="tag-pill">Memory Orchestration</span>
+          <span class="tag-pill">Rack-Scale Design</span>
+        </div>
+      </div>
+
+      <aside class="hero-card" aria-label="AI factory stack diagram">
+        <div class="hero-card-label">// NVL72 AI Factory Stack</div>
+        <div class="stack-diagram">
+          <div class="stack-node vera">
+            <div class="stack-node-name">Vera CPU</div>
+            <div class="stack-node-desc">Orchestration · ETL · KV-cache management · agentic control paths · host-side runtime coordination</div>
+          </div>
+          <div class="connector">
+            <div class="connector-line"></div>
+            <div class="connector-arrow">▼ feeds</div>
+            <div class="connector-line"></div>
+          </div>
+          <div class="stack-node gpu">
+            <div class="stack-node-name">Rubin GPUs + CPX</div>
+            <div class="stack-node-desc">High-throughput training · generation-phase inference · long-context prefill / context processing</div>
+          </div>
+          <div class="connector">
+            <div class="connector-line"></div>
+            <div class="connector-arrow">▼ interconnects</div>
+            <div class="connector-line"></div>
+          </div>
+          <div class="stack-node fabric">
+            <div class="stack-node-name">NVLink 6 · ConnectX-9 · BlueField-4</div>
+            <div class="stack-node-desc">Scale-up GPU bandwidth · scale-out RDMA networking · storage / network offload · AI-factory resiliency</div>
+          </div>
+        </div>
+        <div class="hero-stats">
+          <div class="stat-box">
+            <div class="stat-val">72</div>
+            <div class="stat-label">Rubin GPUs per NVL72</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val">36</div>
+            <div class="stat-label">Vera CPUs per NVL72</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val">3.6<span style="font-size:0.8rem">TB/s</span></div>
+            <div class="stat-label">NVLink 6 per-GPU BW</div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </header>
+
+  <!-- ─── BODY ──────────────────────────────────────────── -->
+  <div class="wrap page-body">
+
+    <!-- sidebar toc -->
+    <aside class="sidebar">
+      <nav class="toc-panel" aria-label="Table of contents">
+        <div class="toc-heading">// Contents</div>
+        <ol class="toc-list">
+          <li><a href="#thesis"><span class="toc-num">00</span> The Thesis</a></li>
+          <li><a href="#why-cpu"><span class="toc-num">01</span> Why CPU Matters Again</a></li>
+          <li><a href="#ai-factory"><span class="toc-num">02</span> From Server to AI Factory</a></li>
+          <li><a href="#memory"><span class="toc-num">03</span> Memory: The Battlefield</a></li>
+          <li><a href="#agentic"><span class="toc-num">04</span> Agentic AI Changes Everything</a></li>
+          <li><a href="#implications"><span class="toc-num">05</span> Strategic Implications</a></li>
+          <li><a href="#counterargument"><span class="toc-num">06</span> Counterargument</a></li>
+          <li><a href="#prediction"><span class="toc-num">07</span> Prediction</a></li>
+          <li><a href="#takeaways"><span class="toc-num">08</span> Key Takeaways</a></li>
+          <li><a href="#references"><span class="toc-num">Ref</span> References</a></li>
+        </ol>
+      </nav>
+    </aside>
+
+    <!-- article -->
+    <article class="article">
+
+      <!-- 00 · Thesis -->
+      <div id="thesis" class="thesis-block reveal">
+        <h2>The real story is not "NVIDIA enters CPUs."</h2>
+        <p>
+          The real story is that NVIDIA is trying to own the full execution environment of AI infrastructure:
+          GPU compute, rack-scale interconnect, memory hierarchy, data movement, network/storage offload,
+          compiler/runtime integration, and the host control plane. Vera matters because the AI factory is
+          no longer a collection of servers with accelerators. It is a distributed machine for producing
+          tokens, actions, and reasoning traces at scale.
+        </p>
+        <p>
+          In that world, the CPU is not merely a fallback compute device.
+          <span class="thesis-emphasis">It is the system's conductor.</span>
+        </p>
+      </div>
+
+      <!-- 01 · Why CPU -->
+      <section id="why-cpu" class="section reveal">
+        <div class="section-label">Section 01</div>
+        <h2>Why the CPU suddenly matters again</h2>
+        <p class="lead">
+          For years, the industry's center of gravity was simple: move as much math as possible onto the GPU.
+          But once GPUs become massively parallel, expensive, and rack-scale, the hard problem shifts from
+          compute to utilization.
+        </p>
+        <p>
+          NVIDIA's own Vera CPU positioning makes this explicit. Vera is described as the host CPU for Vera Rubin NVL72
+          and HGX Rubin NVL8, feeding GPUs for large-scale AI while supporting <code>ETL</code>, KV-cache management,
+          and orchestration. NVIDIA emphasizes high single-threaded performance, memory bandwidth, and predictable
+          performance for keeping GPUs utilized — not peak throughput for standalone workloads.
+        </p>
+
+        <div class="callout reveal">
+          <div class="callout-bar"></div>
+          <div class="callout-body">
+            <strong>// Key interpretation</strong><br />
+            Vera is less interesting as a standalone "Xeon competitor" and more interesting as the CPU NVIDIA
+            wants inside the AI factory's control loop. The benchmark story is secondary to the systems story.
+          </div>
+        </div>
+
+        <div class="evolution-row reveal">
+          <div class="evo-card">
+            <div class="evo-num">01</div>
+            <h3>CPU as Host</h3>
+            <p>Launches kernels, manages the OS, handles I/O, and does residual work the GPU cannot handle efficiently.</p>
+          </div>
+          <div class="evo-card">
+            <div class="evo-num">02</div>
+            <h3>CPU as Orchestrator</h3>
+            <p>Coordinates memory movement, queues, agents, tool calls, networking, storage, and runtime scheduling.</p>
+          </div>
+          <div class="evo-card">
+            <div class="evo-num">03</div>
+            <h3>CPU as Control Plane</h3>
+            <p>Becomes part of a rack-scale execution fabric designed to keep GPUs, DPUs, NICs, and memory tiers synchronized.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 02 · AI Factory -->
+      <section id="ai-factory" class="section reveal">
+        <div class="section-label">Section 02</div>
+        <h2>From "server with GPUs" to AI factory</h2>
+        <p>
+          NVIDIA's Rubin messaging is deliberately rack-scale. The Vera Rubin NVL72 platform unifies 72 Rubin GPUs,
+          36 Vera CPUs, ConnectX-9 SuperNICs, BlueField-4 DPUs, and NVLink 6 switching in a single rack-scale
+          platform. NVIDIA describes this as a system for agentic reasoning AI and AI factories — not just a
+          faster accelerator board.
+        </p>
+
+        <!-- SVG arch diagram -->
+        <div class="diagram-wrap reveal">
+          <svg viewBox="0 0 1000 340" xmlns="http://www.w3.org/2000/svg" style="font-family:'IBM Plex Mono',monospace;" aria-label="AI Factory Architecture Diagram">
+            <defs>
+              <linearGradient id="grad-jade" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#4dff8a" stop-opacity="0.9"/>
+                <stop offset="100%" stop-color="#7df4f0" stop-opacity="0.9"/>
+              </linearGradient>
+              <filter id="glow-svg">
+                <feGaussianBlur stdDeviation="3.5" result="b"/>
+                <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+              <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" fill="#4dff8a" opacity="0.7"/>
+              </marker>
+            </defs>
+
+            <!-- top row -->
+            <rect x="20" y="30" width="210" height="90" rx="16" fill="#0d1a15" stroke="#4dff8a" stroke-opacity="0.4" stroke-width="1.2"/>
+            <text x="125" y="67" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="700">Vera CPU</text>
+            <text x="125" y="87" text-anchor="middle" fill="#7fa08c" font-size="10.5">control plane</text>
+            <text x="125" y="104" text-anchor="middle" fill="#7fa08c" font-size="10.5">memory orchestration</text>
+
+            <rect x="390" y="30" width="220" height="90" rx="16" fill="#0d1a15" stroke="#7df4f0" stroke-opacity="0.38" stroke-width="1.2"/>
+            <text x="500" y="67" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="700">Rubin GPUs + CPX</text>
+            <text x="500" y="87" text-anchor="middle" fill="#7fa08c" font-size="10.5">training + generation</text>
+            <text x="500" y="104" text-anchor="middle" fill="#7fa08c" font-size="10.5">long-context compute</text>
+
+            <rect x="765" y="30" width="215" height="90" rx="16" fill="#0d1a15" stroke="#f5c842" stroke-opacity="0.35" stroke-width="1.2"/>
+            <text x="872" y="67" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="700">NVLink 6 Fabric</text>
+            <text x="872" y="87" text-anchor="middle" fill="#7fa08c" font-size="10.5">scale-up GPU comm.</text>
+            <text x="872" y="104" text-anchor="middle" fill="#7fa08c" font-size="10.5">3.6 TB/s per-GPU BW</text>
+
+            <!-- top arrows -->
+            <path d="M232 75 L388 75" stroke="url(#grad-jade)" stroke-width="2.5" fill="none" filter="url(#glow-svg)" marker-end="url(#arr)"/>
+            <path d="M612 75 L763 75" stroke="url(#grad-jade)" stroke-width="2.5" fill="none" filter="url(#glow-svg)" marker-end="url(#arr)"/>
+
+            <!-- bottom row -->
+            <rect x="60" y="215" width="200" height="90" rx="16" fill="#0d1a15" stroke="#e8f2ec" stroke-opacity="0.14"/>
+            <text x="160" y="252" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="700">BlueField-4 DPU</text>
+            <text x="160" y="270" text-anchor="middle" fill="#7fa08c" font-size="10.5">storage/network/sec</text>
+            <text x="160" y="287" text-anchor="middle" fill="#7fa08c" font-size="10.5">offload layer</text>
+
+            <rect x="395" y="215" width="210" height="90" rx="16" fill="#0d1a15" stroke="#e8f2ec" stroke-opacity="0.14"/>
+            <text x="500" y="252" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="700">ConnectX-9</text>
+            <text x="500" y="270" text-anchor="middle" fill="#7fa08c" font-size="10.5">scale-out RDMA</text>
+            <text x="500" y="287" text-anchor="middle" fill="#7fa08c" font-size="10.5">networking fabric</text>
+
+            <rect x="740" y="215" width="210" height="90" rx="16" fill="#0d1a15" stroke="#e8f2ec" stroke-opacity="0.14"/>
+            <text x="845" y="252" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="700">Memory Tiers</text>
+            <text x="845" y="270" text-anchor="middle" fill="#7fa08c" font-size="10.5">HBM · CPU DRAM</text>
+            <text x="845" y="287" text-anchor="middle" fill="#7fa08c" font-size="10.5">SSD · KV stores</text>
+
+            <!-- vertical connectors -->
+            <path d="M125 122 C125 175, 145 185, 160 214" stroke="#4dff8a" stroke-opacity="0.4" stroke-width="1.8" fill="none" stroke-dasharray="4,3"/>
+            <path d="M500 122 C500 168, 500 180, 500 214" stroke="#7df4f0" stroke-opacity="0.4" stroke-width="1.8" fill="none" stroke-dasharray="4,3"/>
+            <path d="M872 122 C872 175, 868 182, 845 214" stroke="#f5c842" stroke-opacity="0.4" stroke-width="1.8" fill="none" stroke-dasharray="4,3"/>
+          </svg>
+        </div>
+
+        <p>
+          This is why comparing Vera only against traditional CPUs misses the point. A general-purpose CPU benchmark
+          tells you little about the real question: can the system reduce end-to-end token cost, increase GPU utilization,
+          keep memory moving, and preserve predictable latency under agentic workloads?
+        </p>
+
+        <h3>Grace vs. Vera: a generational shift</h3>
+        <table class="comp-table reveal">
+          <thead>
+            <tr>
+              <th>Dimension</th>
+              <th>Grace Era</th>
+              <th>Vera + Rubin Era</th>
+              <th>Why It Matters</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>CPU role</td>
+              <td>Host + offload</td>
+              <td class="cell-jade">Rack-scale orchestration</td>
+              <td>Coordinates GPU utilization and memory flow across the entire rack.</td>
+            </tr>
+            <tr>
+              <td>Scale target</td>
+              <td>Single-node acceleration</td>
+              <td class="cell-jade">AI factory domains</td>
+              <td>Infrastructure behaves like a distributed system, not a big server.</td>
+            </tr>
+            <tr>
+              <td>Primary bottleneck</td>
+              <td>Compute throughput</td>
+              <td class="cell-jade">Memory movement + synchronization</td>
+              <td>KV cache and long-context serving now dominate real-world cost.</td>
+            </tr>
+            <tr>
+              <td>Fabric importance</td>
+              <td>Important</td>
+              <td class="cell-jade">Critical — first-order constraint</td>
+              <td>NVLink and networking define what's achievable; CPU must orchestrate them.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 03 · Memory -->
+      <section id="memory" class="section reveal">
+        <div class="section-label">Section 03</div>
+        <h2>The hidden battlefield: memory orchestration</h2>
+        <p class="lead">
+          The next infrastructure war is not only about FLOPS. It is about where the model state, KV cache,
+          embeddings, activations, and retrieval context live — and how quickly they can be moved without
+          stalling the expensive compute fabric.
+        </p>
+
+        <div class="memory-stack reveal">
+          <div class="mem-tier t1">
+            <div class="mem-name">HBM on GPU</div>
+            <div class="mem-desc">Weights, activations, KV cache, MoE routing, long context. Most latency-sensitive, least elastic.</div>
+            <div class="mem-speed bw-bar-wrap"><div class="bw-bar" style="width:90px;"></div> &gt;3 TB/s</div>
+          </div>
+          <div class="mem-tier t2">
+            <div class="mem-name">CPU DRAM</div>
+            <div class="mem-desc">Prompt staging, retrieval payloads, environment state, tool results, KV spill/tiering.</div>
+            <div class="mem-speed bw-bar-wrap"><div class="bw-bar" style="width:60px;"></div> ~500 GB/s</div>
+          </div>
+          <div class="mem-tier t3">
+            <div class="mem-name">SSD / NVMe</div>
+            <div class="mem-desc">Long-context prefill, retrieval-augmented generation, embeddings, logs, agent memory.</div>
+            <div class="mem-speed bw-bar-wrap"><div class="bw-bar" style="width:30px;"></div> ~14 GB/s</div>
+          </div>
+          <div class="mem-tier t4">
+            <div class="mem-name">Network Fabric</div>
+            <div class="mem-desc">Distributed inference, MoE experts, KV movement, collectives, multirack scale-out.</div>
+            <div class="mem-speed">ConnectX-9 RDMA</div>
+          </div>
+        </div>
+
+        <p>
+          NVIDIA's Rubin CPX announcement makes this direction even clearer. The Vera Rubin NVL144 CPX rack combines
+          Rubin CPX GPUs, Rubin GPUs, and Vera CPUs for long-context inference — with 100 TB of high-speed memory
+          and 1.7 PB/s of aggregate memory bandwidth in a single rack. That is a memory-system story as much as
+          it is a GPU story.
+        </p>
+
+        <div class="callout reveal">
+          <div class="callout-bar"></div>
+          <div class="callout-body">
+            <strong>// Bottom line</strong><br />
+            Vera's strategic value is tied to memory movement. It helps turn the AI factory from a loose cluster
+            of accelerators into a coordinated dataflow machine where every tier of storage is a managed resource.
+          </div>
+        </div>
+      </section>
+
+      <!-- 04 · Agentic -->
+      <section id="agentic" class="section reveal">
+        <div class="section-label">Section 04</div>
+        <h2>Agentic AI changes the bottleneck</h2>
+        <p>
+          Classic transformer inference is already hard, but agentic inference is structurally worse for the host system.
+          Agents generate intermediate reasoning, call tools, retrieve context, branch, wait, resume, and maintain state.
+          This creates a loop of compute and orchestration rather than a single clean batch of GPU work.
+        </p>
+
+        <div class="grid-2 reveal">
+          <div class="card">
+            <div class="card-tag cyan">Traditional inference</div>
+            <h3>Mostly model execution</h3>
+            <p>Request enters, prompt is processed, tokens are generated, response returns. Batching and GPU throughput dominate. The host system is largely invisible.</p>
+          </div>
+          <div class="card">
+            <div class="card-tag jade">Agentic inference</div>
+            <h3>Execution plus coordination</h3>
+            <p>Model calls tools, waits on APIs, retrieves memory, updates state, reroutes plans, and launches further model calls. Host-side latency is now user-visible.</p>
+          </div>
+        </div>
+
+        <p>
+          This makes host-side latency more visible. Scheduling, wakeups, kernel paths, networking, storage,
+          serialization, and memory placement begin to affect user-visible latency and infrastructure ROI.
+          A 100-microsecond inefficiency repeated thousands of times across an agentic workflow becomes a
+          real cost center.
+        </p>
+
+        <div class="callout callout-amber reveal">
+          <div class="callout-bar"></div>
+          <div class="callout-body">
+            <strong>// The core insight</strong><br />
+            A CPU designed for "control-heavy, latency-sensitive workloads" is strategically meaningful precisely here.
+            The goal is not to replace the GPU. The goal is to <em>prevent the GPU from waiting.</em>
+          </div>
+        </div>
+      </section>
+
+      <!-- 05 · Implications -->
+      <section id="implications" class="section reveal">
+        <div class="section-label">Section 05</div>
+        <h2>Strategic implications</h2>
+
+        <div class="grid-2 reveal">
+          <div class="card">
+            <div class="card-tag jade">For NVIDIA</div>
+            <h3>Own the full stack</h3>
+            <p>Vera helps NVIDIA reduce dependence on external host CPUs and capture more of the system architecture around the GPU. The moat moves from chip performance to platform coherence.</p>
+          </div>
+          <div class="card">
+            <div class="card-tag cyan">For hyperscalers</div>
+            <h3>Optimize token factories</h3>
+            <p>The purchasing question shifts from "how many GPUs?" to "what is the end-to-end cost per token, per agent, per watt, under real production workloads?"</p>
+          </div>
+          <div class="card">
+            <div class="card-tag amber">For chip startups</div>
+            <h3>Compute alone is not enough</h3>
+            <p>A faster accelerator without runtime, memory, networking, scheduler, and software integration may struggle to show real-world advantage against an integrated platform.</p>
+          </div>
+          <div class="card">
+            <div class="card-tag muted">For systems engineers</div>
+            <h3>The kernel/runtime layer matters</h3>
+            <p>The next performance wins may come from graph capture, DMA scheduling, memory hints, pinned buffers, queueing, wakeup control, and predictable orchestration.</p>
+          </div>
+        </div>
+
+        <h3>The Apple analogy — but for AI factories</h3>
+        <p>
+          Apple's advantage is not merely that it designs chips. It controls the chip, OS, runtime, memory behavior,
+          compiler assumptions, and device experience. NVIDIA appears to be pursuing a similar strategy for AI factories:
+          own enough of the hardware-software boundary that the entire system can be optimized as one machine.
+        </p>
+
+        <div class="final-thesis reveal">
+          <p>
+            <strong>Vera is not just a CPU.</strong> Vera is NVIDIA's attempt to pull the AI factory control plane
+            inside its own architecture. In the next phase of AI infrastructure, the winners will not only have the
+            fastest tensor cores. They will have the best system for feeding, synchronizing, securing, and
+            orchestrating those tensor cores at rack and datacenter scale.
+          </p>
+        </div>
+      </section>
+
+      <!-- 06 · Counterargument -->
+      <section id="counterargument" class="section reveal">
+        <div class="section-label">Section 06</div>
+        <h2>Counterargument: do CPUs even matter?</h2>
+        <p>
+          A reasonable counterargument is that GPUs, SmartNICs, and DPUs are increasingly absorbing orchestration
+          responsibilities. Under this view, the CPU becomes a thin launch layer while networking silicon and GPU-side
+          runtimes coordinate the system. If BlueField handles network offload and the GPU runtime handles scheduling,
+          what is the CPU actually doing?
+        </p>
+        <p>
+          The problem is that modern AI factories still require a coherent control plane for scheduling, memory placement,
+          synchronization, recovery handling, agentic execution, and runtime coordination across thousands of accelerators.
+          Even highly offloaded systems eventually converge on a supervisory execution layer — something has to own
+          the global view of the system state.
+        </p>
+
+        <div class="callout callout-amber reveal">
+          <div class="callout-bar"></div>
+          <div class="callout-body">
+            <strong>// The likely outcome</strong><br />
+            CPUs do not disappear. They evolve into rack-scale orchestration processors tightly integrated with
+            GPU fabrics and memory systems. The question is not whether a control plane exists — it is who designs it.
+          </div>
+        </div>
+      </section>
+
+      <!-- 07 · Prediction -->
+      <section id="prediction" class="section reveal">
+        <div class="section-label">Section 07</div>
+        <h2>Prediction</h2>
+
+        <div class="prediction-block reveal">
+          <p>
+            By 2027, control-plane CPUs and orchestration silicon may represent a significantly larger
+            percentage of AI server bill-of-materials than they do today.
+          </p>
+          <p>
+            The competitive frontier will increasingly center on who can keep massive GPU domains synchronized,
+            memory-efficient, and latency-predictable under long-context and agentic workloads at rack and
+            datacenter scale.
+          </p>
+        </div>
+      </section>
+
+      <!-- 08 · Takeaways -->
+      <section id="takeaways" class="section reveal">
+        <div class="section-label">Section 08</div>
+        <h2>Key takeaways</h2>
+
+        <div class="grid-2 reveal">
+          <div class="card">
+            <div class="card-tag jade">01</div>
+            <h3>AI factories are orchestration systems</h3>
+            <p>The bottleneck is increasingly memory movement and coordination, not raw FLOPS alone. Hardware investment must account for the entire dataflow pipeline.</p>
+          </div>
+          <div class="card">
+            <div class="card-tag jade">02</div>
+            <h3>Vera is a control-plane CPU</h3>
+            <p>Its strategic value comes from scheduling, orchestration, and GPU utilization efficiency — not standalone compute benchmarks vs. Xeon or EPYC.</p>
+          </div>
+          <div class="card">
+            <div class="card-tag jade">03</div>
+            <h3>Memory tiers now define scalability</h3>
+            <p>HBM, CPU DRAM, NVMe storage, and fabric bandwidth together determine long-context economics and the practical ceiling for model serving at scale.</p>
+          </div>
+          <div class="card">
+            <div class="card-tag jade">04</div>
+            <h3>Kernel/runtime layers are strategic</h3>
+            <p>Queueing, DMA scheduling, graph capture, and host-side latency increasingly matter — these are no longer secondary concerns for infrastructure teams.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- References -->
+      <section id="references" class="section reveal">
+        <div class="section-label">References</div>
+        <h2>Sources</h2>
+        <ol class="refs">
+          <li class="ref-item">
+            <span class="ref-num">[1]</span>
+            <div class="ref-text">
+              NVIDIA, "Next Gen Data Center CPU | NVIDIA Vera CPU." Describes Vera as the host CPU for Vera Rubin NVL72 and HGX Rubin NVL8, with roles including ETL, KV-cache management, and orchestration.<br />
+              <a href="https://www.nvidia.com/en-in/data-center/vera-cpu/" target="_blank">nvidia.com/en-in/data-center/vera-cpu/</a>
+            </div>
+          </li>
+          <li class="ref-item">
+            <span class="ref-num">[2]</span>
+            <div class="ref-text">
+              NVIDIA, "NVIDIA Vera Rubin NVL72." Describes the rack-scale platform with 72 Rubin GPUs, 36 Vera CPUs, ConnectX-9 SuperNICs, BlueField-4 DPUs, NVLink 6 switching, and scale-out networking.<br />
+              <a href="https://www.nvidia.com/en-in/data-center/vera-rubin-nvl72/" target="_blank">nvidia.com/en-in/data-center/vera-rubin-nvl72/</a>
+            </div>
+          </li>
+          <li class="ref-item">
+            <span class="ref-num">[3]</span>
+            <div class="ref-text">
+              NVIDIA Newsroom, "NVIDIA Kicks Off the Next Generation of AI With Rubin," January 5, 2026. Discusses extreme codesign across Vera CPU, Rubin GPU, NVLink 6, ConnectX-9, BlueField-4, and Spectrum-6 Ethernet.<br />
+              <a href="https://nvidianews.nvidia.com/news/rubin-platform-ai-supercomputer" target="_blank">nvidianews.nvidia.com/news/rubin-platform-ai-supercomputer</a>
+            </div>
+          </li>
+          <li class="ref-item">
+            <span class="ref-num">[4]</span>
+            <div class="ref-text">
+              NVIDIA Developer Blog, "NVIDIA Rubin CPX Accelerates Inference Performance and Efficiency for 1M+ Token Context Workloads," September 9, 2025. Discusses Vera Rubin NVL144 CPX, disaggregated inference, long-context serving, 100 TB high-speed memory, and 1.7 PB/s memory bandwidth.<br />
+              <a href="https://developer.nvidia.com/blog/nvidia-rubin-cpx-accelerates-inference-performance-and-efficiency-for-1m-token-context-workloads/" target="_blank">developer.nvidia.com → Rubin CPX article</a>
+            </div>
+          </li>
+          <li class="ref-item">
+            <span class="ref-num">[5]</span>
+            <div class="ref-text">
+              NVIDIA Developer Blog, "Inside NVIDIA Blackwell Ultra: The Chip Powering the AI Factory Era," August 22, 2025. Provides context for GB300 NVL72, AI factory output, latency/throughput per megawatt, and rack-scale design.<br />
+              <a href="https://developer.nvidia.com/blog/inside-nvidia-blackwell-ultra-the-chip-powering-the-ai-factory-era/" target="_blank">developer.nvidia.com → Blackwell Ultra article</a>
+            </div>
+          </li>
+          <li class="ref-item">
+            <span class="ref-num">[6]</span>
+            <div class="ref-text">
+              パウロ, "NVIDIAの新CPU『Vera』が示すAIファクトリーの未来," Note. Original article reviewed and used as the conceptual seed for this analysis.<br />
+              <a href="https://note.com/paul1211/n/n114f367c3b75" target="_blank">note.com/paul1211/n/n114f367c3b75</a>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+    </article>
+  </div>
+
+  <!-- footer -->
+  <footer>
+    <div class="wrap footer-inner">
+      <div>
+        <div class="footer-brand">AI Infrastructure Analysis</div>
+        <p class="footer-desc">
+          A systems-level analysis of NVIDIA Vera, Rubin, and AI factory architecture.
+          This article focuses on architectural interpretation and uses NVIDIA primary
+          sources for all platform claims and specifications.
+        </p>
+      </div>
+      <div class="footer-right">
+        <div class="footer-disclaimer">
+          All architectural claims reference NVIDIA primary sources.<br />
+          Specifications subject to change. Analysis as of 2026.<br />
+          Not affiliated with NVIDIA Corporation.
+        </div>
+      </div>
+    </div>
+  </footer>
+
+<footer class="site-footer site-global-footer" aria-label="Article footer">
+  <div class="site-footer-inner">
+    <div><strong><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span></strong><br/>Technical essays on AI infrastructure and systems.</div>
+    <div><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></div>
+  </div>
+</footer>
+<script>
+    // progress bar
+    const bar = document.getElementById('progress');
+    const nav = document.getElementById('topnav');
+    window.addEventListener('scroll', () => {
+      const total = document.body.scrollHeight - innerHeight;
+      bar.style.width = (scrollY / total * 100) + '%';
+      nav.classList.toggle('scrolled', scrollY > 20);
+    });
+
+    // scroll reveal
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); } });
+    }, { threshold: 0.08 });
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    // active toc
+    const sections = document.querySelectorAll('section[id], div[id]');
+    const tocLinks = document.querySelectorAll('.toc-list a');
+    const tocObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          tocLinks.forEach(a => a.classList.remove('active'));
+          const active = document.querySelector(`.toc-list a[href="#${entry.target.id}"]`);
+          if (active) active.classList.add('active');
+        }
+      });
+    }, { rootMargin: '-30% 0px -60% 0px' });
+    sections.forEach(s => tocObserver.observe(s));
+  </script>
+</body>
+</html>
