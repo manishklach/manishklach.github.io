@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Intent Attention Kernel: Intent-Aware KV Execution for Agentic Long-Context Inference | MANISH AI</title>
+<meta name="description" content="A systems-level essay on the Intent Attention Kernel project — why long-context attention should not pretend every KV block is equally useful, and how runtime-intent metadata can reshape KV execution for agentic workloads."/>
+<meta name="keywords" content="intent attention kernel, KV cache, attention, long-context inference, agentic AI, semantic blocks, IntentQuant, KV quantization, prefetch, agentic inference"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/intent-attention-kernel.html"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Intent Attention Kernel: Intent-Aware KV Execution for Agentic Long-Context Inference | MANISH AI"/>
+<meta property="og:description" content="A systems-level essay on the Intent Attention Kernel project — why long-context attention should not pretend every KV block is equally useful, and how runtime-intent metadata can reshape KV execution for agentic workloads."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/intent-attention-kernel.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="article:published_time" content="2026-05-28T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-05-28T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="AI Infrastructure &amp; Kernel Design"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Intent Attention Kernel: Intent-Aware KV Execution for Agentic Long-Context Inference"/>
+<meta name="twitter:description" content="A systems-level essay on why long-context attention should not pretend every KV block is equally useful, and how runtime-intent metadata can reshape KV execution."/>
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png"/>
+<meta name="twitter:image:alt" content="Intent Attention Kernel by MANISH AI"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"Intent Attention Kernel: Intent-Aware KV Execution for Agentic Long-Context Inference",
+  "description":"A systems-level essay on the Intent Attention Kernel project — why long-context attention should not pretend every KV block is equally useful, and how runtime-intent metadata can reshape KV execution for agentic workloads.",
+  "url":"https://manishklach.github.io/writings/intent-attention-kernel.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/intent-attention-kernel.html",
+  "datePublished":"2026-05-28",
+  "dateModified":"2026-05-28",
+  "articleSection":"AI Infrastructure & Kernel Design",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #141210;
+    --ink-mid: #3d3a35;
+    --ink-muted: #7a756e;
+    --ink-faint: #b8b2aa;
+    --paper: #faf8f4;
+    --paper-warm: #f2ede4;
+    --paper-card: #ffffff;
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+    --accent-dark: #1e40af;
+    --teal: #1a6b5c;
+    --teal-light: #e2f0ec;
+    --blue: #1e4fa0;
+    --blue-light: #e5ecf7;
+    --amber: #b45309;
+    --amber-light: #fef3c7;
+    --border: #d9d3c9;
+    --serif: 'Lora', Georgia, serif;
+    --sans: 'Instrument Sans', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+  }
+
+  html.dark {
+    --ink: #e6edf3;
+    --ink-mid: #c9d1d9;
+    --ink-muted: #8b949e;
+    --ink-faint: #484f58;
+    --paper: #0d1117;
+    --paper-warm: #161b22;
+    --paper-card: #1c2333;
+    --accent: #3b82f6;
+    --accent-light: #172554;
+    --accent-dark: #93c5fd;
+    --teal: #2ea07a;
+    --teal-light: #142820;
+    --blue: #58a6ff;
+    --blue-light: #151d30;
+    --amber: #f59e0b;
+    --amber-light: #2d2410;
+    --border: #30363d;
+  }
+
+  html { font-size: 18px; scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--serif);
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.8;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .site-tools {
+    position: relative;
+    z-index: 1001;
+    width: min(1200px, calc(100vw - 32px));
+    margin: 0 auto;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    color: var(--ink-muted);
+    font: 14px/1.5 var(--mono);
+  }
+  .back-link { color: inherit; text-decoration: none; }
+  .back-link:hover { text-decoration: underline; }
+  #theme-toggle {
+    border: 1px solid currentColor;
+    background: transparent;
+    color: inherit;
+    border-radius: 999px;
+    padding: 6px 11px;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .reading-meta {
+    position: relative;
+    z-index: 1001;
+    width: min(1200px, calc(100vw - 32px));
+    margin: 0 auto;
+    padding: 0 20px 8px;
+    color: var(--ink-muted);
+    font: 13px/1.5 var(--mono);
+  }
+
+  .masthead {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 0;
+    position: relative;
+    overflow: hidden;
+  }
+  html.dark .masthead { background: #05080f; }
+
+  .masthead-inner {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 72px 40px 60px;
+    position: relative;
+    z-index: 2;
+  }
+
+  .masthead-kicker {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .masthead-kicker::before {
+    content: '';
+    display: inline-block;
+    width: 28px;
+    height: 1px;
+    background: var(--accent);
+  }
+
+  .masthead h1 {
+    font-family: var(--serif);
+    font-size: clamp(2rem, 5vw, 3.4rem);
+    font-weight: 700;
+    line-height: 1.15;
+    color: #fff;
+    margin-bottom: 20px;
+    letter-spacing: -0.02em;
+  }
+
+  .masthead-sub {
+    font-family: var(--sans);
+    font-size: 1.05rem;
+    color: #8b949e;
+    max-width: 600px;
+    line-height: 1.6;
+    margin-bottom: 40px;
+  }
+
+  .masthead-meta {
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+    font-family: var(--sans);
+    font-size: 0.75rem;
+    color: var(--ink-muted);
+    border-top: 1px solid #2a2824;
+    padding-top: 24px;
+  }
+  html.dark .masthead-meta { color: #8b949e; border-top-color: #21262d; }
+  .masthead-meta span { display: flex; align-items: center; gap: 6px; }
+
+  .schema-strip {
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 40%;
+    opacity: 0.04;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 28px, #fff 28px, #fff 29px),
+      repeating-linear-gradient(90deg, transparent, transparent 28px, #fff 28px, #fff 29px);
+  }
+
+  .article-wrap { max-width: 860px; margin: 0 auto; padding: 0 40px; }
+
+  .lead-deck {
+    border-left: 3px solid var(--accent);
+    padding: 0 0 0 24px;
+    margin: 2rem 0 2.5rem;
+    font-size: 1.12rem;
+    color: var(--ink-mid);
+    font-family: var(--sans);
+    line-height: 1.7;
+  }
+
+  .section { padding: 2.5rem 0; }
+  .section-head {
+    font-family: var(--serif);
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 0.75rem;
+    letter-spacing: -0.01em;
+  }
+  .sub-head {
+    font-family: var(--serif);
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin: 2rem 0 0.6rem;
+  }
+  .section-rule {
+    width: 48px;
+    height: 2px;
+    background: var(--accent);
+    margin-bottom: 1.5rem;
+  }
+
+  p { margin-bottom: 1.2rem; color: var(--ink-mid); }
+  a { color: var(--accent); }
+  a:hover { text-decoration: none; }
+
+  strong { color: var(--ink); }
+
+  .callout {
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 1.8rem 0;
+    background: var(--paper-card);
+  }
+  .callout-head {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+
+  .pill-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 1rem 0 1.2rem; }
+  .pill {
+    border: 1px solid var(--border);
+    background: var(--paper-card);
+    color: var(--ink-mid);
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-family: var(--mono);
+  }
+
+  pre {
+    margin: 1.4rem 0;
+    padding: 18px 20px;
+    background: var(--ink);
+    color: #e8f0f8;
+    border-radius: 12px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.6;
+  }
+  html.dark pre { background: #0d1117; border: 1px solid var(--border); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    background: var(--paper-warm);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  html.dark code { background: #1c2333; }
+  pre code { background: transparent; padding: 0; border-radius: 0; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 1.5rem 0; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 1.5rem 0; }
+
+  .card {
+    border: 1px solid var(--border);
+    background: var(--paper-card);
+    border-radius: 16px;
+    padding: 22px;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    margin: 1.5rem 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+    background: var(--paper-card);
+    font-size: 0.88rem;
+  }
+  th, td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    background: var(--paper-warm);
+    color: var(--ink-muted);
+    font-weight: 600;
+  }
+  td { color: var(--ink-mid); }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { font-weight: 600; color: var(--ink); }
+
+  .pillar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin: 1.5rem 0; }
+  .pillar-card {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px;
+    background: var(--paper-card);
+    display: grid;
+    gap: 10px;
+  }
+  .pillar-num {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .pillar-card h3 { font-family: var(--serif); font-size: 1.1rem; }
+  .pillar-card p { font-size: 0.92rem; margin-bottom: 0; }
+
+  .compare-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 1rem 0;
+  }
+  .compare-item {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    background: var(--paper-card);
+  }
+  .compare-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+
+  .boundary-list { list-style: none; padding: 0; display: grid; gap: 10px; margin: 1.2rem 0; }
+  .boundary-list li {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    background: var(--paper-card);
+    color: var(--ink-mid);
+    font-size: 0.92rem;
+  }
+  .boundary-list li strong { color: var(--ink); }
+
+  .section-divider {
+    border: 0;
+    height: 1px;
+    background: var(--border);
+    margin: 0.5rem 0;
+  }
+
+  .repo-card {
+    border: 2px solid var(--accent);
+    border-radius: 16px;
+    padding: 28px;
+    margin: 2rem 0;
+    background: var(--accent-light);
+    text-align: center;
+  }
+  html.dark .repo-card { background: #0d1117; border-color: var(--accent); }
+  .repo-card p { margin-bottom: 0.6rem; font-size: 0.95rem; }
+  .repo-link {
+    display: inline-block;
+    padding: 10px 22px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-decoration: none;
+    margin-top: 8px;
+  }
+  .repo-link:hover { opacity: 0.9; }
+
+  .site-footer.site-global-footer {
+    position: relative;
+    z-index: 2;
+    width: min(1200px, calc(100vw - 32px));
+    margin: 0 auto 48px;
+    padding: 28px 20px 0;
+    border-top: 1px solid var(--border);
+    color: var(--ink-muted);
+    font: 13px/1.6 var(--mono);
+  }
+  .site-footer-inner {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .site-footer a { color: inherit; }
+
+  @media (max-width: 700px) {
+    .article-wrap { padding: 0 20px; }
+    .masthead-inner { padding: 48px 20px 40px; }
+    .grid-2, .grid-3, .compare-row { grid-template-columns: 1fr; }
+    .site-tools, .reading-meta { width: min(100%, calc(100vw - 16px)); padding-left: 12px; padding-right: 12px; }
+    .site-footer.site-global-footer { width: min(100%, calc(100vw - 16px)); padding-left: 12px; padding-right: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="site-tools" aria-label="Site tools">
+  <a class="back-link" href="/writings.html"><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span> / Writings</a>
+  <button id="theme-toggle" type="button" aria-label="Toggle light and dark mode">☀️</button>
+</div>
+<p class="reading-meta"><time datetime="2026-05-28">May 28, 2026</time> · AI Infrastructure &amp; Kernel Design · ~3,200 words</p>
+
+<header class="masthead">
+  <div class="schema-strip" aria-hidden="true"></div>
+  <div class="masthead-inner">
+    <div class="masthead-kicker">Research Prototype &mdash; CPU-First KV Execution</div>
+    <h1>Intent Attention Kernel</h1>
+    <p class="masthead-sub">Intent-aware KV execution for agentic long-context inference &mdash; what if the runtime tells the attention kernel which KV regions matter, instead of pretending every block is equally useful?</p>
+    <div class="masthead-meta">
+      <span>GitHub: <a href="https://github.com/manishklach/intent-attention-kernel" target="_blank" rel="noopener">manishklach/intent-attention-kernel</a></span>
+      <span>MIT License &middot; CPU-first research prototype</span>
+    </div>
+  </div>
+</header>
+
+<div class="article-wrap">
+
+<section class="section">
+  <div class="lead-deck">
+    Long-context inference is increasingly dominated by KV-cache capacity, memory bandwidth, page movement, and structured context management &mdash; not just attention compute. The traditional question has been <em>how do we compute attention faster</em>. This project asks a different question: <em>what if the runtime tells the execution layer which KV regions matter</em>?
+  </div>
+
+  <p>The missing interface is not just between model and kernel. It is between <strong>runtime intent</strong> and <strong>KV execution</strong>. When an agentic orchestrator builds a long context out of system prompts, retrieved documents, tool outputs, scratchpads, and recent conversation turns, it knows which regions are critical, which are optional, and which are filler. Today, the attention layer receives none of that signal. It processes every KV block with the same machinery, the same precision, and the same priority.</p>
+
+  <p>The <strong>Intent Attention Kernel</strong> project explores what changes when that structural information is exposed to the execution layer. It is a CPU-first research prototype &mdash; no GPU speedups are claimed, no production kernel is provided. But the ideas it prototypes point toward a different architecture for KV execution in the long-context regime.</p>
+
+  <div class="pill-list">
+    <span class="pill">Semantic KV Blocks</span>
+    <span class="pill">Selected-Block Attention</span>
+    <span class="pill">IntentQuant-KV</span>
+    <span class="pill">Speculative Prefetch</span>
+    <span class="pill">Agentic Context</span>
+  </div>
+</section>
+
+<hr class="section-divider"/>
+
+<section class="section" id="problem">
+  <h2 class="section-head">Context is not flat</h2>
+  <div class="section-rule"></div>
+
+  <p>Agentic workloads construct structurally heterogeneous context windows. A typical agentic prompt might contain a system prompt, summary memory, multiple retrieved documents with varying relevance, tool output, a scratchpad region, and recent conversation turns. These regions have different attention characteristics, different precision requirements, and different cache behavior.</p>
+
+  <div class="callout">
+    <div class="callout-head">The structure that attention ignores</div>
+    <p>Not all blocks deserve equal treatment. System prompts are always critical. Recent context is usually high priority. Retrieved documents may be relevant or irrelevant. Old tool output may be optional. Scratchpads may be compressible or skippable. Generic dense attention treats all of them as one undifferentiated KV stream.</p>
+  </div>
+
+  <p>Traditional attention asks: <em>how do we compute attention faster?</em> Intent Attention Kernel asks: <em>what if we do not compute certain regions at all?</em> The project represents each semantic region as a block with an explicit attention policy &mdash; ALWAYS, ATTEND (conditional on score), SKIP, RECENT (sliding window), or GLOBAL. The runtime can then select, score, quantize, and schedule KV blocks before they reach the attention kernel.</p>
+
+<pre><code>layout = BlockLayout([
+    SemanticBlock("system_prompt",    0,     512,   BlockPolicy.ALWAYS),
+    SemanticBlock("retrieved_doc_0", 512,   4096,  BlockPolicy.ATTEND, score=0.82),
+    SemanticBlock("retrieved_doc_1", 4096,  8192,  BlockPolicy.SKIP,    score=0.21),
+    SemanticBlock("recent_context",  8192,  12288, BlockPolicy.RECENT),
+])
+
+out, debug = semantic_block_attention(q, k, v, layout, return_debug=True)</code></pre>
+</section>
+
+<hr class="section-divider"/>
+
+<section class="section" id="core">
+  <h2 class="section-head">Semantic KV block metadata</h2>
+  <div class="section-rule"></div>
+
+  <p>The core idea is minimal: add a metadata surface between the runtime and the attention kernel that describes <em>what each block of KV data is, how important it is, and what policy should apply to it</em>. The project enumerates five block policies:</p>
+
+  <div class="grid-2">
+    <div class="card">
+      <strong>ALWAYS</strong><br/>
+      <span style="font-size:0.9rem;color:var(--ink-mid);">Always attended. System prompts, global context, immutable instructions.</span>
+    </div>
+    <div class="card">
+      <strong>ATTEND</strong><br/>
+      <span style="font-size:0.9rem;color:var(--ink-mid);">Conditional attendance based on a runtime relevance score threshold.</span>
+    </div>
+    <div class="card">
+      <strong>SKIP</strong><br/>
+      <span style="font-size:0.9rem;color:var(--ink-mid);">Not attended at all. Scratchpad filler, stale tool output.</span>
+    </div>
+    <div class="card">
+      <strong>RECENT</strong><br/>
+      <span style="font-size:0.9rem;color:var(--ink-mid);">Always selected via sliding window / recent turns logic.</span>
+    </div>
+  </div>
+
+  <p>The key design principle: <strong>do not compute and then mask</strong>. Expose structure early enough to avoid the work entirely. A selected-block attention path gathers only the K/V tokens corresponding to non-SKIP blocks and computes attention only over those regions. This is what the CPU reference implementation demonstrates.</p>
+</section>
+
+<hr class="section-divider"/>
+
+<section class="section" id="pillars">
+  <h2 class="section-head">Five pillars of the project</h2>
+  <div class="section-rule"></div>
+
+  <p>The project explores five complementary mechanisms for exposing runtime intent to the KV execution layer:</p>
+
+  <div class="pillar-grid">
+    <div class="pillar-card">
+      <div class="pillar-num">Pillar 1</div>
+      <h3>Semantic KV Block Selection</h3>
+      <p>The runtime marks regions of context with policies. The CPU reference gathers selected K/V tokens and computes attention only over selected regions. This is the core interface between runtime intent and the attention layer.</p>
+    </div>
+    <div class="pillar-card">
+      <div class="pillar-num">Pillar 2</div>
+      <h3>Selected-Block Attention Reference</h3>
+      <p>A PyTorch CPU oracle proves correctness for non-causal selected-block attention. It compares selected-KV behavior against dense attention over the same selected K/V tensors.</p>
+    </div>
+    <div class="pillar-card">
+      <div class="pillar-num">Pillar 3</div>
+      <h3>Dynamic Block Scoring</h3>
+      <p>A lightweight heuristic scores candidate blocks using query-to-block cosine similarity. Not a trained router &mdash; a prototype control-plane signal for the surface a future runtime could consume.</p>
+    </div>
+    <div class="pillar-card">
+      <div class="pillar-num">Pillar 4</div>
+      <h3>IntentQuant-KV</h3>
+      <p>Not every KV block deserves the same precision. Critical regions stay FP16/FP8; lower-score or colder blocks use INT8, INT4, INT4_RESIDUAL, or SKIP. No accuracy or perplexity preservation is claimed.</p>
+    </div>
+    <div class="pillar-card">
+      <div class="pillar-num">Pillar 5</div>
+      <h3>Speculative KV Prefetch</h3>
+      <p>Adjacent decode steps may reuse similar KV regions. A prefetcher predicts likely next-step pages. Current benchmark simulates hit rate only. Prefetch must never affect correctness.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider"/>
+
+<section class="section" id="intentquant">
+  <h2 class="section-head">IntentQuant-KV: precision as a policy decision</h2>
+  <div class="section-rule"></div>
+
+  <p>Uniform KV quantization applies the same precision across all tokens regardless of their role in the context. IntentQuant-KV treats precision as an execution policy: critical blocks stay high precision, cold blocks get compressed, skipped blocks contribute zero bytes.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Precision</th><th>Where It Applies</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>FP16</td><td>Critical blocks &mdash; system prompts, global memory, recent context</td></tr>
+        <tr><td>FP8</td><td>Important selected blocks &mdash; high-scoring attended documents</td></tr>
+        <tr><td>INT8</td><td>Relevant but non-critical blocks &mdash; moderate-score attended regions</td></tr>
+        <tr><td>INT4_RESIDUAL</td><td>Medium-score blocks &mdash; useful but lower confidence; residual correction</td></tr>
+        <tr><td>INT4</td><td>Cold or low-score blocks &mdash; old tool outputs, low-relevance documents</td></tr>
+        <tr><td>SKIP</td><td>Skipped blocks &mdash; zero KV bytes contributed</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+<pre><code>quantizer = IntentQuantizer(memory_pressure=0.7)
+policies = quantizer.assign_layout_precision(layout)
+summary = quantizer.summary_table(layout, heads=32, head_dim=128)</code></pre>
+
+  <div class="callout">
+    <div class="callout-head">Honest boundaries</div>
+    <p>No production quantization kernel exists in this project. No model-quality or perplexity validation has been performed. The quantizer uses fake quantization only. Dequant overhead may dominate any bandwidth savings. Real benefit depends on bandwidth pressure, page reuse, hardware support, and attention fusion &mdash; none of which are measured here.</p>
+  </div>
+</section>
+
+<hr class="section-divider"/>
+
+<section class="section" id="architecture">
+  <h2 class="section-head">System architecture</h2>
+  <div class="section-rule"></div>
+
+  <p>The architecture separates CPU-first simulation from a future GPU kernel path, with metadata-driven selection at the center. The CPU layer provides a PyTorch reference for dense and selected-block attention, an analytical cost model for FLOP and KV-byte savings, a synthetic trace generator for deterministic agentic layouts, six benchmark scripts, and a pytest suite with 74+ tests.</p>
+
+  <p>The future GPU kernel path is sketched but not implemented: Triton selected-block attention that iterates only over selected pages, per-page dequantization for INT8 mixed-precision attention, a paged KV block table with physical page indirection, query-position-aware masking for correct causal selected-block attention, and prefetch or staging hints for latency hiding.</p>
+
+  <div class="callout">
+    <div class="callout-head">Data flow</div>
+    <p>Agentic Runtime &rarr; Semantic Blocks &rarr; Policy Selection &rarr; Dynamic Scoring &rarr; Paged KV Table &rarr; IntentQuant-KV &rarr; Prefetch Prediction &rarr; Selected-KV Attention &rarr; Future GPU Kernel</p>
+  </div>
+</section>
+
+<hr class="section-divider"/>
+
+<section class="section" id="comparison">
+  <h2 class="section-head">Dense vs. masked vs. intent-aware</h2>
+  <div class="section-rule"></div>
+
+  <p>How different approaches compare in terms of what they know, what work they avoid, and where the limits lie:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Approach</th><th>What It Knows</th><th>Work Avoided</th><th>Limitation</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Dense attention</td><td>Flat token stream</td><td>None</td><td>Treats all context equally</td></tr>
+        <tr><td>Masked attention</td><td>Token/block mask</td><td>Often limited</td><td>Late-binding; mask applied post-QK</td></tr>
+        <tr><td>Selected-block attention</td><td>Block bounds + policies</td><td>CPU gather over selected K/V</td><td>Needs causal / query-position support</td></tr>
+        <tr><td>Intent-aware KV execution</td><td>Policy + score + quant + prefetch</td><td>Analytical / simulated today</td><td>Hardware validation; complex interface</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<hr class="section-divider"/>
+
+<section class="section" id="causal">
+  <h2 class="section-head">Causal attention limitation</h2>
+  <div class="section-rule"></div>
+
+  <p>Non-causal selected-block attention is implemented and verified in the CPU reference. Causal selected-block attention is intentionally <strong>not implemented</strong> because selected KV tokens retain original context positions, and a correct causal implementation requires:</p>
+
+  <ul class="boundary-list">
+    <li><strong>Query-position-aware masking</strong> in original coordinates, not just at the selected-block level</li>
+    <li><strong>Partial-page token bounds</strong> for paged KV layouts where a page may span multiple semantic regions</li>
+    <li><strong>Logical KV ordering preservation</strong> &mdash; selected blocks must maintain their original sequence positions</li>
+    <li><strong>Page deduplication</strong> without reordering when the same page appears in multiple selected regions</li>
+    <li><strong>Causal correctness</strong> for both prefill and decode phases, which have different masking constraints</li>
+  </ul>
+
+  <p>Calling <code>semantic_block_attention(..., causal=True)</code> currently raises <code>NotImplementedError</code>. This is the hardest open technical problem in the project.</p>
+</section>
+
+<hr class="section-divider"/>
+
+<section class="section" id="benchmarks">
+  <h2 class="section-head">What the benchmarks actually validate</h2>
+  <div class="section-rule"></div>
+
+  <p>Every benchmark in the repository is explicit about what it does not prove. This is by design: the project is a CPU-first prototype, and conflating CPU measurement with GPU prediction would be misleading.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Benchmark</th><th>What It Validates</th><th>What It Does Not Prove</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>bench_cost_model</td><td>Analytical FLOP and KV-byte savings</td><td>Real GPU speedup</td></tr>
+        <tr><td>bench_cpu_reference</td><td>Correctness and sanity</td><td>Fused kernel performance</td></tr>
+        <tr><td>bench_intent_quant</td><td>Byte model and reconstruction metrics</td><td>Model quality or perplexity</td></tr>
+        <tr><td>bench_prefetch</td><td>Simulated hit rate</td><td>Real latency hiding</td></tr>
+        <tr><td>bench_dynamic_scoring</td><td>Synthetic scoring behavior</td><td>Routing quality</td></tr>
+        <tr><td>bench_kv_quant</td><td>KV byte savings model</td><td>Real memory bandwidth reduction</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<hr class="section-divider"/>
+
+<section class="section" id="roadmap">
+  <h2 class="section-head">Roadmap</h2>
+  <div class="section-rule"></div>
+
+  <p>The project is organized into seven phases, each scoped to produce a concrete artifact before the next begins:</p>
+
+  <div class="grid-2">
+    <div class="card">
+      <strong style="color:var(--accent);">Phase 1</strong>
+      <span style="font-size:0.9rem;color:var(--ink-mid);">CPU-first correctness &mdash; metadata surface, block selection, dense baseline, selected-block reference, cost model, synthetic traces, benchmarks, test suite. ✓ <em>Complete.</em></span>
+    </div>
+    <div class="card">
+      <strong style="color:var(--accent);">Phase 2</strong>
+      <span style="font-size:0.9rem;color:var(--ink-mid);">Query-position-aware causal attention &mdash; correct causal selected-block attention with explicit query positions or per-query causal bounds.</span>
+    </div>
+    <div class="card">
+      <strong style="color:var(--accent);">Phase 3</strong>
+      <span style="font-size:0.9rem;color:var(--ink-mid);">Paged KV block table &mdash; support for partial-page token bounds and logical KV ordering preservation.</span>
+    </div>
+    <div class="card">
+      <strong style="color:var(--accent);">Phase 4</strong>
+      <span style="font-size:0.9rem;color:var(--ink-mid);">Triton selected-block attention kernel &mdash; iterate only over physical pages from the block table; skip unused pages entirely.</span>
+    </div>
+    <div class="card">
+      <strong style="color:var(--accent);">Phase 5</strong>
+      <span style="font-size:0.9rem;color:var(--ink-mid);">IntentQuant-KV dequant-in-attention fusion &mdash; fuse per-page dequantization with the attention kernel to reduce memory round-trips.</span>
+    </div>
+    <div class="card">
+      <strong style="color:var(--accent);">Phase 6–7</strong>
+      <span style="font-size:0.9rem;color:var(--ink-mid);">Prefetch / staging on real NVIDIA hardware, then integration experiments with vLLM and HuggingFace Transformers.</span>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider"/>
+
+<section class="section" id="limits">
+  <h2 class="section-head">What is not claimed</h2>
+  <div class="section-rule"></div>
+
+  <p>The project maintains explicit, documented boundaries around what it does and does not assert. These are worth reproducing because they define the scope honestly:</p>
+
+  <div class="grid-2">
+    <div class="compare-item">
+      <div class="compare-label">Not claimed</div>
+      No GPU speedups are claimed. No production-ready Triton or CUDA kernel is claimed. No real NVIDIA hardware validation has been performed.
+    </div>
+    <div class="compare-item">
+      <div class="compare-label">Not claimed</div>
+      Quantization has not been validated for model accuracy or perplexity. No superiority over KIVI, KVQuant, or TurboQuant is claimed.
+    </div>
+    <div class="compare-item">
+      <div class="compare-label">Not claimed</div>
+      No production quantization kernel is provided. No model quality guarantee is made.
+    </div>
+    <div class="compare-item">
+      <div class="compare-label">Not claimed</div>
+      Prefetch has not been validated for real latency improvement. Dynamic scoring is a heuristic, not a trained routing model.
+    </div>
+  </div>
+
+  <p>CPU Ratio (dense_time / semantic_time) is explicitly documented as not a GPU speedup claim. It is affected by PyTorch dispatch overhead, gather overhead, cache behavior, tensor size, and small-batch effects. The analytical KV and FLOP savings models document the theoretical upper bound of work avoidance, not measured GPU performance.</p>
+</section>
+
+<hr class="section-divider"/>
+
+<section class="section" id="quickstart">
+  <h2 class="section-head">Quick start</h2>
+  <div class="section-rule"></div>
+
+<pre><code>pip install -e ".[dev]"
+python -m py_compile src/intent_attention/*.py
+pytest -q
+
+python benchmarks/bench_cost_model.py
+python benchmarks/bench_cpu_reference.py
+python benchmarks/bench_kv_quant.py
+python benchmarks/bench_prefetch.py
+python benchmarks/bench_dynamic_scoring.py
+python benchmarks/bench_intent_quant.py</code></pre>
+
+  <div class="repo-card">
+    <p style="font-size:1rem;font-weight:600;margin-bottom:4px;">Explore the repository</p>
+    <p style="font-size:0.85rem;">github.com/manishklach/intent-attention-kernel &middot; MIT License</p>
+    <a class="repo-link" href="https://github.com/manishklach/intent-attention-kernel" target="_blank" rel="noopener">View on GitHub</a>
+  </div>
+</section>
+
+</div>
+
+<footer class="site-footer site-global-footer" aria-label="Article footer">
+  <div class="site-footer-inner">
+    <div><strong><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span></strong><br/>Technical essays on AI infrastructure and systems.</div>
+    <div><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></div>
+  </div>
+</footer>
+</body>
+</html>
