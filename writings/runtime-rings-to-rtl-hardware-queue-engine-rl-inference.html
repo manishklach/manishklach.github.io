@@ -1,0 +1,1630 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>From Runtime Rings to RTL: Hardware Queue Engine for RL Inference | MANISH AI</title>
+<meta name="description" content="A systems-style deep dive on modeling a close-to-metal RL inference control plane in RTL: descriptors, doorbells, rings, worker FSMs, completion queues, backpressure, and Verilator co-simulation."/>
+<meta name="keywords" content="RTL RL inference, hardware queue engine, descriptor rings, doorbells, completion queues, Verilator co-simulation, RL inference control plane, SystemVerilog, MMIO queues"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/runtime-rings-to-rtl-hardware-queue-engine-rl-inference.html"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="From Runtime Rings to RTL: Hardware Queue Engine for RL Inference | MANISH AI"/>
+<meta property="og:description" content="A systems-style deep dive on modeling a close-to-metal RL inference control plane in RTL: descriptors, doorbells, rings, worker FSMs, completion queues, backpressure, and Verilator co-simulation."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/runtime-rings-to-rtl-hardware-queue-engine-rl-inference.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:image" content="https://manishklach.github.io/og/runtime-rings-to-rtl-hardware-queue-engine-rl-inference.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="From Runtime Rings to RTL: Hardware Queue Engine for RL Inference by MANISH AI"/>
+<meta property="article:published_time" content="2026-05-31T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-05-31T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="RL Inference Systems"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="From Runtime Rings to RTL: Hardware Queue Engine for RL Inference"/>
+<meta name="twitter:description" content="A systems-style deep dive on modeling a close-to-metal RL inference control plane in RTL: descriptors, doorbells, rings, worker FSMs, completion queues, backpressure, and Verilator co-simulation."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/runtime-rings-to-rtl-hardware-queue-engine-rl-inference.png"/>
+<meta name="twitter:image:alt" content="From Runtime Rings to RTL: Hardware Queue Engine for RL Inference by MANISH AI"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"From Runtime Rings to RTL: Hardware Queue Engine for RL Inference",
+  "description":"A systems-style deep dive on modeling a close-to-metal RL inference control plane in RTL: descriptors, doorbells, rings, worker FSMs, completion queues, backpressure, and Verilator co-simulation.",
+  "url":"https://manishklach.github.io/writings/runtime-rings-to-rtl-hardware-queue-engine-rl-inference.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/runtime-rings-to-rtl-hardware-queue-engine-rl-inference.html",
+  "datePublished":"2026-05-31",
+  "dateModified":"2026-05-31",
+  "articleSection":"RL Inference Systems",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+:root {
+  --bg: #07080d;
+  --bg2: #0c0e15;
+  --bg3: #111420;
+  --text: #e8eaf2;
+  --muted: #8d93a8;
+  --muted2: #5c6278;
+  --amber: #f5a623;
+  --amber2: #ffd07b;
+  --amber-dim: rgba(245,166,35,.12);
+  --amber-glow: rgba(245,166,35,.22);
+  --teal: #2dd9c0;
+  --teal-dim: rgba(45,217,192,.10);
+  --red: #ff5f6d;
+  --line: rgba(255,255,255,.09);
+  --line2: rgba(255,255,255,.05);
+  --shadow: 0 24px 80px rgba(0,0,0,.6);
+  --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --display: 'Syne', sans-serif;
+  --body: 'Lora', Georgia, serif;
+  --r: 20px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--body);
+  line-height: 1.72;
+  overflow-x: hidden;
+}
+
+/* Noise grain overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .028;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 256px;
+}
+
+/* Ambient light streaks */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 600px 300px at 10% 0%, rgba(245,166,35,.07) 0%, transparent 70%),
+    radial-gradient(ellipse 400px 600px at 92% 15%, rgba(45,217,192,.055) 0%, transparent 70%),
+    radial-gradient(ellipse 500px 400px at 50% 100%, rgba(245,166,35,.04) 0%, transparent 70%);
+}
+
+a { color: var(--amber); text-decoration: none; }
+a:hover { color: var(--amber2); }
+
+.wrap { width: min(1100px, calc(100% - 48px)); margin: 0 auto; position: relative; z-index: 1; }
+
+/* ─── TOPBAR ─── */
+.topbar {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(7,8,13,.82);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--line);
+}
+.topbar-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 13px 0;
+  width: min(1100px, calc(100% - 48px)); margin: 0 auto;
+}
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
+}
+.brand-glyph {
+  width: 28px; height: 28px; flex-shrink: 0;
+  border: 1.5px solid var(--amber);
+  border-radius: 6px;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  color: var(--amber);
+  box-shadow: 0 0 20px rgba(245,166,35,.25), inset 0 0 12px rgba(245,166,35,.08);
+}
+.nav {
+  display: flex; gap: 20px; font-family: var(--mono);
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+}
+.nav a { color: var(--muted2); transition: color .2s; }
+.nav a:hover { color: var(--amber); }
+
+/* ─── HERO ─── */
+.hero {
+  padding: 88px 0 64px;
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  gap: 60px;
+  align-items: start;
+}
+.hero-meta {
+  display: flex; align-items: center; gap: 16px; margin-bottom: 28px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--muted2);
+}
+.hero-meta-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--teal);
+  box-shadow: 0 0 14px rgba(45,217,192,.8);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .5; transform: scale(.7); }
+}
+.hero-meta-divider { color: var(--line); }
+
+h1 {
+  font-family: var(--display);
+  font-size: clamp(42px, 6vw, 76px);
+  font-weight: 800;
+  line-height: .94;
+  letter-spacing: -.04em;
+  margin-bottom: 26px;
+}
+.h1-line1 { display: block; color: var(--text); }
+.h1-line2 {
+  display: block;
+  background: linear-gradient(95deg, var(--amber) 0%, var(--amber2) 55%, var(--teal) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero-sub {
+  font-family: var(--body);
+  font-size: clamp(17px, 1.9vw, 20px);
+  line-height: 1.62;
+  color: var(--muted);
+  max-width: 680px;
+  margin-bottom: 32px;
+}
+.hero-tags {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 36px;
+}
+.tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted2);
+  letter-spacing: .07em;
+  background: rgba(255,255,255,.03);
+  transition: border-color .2s, color .2s;
+}
+.tag:hover { border-color: var(--amber-glow); color: var(--amber); cursor: default; }
+
+/* Signal trace hero diagram */
+.hero-diagram {
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--bg2);
+  box-shadow: var(--shadow);
+  position: relative;
+}
+.hero-diagram-title {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line2);
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--muted2);
+  display: flex; align-items: center; gap: 8px;
+}
+.hero-diagram-title::before {
+  content: '';
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber);
+}
+.signal-canvas {
+  display: block;
+  width: 100%; height: 280px;
+}
+.pipeline-labels {
+  display: grid;
+  grid-template-columns: repeat(5,1fr);
+  gap: 1px;
+  border-top: 1px solid var(--line2);
+}
+.pl-item {
+  padding: 12px 10px;
+  text-align: center;
+  border-right: 1px solid var(--line2);
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.pl-item:last-child { border-right: none; }
+.pl-item.active { color: var(--amber); }
+.pl-item.teal { color: var(--teal); }
+.pl-item.dim { color: var(--muted2); }
+
+/* ─── SECTIONS ─── */
+.section { padding: 64px 0; border-top: 1px solid var(--line2); }
+
+.kicker {
+  font-family: var(--mono);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: .2em; text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.kicker::before {
+  content: '';
+  display: inline-block; width: 20px; height: 1.5px;
+  background: var(--amber);
+  flex-shrink: 0;
+}
+
+h2 {
+  font-family: var(--display);
+  font-size: clamp(28px, 3.8vw, 46px);
+  font-weight: 800;
+  line-height: 1.06;
+  letter-spacing: -.036em;
+  color: var(--text);
+  margin-bottom: 20px;
+}
+h3 {
+  font-family: var(--display);
+  font-size: clamp(18px, 2.2vw, 24px);
+  font-weight: 700;
+  letter-spacing: -.022em;
+  line-height: 1.2;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+p { color: var(--muted); margin-bottom: 18px; font-size: 17px; }
+.lead { font-size: clamp(17px, 1.9vw, 20px); color: #b8c0d6; max-width: 800px; line-height: 1.65; }
+ul { padding-left: 22px; color: var(--muted); font-size: 16px; }
+li { margin: 7px 0; }
+li strong { color: var(--text); }
+
+/* Cards */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 24px;
+  background: linear-gradient(145deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  transition: border-color .25s, transform .25s;
+}
+.card:hover { border-color: rgba(245,166,35,.3); transform: translateY(-2px); }
+.card.emph {
+  border-color: rgba(245,166,35,.28);
+  background: linear-gradient(145deg, rgba(245,166,35,.09), rgba(45,217,192,.04));
+}
+.card.emph2 {
+  border-color: rgba(45,217,192,.28);
+  background: linear-gradient(145deg, rgba(45,217,192,.09), rgba(245,166,35,.04));
+}
+
+.pill {
+  display: inline-flex;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase;
+  background: var(--amber-dim);
+  border: 1px solid rgba(245,166,35,.22);
+  color: var(--amber2);
+  margin-bottom: 12px;
+}
+.pill.teal {
+  background: var(--teal-dim);
+  border-color: rgba(45,217,192,.22);
+  color: var(--teal);
+}
+
+/* Code blocks */
+pre {
+  position: relative;
+  margin: 20px 0;
+  padding: 22px 22px 22px 22px;
+  border-radius: var(--r);
+  overflow-x: auto;
+  border: 1px solid rgba(255,255,255,.1);
+  background: linear-gradient(180deg, rgba(12,18,32,.98), rgba(7,9,16,.98));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 16px 50px rgba(0,0,0,.4);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  color: #dde5f8;
+}
+pre .code-label {
+  position: absolute; top: 12px; right: 16px;
+  font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--muted2); font-weight: 600;
+}
+pre .c-kw { color: #f5a623; font-weight: 600; }
+pre .c-type { color: #2dd9c0; }
+pre .c-comment { color: #4a5475; font-style: italic; }
+pre .c-str { color: #a8d8a8; }
+pre .c-num { color: #c9a0ff; }
+pre .c-macro { color: #ff9f7f; }
+
+/* Tables */
+.table-wrap {
+  overflow-x: auto;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  margin: 20px 0;
+}
+table { width: 100%; min-width: 600px; border-collapse: collapse; }
+th, td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line2);
+  text-align: left; vertical-align: top;
+  font-size: 14px;
+}
+th {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: #c0c8e0;
+  background: rgba(255,255,255,.04);
+}
+td { color: var(--muted); }
+td code { font-family: var(--mono); font-size: 12px; color: var(--amber2); }
+
+/* Quote / callout */
+.blockquote {
+  border-left: 3px solid var(--amber);
+  padding: 18px 22px;
+  margin: 24px 0;
+  background: var(--amber-dim);
+  border-radius: 0 16px 16px 0;
+  color: #d4b87a;
+  font-size: 19px;
+  line-height: 1.5;
+  font-style: italic;
+}
+.callout {
+  margin: 22px 0; padding: 20px 22px;
+  border-radius: var(--r);
+  border: 1px solid rgba(45,217,192,.2);
+  background: var(--teal-dim);
+  color: #8de8dc;
+  font-size: 15px;
+}
+.callout strong { color: var(--teal); }
+.callout.warn {
+  border-color: rgba(245,166,35,.25);
+  background: var(--amber-dim);
+  color: #d4b87a;
+}
+.callout.warn strong { color: var(--amber2); }
+
+/* Flow diagram */
+.flow-diagram {
+  margin: 24px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--bg2);
+}
+.flow-diagram-header {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line2);
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--muted2);
+}
+.flow-row {
+  display: flex; align-items: stretch;
+  border-bottom: 1px solid var(--line2);
+}
+.flow-row:last-child { border-bottom: none; }
+.flow-cell {
+  flex: 1; padding: 16px 14px;
+  border-right: 1px solid var(--line2);
+  font-size: 13px;
+}
+.flow-cell:last-child { border-right: none; }
+.flow-cell-head {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--amber); letter-spacing: .08em;
+  margin-bottom: 5px;
+}
+.flow-cell-body { color: var(--muted2); font-size: 12px; line-height: 1.45; }
+.flow-arrow {
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 4px; color: var(--amber); font-size: 18px;
+  flex-shrink: 0;
+}
+
+/* FSM diagram */
+.fsm-diagram {
+  display: grid; grid-template-columns: 1fr 48px 1fr 48px 1fr;
+  align-items: center; gap: 8px; margin: 24px 0;
+}
+.fsm-state {
+  border: 1px solid var(--line);
+  border-radius: 16px; padding: 18px;
+  background: var(--bg2); min-height: 130px;
+  position: relative;
+}
+.fsm-state.active { border-color: rgba(245,166,35,.36); }
+.fsm-state.done { border-color: rgba(45,217,192,.32); }
+.fsm-state-name {
+  font-family: var(--mono); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--amber); margin-bottom: 8px;
+}
+.fsm-state.done .fsm-state-name { color: var(--teal); }
+.fsm-state-desc { font-size: 13px; color: var(--muted2); line-height: 1.45; }
+.fsm-arrow {
+  text-align: center; color: var(--amber); font-size: 24px;
+  filter: drop-shadow(0 0 10px rgba(245,166,35,.4));
+}
+
+/* Roadmap */
+.roadmap { display: grid; gap: 14px; margin-top: 28px; }
+.road {
+  display: grid; grid-template-columns: 58px 1fr;
+  gap: 18px; padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: linear-gradient(135deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  transition: border-color .25s;
+}
+.road:hover { border-color: rgba(245,166,35,.25); }
+.road-num {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-size: 14px; font-weight: 600;
+  background: rgba(245,166,35,.1); border: 1px solid rgba(245,166,35,.25);
+  color: var(--amber); flex-shrink: 0;
+}
+.road-num.done { background: rgba(45,217,192,.1); border-color: rgba(45,217,192,.25); color: var(--teal); }
+
+/* Timing diagram (SVG) */
+.timing-wrap {
+  margin: 24px 0; border: 1px solid var(--line);
+  border-radius: var(--r); overflow: hidden; background: var(--bg2);
+}
+.timing-title {
+  padding: 12px 18px; border-bottom: 1px solid var(--line2);
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--muted2);
+}
+
+/* Footer */
+footer {
+  margin-top: 60px; padding: 40px 0 56px;
+  border-top: 1px solid var(--line2);
+}
+.footer-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 40px;
+}
+.footer-label {
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--muted2); margin-bottom: 8px;
+}
+.footer-text { font-size: 14px; color: var(--muted2); line-height: 1.6; }
+
+/* Scroll fade-in */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity .55s ease, transform .55s ease;
+}
+.reveal.visible { opacity: 1; transform: none; }
+
+/* Inline code */
+code {
+  font-family: var(--mono); font-size: .88em;
+  color: var(--amber2);
+  background: rgba(245,166,35,.09);
+  border-radius: 5px; padding: 1px 6px;
+}
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+
+@media (max-width: 900px) {
+  .hero { grid-template-columns: 1fr; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .fsm-diagram { grid-template-columns: 1fr; }
+  .fsm-arrow { transform: rotate(90deg); }
+  .footer-grid { grid-template-columns: 1fr; }
+  .nav { display: none; }
+}
+@media (max-width: 600px) {
+  .wrap { width: calc(100% - 28px); }
+  .pipeline-labels { grid-template-columns: repeat(3,1fr); }
+}
+
+
+html.dark { color-scheme: dark; }
+html:not(.dark) {
+  color-scheme: light;
+  --bg: #f7f8fb;
+  --bg2: #eef2f8;
+  --panel: rgba(255,255,255,.92);
+  --panel2: rgba(242,245,251,.95);
+  --ink: #122033;
+  --ink2: #2f4560;
+  --muted: #6c7d95;
+  --line: rgba(18,32,51,.12);
+  --line2: rgba(18,32,51,.07);
+  --amber: #c77d1a;
+  --teal: #149d8a;
+  --teal2: #0f7f95;
+  --slate: #58647a;
+}
+html:not(.dark) body {
+  background:
+    radial-gradient(circle at top left, rgba(20,157,138,.07), transparent 26rem),
+    linear-gradient(180deg, #fbfcfe 0%, #eef2f8 100%);
+  color: var(--ink2);
+}
+html:not(.dark) main,
+html:not(.dark) footer,
+html:not(.dark) .section,
+html:not(.dark) .card,
+html:not(.dark) .grid-card,
+html:not(.dark) .blockquote,
+html:not(.dark) pre,
+html:not(.dark) .toc,
+html:not(.dark) .meta-strip,
+html:not(.dark) .sig-wrap { border-color: var(--line) !important; }
+html:not(.dark) .section,
+html:not(.dark) .card,
+html:not(.dark) .grid-card,
+html:not(.dark) .blockquote,
+html:not(.dark) pre,
+html:not(.dark) .toc,
+html:not(.dark) .meta-strip,
+html:not(.dark) .sig-wrap,
+html:not(.dark) footer { background: var(--panel) !important; }
+html:not(.dark) h1,
+html:not(.dark) h2,
+html:not(.dark) h3,
+html:not(.dark) .kicker,
+html:not(.dark) .footer-label,
+html:not(.dark) .pill,
+html:not(.dark) .section-num { color: var(--ink) !important; }
+html:not(.dark) p,
+html:not(.dark) li,
+html:not(.dark) .footer-text,
+html:not(.dark) .tag,
+html:not(.dark) .blockquote,
+html:not(.dark) .card p { color: var(--ink2) !important; }
+html:not(.dark) .meta,
+html:not(.dark) .subhead,
+html:not(.dark) .code-label,
+html:not(.dark) .footer-text,
+html:not(.dark) .tagline { color: var(--muted) !important; }
+html:not(.dark) a { color: var(--teal2); }
+html:not(.dark) canvas { background: #f8fafc; }
+html:not(.dark) .site-tools,
+html:not(.dark) .reading-meta,
+html:not(.dark) .site-footer.site-global-footer { color: var(--muted); }
+.site-tools {
+  position: relative;
+  z-index: 1001;
+  width: min(1200px, calc(100vw - 48px));
+  margin: 18px auto 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font: 14px/1.5 'IBM Plex Mono', monospace;
+}
+.back-link { color: inherit; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
+#theme-toggle { border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 999px; padding: 6px 11px; font: inherit; cursor: pointer; }
+.reading-meta { position: relative; z-index: 1001; width: min(1200px, calc(100vw - 48px)); margin: 10px auto 0; color: var(--muted); font: 13px/1.5 'IBM Plex Mono', monospace; }
+.site-footer.site-global-footer { position: relative; z-index: 2; width: min(1200px, calc(100vw - 48px)); margin: 0 auto 48px; padding: 28px 0 0; border-top: 1px solid var(--line); color: var(--muted); font: 13px/1.6 'IBM Plex Mono', monospace; }
+.site-footer-inner { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.site-footer a { color: inherit; }
+.logo-word{display:inline-flex;align-items:baseline;gap:.01em;white-space:nowrap}.logo-i{display:inline-block;font-size:.84em;margin:0 .055em 0 .025em;font-style:normal;font-weight:900;line-height:.95;transform:translateY(-.02em)}
+</style>
+</head>
+<body>
+  <div class="site-tools" aria-label="Site tools">
+    <a class="back-link" href="/writings.html"><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span> / Writings</a>
+    <button id="theme-toggle" type="button" aria-label="Toggle light and dark mode">Theme</button>
+  </div>
+  <p class="reading-meta"><time datetime="2026-05-31">May 31, 2026</time> · RL Inference Systems · 18 min read</p>
+<!-- TOP BAR -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-glyph">▦</div>
+      RTL / RL Inference
+    </div>
+    <nav class="nav">
+      <a href="#why">Why RTL</a>
+      <a href="#scope">Scope</a>
+      <a href="#descriptor">Descriptors</a>
+      <a href="#doorbell">Doorbell</a>
+      <a href="#rings">Rings</a>
+      <a href="#fsm">Worker FSM</a>
+      <a href="#completion">Completion</a>
+      <a href="#cosim">Co-sim</a>
+      <a href="#roadmap">Roadmap</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<div class="wrap">
+
+<!-- HERO -->
+<section class="hero">
+  <div>
+    <div class="hero-meta">
+      <span class="hero-meta-dot"></span>
+      Hardware / Software Co-Design
+      <span class="hero-meta-divider">|</span>
+      Systems Engineering
+      <span class="hero-meta-divider">|</span>
+      ~18 min read
+    </div>
+    <h1>
+      <span class="h1-line1">From Runtime Rings</span>
+      <span class="h1-line2">to RTL</span>
+    </h1>
+    <p class="hero-sub">
+      Building a hardware queue engine for RL inference — descriptor rings, doorbells,
+      rollout worker FSMs, completion queues, backpressure, and Verilator co-simulation.
+      A systems-level deep dive into why your RL inference runtime is already shaped like hardware.
+    </p>
+    <div class="hero-tags">
+      <span class="tag">SystemVerilog</span>
+      <span class="tag">Verilator</span>
+      <span class="tag">MMIO Descriptors</span>
+      <span class="tag">RL Inference</span>
+      <span class="tag">FSM Design</span>
+      <span class="tag">Ready / Valid Handshake</span>
+      <span class="tag">C Co-Simulation</span>
+      <span class="tag">PCIe-style Queue</span>
+    </div>
+    <div class="callout warn">
+      <strong>Scope:</strong> This is not a GPU in RTL. It is a hardware model of the
+      <em>inference control plane</em> — the queue protocol layer that a close-to-metal
+      runtime wants to drive. No matrix math. No tensor cores. Pure control-plane contract.
+    </div>
+  </div>
+
+  <!-- Animated signal diagram -->
+  <div class="hero-diagram">
+    <div class="hero-diagram-title">PIPELINE SIGNAL TRACE — SINGLE ROLLOUT</div>
+    <canvas class="signal-canvas" id="sigCanvas"></canvas>
+    <div class="pipeline-labels">
+      <div class="pl-item active">CPU Write</div>
+      <div class="pl-item active">Doorbell</div>
+      <div class="pl-item dim">Desc Ring</div>
+      <div class="pl-item teal">Worker FSM</div>
+      <div class="pl-item teal">Completion</div>
+    </div>
+  </div>
+</section>
+
+<!-- WHY RTL -->
+<section id="why" class="section reveal">
+  <div class="kicker">Why RTL belongs here</div>
+  <h2>RTL forces the runtime contract to become explicit.</h2>
+  <p class="lead">
+    Reinforcement learning inference has a different execution pattern than
+    standard transformer serving. Rollouts are long, sequential, and reward-gated.
+    The runtime cannot simply batch tokens once and return — it must manage per-rollout
+    state across hundreds to thousands of decode steps, observe intermediate reward
+    signals, and decide whether to continue, checkpoint, or terminate each trajectory.
+  </p>
+  <p>
+    The C/CUDA runtime already has opinions about how this should work: write a
+    descriptor, publish a tail pointer, ring a doorbell, and avoid CPU micromanagement
+    of every token step. But software conventions are fuzzy. The RTL model asks the
+    harder question: what hardware queue protocol makes this execution model
+    <em>provably correct</em>?
+  </p>
+
+  <div class="grid-3" style="margin-top:28px;">
+    <div class="card reveal">
+      <div class="pill">Ownership</div>
+      <h3>Who owns the queue?</h3>
+      <p>Head and tail ownership become hardware-visible state, not just informal conventions inside helper functions. The ring invariant is enforced by RTL, not by programmer discipline.</p>
+    </div>
+    <div class="card reveal">
+      <div class="pill">Ordering</div>
+      <h3>When is work visible?</h3>
+      <p>The doorbell is not magic. Descriptors must be <em>fully written and released</em> before the device observes the published tail. RTL makes the ordering contract concrete and testable.</p>
+    </div>
+    <div class="card emph reveal">
+      <div class="pill">Backpressure</div>
+      <h3>What if completion is full?</h3>
+      <p>RTL forces a real answer: stall the worker, route to overflow, or propagate ready/valid backpressure up the chain. Software can paper over this; hardware cannot.</p>
+    </div>
+  </div>
+
+  <div class="blockquote" style="margin-top:28px;">
+    The RTL block models the control-plane fabric around inference — not the matrix-math engine.
+    Think DMA engine, not tensor core.
+  </div>
+
+  <h3 style="margin-top:32px;">Why RL inference specifically?</h3>
+  <p>
+    Standard inference (one prompt → one response) is stateless from the queue's perspective.
+    RL rollouts are fundamentally different:
+  </p>
+  <ul>
+    <li><strong>Per-trajectory state</strong> — each rollout has a KV cache arena, a sequence length counter, and a reward model assignment that must persist across thousands of decode steps.</li>
+    <li><strong>Reward checkpoints</strong> — the worker must emit intermediate <code>REWARD_NEEDED</code> completions at configurable intervals (e.g. every 32 tokens), not just a final <code>DONE</code>.</li>
+    <li><strong>Heterogeneous work</strong> — a single descriptor ring may carry <code>DECODE</code> ops, <code>REWARD</code> scoring ops, and <code>NOP</code> barriers interleaved by the runtime scheduler.</li>
+    <li><strong>Long-horizon backpressure</strong> — if the reward model lags, the rollout worker must stall cleanly without corrupting queue state or dropping completions.</li>
+  </ul>
+  <p>
+    These requirements map directly onto hardware queue semantics: typed descriptors,
+    FSM-driven progress, completion rings with backpressure, and a shared descriptor
+    contract between CPU and device.
+  </p>
+</section>
+
+<!-- SCOPE -->
+<section id="scope" class="section reveal">
+  <div class="kicker">The correct scope</div>
+  <h2>A descriptor engine, not a GPU.</h2>
+  <p class="lead">
+    The goal is not to implement transformer attention, tensor cores, HBM scheduling,
+    NVLink arbitration, or GB300 fabric internals. The goal is to model the hardware
+    queue protocol that the software fast path wants to drive — and to prove it is
+    correct by construction.
+  </p>
+
+  <div class="flow-diagram">
+    <div class="flow-diagram-header">CONTROL-PLANE DATA PATH — END TO END</div>
+    <div class="flow-row">
+      <div class="flow-cell">
+        <div class="flow-cell-head">① CPU Runtime</div>
+        <div class="flow-cell-body">Fills <code>desc_t</code> with rollout_id, kv_arena, seq_len, max_tokens, reward_model_id</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-cell">
+        <div class="flow-cell-head">② MMIO Doorbell</div>
+        <div class="flow-cell-body">Atomic tail write + doorbell pulse makes new descriptors device-visible</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-cell">
+        <div class="flow-cell-head">③ Desc Ring</div>
+        <div class="flow-cell-body">RTL FIFO enforces head/tail ownership, emits push_ready / pop_valid</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-cell">
+        <div class="flow-cell-head">④ Worker FSM</div>
+        <div class="flow-cell-body">IDLE → DECODE → COMPLETE state machine; simulates rollout progress per descriptor</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-cell">
+        <div class="flow-cell-head">⑤ Completion Ring</div>
+        <div class="flow-cell-body">Returns status, final_seq_len, reward_id to host; stalls worker if full</div>
+      </div>
+    </div>
+  </div>
+
+  <pre><span class="code-label">CONTROL-PLANE INVARIANT</span><span class="c-comment">// The queue contract in one diagram:</span>
+descriptor_in
+  → ownership_transfer (tail doorbell)
+  → worker_state_machine (progress simulation)
+  → completion_out (done | reward_needed)
+  → backpressure_if_full (stall, never drop)</pre>
+
+  <p style="margin-top:18px;">
+    This is exactly the contract that PCIe NVMe drives, GPUs, and DMA engines
+    expose to their host software stacks. Building it in RTL — even as a simulation
+    model — means the software contract is no longer a comment in a header file.
+    It is a synthesizable specification.
+  </p>
+</section>
+
+<!-- SWTO HW BRIDGE -->
+<section class="section reveal">
+  <div class="kicker">Software to hardware bridge</div>
+  <h2>The C fast path is already RTL-shaped.</h2>
+  <p class="lead">
+    Look at the runtime submit path and you will see that every software primitive
+    maps directly onto a hardware concept. This is not coincidence — it is the
+    consequence of optimizing software until the only overhead left is the minimum
+    required by the hardware protocol.
+  </p>
+
+  <pre><span class="code-label">C FAST PATH — SUBMIT</span><span class="c-comment">// Three lines. This is the entire "hot path".</span>
+q->entries[tail & RING_MASK] = desc;                   <span class="c-comment">// write descriptor into ring slot</span>
+__atomic_store_n(&q->tail, tail + 1, __ATOMIC_RELEASE);<span class="c-comment">// release ownership to device</span>
+mmio_write32(doorbell, tail + 1);                      <span class="c-comment">// pulse the doorbell — work is visible</span></pre>
+
+  <p>
+    The atomic release store is the software equivalent of a write-barrier before
+    the doorbell. Without it, the device may observe the doorbell increment before
+    the descriptor bytes are coherent. In RTL, this ordering is enforced structurally:
+    the <code>doorbell_pulse</code> signal is only asserted on the clock edge
+    <em>after</em> the MMIO write, and the ring consumer only samples
+    <code>pop_valid</code> after the pulse.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>C Runtime</th>
+          <th>RTL Module</th>
+          <th>Semantic contract</th>
+          <th>Why it matters</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>hw_desc_t</code></td><td><code>desc_pkg::desc_t</code></td><td>Fixed-width work order</td><td>One cache-line → one ring slot. Atomic visibility.</td></tr>
+        <tr><td><code>hw_ring_push()</code></td><td><code>desc_ring</code></td><td>Producer/consumer ownership</td><td>Full/empty flags prevent overwrite and starvation.</td></tr>
+        <tr><td><code>mmio_write32(doorbell)</code></td><td><code>doorbell_pulse</code></td><td>Device-visible notification</td><td>Work is not visible until tail is published.</td></tr>
+        <tr><td><code>infer_submit_decode()</code></td><td><code>rollout_worker_fsm</code></td><td>Descriptor-driven FSM</td><td>Device progresses without CPU involvement per token.</td></tr>
+        <tr><td>completion poll loop</td><td><code>completion_ring</code></td><td>Host observes device progress</td><td>Backpressure propagates; host never misses a completion.</td></tr>
+        <tr><td><code>ATOMIC_RELEASE</code></td><td>doorbell clocked after write</td><td>Memory ordering</td><td>Descriptor bytes coherent before device sees tail.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- MODULE MAP -->
+<section id="modules" class="section reveal">
+  <div class="kicker">RTL module map</div>
+  <h2>Small modules. Clear ownership. Composable interfaces.</h2>
+  <p class="lead">
+    Good RTL design favors narrow, well-defined modules with explicit port contracts
+    over monolithic blocks. Each module below owns exactly one concept.
+    Interfaces between modules are always ready/valid handshakes.
+  </p>
+
+  <pre><span class="code-label">REPO LAYOUT</span>rtl/
+  desc_pkg.sv          <span class="c-comment">// descriptor types, opcodes, completion types</span>
+  mmio_regs.sv         <span class="c-comment">// MMIO write decoder, doorbell pulse generation</span>
+  desc_ring.sv         <span class="c-comment">// parameterized FIFO/ring with push_ready/pop_valid</span>
+  completion_ring.sv   <span class="c-comment">// completion FIFO; stalls worker if full</span>
+  rollout_worker_fsm.sv<span class="c-comment">// IDLE→DECODE→COMPLETE FSM; emits completions</span>
+  rl_runtime_top.sv    <span class="c-comment">// top-level module; wires all submodules together</span>
+  tb_rl_runtime_top.sv <span class="c-comment">// SystemVerilog testbench</span>
+sim/
+  infer_api.h          <span class="c-comment">// C host interface matching RTL descriptor contract</span>
+  cosim_bridge.cpp     <span class="c-comment">// Verilator DPI bridge</span>
+  run_sim.cpp          <span class="c-comment">// C test driver</span></pre>
+
+  <div class="grid-2" style="margin-top:24px;">
+    <div class="card reveal">
+      <div class="pill">Package</div>
+      <h3><code>desc_pkg.sv</code></h3>
+      <p>Defines the shared vocabulary: <code>desc_opcode_t</code> enum, the <code>desc_t</code> packed struct (work order), and the <code>completion_t</code> packed struct (result). Every module imports this package. Changing a field here forces agreement everywhere — the compiler enforces the contract.</p>
+    </div>
+    <div class="card reveal">
+      <div class="pill">MMIO</div>
+      <h3><code>mmio_regs.sv</code></h3>
+      <p>Decodes MMIO write strobe + address. When the CPU writes the doorbell address, asserts <code>doorbell_pulse</code> for exactly one clock cycle and latches <code>doorbell_value</code> (the new published tail). All other addresses go to status/config registers.</p>
+    </div>
+    <div class="card reveal">
+      <div class="pill">Queue</div>
+      <h3><code>desc_ring.sv</code></h3>
+      <p>Parameterized power-of-two FIFO. Exports <code>push_ready</code>, <code>push_valid</code>, <code>pop_valid</code>, <code>pop_ready</code> with fully registered head/tail pointers. MSB-extended pointers give unambiguous full/empty detection even when indices alias.</p>
+    </div>
+    <div class="card reveal">
+      <div class="pill">Completion</div>
+      <h3><code>completion_ring.sv</code></h3>
+      <p>Mirror image of <code>desc_ring</code>, but in the reverse direction. The worker pushes completions; the host polls and pops. When full, <code>push_ready</code> goes low and the worker FSM stalls in <code>S_COMPLETE</code>. No silent drops, ever.</p>
+    </div>
+    <div class="card reveal">
+      <div class="pill">Worker</div>
+      <h3><code>rollout_worker_fsm.sv</code></h3>
+      <p>The heart of the control plane. Accepts one descriptor at a time, simulates token-by-token progress (one token per clock in RTL — mapped to real GPU latency in co-simulation), and emits <code>DONE</code> or <code>REWARD_NEEDED</code> completions.</p>
+    </div>
+    <div class="card emph2 reveal">
+      <div class="pill teal">Top</div>
+      <h3><code>rl_runtime_top.sv</code></h3>
+      <p>Structural module only — no logic, just port wiring. Connects MMIO doorbell to the descriptor ring push path, the ring pop path to the worker FSM, and the worker completion output to the completion ring. The architecture is visible at a glance.</p>
+    </div>
+  </div>
+</section>
+
+<!-- DESCRIPTOR FORMAT -->
+<section id="descriptor" class="section reveal">
+  <div class="kicker">Descriptor format</div>
+  <h2>The descriptor is the hardware work order.</h2>
+  <p class="lead">
+    A descriptor is a fixed-width, packed struct that fits in one cache line.
+    It is the contract between the CPU runtime and the device queue.
+    Every field has a meaning; no field is optional; all must be present when
+    the descriptor is pushed onto the ring.
+  </p>
+
+  <pre><span class="code-label">SYSTEMVERILOG — desc_pkg.sv</span><span class="c-kw">package</span> <span class="c-type">desc_pkg</span>;
+
+  <span class="c-comment">// Opcodes identify the type of work in each descriptor</span>
+  <span class="c-kw">typedef</span> <span class="c-kw">enum</span> <span class="c-kw">logic</span> [7:0] {
+    <span class="c-macro">DESC_OP_NOP</span>    = <span class="c-num">8'd0</span>,   <span class="c-comment">// barrier / padding</span>
+    <span class="c-macro">DESC_OP_DECODE</span> = <span class="c-num">8'd1</span>,   <span class="c-comment">// rollout decode step</span>
+    <span class="c-macro">DESC_OP_REWARD</span> = <span class="c-num">8'd2</span>,   <span class="c-comment">// reward model evaluation</span>
+    <span class="c-macro">DESC_OP_STOP</span>   = <span class="c-num">8'd255</span>  <span class="c-comment">// terminate rollout</span>
+  } <span class="c-type">desc_opcode_t</span>;
+
+  <span class="c-comment">// Primary work descriptor — 192 bits (future: pad to 512b for cache-line alignment)</span>
+  <span class="c-kw">typedef</span> <span class="c-kw">struct</span> packed {
+    <span class="c-kw">logic</span> [7:0]   opcode;         <span class="c-comment">// operation type</span>
+    <span class="c-kw">logic</span> [7:0]   flags;          <span class="c-comment">// stream bits, priority, stop-on-reward</span>
+    <span class="c-kw">logic</span> [15:0]  rollout_id;     <span class="c-comment">// trajectory identifier (host-assigned)</span>
+    <span class="c-kw">logic</span> [15:0]  kv_arena_id;    <span class="c-comment">// which KV cache slab owns this rollout</span>
+    <span class="c-kw">logic</span> [15:0]  prefix_id;      <span class="c-comment">// shared prompt prefix (dedup index)</span>
+    <span class="c-kw">logic</span> [31:0]  kv_offset;      <span class="c-comment">// byte offset into KV arena</span>
+    <span class="c-kw">logic</span> [31:0]  delta_offset;   <span class="c-comment">// delta / new-token buffer offset</span>
+    <span class="c-kw">logic</span> [15:0]  seq_len;        <span class="c-comment">// current sequence length at dispatch</span>
+    <span class="c-kw">logic</span> [15:0]  max_tokens;     <span class="c-comment">// generation budget (EOS or budget exceeded)</span>
+    <span class="c-kw">logic</span> [15:0]  reward_model_id;<span class="c-comment">// which reward head to evaluate against</span>
+    <span class="c-kw">logic</span> [15:0]  reserved;       <span class="c-comment">// pad; future: checkpoint interval</span>
+  } <span class="c-type">desc_t</span>;
+
+  <span class="c-comment">// Completion payload — what the device returns to the host</span>
+  <span class="c-kw">typedef</span> <span class="c-kw">struct</span> packed {
+    <span class="c-kw">logic</span> [15:0]  rollout_id;     <span class="c-comment">// echoed from descriptor</span>
+    <span class="c-kw">logic</span> [7:0]   status;         <span class="c-comment">// 8'h01=done, 8'h02=reward_needed, 8'hFF=error</span>
+    <span class="c-kw">logic</span> [15:0]  final_seq_len;  <span class="c-comment">// sequence length at completion</span>
+    <span class="c-kw">logic</span> [15:0]  reward_id;      <span class="c-comment">// echoed reward_model_id</span>
+  } <span class="c-type">completion_t</span>;
+
+<span class="c-kw">endpackage</span></pre>
+
+  <div class="callout warn">
+    <strong>Future direction:</strong> Expand <code>desc_t</code> to a true 512-bit (64-byte) descriptor
+    so each ring slot occupies exactly one CPU cache line. This aligns RTL ring semantics with
+    the C hardware descriptor, prevents false sharing, and makes the MMIO write path
+    cache-friendly on the host side.
+  </div>
+
+  <div class="grid-2" style="margin-top:24px;">
+    <div class="card">
+      <div class="pill">Field design</div>
+      <h3>Why <code>kv_arena_id</code> + <code>kv_offset</code>?</h3>
+      <p>RL inference may run hundreds of concurrent trajectories sharing a large KV cache pool. The arena ID selects a pre-allocated slab; the offset indexes within it. This two-level addressing avoids per-trajectory memory management in hardware and mirrors how CUDA stream memory arenas work.</p>
+    </div>
+    <div class="card">
+      <div class="pill">Field design</div>
+      <h3>Why <code>reward_model_id</code> in the descriptor?</h3>
+      <p>Different rollout phases may use different reward heads (process reward vs. outcome reward vs. verifier). Encoding the model ID in the descriptor lets a future multi-worker dispatch engine route reward evaluation to the correct accelerator without re-reading host-side metadata.</p>
+    </div>
+  </div>
+</section>
+
+<!-- DOORBELL -->
+<section id="doorbell" class="section reveal">
+  <div class="kicker">Doorbell semantics</div>
+  <h2>A doorbell turns a write into work visibility.</h2>
+  <p class="lead">
+    The doorbell is one of the most important concepts in hardware queue design.
+    It is not "pressing a button." It is a precise protocol: the host writes descriptors,
+    releases them with a memory barrier, then writes the doorbell register.
+    Only after the doorbell write does the device consider any of the new descriptors visible.
+  </p>
+  <p>
+    In NVMe, this is the Submission Queue Tail Doorbell register at offset
+    <code>0x1000 + 2*(2y)*DSTRD</code>. In GPU command channels, it is the
+    put pointer write. In this RTL model, it is a single MMIO write to address
+    <code>0x10</code> that asserts <code>doorbell_pulse</code> for exactly one clock cycle.
+  </p>
+
+  <pre><span class="code-label">SYSTEMVERILOG — mmio_regs.sv</span><span class="c-kw">module</span> <span class="c-type">mmio_regs</span> #(
+  <span class="c-kw">parameter</span> <span class="c-type">int</span> ADDR_W = 8
+)(
+  <span class="c-kw">input</span>  <span class="c-kw">logic</span>             clk,
+  <span class="c-kw">input</span>  <span class="c-kw">logic</span>             rst_n,
+  <span class="c-kw">input</span>  <span class="c-kw">logic</span>             wr_en,
+  <span class="c-kw">input</span>  <span class="c-kw">logic</span> [ADDR_W-1:0] wr_addr,
+  <span class="c-kw">input</span>  <span class="c-kw">logic</span> [31:0]       wr_data,
+  <span class="c-kw">output</span> <span class="c-kw">logic</span>             doorbell_pulse,  <span class="c-comment">// one cycle strobe</span>
+  <span class="c-kw">output</span> <span class="c-kw">logic</span> [31:0]       doorbell_value,  <span class="c-comment">// new published tail</span>
+  <span class="c-kw">output</span> <span class="c-kw">logic</span> [31:0]       status_reg       <span class="c-comment">// read-back for host polling</span>
+);
+  <span class="c-kw">localparam</span> DOORBELL_ADDR = <span class="c-num">8'h10</span>;
+  <span class="c-kw">localparam</span> STATUS_ADDR   = <span class="c-num">8'h20</span>;
+
+  <span class="c-kw">always_ff</span> @(<span class="c-kw">posedge</span> clk <span class="c-kw">or negedge</span> rst_n) <span class="c-kw">begin</span>
+    <span class="c-kw">if</span> (!rst_n) <span class="c-kw">begin</span>
+      doorbell_pulse <= <span class="c-num">1'b0</span>;
+      doorbell_value <= <span class="c-num">32'd0</span>;
+      status_reg     <= <span class="c-num">32'd0</span>;
+    <span class="c-kw">end else begin</span>
+      doorbell_pulse <= <span class="c-num">1'b0</span>;            <span class="c-comment">// default: not asserted</span>
+      <span class="c-kw">if</span> (wr_en) <span class="c-kw">begin</span>
+        <span class="c-kw">case</span> (wr_addr)
+          DOORBELL_ADDR: <span class="c-kw">begin</span>
+            doorbell_value <= wr_data;
+            doorbell_pulse <= <span class="c-num">1'b1</span>;      <span class="c-comment">// assert for exactly one cycle</span>
+          <span class="c-kw">end</span>
+          STATUS_ADDR: status_reg <= wr_data;
+        <span class="c-kw">endcase</span>
+      <span class="c-kw">end</span>
+    <span class="c-kw">end</span>
+  <span class="c-kw">end</span>
+<span class="c-kw">endmodule</span></pre>
+
+  <!-- Timing diagram -->
+  <div class="timing-wrap">
+    <div class="timing-title">DOORBELL TIMING — 4-CLOCK SEQUENCE</div>
+    <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;padding:16px 20px;background:#0c0e15;">
+      <defs>
+        <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#f5a623" opacity=".6"/>
+        </marker>
+      </defs>
+      <!-- Grid lines -->
+      <line x1="120" y1="10" x2="120" y2="190" stroke="rgba(255,255,255,.07)" stroke-width="1"/>
+      <line x1="240" y1="10" x2="240" y2="190" stroke="rgba(255,255,255,.07)" stroke-width="1"/>
+      <line x1="360" y1="10" x2="360" y2="190" stroke="rgba(255,255,255,.07)" stroke-width="1"/>
+      <line x1="480" y1="10" x2="480" y2="190" stroke="rgba(255,255,255,.07)" stroke-width="1"/>
+      <line x1="600" y1="10" x2="600" y2="190" stroke="rgba(255,255,255,.07)" stroke-width="1"/>
+      <!-- Clock labels -->
+      <text x="125" y="190" fill="#5c6278" font-family="IBM Plex Mono,monospace" font-size="10">T0</text>
+      <text x="245" y="190" fill="#5c6278" font-family="IBM Plex Mono,monospace" font-size="10">T1</text>
+      <text x="365" y="190" fill="#5c6278" font-family="IBM Plex Mono,monospace" font-size="10">T2</text>
+      <text x="485" y="190" fill="#5c6278" font-family="IBM Plex Mono,monospace" font-size="10">T3</text>
+      <!-- Signal labels -->
+      <text x="8" y="38" fill="#8d93a8" font-family="IBM Plex Mono,monospace" font-size="11">wr_en</text>
+      <text x="8" y="88" fill="#8d93a8" font-family="IBM Plex Mono,monospace" font-size="11">wr_addr</text>
+      <text x="8" y="138" fill="#f5a623" font-family="IBM Plex Mono,monospace" font-size="11">db_pulse</text>
+      <text x="8" y="170" fill="#2dd9c0" font-family="IBM Plex Mono,monospace" font-size="11">db_value</text>
+      <!-- wr_en: high from T0 to T1 -->
+      <polyline points="120,45 120,25 240,25 240,45 600,45" fill="none" stroke="#8d93a8" stroke-width="2"/>
+      <!-- wr_addr: 0x10 from T0 to T1 -->
+      <polyline points="120,95 120,75 240,75 240,95 600,95" fill="none" stroke="#8d93a8" stroke-width="1.5" stroke-dasharray="4,2"/>
+      <text x="168" y="73" fill="#5c6278" font-family="IBM Plex Mono,monospace" font-size="9">0x10</text>
+      <!-- doorbell_pulse: one cycle at T1 -->
+      <polyline points="120,145 240,145 240,125 360,125 360,145 600,145" fill="none" stroke="#f5a623" stroke-width="2"/>
+      <rect x="240" y="125" width="120" height="20" fill="rgba(245,166,35,.15)"/>
+      <!-- doorbell_value: stable from T1 -->
+      <polyline points="120,175 240,175 240,162 600,162" fill="none" stroke="#2dd9c0" stroke-width="1.5"/>
+      <text x="370" y="160" fill="#2dd9c0" font-family="IBM Plex Mono,monospace" font-size="9">tail+1 stable</text>
+    </svg>
+  </div>
+
+  <p>
+    The v0.2 RTL improvement makes this more faithful to real hardware: descriptors
+    are written into a shared-memory region, and the ring consumer only advances past
+    descriptors with index <code>&lt; doorbell_value</code>. This matches the NVMe
+    Submission Queue model exactly and prevents the device from consuming partially
+    written descriptors.
+  </p>
+</section>
+
+<!-- RINGS -->
+<section id="rings" class="section reveal">
+  <div class="kicker">Descriptor ring</div>
+  <h2>Queue ownership becomes hardware state.</h2>
+  <p class="lead">
+    The classic power-of-two FIFO ring is one of the most important data structures
+    in hardware design. Its invariants are simple, its implementation is small,
+    and its correctness properties are provable by inspection.
+  </p>
+
+  <pre><span class="code-label">RING INVARIANT — ALWAYS TRUE</span><span class="c-comment">// Producer owns: [tail .. wrap) — slots it may write</span>
+<span class="c-comment">// Consumer owns: [head .. tail) — slots it may read</span>
+<span class="c-comment">//</span>
+<span class="c-comment">// empty : head == tail</span>
+<span class="c-comment">// full  : (tail[PTR_W-1:0] == head[PTR_W-1:0]) && (tail[PTR_W] != head[PTR_W])</span>
+<span class="c-comment">// count : tail - head  (modulo 2^(PTR_W+1), but difference is always in [0, DEPTH])</span>
+
+producer writes tail   <span class="c-comment">// never reads head to compute write address</span>
+consumer writes head   <span class="c-comment">// never reads tail to compute read address</span>
+producer reads head    <span class="c-comment">// to determine free slots before push</span>
+consumer reads tail    <span class="c-comment">// to determine available work before pop</span></pre>
+
+  <pre><span class="code-label">SYSTEMVERILOG — desc_ring.sv (core)</span><span class="c-kw">module</span> <span class="c-type">desc_ring</span> <span class="c-kw">import</span> desc_pkg::*; #(
+  <span class="c-kw">parameter</span> <span class="c-type">int</span> DEPTH = <span class="c-num">16</span>,
+  <span class="c-kw">parameter</span> <span class="c-type">int</span> PTR_W = $clog2(DEPTH)
+)(
+  <span class="c-kw">input</span>  <span class="c-kw">logic</span>      clk, rst_n,
+  <span class="c-kw">input</span>  <span class="c-kw">logic</span>      push_valid,
+  <span class="c-kw">input</span>  <span class="c-type">desc_t</span>    push_desc,
+  <span class="c-kw">output</span> <span class="c-kw">logic</span>      push_ready,   <span class="c-comment">// 0 = ring full, stall producer</span>
+  <span class="c-kw">input</span>  <span class="c-kw">logic</span>      pop_ready,
+  <span class="c-kw">output</span> <span class="c-kw">logic</span>      pop_valid,    <span class="c-comment">// 0 = ring empty, stall consumer</span>
+  <span class="c-kw">output</span> <span class="c-type">desc_t</span>    pop_desc,
+  <span class="c-kw">output</span> <span class="c-kw">logic</span> [PTR_W:0] fill_level <span class="c-comment">// for status register / overflow counter</span>
+);
+  <span class="c-type">desc_t</span>              mem [DEPTH];
+  <span class="c-kw">logic</span> [PTR_W:0]    head, tail;   <span class="c-comment">// one extra bit for full/empty disambiguation</span>
+
+  <span class="c-kw">assign</span> push_ready  = !full;
+  <span class="c-kw">assign</span> pop_valid   = !empty;
+  <span class="c-kw">assign</span> pop_desc    = mem[head[PTR_W-1:0]];
+  <span class="c-kw">assign</span> fill_level  = tail - head;
+
+  <span class="c-kw">wire</span> empty = (head == tail);
+  <span class="c-kw">wire</span> full  = ((tail[PTR_W-1:0] == head[PTR_W-1:0]) &&
+                (tail[PTR_W]     != head[PTR_W]));
+
+  <span class="c-kw">always_ff</span> @(<span class="c-kw">posedge</span> clk <span class="c-kw">or negedge</span> rst_n) <span class="c-kw">begin</span>
+    <span class="c-kw">if</span> (!rst_n) begin
+      head <= '0; tail <= '0;
+    <span class="c-kw">end else begin</span>
+      <span class="c-kw">if</span> (push_valid && push_ready) <span class="c-kw">begin</span>   <span class="c-comment">// handshake: both sides agree</span>
+        mem[tail[PTR_W-1:0]] <= push_desc;
+        tail <= tail + <span class="c-num">1'b1</span>;
+      <span class="c-kw">end</span>
+      <span class="c-kw">if</span> (pop_valid && pop_ready) <span class="c-kw">begin</span>     <span class="c-comment">// consumer signals readiness</span>
+        head <= head + <span class="c-num">1'b1</span>;
+      <span class="c-kw">end</span>
+    <span class="c-kw">end</span>
+  <span class="c-kw">end</span>
+<span class="c-kw">endmodule</span></pre>
+
+  <div class="callout">
+    <strong>Ready/valid handshake:</strong> Both <code>push_valid && push_ready</code>
+    must be true simultaneously for a transfer to occur. This is the AXI/TileLink
+    handshake pattern. Neither side can proceed unilaterally — the protocol is immune
+    to race conditions by construction.
+  </div>
+</section>
+
+<!-- WORKER FSM -->
+<section id="fsm" class="section reveal">
+  <div class="kicker">Rollout worker FSM</div>
+  <h2>The worker models rollout progression, not transformer math.</h2>
+  <p class="lead">
+    The worker FSM is the RTL model of what the GPU kernel does on the device side.
+    In hardware simulation, it represents one decode step per clock. In Verilator
+    co-simulation, it can be stretched to represent GPU latency by inserting wait states.
+  </p>
+
+  <div class="fsm-diagram">
+    <div class="fsm-state">
+      <div class="fsm-state-name">S_IDLE</div>
+      <div class="fsm-state-desc">Wait for <code>pop_valid</code> from descriptor ring. Assert <code>pop_ready</code>. Latch descriptor into <code>cur</code> register on acceptance.</div>
+    </div>
+    <div class="fsm-arrow">→</div>
+    <div class="fsm-state active">
+      <div class="fsm-state-name">S_DECODE</div>
+      <div class="fsm-state-desc">Increment <code>token_count</code> each clock. Check <code>max_tokens</code> and reward checkpoint interval. Emit completion when either threshold is reached.</div>
+    </div>
+    <div class="fsm-arrow">→</div>
+    <div class="fsm-state done">
+      <div class="fsm-state-name">S_COMPLETE</div>
+      <div class="fsm-state-desc">Assert <code>comp_valid</code> to completion ring. Stall here until <code>comp_ready</code> is asserted (backpressure). Return to <code>S_IDLE</code> on successful handshake.</div>
+    </div>
+  </div>
+
+  <pre><span class="code-label">SYSTEMVERILOG — rollout_worker_fsm.sv</span><span class="c-kw">typedef</span> <span class="c-kw">enum</span> <span class="c-kw">logic</span> [1:0] {
+  S_IDLE     = <span class="c-num">2'b00</span>,
+  S_DECODE   = <span class="c-num">2'b01</span>,
+  S_COMPLETE = <span class="c-num">2'b10</span>
+} fsm_state_t;
+
+<span class="c-kw">always_ff</span> @(<span class="c-kw">posedge</span> clk <span class="c-kw">or negedge</span> rst_n) <span class="c-kw">begin</span>
+  <span class="c-kw">if</span> (!rst_n) <span class="c-kw">begin</span>
+    state <= S_IDLE; token_count <= '0;
+  <span class="c-kw">end else case</span> (state)
+
+    S_IDLE: <span class="c-kw">begin</span>
+      <span class="c-kw">if</span> (pop_valid) <span class="c-kw">begin</span>          <span class="c-comment">// new descriptor available</span>
+        cur         <= pop_desc;    <span class="c-comment">// latch into working register</span>
+        token_count <= '0;
+        <span class="c-kw">if</span> (pop_desc.opcode == <span class="c-macro">DESC_OP_DECODE</span>)
+          state <= S_DECODE;
+        <span class="c-kw">else if</span> (pop_desc.opcode == <span class="c-macro">DESC_OP_STOP</span>)
+          state <= S_COMPLETE;      <span class="c-comment">// emit DONE immediately</span>
+        <span class="c-comment">// NOP: stay in IDLE, drain the slot</span>
+      <span class="c-kw">end</span>
+    <span class="c-kw">end</span>
+
+    S_DECODE: <span class="c-kw">begin</span>
+      token_count <= token_count + <span class="c-num">1'b1</span>;
+
+      <span class="c-kw">if</span> ((token_count + <span class="c-num">1'b1</span>) >= cur.max_tokens) <span class="c-kw">begin</span>
+        <span class="c-comment">// Budget exhausted — emit final DONE completion</span>
+        out_comp.rollout_id    <= cur.rollout_id;
+        out_comp.status        <= <span class="c-num">8'h01</span>;           <span class="c-comment">// DONE</span>
+        out_comp.final_seq_len <= token_count + <span class="c-num">1'b1</span>;
+        out_comp.reward_id     <= cur.reward_model_id;
+        state <= S_COMPLETE;
+
+      <span class="c-kw">end else if</span> (((token_count + <span class="c-num">1'b1</span>) & REWARD_INTERVAL_MASK) == '0) <span class="c-kw">begin</span>
+        <span class="c-comment">// Reward checkpoint interval hit — emit REWARD_NEEDED</span>
+        out_comp.rollout_id    <= cur.rollout_id;
+        out_comp.status        <= <span class="c-num">8'h02</span>;           <span class="c-comment">// REWARD_NEEDED</span>
+        out_comp.final_seq_len <= token_count + <span class="c-num">1'b1</span>;
+        out_comp.reward_id     <= cur.reward_model_id;
+        state <= S_COMPLETE;
+        <span class="c-comment">// Worker will return to S_DECODE after host ACKs reward,</span>
+        <span class="c-comment">// or to S_IDLE if rollout is terminated by scheduler.</span>
+      <span class="c-kw">end</span>
+    <span class="c-kw">end</span>
+
+    S_COMPLETE: <span class="c-kw">begin</span>
+      <span class="c-kw">if</span> (comp_ready) <span class="c-kw">begin</span>         <span class="c-comment">// completion ring accepted the result</span>
+        state <= S_IDLE;
+      <span class="c-kw">end</span>
+      <span class="c-comment">// If comp_ready=0: completion ring full — stall here. No dropped results.</span>
+    <span class="c-kw">end</span>
+
+  <span class="c-kw">endcase</span>
+<span class="c-kw">end</span>
+
+<span class="c-comment">// Output drive: valid when in S_COMPLETE and completion not yet accepted</span>
+<span class="c-kw">assign</span> comp_valid  = (state == S_COMPLETE);
+<span class="c-kw">assign</span> pop_ready   = (state == S_IDLE) && pop_valid;
+<span class="c-kw">assign</span> comp_out    = out_comp;</pre>
+
+  <div class="grid-2" style="margin-top:24px;">
+    <div class="card">
+      <div class="pill">Why S_COMPLETE stalls</div>
+      <h3>Backpressure is not optional</h3>
+      <p>If the host is slow to drain the completion ring and the worker simply overwrote completions or silently dropped them, the runtime would lose track of reward checkpoints. The worker stalls in S_COMPLETE until <code>comp_ready</code> is asserted — the completion ring's backpressure propagates cleanly to the worker.</p>
+    </div>
+    <div class="card emph">
+      <div class="pill">Multi-worker extension</div>
+      <h3>Round-robin dispatch (v0.3)</h3>
+      <p>In v0.3, a dispatcher module will sit between the desc_ring and N worker FSMs. It pops a descriptor only when a worker is in S_IDLE. Completions from all workers merge into a single completion ring through an arbitration tree. Per-worker token counters become independent.</p>
+    </div>
+  </div>
+</section>
+
+<!-- COMPLETION PATH -->
+<section id="completion" class="section reveal">
+  <div class="kicker">Completion path</div>
+  <h2>Do not silently lose completions.</h2>
+  <p class="lead">
+    The completion ring is structurally identical to the descriptor ring but flows
+    in the opposite direction. It is equally important — and equally easy to get wrong.
+    A naive implementation might overwrite old completions when the host is slow.
+    This RTL model refuses to do that.
+  </p>
+
+  <div class="grid-3" style="margin-top:24px;">
+    <div class="card">
+      <div class="pill">Correctness</div>
+      <h3>No silent overwrites</h3>
+      <p>When <code>push_ready</code> is low, the worker stalls in <code>S_COMPLETE</code>. Completions are never overwritten. The host is guaranteed to see every result in the order they were generated.</p>
+    </div>
+    <div class="card">
+      <div class="pill">Protocol</div>
+      <h3>Ready / valid handshake</h3>
+      <p>The worker drives <code>comp_valid</code>; the ring drives <code>comp_ready</code>. Transfer happens only when both are asserted. This is standard AXI4-Stream protocol — the same handshake used in every production DMA engine.</p>
+    </div>
+    <div class="card emph">
+      <div class="pill">Backpressure</div>
+      <h3>Propagate, don't absorb</h3>
+      <p>A full completion ring stalls the worker. A stalled worker stops popping from the descriptor ring. The descriptor ring fills up. The MMIO push path sees <code>push_ready=0</code> and the C runtime's doorbell write is not accepted. End-to-end backpressure, by construction.</p>
+    </div>
+  </div>
+
+  <pre style="margin-top:24px;"><span class="code-label">STATUS REGISTER — HOST POLLING</span><span class="c-comment">// Host can read these status registers at any time:</span>
+STATUS_REG[31:24] = worker_state;       <span class="c-comment">// IDLE=0, DECODE=1, COMPLETE=2</span>
+STATUS_REG[23:16] = desc_ring_fill;     <span class="c-comment">// how many descriptors queued</span>
+STATUS_REG[15:8]  = comp_ring_fill;     <span class="c-comment">// how many completions waiting</span>
+STATUS_REG[7:0]   = overflow_count;     <span class="c-comment">// saturating counter; 0=no drops</span></pre>
+
+  <div class="callout">
+    <strong>Interrupt vs. polling:</strong> This model uses polling for simplicity — the host
+    loops on <code>comp_ring_fill &gt; 0</code>. A production v0.6 extension would add an
+    MSI-X interrupt generator: assert the interrupt line when <code>comp_valid</code> goes
+    high and the host has enabled the interrupt enable bit in the status register. This eliminates
+    busy-waiting and is how NVMe drives signal completion.
+  </div>
+</section>
+
+<!-- VERILATOR CO-SIM -->
+<section id="cosim" class="section reveal">
+  <div class="kicker">C + Verilator bridge</div>
+  <h2>This is where it becomes a hardware/software co-design lab.</h2>
+  <p class="lead">
+    Verilator compiles the SystemVerilog RTL to C++. A thin DPI bridge exposes the
+    RTL port map as a C struct. The C runtime calls <code>infer_submit_decode()</code>
+    and observes completions through the same descriptor contract — but the "device" is
+    now the RTL model, not a GPU.
+  </p>
+  <p>
+    This is not just a test harness. It is a proof that the software contract and
+    the hardware contract are the same. Any divergence is a bug, caught at the boundary
+    rather than in production silicon.
+  </p>
+
+  <pre><span class="code-label">CO-SIM DATA PATH</span>C infer_submit_decode()
+  → Verilated rl_runtime_top (C++ class)
+    → RTL: mmio_regs     (doorbell_pulse)
+    → RTL: desc_ring     (push_valid / push_ready)
+    → RTL: rollout_worker_fsm  (S_IDLE → S_DECODE → S_COMPLETE)
+    → RTL: completion_ring (comp_valid / comp_ready)
+  → C infer_poll_completion() (host polls pop_valid)
+  → completion_t returned to caller</pre>
+
+  <pre><span class="code-label">C HOST INTERFACE — infer_api.h</span><span class="c-comment">// Mirrors the RTL descriptor contract exactly</span>
+<span class="c-kw">typedef</span> <span class="c-kw">struct</span> {
+  <span class="c-type">uint8_t</span>   opcode;
+  <span class="c-type">uint8_t</span>   flags;
+  <span class="c-type">uint16_t</span>  rollout_id;
+  <span class="c-type">uint16_t</span>  kv_arena_id;
+  <span class="c-type">uint16_t</span>  prefix_id;
+  <span class="c-type">uint32_t</span>  kv_offset;
+  <span class="c-type">uint32_t</span>  delta_offset;
+  <span class="c-type">uint16_t</span>  seq_len;
+  <span class="c-type">uint16_t</span>  max_tokens;
+  <span class="c-type">uint16_t</span>  reward_model_id;
+  <span class="c-type">uint16_t</span>  reserved;
+} <span class="c-type">hw_desc_t</span>;                              <span class="c-comment">// must match desc_pkg::desc_t bit-for-bit</span>
+
+<span class="c-kw">typedef</span> <span class="c-kw">struct</span> {
+  <span class="c-type">uint16_t</span>  rollout_id;
+  <span class="c-type">uint8_t</span>   status;                           <span class="c-comment">// 0x01=done, 0x02=reward_needed, 0xFF=err</span>
+  <span class="c-type">uint16_t</span>  final_seq_len;
+  <span class="c-type">uint16_t</span>  reward_id;
+} <span class="c-type">hw_completion_t</span>;</pre>
+
+  <pre><span class="code-label">C TEST DRIVER — run_sim.cpp (future v0.5)</span><span class="c-comment">// Submit a decode descriptor</span>
+infer_submit_decode(&ctx,
+                   <span class="c-comment">/* rollout_id     */</span> rollout_id,
+                   <span class="c-comment">/* kv_arena_id   */</span> <span class="c-num">0</span>,
+                   <span class="c-comment">/* kv_offset     */</span> kv_offset,
+                   <span class="c-comment">/* delta_offset  */</span> delta_offset,
+                   <span class="c-comment">/* prefix_id     */</span> prefix_id,
+                   <span class="c-comment">/* seq_len       */</span> seq_len,
+                   <span class="c-comment">/* max_tokens    */</span> max_tokens);
+
+<span class="c-comment">// Poll for completion — tick the RTL model each iteration</span>
+<span class="c-type">hw_completion_t</span> completion;
+<span class="c-kw">while</span> (!infer_poll_completion(&ctx, &completion)) {
+  verilator_tick(rtl_top);              <span class="c-comment">// advance RTL model one clock</span>
+}
+
+<span class="c-comment">// Inspect result</span>
+<span class="c-kw">if</span> (completion.status == <span class="c-num">0x02</span>) {       <span class="c-comment">// reward needed</span>
+  schedule_reward_eval(completion.rollout_id, completion.reward_id);
+} <span class="c-kw">else if</span> (completion.status == <span class="c-num">0x01</span>) { <span class="c-comment">// done</span>
+  finalize_trajectory(completion.rollout_id, completion.final_seq_len);
+}</pre>
+
+  <div class="callout">
+    <strong>Why this matters:</strong> The co-simulation path forces the C runtime and
+    RTL engine to share one descriptor contract. If a descriptor field is added,
+    both the C struct and the SystemVerilog packed struct must be updated and the
+    compiler will catch mismatches. If the RTL backpressures, the C side must handle
+    it — there is no way to pretend it doesn't happen.
+  </div>
+</section>
+
+<!-- ROADMAP -->
+<section id="roadmap" class="section reveal">
+  <div class="kicker">Roadmap</div>
+  <h2>From RTL toy to co-simulated control-plane engine.</h2>
+  <p class="lead">
+    Each version proves one more contract. Taken together, v0.1–v0.5 deliver
+    a complete hardware/software co-design lab for RL inference control planes.
+    v0.6+ extends toward production AXI and interrupt semantics.
+  </p>
+
+  <div class="roadmap">
+    <div class="road reveal">
+      <div class="road-num">v0.1</div>
+      <div>
+        <h3>Basic descriptor engine</h3>
+        <p>Descriptor package, rings, worker FSM, top module, and testbench. Proves the core flow: descriptor in → worker FSM → completion out. The happy path only — no backpressure yet.</p>
+      </div>
+    </div>
+    <div class="road reveal">
+      <div class="road-num">v0.2</div>
+      <div>
+        <h3>Doorbell-visible queue semantics</h3>
+        <p>Add MMIO register block with proper address decode. Descriptors become visible to hardware only after doorbell write. Published tail tracking, status registers, and overflow saturating counters. Matches NVMe Submission Queue semantics.</p>
+      </div>
+    </div>
+    <div class="road reveal">
+      <div class="road-num">v0.3</div>
+      <div>
+        <h3>Multi-worker dispatch</h3>
+        <p>N worker FSMs, round-robin or credit-based dispatcher, completion merge arbiter, per-worker token counters. Proves the multi-trajectory case — M concurrent rollouts mapped to N hardware workers (M &gt; N is valid, queue absorbs surplus).</p>
+      </div>
+    </div>
+    <div class="road reveal">
+      <div class="road-num">v0.4</div>
+      <div>
+        <h3>Reward and done split</h3>
+        <p>Separate <code>REWARD_NEEDED</code> and <code>DONE</code> completion paths. Reward-needed routing to a secondary queue. Completion backpressure stress tests. Runtime-configurable reward checkpoint interval via MMIO config register.</p>
+      </div>
+    </div>
+    <div class="road reveal">
+      <div class="road-num">v0.5</div>
+      <div>
+        <h3>C + Verilator co-simulation</h3>
+        <p>The C host submit API drives the RTL model and observes completions through the same hardware-style descriptor contract. The DPI bridge, the C struct layout, and the RTL packed struct are validated as identical. This is the hardware/software contract proof.</p>
+      </div>
+    </div>
+    <div class="road reveal">
+      <div class="road-num done">v0.6</div>
+      <div>
+        <h3>AXI4-Lite MMIO + MSI-X interrupt</h3>
+        <p><em>Future.</em> Replace the bare MMIO register block with a proper AXI4-Lite slave interface. Add an MSI-X interrupt generator so the host doesn't need to poll. This brings the control plane to feature parity with PCIe-attached devices and enables integration with standard FPGA IP.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MENTAL MODEL CLOSE -->
+<section class="section reveal">
+  <div class="kicker">Final mental model</div>
+  <h2>The runtime becomes a hardware contract.</h2>
+  <p class="lead">
+    After building this RTL engine, the software fast path looks different.
+    Every atomic store, every doorbell write, every completion poll now has
+    a hardware analog. The mental model shifts from "ring buffer helper" to
+    "DMA queue protocol."
+  </p>
+
+  <div class="grid-3" style="margin-top:28px;">
+    <div class="card reveal">
+      <div class="pill">C runtime</div>
+      <h3>Submit work</h3>
+      <p>How do I submit inference work without CPU micromanagement per token? Answer: write a descriptor, release with ATOMIC_RELEASE, pulse the doorbell. Three lines. Done.</p>
+    </div>
+    <div class="card reveal">
+      <div class="pill teal">CUDA worker</div>
+      <h3>Keep progress resident</h3>
+      <p>How do I keep rollout progression on the device without round-tripping through the host for every decode step? Answer: let the worker FSM tick autonomously. Host only sees completions.</p>
+    </div>
+    <div class="card emph reveal">
+      <div class="pill">RTL model</div>
+      <h3>Define protocol</h3>
+      <p>What hardware queue protocol makes that execution model natural <em>and correct</em>? Answer: this. Descriptor ring + doorbell + worker FSM + completion ring + ready/valid backpressure.</p>
+    </div>
+  </div>
+
+  <div class="blockquote" style="margin-top:32px;">
+    This RTL engine models the hardware queue protocol that a close-to-metal RL inference
+    runtime wants to talk to. Build it in RTL and the software contract stops being
+    a convention. It becomes a specification.
+  </div>
+</section>
+
+</div><!-- /wrap -->
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-label">About this post</div>
+        <p class="footer-text">
+          Systems-level deep dive on building an RTL descriptor engine for RL inference
+          control planes. Covers descriptor format, MMIO doorbells, ring semantics,
+          rollout worker FSMs, completion backpressure, and C/Verilator co-simulation.
+        </p>
+      </div>
+      <div>
+        <div class="footer-label">Topics covered</div>
+        <p class="footer-text">
+          SystemVerilog · Verilator · MMIO descriptor queues · RL inference control plane ·
+          Ready/valid handshake · PCIe-style queue semantics · AXI4-Lite ·
+          Hardware/software co-design · FSM design patterns
+        </p>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<footer class="site-footer site-global-footer" aria-label="Article footer">
+  <div class="site-footer-inner">
+    <div><strong><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span></strong><br/>Technical essays on AI infrastructure and systems.</div>
+    <div><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></div>
+  </div>
+</footer>
+<script>
+// Signal canvas animation
+(function() {
+  const canvas = document.getElementById('sigCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let w, h, t = 0;
+  const signals = [
+    { name: 'clk',       color: '#3a3f55', y: 0.12 },
+    { name: 'wr_en',     color: '#8d93a8', y: 0.28 },
+    { name: 'db_pulse',  color: '#f5a623', y: 0.44 },
+    { name: 'pop_valid', color: '#2dd9c0', y: 0.60 },
+    { name: 'comp_vld',  color: '#f5a623', y: 0.76 },
+  ];
+
+  function resize() {
+    w = canvas.offsetWidth * window.devicePixelRatio;
+    h = canvas.offsetHeight * window.devicePixelRatio;
+    canvas.width = w; canvas.height = h;
+  }
+
+  function clockWave(x, period, phase) {
+    const p = (x + phase) % period;
+    return p < period / 2 ? 1 : 0;
+  }
+
+  function drawSignal(sig, offset) {
+    const yBase = sig.y * h;
+    const amp   = h * 0.055;
+    ctx.beginPath();
+    ctx.strokeStyle = sig.color;
+    ctx.lineWidth   = window.devicePixelRatio * 1.4;
+    const PERIOD = w * 0.09;
+    let prev = null;
+    for (let x = 0; x < w; x += 1) {
+      let val;
+      if (sig.name === 'clk') {
+        val = clockWave(x, PERIOD * 0.6, offset * 50);
+      } else if (sig.name === 'wr_en') {
+        val = (x > w*0.2 && x < w*0.38) ? 1 : 0;
+      } else if (sig.name === 'db_pulse') {
+        val = (x > w*0.37 && x < w*0.43) ? 1 : 0;
+      } else if (sig.name === 'pop_valid') {
+        val = (x > w*0.42 && x < w*0.72) ? 1 : 0;
+      } else if (sig.name === 'comp_vld') {
+        val = (x > w*0.72 && x < w*0.88) ? 1 : 0;
+      }
+      const y = yBase - val * amp;
+      if (prev !== null && prev !== val) {
+        ctx.lineTo(x, yBase - prev * amp);
+        ctx.lineTo(x, y);
+      } else {
+        prev === null ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      prev = val;
+    }
+    ctx.stroke();
+    // glow for active
+    if (sig.name === 'db_pulse' || sig.name === 'pop_valid' || sig.name === 'comp_vld') {
+      ctx.shadowBlur = 12 * window.devicePixelRatio;
+      ctx.shadowColor = sig.color;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    // label
+    ctx.fillStyle = sig.color;
+    ctx.font = `${window.devicePixelRatio * 9}px 'IBM Plex Mono', monospace`;
+    ctx.fillText(sig.name, 6 * window.devicePixelRatio, yBase + 3 * window.devicePixelRatio);
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    // subtle grid
+    ctx.strokeStyle = 'rgba(255,255,255,.04)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < w; x += w * 0.1) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+    signals.forEach((s, i) => drawSignal(s, i * 0.3 + t));
+    t += 0.003;
+    requestAnimationFrame(draw);
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+  draw();
+})();
+
+// Scroll reveal
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.08 });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
