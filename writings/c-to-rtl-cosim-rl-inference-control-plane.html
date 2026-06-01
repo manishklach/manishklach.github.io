@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>C to RTL: Co-Simulating an RL Inference Control Plane | MANISH AI</title>
+<meta name="description" content="How gb300-rl-runtime bridges C and C/CUDA runtime code to a Verilator-backed RTL hardware model: descriptor contracts, bridge implementation, cycle-accurate testing, and the path to a 64-byte physical layout."/>
+<meta name="keywords" content="C to RTL cosim, RL inference control plane, Verilator bridge, SystemVerilog, descriptor contracts, cycle-accurate testing, MMIO queues, hardware software co-design"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/c-to-rtl-cosim-rl-inference-control-plane.html"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="C to RTL: Co-Simulating an RL Inference Control Plane | MANISH AI"/>
+<meta property="og:description" content="How gb300-rl-runtime bridges C and C/CUDA runtime code to a Verilator-backed RTL hardware model: descriptor contracts, bridge implementation, cycle-accurate testing, and the path to a 64-byte physical layout."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/c-to-rtl-cosim-rl-inference-control-plane.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:image" content="https://manishklach.github.io/og/c-to-rtl-cosim-rl-inference-control-plane.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="C to RTL: Co-Simulating an RL Inference Control Plane by MANISH AI"/>
+<meta property="article:published_time" content="2026-05-31T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-05-31T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="RL Inference Systems"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="C to RTL: Co-Simulating an RL Inference Control Plane"/>
+<meta name="twitter:description" content="How gb300-rl-runtime bridges C and C/CUDA runtime code to a Verilator-backed RTL hardware model: descriptor contracts, bridge implementation, cycle-accurate testing, and the path to a 64-byte physical layout."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/c-to-rtl-cosim-rl-inference-control-plane.png"/>
+<meta name="twitter:image:alt" content="C to RTL: Co-Simulating an RL Inference Control Plane by MANISH AI"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"C to RTL: Co-Simulating an RL Inference Control Plane",
+  "description":"How gb300-rl-runtime bridges C and C/CUDA runtime code to a Verilator-backed RTL hardware model: descriptor contracts, bridge implementation, cycle-accurate testing, and the path to a 64-byte physical layout.",
+  "url":"https://manishklach.github.io/writings/c-to-rtl-cosim-rl-inference-control-plane.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/c-to-rtl-cosim-rl-inference-control-plane.html",
+  "datePublished":"2026-05-31",
+  "dateModified":"2026-05-31",
+  "articleSection":"RL Inference Systems",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+/* ═══════════════════════════════════════════════
+   TOKENS — phosphor-terminal aesthetic
+   Primary: phosphor green on near-black
+   Accent: amber warning, red error, ice-blue
+════════════════════════════════════════════════ */
+:root {
+  --bg:       #080b0f;
+  --bg1:      #0d1117;
+  --bg2:      #111820;
+  --bg3:      #162030;
+  --surface:  rgba(255,255,255,.042);
+  --border:   rgba(255,255,255,.08);
+  --border2:  rgba(255,255,255,.04);
+
+  --text:     #e2e8f0;
+  --muted:    #7d8fa3;
+  --muted2:   #4a5568;
+
+  --green:    #00e87a;
+  --green2:   #00ff88;
+  --green-dim:#00ff8818;
+  --green-glow: 0 0 24px rgba(0,255,136,.28);
+
+  --amber:    #ffb347;
+  --amber-dim: rgba(255,179,71,.1);
+  --ice:      #7eb8f7;
+  --ice-dim:  rgba(126,184,247,.1);
+  --red:      #ff5a5a;
+
+  --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Menlo, monospace;
+  --display: 'DM Serif Display', Georgia, serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+
+  --r: 14px;
+  --r2: 22px;
+  --shadow: 0 20px 60px rgba(0,0,0,.55);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.75;
+  overflow-x: hidden;
+}
+
+/* Scanline texture */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,.07) 2px,
+    rgba(0,0,0,.07) 4px
+  );
+}
+
+/* Ambient glow */
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 70vw 40vh at 0% 0%, rgba(0,232,122,.06), transparent 60%),
+    radial-gradient(ellipse 50vw 60vh at 100% 20%, rgba(126,184,247,.04), transparent 60%),
+    radial-gradient(ellipse 80vw 50vh at 50% 100%, rgba(0,232,122,.03), transparent 55%);
+}
+
+a { color: var(--green); text-decoration: none; transition: color .15s; }
+a:hover { color: var(--green2); }
+
+.wrap { width: min(1120px, calc(100% - 48px)); margin: 0 auto; position: relative; z-index: 1; }
+
+/* ─── TOPBAR ─── */
+.topbar {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(8,11,15,.9);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-inner {
+  width: min(1120px, calc(100% - 48px)); margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 12px 0;
+}
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .15em; text-transform: uppercase;
+  color: var(--green);
+}
+.brand-icon {
+  width: 26px; height: 26px;
+  border: 1.5px solid var(--green);
+  border-radius: 5px;
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 700;
+  color: var(--green);
+  box-shadow: var(--green-glow);
+  position: relative;
+  overflow: hidden;
+}
+.brand-icon::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: var(--green-dim);
+}
+.nav {
+  display: flex; gap: 22px;
+  font-family: var(--mono); font-size: 10.5px;
+  font-weight: 500; letter-spacing: .1em; text-transform: uppercase;
+}
+.nav a { color: var(--muted2); transition: color .15s; }
+.nav a:hover { color: var(--green); }
+
+/* ─── HERO ─── */
+.hero {
+  display: grid;
+  grid-template-columns: 1fr 460px;
+  gap: 56px; align-items: start;
+  padding: 80px 0 60px;
+}
+
+.hero-label {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--green); margin-bottom: 22px;
+}
+.hero-label-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--green);
+  box-shadow: var(--green-glow);
+  animation: blink 1.8s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+h1 {
+  font-family: var(--display);
+  font-size: clamp(40px, 5.5vw, 72px);
+  font-weight: 400;
+  line-height: 1.0;
+  letter-spacing: -.02em;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.h1-em {
+  display: block;
+  font-style: italic;
+  background: linear-gradient(100deg, var(--green) 0%, var(--green2) 40%, var(--ice) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.hero-meta {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  letter-spacing: .14em; text-transform: uppercase;
+  color: var(--muted2); margin: 16px 0 28px;
+}
+.hero-meta-sep { color: var(--border); }
+
+.hero-sub {
+  font-size: clamp(16px, 1.7vw, 18px);
+  color: var(--muted); line-height: 1.7;
+  max-width: 620px; margin-bottom: 28px;
+}
+
+.hero-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 32px; }
+.chip {
+  display: inline-flex;
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+  color: var(--muted2); letter-spacing: .07em;
+  background: var(--surface);
+  transition: border-color .2s, color .2s;
+  cursor: default;
+}
+.chip:hover { border-color: rgba(0,232,122,.3); color: var(--green); }
+
+.hero-scope {
+  padding: 18px 20px;
+  border: 1px solid rgba(0,232,122,.2);
+  border-left: 3px solid var(--green);
+  border-radius: 0 var(--r) var(--r) 0;
+  background: var(--green-dim);
+  font-size: 14px; color: #9ad9b8; line-height: 1.6;
+}
+.hero-scope strong { color: var(--green); font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+
+/* ─── ARCHITECTURE DIAGRAM (hero right) ─── */
+.arch-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  overflow: hidden;
+  background: var(--bg1);
+  box-shadow: var(--shadow);
+  position: relative;
+}
+.arch-panel-bar {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border2);
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .2em; text-transform: uppercase; color: var(--muted2);
+}
+.arch-panel-bar::before {
+  content: '';
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--green); box-shadow: var(--green-glow);
+  flex-shrink: 0;
+}
+.arch-svg-wrap {
+  padding: 20px;
+}
+
+/* ─── SECTIONS ─── */
+.section { padding: 60px 0; border-top: 1px solid var(--border2); }
+
+.kicker {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+  letter-spacing: .22em; text-transform: uppercase;
+  color: var(--green); margin-bottom: 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.kicker::before {
+  content: '//';
+  color: var(--muted2); font-weight: 400;
+}
+
+h2 {
+  font-family: var(--display);
+  font-size: clamp(26px, 3.5vw, 44px);
+  font-weight: 400; line-height: 1.1;
+  letter-spacing: -.02em;
+  color: var(--text); margin-bottom: 18px;
+}
+h3 {
+  font-family: var(--mono);
+  font-size: clamp(13px, 1.4vw, 15px);
+  font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text); margin-bottom: 10px;
+}
+p { color: var(--muted); font-size: 16px; margin-bottom: 16px; }
+.lead { font-size: clamp(16px, 1.7vw, 19px); color: #9bafc4; max-width: 860px; line-height: 1.72; }
+ul { padding-left: 20px; color: var(--muted); font-size: 15px; }
+li { margin: 6px 0; }
+li strong { color: var(--text); font-family: var(--mono); font-size: 12px; }
+code {
+  font-family: var(--mono); font-size: .85em;
+  color: var(--green);
+  background: var(--green-dim);
+  border-radius: 4px; padding: 1px 6px;
+}
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+
+/* Cards */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 22px;
+  background: var(--surface);
+  transition: border-color .22s, transform .22s;
+}
+.card:hover { border-color: rgba(0,232,122,.22); transform: translateY(-1px); }
+.card.green { border-color: rgba(0,232,122,.22); background: var(--green-dim); }
+.card.amber { border-color: rgba(255,179,71,.22); background: var(--amber-dim); }
+.card.ice   { border-color: rgba(126,184,247,.22); background: var(--ice-dim); }
+
+.badge {
+  display: inline-flex;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.badge.green { background: var(--green-dim); border: 1px solid rgba(0,232,122,.28); color: var(--green); }
+.badge.amber { background: var(--amber-dim); border: 1px solid rgba(255,179,71,.28); color: var(--amber); }
+.badge.ice   { background: var(--ice-dim);   border: 1px solid rgba(126,184,247,.28); color: var(--ice); }
+.badge.red   { background: rgba(255,90,90,.1); border: 1px solid rgba(255,90,90,.28); color: var(--red); }
+
+/* Code blocks */
+pre {
+  position: relative;
+  margin: 20px 0;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--bg1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 12px 40px rgba(0,0,0,.4);
+  overflow: hidden;
+}
+.pre-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border2);
+  background: rgba(255,255,255,.025);
+}
+.pre-lang {
+  font-family: var(--mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: .2em; text-transform: uppercase; color: var(--muted2);
+  display: flex; align-items: center; gap: 7px;
+}
+.pre-lang::before {
+  content: '';
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green); box-shadow: var(--green-glow);
+}
+.pre-file {
+  font-family: var(--mono); font-size: 9.5px; color: var(--muted2);
+}
+pre code {
+  display: block;
+  padding: 18px 20px;
+  font-size: 12.5px; line-height: 1.62;
+  color: #c9d5e5;
+  overflow-x: auto;
+}
+
+/* Syntax */
+.kw   { color: #7eb8f7; } /* keyword — ice */
+.ty   { color: var(--green); } /* type */
+.fn   { color: #e2c08d; } /* function */
+.cm   { color: #3f5268; font-style: italic; } /* comment */
+.str  { color: #98c379; } /* string */
+.num  { color: #d19af7; } /* number */
+.mac  { color: var(--amber); } /* macro / constant */
+.op   { color: #7eb8f7; } /* operator */
+.anno { color: #7eb8f7; } /* annotation */
+
+/* Inline diagram panels */
+.flow-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  overflow: hidden;
+  background: var(--bg1);
+  margin: 24px 0;
+}
+.flow-panel-bar {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border2);
+  font-family: var(--mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: .2em; text-transform: uppercase; color: var(--muted2);
+}
+.flow-cols {
+  display: grid;
+  grid-template-columns: repeat(5,1fr);
+}
+.flow-col {
+  padding: 16px 14px;
+  border-right: 1px solid var(--border2);
+}
+.flow-col:last-child { border-right: none; }
+.flow-col-num {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  color: var(--green); letter-spacing: .1em; margin-bottom: 6px;
+}
+.flow-col-title {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--text); margin-bottom: 5px; line-height: 1.3;
+}
+.flow-col-body { font-size: 12px; color: var(--muted2); line-height: 1.5; }
+
+/* Quote */
+.pullquote {
+  border-left: 2px solid var(--green);
+  padding: 16px 22px;
+  margin: 28px 0;
+  background: var(--green-dim);
+  border-radius: 0 var(--r) var(--r) 0;
+  font-family: var(--display);
+  font-style: italic;
+  font-size: clamp(17px, 1.8vw, 20px);
+  color: #9ad9b8; line-height: 1.5;
+}
+
+/* Callout */
+.callout {
+  padding: 16px 20px;
+  border-radius: var(--r);
+  font-size: 14px; line-height: 1.65;
+  margin: 20px 0;
+}
+.callout.green {
+  border: 1px solid rgba(0,232,122,.2);
+  background: var(--green-dim);
+  color: #8dd6ae;
+}
+.callout.green strong { color: var(--green); }
+.callout.amber {
+  border: 1px solid rgba(255,179,71,.2);
+  background: var(--amber-dim);
+  color: #c4956a;
+}
+.callout.amber strong { color: var(--amber); }
+
+/* Comparison table */
+.table-wrap { overflow-x: auto; border-radius: var(--r); border: 1px solid var(--border); margin: 20px 0; }
+table { width: 100%; min-width: 580px; border-collapse: collapse; }
+th, td { padding: 12px 15px; border-bottom: 1px solid var(--border2); text-align: left; vertical-align: top; font-size: 13px; }
+th { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); background: rgba(255,255,255,.03); }
+td { color: var(--muted); }
+td code { font-size: 11px; }
+tr:last-child td { border-bottom: none; }
+.td-green { color: var(--green) !important; font-family: var(--mono); font-size: 11px !important; }
+.td-amber { color: var(--amber) !important; font-family: var(--mono); font-size: 11px !important; }
+
+/* Test result block */
+.test-results {
+  border: 1px solid rgba(0,232,122,.22);
+  border-radius: var(--r);
+  overflow: hidden;
+  margin: 20px 0;
+}
+.test-results-bar {
+  padding: 9px 16px;
+  border-bottom: 1px solid rgba(0,232,122,.15);
+  background: rgba(0,232,122,.06);
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  letter-spacing: .2em; text-transform: uppercase; color: var(--green);
+  display: flex; align-items: center; gap: 8px;
+}
+.test-results-body {
+  padding: 16px 20px;
+  background: var(--bg1);
+  font-family: var(--mono); font-size: 12.5px; line-height: 2;
+  color: #c9d5e5;
+}
+.tr-pass::before { content: '✓ '; color: var(--green); }
+.tr-suite { color: var(--muted2); font-size: 11px; padding-top: 6px; display: block; }
+.tr-final { display: block; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border2); color: var(--green); font-weight: 600; }
+
+/* Timeline / roadmap */
+.timeline { display: grid; gap: 12px; margin-top: 24px; }
+.tl-item {
+  display: grid; grid-template-columns: 54px 1fr;
+  gap: 16px; padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--surface);
+  transition: border-color .2s;
+}
+.tl-item:hover { border-color: rgba(0,232,122,.25); }
+.tl-badge {
+  width: 42px; height: 42px; border-radius: 10px;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  border: 1px solid rgba(0,232,122,.25);
+  background: var(--green-dim);
+  color: var(--green); flex-shrink: 0;
+  letter-spacing: .05em;
+}
+.tl-badge.done { border-color: rgba(126,184,247,.25); background: var(--ice-dim); color: var(--ice); }
+
+/* Scroll reveal */
+.fade { opacity: 0; transform: translateY(16px); transition: opacity .5s ease, transform .5s ease; }
+.fade.in { opacity: 1; transform: none; }
+
+/* Separator line */
+.sep { height: 1px; background: linear-gradient(90deg, transparent, var(--green), transparent); opacity: .25; margin: 0; }
+
+/* Footer */
+footer {
+  padding: 40px 0 56px;
+  border-top: 1px solid var(--border2);
+  margin-top: 60px;
+}
+.footer-inner {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 40px; flex-wrap: wrap;
+}
+.footer-copy {
+  font-family: var(--mono); font-size: 11px; color: var(--muted2);
+  line-height: 1.8; max-width: 460px;
+}
+.footer-tags {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px;
+}
+.footer-tag {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted2);
+  border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px;
+}
+
+@media (max-width: 940px) {
+  .hero { grid-template-columns: 1fr; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .flow-cols { grid-template-columns: 1fr 1fr; }
+  .nav { display: none; }
+}
+@media (max-width: 580px) {
+  .wrap { width: calc(100% - 28px); }
+  .flow-cols { grid-template-columns: 1fr; }
+}
+
+
+html.dark { color-scheme: dark; }
+html:not(.dark) {
+  color-scheme: light;
+  --bg: #f7f8fb;
+  --bg2: #eef2f8;
+  --panel: rgba(255,255,255,.92);
+  --panel2: rgba(242,245,251,.95);
+  --ink: #122033;
+  --ink2: #2f4560;
+  --muted: #6c7d95;
+  --line: rgba(18,32,51,.12);
+  --line2: rgba(18,32,51,.07);
+  --amber: #c77d1a;
+  --teal: #149d8a;
+  --teal2: #0f7f95;
+  --ice: #3b82f6;
+  --slate: #58647a;
+}
+html:not(.dark) body {
+  background:
+    radial-gradient(circle at top left, rgba(20,157,138,.07), transparent 26rem),
+    linear-gradient(180deg, #fbfcfe 0%, #eef2f8 100%);
+  color: var(--ink2);
+}
+html:not(.dark) main,
+html:not(.dark) footer,
+html:not(.dark) .section,
+html:not(.dark) .card,
+html:not(.dark) .grid-card,
+html:not(.dark) .blockquote,
+html:not(.dark) pre,
+html:not(.dark) .toc,
+html:not(.dark) .meta-strip,
+html:not(.dark) .arch-panel,
+html:not(.dark) .tr-panel { border-color: var(--line) !important; }
+html:not(.dark) .section,
+html:not(.dark) .card,
+html:not(.dark) .grid-card,
+html:not(.dark) .blockquote,
+html:not(.dark) pre,
+html:not(.dark) .toc,
+html:not(.dark) .meta-strip,
+html:not(.dark) .arch-panel,
+html:not(.dark) .tr-panel,
+html:not(.dark) footer { background: var(--panel) !important; }
+html:not(.dark) h1,
+html:not(.dark) h2,
+html:not(.dark) h3,
+html:not(.dark) .kicker,
+html:not(.dark) .footer-label,
+html:not(.dark) .pill,
+html:not(.dark) .badge,
+html:not(.dark) .section-num { color: var(--ink) !important; }
+html:not(.dark) p,
+html:not(.dark) li,
+html:not(.dark) .footer-text,
+html:not(.dark) .tag,
+html:not(.dark) .blockquote,
+html:not(.dark) .card p,
+html:not(.dark) .flow-col-body,
+html:not(.dark) .arch-panel { color: var(--ink2) !important; }
+html:not(.dark) .meta,
+html:not(.dark) .subhead,
+html:not(.dark) .code-label,
+html:not(.dark) .footer-text,
+html:not(.dark) .tagline,
+html:not(.dark) .chip,
+html:not(.dark) .flow-col-title,
+html:not(.dark) .kicker { color: var(--muted) !important; }
+html:not(.dark) a { color: var(--teal2); }
+html:not(.dark) canvas { background: #f8fafc; }
+html:not(.dark) .site-tools,
+html:not(.dark) .reading-meta,
+html:not(.dark) .site-footer.site-global-footer { color: var(--muted); }
+.site-tools {
+  position: relative;
+  z-index: 1001;
+  width: min(1200px, calc(100vw - 48px));
+  margin: 18px auto 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font: 14px/1.5 'JetBrains Mono', monospace;
+}
+.back-link { color: inherit; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
+#theme-toggle { border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 999px; padding: 6px 11px; font: inherit; cursor: pointer; }
+.reading-meta { position: relative; z-index: 1001; width: min(1200px, calc(100vw - 48px)); margin: 10px auto 0; color: var(--muted); font: 13px/1.5 'JetBrains Mono', monospace; }
+.site-footer.site-global-footer { position: relative; z-index: 2; width: min(1200px, calc(100vw - 48px)); margin: 0 auto 48px; padding: 28px 0 0; border-top: 1px solid var(--line); color: var(--muted); font: 13px/1.6 'JetBrains Mono', monospace; }
+.site-footer-inner { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.site-footer a { color: inherit; }
+.logo-word{display:inline-flex;align-items:baseline;gap:.01em;white-space:nowrap}.logo-i{display:inline-block;font-size:.84em;margin:0 .055em 0 .025em;font-style:normal;font-weight:900;line-height:.95;transform:translateY(-.02em)}
+</style>
+</head>
+<body>
+  <div class="site-tools" aria-label="Site tools">
+    <a class="back-link" href="/writings.html"><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span> / Writings</a>
+    <button id="theme-toggle" type="button" aria-label="Toggle light and dark mode">Theme</button>
+  </div>
+  <p class="reading-meta"><time datetime="2026-05-31">May 31, 2026</time> · RL Inference Systems · 20 min read</p>
+<!-- ═══ TOPBAR ═══ -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-icon">▣</div>
+      gb300-rl-runtime
+    </div>
+    <nav class="nav">
+      <a href="#why">Why Co-Sim</a>
+      <a href="#stack">Stack</a>
+      <a href="#bridge">Bridge</a>
+      <a href="#impl">Impl</a>
+      <a href="#tests">Tests</a>
+      <a href="#next">Next</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<div class="wrap">
+
+<!-- ═══ HERO ═══ -->
+<section class="hero">
+  <div>
+    <div class="hero-label"><span class="hero-label-dot"></span>Hardware / Software Co-Design · Systems Note</div>
+    <h1>C to RTL:<br><span class="h1-em">Co-Simulating an RL<br>Inference Control Plane</span></h1>
+    <div class="hero-meta">
+      <span>gb300-rl-runtime</span>
+      <span class="hero-meta-sep">|</span>
+      <span>SystemVerilog + Verilator</span>
+      <span class="hero-meta-sep">|</span>
+      <span>~20 min read</span>
+    </div>
+    <p class="hero-sub">
+      A standalone C runtime can over-assume. A standalone RTL block can over-assume.
+      Co-simulation is the executable proof that they agree — on descriptor layout,
+      valid/ready handshakes, FSM progression, completion semantics, and backpressure.
+      This is how <strong>gb300-rl-runtime</strong> builds that proof.
+    </p>
+    <div class="hero-chips">
+      <span class="chip">Verilator</span>
+      <span class="chip">Descriptor Contract</span>
+      <span class="chip">Ready/Valid</span>
+      <span class="chip">Worker FSM</span>
+      <span class="chip">Completion Ring</span>
+      <span class="chip">Backpressure</span>
+      <span class="chip">DPI Bridge</span>
+      <span class="chip">64-byte Layout</span>
+    </div>
+    <div class="hero-scope">
+      <strong>Scope —</strong> This does not prove real transformer execution.
+      It proves the narrower, important thing: that host software and the RTL control-plane
+      engine share the same descriptor protocol, the same completion semantics, and the
+      same backpressure behavior — verified by executable tests.
+    </div>
+  </div>
+
+  <!-- Architecture panel -->
+  <div class="arch-panel">
+    <div class="arch-panel-bar">co-simulation architecture</div>
+    <div class="arch-svg-wrap">
+      <svg id="archSvg" viewBox="0 0 420 440" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;">
+        <defs>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <marker id="arr" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto">
+            <polygon points="0,0.5 7,3.5 0,6.5" fill="#00e87a" opacity=".7"/>
+          </marker>
+          <marker id="arr2" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto">
+            <polygon points="0,0.5 7,3.5 0,6.5" fill="#7eb8f7" opacity=".6"/>
+          </marker>
+        </defs>
+
+        <!-- Layer labels -->
+        <text x="12" y="20" font-family="JetBrains Mono,monospace" font-size="9" fill="#4a5568" letter-spacing="2" font-weight="700">HOST LAYER</text>
+        <text x="12" y="230" font-family="JetBrains Mono,monospace" font-size="9" fill="#4a5568" letter-spacing="2" font-weight="700">RTL LAYER</text>
+
+        <!-- HOST: C++ bridge box -->
+        <rect x="16" y="30" width="388" height="72" rx="10" fill="none" stroke="rgba(0,232,122,.2)" stroke-width="1"/>
+        <rect x="16" y="30" width="388" height="72" rx="10" fill="rgba(0,232,122,.04)"/>
+        <text x="32" y="52" font-family="JetBrains Mono,monospace" font-size="10.5" fill="#00e87a" font-weight="700">RtlRuntimeBridge</text>
+        <text x="32" y="70" font-family="JetBrains Mono,monospace" font-size="9.5" fill="#4a5568">submit_decode()   poll_completion()   tick()   reset()</text>
+        <text x="32" y="88" font-family="JetBrains Mono,monospace" font-size="9" fill="#3f5268" font-style="italic">maps C++ fields → RTL port inputs / reads RTL port outputs</text>
+
+        <!-- RTL TOP -->
+        <rect x="16" y="240" width="388" height="182" rx="10" fill="none" stroke="rgba(126,184,247,.15)" stroke-width="1"/>
+        <rect x="16" y="240" width="388" height="182" rx="10" fill="rgba(126,184,247,.02)"/>
+        <text x="32" y="262" font-family="JetBrains Mono,monospace" font-size="10.5" fill="#7eb8f7" font-weight="700">rl_runtime_top  <tspan font-size="9" fill="#3f5268">(Verilated C++ model)</tspan></text>
+
+        <!-- RTL sub-blocks -->
+        <!-- mmio_regs -->
+        <rect x="30" y="274" width="90" height="50" rx="7" fill="rgba(0,232,122,.06)" stroke="rgba(0,232,122,.2)" stroke-width="1"/>
+        <text x="75" y="296" font-family="JetBrains Mono,monospace" font-size="9" fill="#00e87a" text-anchor="middle" font-weight="600">mmio_regs</text>
+        <text x="75" y="312" font-family="JetBrains Mono,monospace" font-size="8" fill="#3f5268" text-anchor="middle">doorbell_pulse</text>
+
+        <!-- desc_ring -->
+        <rect x="136" y="274" width="90" height="50" rx="7" fill="rgba(0,232,122,.06)" stroke="rgba(0,232,122,.2)" stroke-width="1"/>
+        <text x="181" y="296" font-family="JetBrains Mono,monospace" font-size="9" fill="#00e87a" text-anchor="middle" font-weight="600">desc_ring</text>
+        <text x="181" y="312" font-family="JetBrains Mono,monospace" font-size="8" fill="#3f5268" text-anchor="middle">push_ready</text>
+
+        <!-- rollout_worker_fsm -->
+        <rect x="242" y="274" width="90" height="50" rx="7" fill="rgba(126,184,247,.07)" stroke="rgba(126,184,247,.2)" stroke-width="1"/>
+        <text x="287" y="293" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#7eb8f7" text-anchor="middle" font-weight="600">worker_fsm</text>
+        <text x="287" y="308" font-family="JetBrains Mono,monospace" font-size="8" fill="#3f5268" text-anchor="middle">IDLE→DECODE</text>
+        <text x="287" y="320" font-family="JetBrains Mono,monospace" font-size="8" fill="#3f5268" text-anchor="middle">→COMPLETE</text>
+
+        <!-- completion_ring -->
+        <rect x="348" y="274" width="42" height="50" rx="7" fill="rgba(0,232,122,.06)" stroke="rgba(0,232,122,.2)" stroke-width="1"/>
+        <text x="369" y="293" font-family="JetBrains Mono,monospace" font-size="8" fill="#00e87a" text-anchor="middle" font-weight="600">comp</text>
+        <text x="369" y="307" font-family="JetBrains Mono,monospace" font-size="8" fill="#00e87a" text-anchor="middle" font-weight="600">ring</text>
+        <text x="369" y="320" font-family="JetBrains Mono,monospace" font-size="7.5" fill="#3f5268" text-anchor="middle">backpress.</text>
+
+        <!-- RTL arrows between sub-blocks -->
+        <line x1="120" y1="299" x2="134" y2="299" stroke="rgba(0,232,122,.5)" stroke-width="1.2" marker-end="url(#arr)"/>
+        <line x1="226" y1="299" x2="240" y2="299" stroke="rgba(0,232,122,.5)" stroke-width="1.2" marker-end="url(#arr)"/>
+        <line x1="332" y1="299" x2="346" y2="299" stroke="rgba(0,232,122,.5)" stroke-width="1.2" marker-end="url(#arr)"/>
+
+        <!-- Clock / rst bus -->
+        <text x="32" y="356" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#3f5268">clk / rst_n — shared across all sub-modules</text>
+        <line x1="32" y1="362" x2="388" y2="362" stroke="rgba(255,255,255,.06)" stroke-width="1" stroke-dasharray="4,3"/>
+
+        <!-- desc_pkg.sv -->
+        <rect x="30" y="372" width="358" height="36" rx="6" fill="rgba(255,179,71,.05)" stroke="rgba(255,179,71,.18)" stroke-width="1"/>
+        <text x="209" y="386" font-family="JetBrains Mono,monospace" font-size="9" fill="#ffb347" text-anchor="middle" font-weight="600">desc_pkg.sv</text>
+        <text x="209" y="400" font-family="JetBrains Mono,monospace" font-size="8" fill="#3f5268" text-anchor="middle">desc_t · completion_t · desc_opcode_t — imported by all RTL modules</text>
+
+        <!-- Vertical connector: bridge to RTL -->
+        <!-- down arrow: submit_decode → RTL inputs -->
+        <line x1="130" y1="102" x2="130" y2="238" stroke="rgba(0,232,122,.4)" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr)"/>
+        <text x="134" y="170" font-family="JetBrains Mono,monospace" font-size="9" fill="#3a4f3a">host_desc.*</text>
+        <text x="134" y="183" font-family="JetBrains Mono,monospace" font-size="9" fill="#3a4f3a">push_valid</text>
+
+        <!-- up arrow: RTL outputs → poll_completion -->
+        <line x1="320" y1="238" x2="320" y2="104" stroke="rgba(126,184,247,.35)" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr2)"/>
+        <text x="325" y="175" font-family="JetBrains Mono,monospace" font-size="9" fill="#3a4a5f">host_comp.*</text>
+        <text x="325" y="188" font-family="JetBrains Mono,monospace" font-size="9" fill="#3a4a5f">pop_valid</text>
+
+        <!-- Verilator label -->
+        <rect x="148" y="118" width="122" height="26" rx="6" fill="rgba(255,179,71,.07)" stroke="rgba(255,179,71,.2)" stroke-width="1"/>
+        <text x="209" y="135" font-family="JetBrains Mono,monospace" font-size="9.5" fill="#ffb347" text-anchor="middle" font-weight="600">Verilator C++ FFI</text>
+
+        <!-- tick() label -->
+        <rect x="156" y="152" width="106" height="24" rx="6" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.07)" stroke-width="1"/>
+        <text x="209" y="168" font-family="JetBrains Mono,monospace" font-size="9.5" fill="#4a5568" text-anchor="middle">tick() → eval()</text>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ═══ WHY CO-SIM ═══ -->
+<section id="why" class="section fade">
+  <div class="kicker">Why co-simulation matters</div>
+  <h2>A standalone C runtime and a standalone RTL block can both lie to themselves.</h2>
+  <p class="lead">
+    When you test them separately, each side controls its own assumptions.
+    The C runtime can write a test that assumes the device always accepts descriptors.
+    The RTL testbench can write a stimulus that drives <code>host_comp_ready</code>
+    high every cycle. Both tests pass. Both are wrong.
+  </p>
+  <p>
+    Co-simulation removes that escape hatch. When the C++ bridge drives the Verilated RTL
+    model directly, the C side must handle the case where <code>push_ready</code> is low.
+    The RTL side must handle the case where the host holds <code>pop_ready</code> low for
+    many cycles. Neither side can invent capacity the other doesn't have.
+  </p>
+
+  <div class="grid-2" style="margin-top:28px;">
+    <div class="card fade">
+      <div class="badge amber">C-side over-assumptions</div>
+      <h3>What software silently assumes</h3>
+      <ul>
+        <li><strong>Always-ready ring:</strong> the device always has room for another descriptor — no check of <code>push_ready</code></li>
+        <li><strong>Instant completions:</strong> the completion appears within a bounded number of ticks — no timeout handling</li>
+        <li><strong>Implicit encoding:</strong> the C struct field order and the RTL packed struct order are the same — no layout verification</li>
+        <li><strong>Status constants:</strong> <code>0x01=DONE</code>, <code>0x02=REWARD_NEEDED</code> match on both sides — no enum validation</li>
+        <li><strong>Backpressure doesn't happen:</strong> <code>host_comp_ready=1</code> forever in unit tests — completion ring never fills</li>
+      </ul>
+    </div>
+    <div class="card fade">
+      <div class="badge ice">RTL-side over-assumptions</div>
+      <h3>What hardware silently assumes</h3>
+      <ul>
+        <li><strong>Well-formed push_valid:</strong> host never asserts valid with an incomplete or malformed descriptor</li>
+        <li><strong>Ready respected:</strong> host checks <code>push_ready</code> before each submit — never fires when ring is full</li>
+        <li><strong>Completion drained promptly:</strong> host holds <code>pop_ready</code> high — completion ring never stalls the worker FSM</li>
+        <li><strong>Field widths correct:</strong> <code>rollout_id</code> fits in 16 bits, <code>max_tokens</code> is non-zero, <code>opcode</code> is a valid enum value</li>
+        <li><strong>Reset before use:</strong> host always drives reset before the first descriptor submission</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="pullquote">
+    Co-simulation makes the interface executable. The host must drive the RTL correctly,
+    and the RTL must expose completions and backpressure honestly — or the test fails.
+  </div>
+
+  <p>
+    The practical consequence: when the co-sim tests pass, you have a proof that the
+    descriptor layout is correct, the valid/ready handshakes work in both directions,
+    the FSM reaches every completion state, and backpressure propagates end-to-end.
+    That proof is cheap to get now and expensive to discover missing in silicon.
+  </p>
+</section>
+
+<!-- ═══ STACK ═══ -->
+<section id="stack" class="section fade">
+  <div class="kicker">The vertical stack</div>
+  <h2>The repo now spans runtime code, RTL, and a co-simulation bridge.</h2>
+  <p class="lead">
+    Each layer has a single job. The C/CUDA runtime focuses on efficient descriptor
+    construction and completion polling. The RTL engine owns queue mechanics and
+    FSM progression. The Verilator bridge is the adhesive — a thin, boring piece of
+    code whose only job is to faithfully map one side's types onto the other's port signals.
+  </p>
+
+  <div class="flow-panel fade">
+    <div class="flow-panel-bar">full data path — left to right</div>
+    <div class="flow-cols">
+      <div class="flow-col">
+        <div class="flow-col-num">①</div>
+        <div class="flow-col-title">C/CUDA Runtime</div>
+        <div class="flow-col-body">Builds <code>hw_desc_t</code>. Calls <code>infer_submit_decode()</code>. Polls for completions. Handles reward checkpoints.</div>
+      </div>
+      <div class="flow-col">
+        <div class="flow-col-num">②</div>
+        <div class="flow-col-title">Verilator Bridge</div>
+        <div class="flow-col-body">Maps C++ struct fields onto RTL input ports. Calls <code>eval()</code> each tick. Reads output ports into <code>RtlCompletion</code>.</div>
+      </div>
+      <div class="flow-col">
+        <div class="flow-col-num">③</div>
+        <div class="flow-col-title">RTL Engine</div>
+        <div class="flow-col-body"><code>mmio_regs</code> → <code>desc_ring</code> → <code>rollout_worker_fsm</code> → <code>completion_ring</code>. All connected in <code>rl_runtime_top</code>.</div>
+      </div>
+      <div class="flow-col">
+        <div class="flow-col-num">④</div>
+        <div class="flow-col-title">Completion Path</div>
+        <div class="flow-col-body">Worker emits <code>comp_valid</code>. Ring stalls if host holds <code>pop_ready=0</code>. Host polls <code>pop_valid</code> via bridge.</div>
+      </div>
+      <div class="flow-col">
+        <div class="flow-col-num">⑤</div>
+        <div class="flow-col-title">Contract Tests</div>
+        <div class="flow-col-body">Decode → DONE. Decode → REWARD_NEEDED. Backpressure hold → no lost completions. All must pass.</div>
+      </div>
+    </div>
+  </div>
+
+  <pre class="fade">
+    <div class="pre-header"><div class="pre-lang">co-sim path</div><div class="pre-file">sim/run_sim.cpp</div></div>
+    <code><span class="fn">submit_decode</span>(<span class="ty">rollout_id</span>, <span class="ty">seq_len</span>, <span class="ty">max_tokens</span>, ...)
+  ↓  bridge maps C++ → RTL input ports
+<span class="ty">Verilated</span> <span class="fn">rl_runtime_top</span>::<span class="fn">eval</span>()          <span class="cm">// advance one clock</span>
+  ↓  mmio_regs: doorbell_pulse asserted
+  ↓  desc_ring: push_valid && push_ready → latch descriptor
+  ↓  worker_fsm: S_IDLE → S_DECODE → token_count++
+  ↓  worker_fsm: token_count >= max_tokens → S_COMPLETE
+  ↓  completion_ring: comp_valid; stall if !comp_ready
+  ↓  bridge reads output ports
+<span class="fn">poll_completion</span>() → <span class="ty">RtlCompletion</span>{ <span class="ty">rollout_id</span>, <span class="ty">status</span>, <span class="ty">final_seq_len</span> }</code>
+  </pre>
+
+  <div class="callout green fade">
+    <strong>Repo layout:</strong> <code>rtl/</code> holds all SystemVerilog source.
+    <code>sim/</code> holds the Verilator bridge (<code>cosim_bridge.cpp</code>),
+    the C host API (<code>infer_api.h</code>), and the test driver (<code>run_sim.cpp</code>).
+    <code>tb/</code> holds the standalone SystemVerilog testbench for RTL-only verification.
+    The bridge and the testbench test the same RTL, from opposite sides of the interface.
+  </div>
+</section>
+
+<!-- ═══ BRIDGE API ═══ -->
+<section id="bridge" class="section fade">
+  <div class="kicker">Bridge API</div>
+  <h2>The bridge should be small, boring, and contract-focused.</h2>
+  <p class="lead">
+    The bridge class has five responsibilities and nothing else: initialize the
+    Verilated model, drive reset, tick the clock, map descriptors onto input ports,
+    and read completions from output ports. Any logic beyond that belongs in either
+    the C runtime layer or the RTL layer.
+  </p>
+
+  <pre class="fade">
+    <div class="pre-header"><div class="pre-lang">C++</div><div class="pre-file">sim/cosim_bridge.h</div></div>
+    <code><span class="kw">struct</span> <span class="ty">RtlCompletion</span> {
+    <span class="ty">uint16_t</span> rollout_id;
+    <span class="ty">uint8_t</span>  status;           <span class="cm">// 0x01=DONE, 0x02=REWARD_NEEDED, 0xFF=ERROR</span>
+    <span class="ty">uint16_t</span> final_seq_len;
+    <span class="ty">uint16_t</span> reward_id;
+};
+
+<span class="kw">class</span> <span class="ty">RtlRuntimeBridge</span> {
+<span class="kw">public</span>:
+    <span class="fn">RtlRuntimeBridge</span>();                         <span class="cm">// construct + allocate Verilated model</span>
+    ~<span class="fn">RtlRuntimeBridge</span>();                        <span class="cm">// delete Verilated model</span>
+
+    <span class="kw">void</span> <span class="fn">reset</span>(<span class="ty">unsigned</span> cycles = <span class="num">5</span>);            <span class="cm">// drive rst_n=0 for N ticks, then release</span>
+    <span class="kw">void</span> <span class="fn">tick</span>();                                  <span class="cm">// advance clk 0→1→0, call eval() each edge</span>
+
+    <span class="kw">bool</span> <span class="fn">submit_decode</span>(
+        <span class="ty">uint16_t</span> rollout_id,
+        <span class="ty">uint16_t</span> seq_len,
+        <span class="ty">uint16_t</span> max_tokens,
+        <span class="ty">uint16_t</span> reward_model_id,
+        <span class="ty">uint16_t</span> kv_arena_id   = <span class="num">0</span>,
+        <span class="ty">uint16_t</span> prefix_id     = <span class="num">0</span>,
+        <span class="ty">uint32_t</span> kv_offset     = <span class="num">0</span>,
+        <span class="ty">uint32_t</span> delta_offset  = <span class="num">0</span>
+    );                                            <span class="cm">// returns false if push_ready=0 (ring full)</span>
+
+    <span class="kw">bool</span>     <span class="fn">poll_completion</span>(<span class="ty">RtlCompletion</span> *out); <span class="cm">// returns true + fills *out if pop_valid=1</span>
+    <span class="ty">uint64_t</span> <span class="fn">cycles</span>() <span class="kw">const</span>;                     <span class="cm">// monotonic cycle counter for timing budgets</span>
+<span class="kw">private</span>:
+    <span class="ty">Vrl_runtime_top</span>  *<span class="fn">top_</span>;                      <span class="cm">// Verilator-generated model class</span>
+    <span class="ty">VerilatedContext</span> *<span class="fn">ctx_</span>;                      <span class="cm">// Verilator simulation context</span>
+    <span class="ty">uint64_t</span>          <span class="fn">cycle_</span>;
+};</code>
+  </pre>
+
+  <div class="grid-3 fade" style="margin-top: 20px;">
+    <div class="card green">
+      <div class="badge green">reset()</div>
+      <h3>Known state</h3>
+      <p>Drives <code>rst_n=0</code> for N rising edges. All RTL registers clear. Ring head/tail reset to zero. FSM returns to <code>S_IDLE</code>. Required before the first <code>submit_decode</code> call — the bridge constructor calls it automatically.</p>
+    </div>
+    <div class="card fade">
+      <div class="badge green">submit_decode()</div>
+      <h3>Drive descriptor</h3>
+      <p>Checks <code>push_ready</code> first. If low, returns <code>false</code> — caller must retry or yield. If high, maps each C++ argument onto its RTL input port, asserts <code>push_valid</code> for one cycle, then de-asserts. Returns <code>true</code> on successful handshake.</p>
+    </div>
+    <div class="card ice fade">
+      <div class="badge ice">poll_completion()</div>
+      <h3>Observe result</h3>
+      <p>Samples <code>pop_valid</code>. If low, returns <code>false</code>. If high, reads all <code>host_comp_*</code> output ports into <code>*out</code>, asserts <code>pop_ready</code> for one cycle to acknowledge, then returns <code>true</code>. Never invents a completion.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ IMPL ═══ -->
+<section id="impl" class="section fade">
+  <div class="kicker">Bridge implementation</div>
+  <h2>The inner loop is three lines. The discipline is in the handshakes.</h2>
+  <p class="lead">
+    Most of the bridge implementation is mechanical field mapping. The interesting
+    parts are the handshake discipline in <code>submit_decode</code>, the
+    clock-edge sequencing inside <code>tick</code>, and the backpressure
+    behavior that prevents lost completions.
+  </p>
+
+  <pre class="fade">
+    <div class="pre-header"><div class="pre-lang">C++</div><div class="pre-file">sim/cosim_bridge.cpp — tick()</div></div>
+    <code><span class="cm">// One full clock cycle: rising edge eval, then falling edge eval.</span>
+<span class="cm">// Verilator requires eval() on each edge for registered outputs to propagate.</span>
+<span class="kw">void</span> <span class="ty">RtlRuntimeBridge</span>::<span class="fn">tick</span>() {
+    top_-><span class="fn">clk</span> = <span class="num">1</span>;
+    top_-><span class="fn">eval</span>();                 <span class="cm">// rising edge: flip-flops sample inputs</span>
+    top_-><span class="fn">clk</span> = <span class="num">0</span>;
+    top_-><span class="fn">eval</span>();                 <span class="cm">// falling edge: combinational logic re-resolves</span>
+    ++cycle_;
+}</code>
+  </pre>
+
+  <pre class="fade">
+    <div class="pre-header"><div class="pre-lang">C++</div><div class="pre-file">sim/cosim_bridge.cpp — submit_decode()</div></div>
+    <code><span class="kw">bool</span> <span class="ty">RtlRuntimeBridge</span>::<span class="fn">submit_decode</span>(
+    <span class="ty">uint16_t</span> rollout_id, <span class="ty">uint16_t</span> seq_len, <span class="ty">uint16_t</span> max_tokens,
+    <span class="ty">uint16_t</span> reward_model_id, <span class="ty">uint16_t</span> kv_arena_id,
+    <span class="ty">uint16_t</span> prefix_id, <span class="ty">uint32_t</span> kv_offset, <span class="ty">uint32_t</span> delta_offset)
+{
+    <span class="cm">// 1. Check backpressure — do not drive valid if ring is full</span>
+    <span class="kw">if</span> (!top_-><span class="fn">push_ready</span>) <span class="kw">return false</span>;
+
+    <span class="cm">// 2. Map C++ arguments onto RTL descriptor input ports</span>
+    top_-><span class="fn">host_desc_opcode</span>          = <span class="mac">DESC_OP_DECODE</span>;   <span class="cm">// 8'd1</span>
+    top_-><span class="fn">host_desc_flags</span>           = <span class="num">0</span>;
+    top_-><span class="fn">host_desc_rollout_id</span>       = rollout_id;
+    top_-><span class="fn">host_desc_kv_arena_id</span>      = kv_arena_id;
+    top_-><span class="fn">host_desc_prefix_id</span>        = prefix_id;
+    top_-><span class="fn">host_desc_kv_offset</span>        = kv_offset;
+    top_-><span class="fn">host_desc_delta_offset</span>     = delta_offset;
+    top_-><span class="fn">host_desc_seq_len</span>          = seq_len;
+    top_-><span class="fn">host_desc_max_tokens</span>       = max_tokens;
+    top_-><span class="fn">host_desc_reward_model_id</span>  = reward_model_id;
+    top_-><span class="fn">host_desc_reserved</span>         = <span class="num">0</span>;
+
+    <span class="cm">// 3. Assert push_valid for one clock — descriptor is latched on rising edge</span>
+    top_-><span class="fn">host_push_valid</span> = <span class="num">1</span>;
+    <span class="fn">tick</span>();
+    top_-><span class="fn">host_push_valid</span> = <span class="num">0</span>;       <span class="cm">// de-assert; ring owns the slot now</span>
+    <span class="fn">tick</span>();                           <span class="cm">// one idle tick before next operation</span>
+    <span class="kw">return true</span>;
+}</code>
+  </pre>
+
+  <pre class="fade">
+    <div class="pre-header"><div class="pre-lang">C++</div><div class="pre-file">sim/cosim_bridge.cpp — poll_completion()</div></div>
+    <code><span class="kw">bool</span> <span class="ty">RtlRuntimeBridge</span>::<span class="fn">poll_completion</span>(<span class="ty">RtlCompletion</span> *out) {
+    <span class="cm">// 1. Check if RTL has a completion ready — non-blocking poll</span>
+    <span class="kw">if</span> (!top_-><span class="fn">host_comp_valid</span>) <span class="kw">return false</span>;
+
+    <span class="cm">// 2. Read completion fields from RTL output ports</span>
+    out-><span class="fn">rollout_id</span>     = top_-><span class="fn">host_comp_rollout_id</span>;
+    out-><span class="fn">status</span>         = top_-><span class="fn">host_comp_status</span>;
+    out-><span class="fn">final_seq_len</span>  = top_-><span class="fn">host_comp_final_seq_len</span>;
+    out-><span class="fn">reward_id</span>      = top_-><span class="fn">host_comp_reward_id</span>;
+
+    <span class="cm">// 3. Acknowledge — assert pop_ready for one cycle to advance ring head</span>
+    top_-><span class="fn">host_comp_ready</span> = <span class="num">1</span>;
+    <span class="fn">tick</span>();
+    top_-><span class="fn">host_comp_ready</span> = <span class="num">0</span>;
+    <span class="fn">tick</span>();
+    <span class="kw">return true</span>;
+    <span class="cm">// If this function is NOT called: comp_valid stays high, worker stays</span>
+    <span class="cm">// in S_COMPLETE, desc_ring fills up, push_ready goes low. Correct.</span>
+}</code>
+  </pre>
+
+  <div class="callout amber fade">
+    <strong>Why two ticks after de-assert?</strong> Verilator is cycle-accurate.
+    After de-asserting <code>host_push_valid</code>, the RTL combinational logic needs
+    one clock edge to settle before the next port read reflects the updated ring state.
+    Skipping the idle tick can cause the bridge to see stale <code>push_ready</code>
+    values and submit to a full ring.
+  </div>
+
+  <h3 style="margin-top:32px; margin-bottom:16px;">Descriptor field mapping</h3>
+  <div class="table-wrap fade">
+    <table>
+      <thead><tr><th>C++ argument</th><th>RTL port</th><th>desc_pkg field</th><th>Width</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>rollout_id</code></td><td><code>host_desc_rollout_id</code></td><td><code>desc_t.rollout_id</code></td><td class="td-green">16b</td><td>trajectory identifier, echoed in completion</td></tr>
+        <tr><td><code>seq_len</code></td><td><code>host_desc_seq_len</code></td><td><code>desc_t.seq_len</code></td><td class="td-green">16b</td><td>sequence length at dispatch time</td></tr>
+        <tr><td><code>max_tokens</code></td><td><code>host_desc_max_tokens</code></td><td><code>desc_t.max_tokens</code></td><td class="td-green">16b</td><td>generation budget; FSM terminates when reached</td></tr>
+        <tr><td><code>reward_model_id</code></td><td><code>host_desc_reward_model_id</code></td><td><code>desc_t.reward_model_id</code></td><td class="td-green">16b</td><td>echoed in REWARD_NEEDED completion</td></tr>
+        <tr><td><code>kv_arena_id</code></td><td><code>host_desc_kv_arena_id</code></td><td><code>desc_t.kv_arena_id</code></td><td class="td-green">16b</td><td>KV cache slab selector</td></tr>
+        <tr><td><code>kv_offset</code></td><td><code>host_desc_kv_offset</code></td><td><code>desc_t.kv_offset</code></td><td class="td-amber">32b</td><td>byte offset within KV arena</td></tr>
+        <tr><td><code>delta_offset</code></td><td><code>host_desc_delta_offset</code></td><td><code>desc_t.delta_offset</code></td><td class="td-amber">32b</td><td>new-token buffer offset</td></tr>
+        <tr><td><em>hardcoded</em></td><td><code>host_desc_opcode</code></td><td><code>DESC_OP_DECODE = 8'd1</code></td><td class="td-green">8b</td><td>fixed for submit_decode; other ops need separate methods</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout green fade">
+    <strong>Physical layout target:</strong> This is currently a logical mapping — each field
+    is wired individually onto separate RTL ports. The next step is a physical layout:
+    pack all fields into a single 192-bit (current) or 512-bit (target) port so the bridge
+    can do one <code>memcpy</code> from the C struct into the RTL input port and the
+    bit layout is verified to be identical on both sides.
+  </div>
+</section>
+
+<!-- ═══ TESTS ═══ -->
+<section id="tests" class="section fade">
+  <div class="kicker">Co-simulation tests</div>
+  <h2>The tests prove the control-plane loop — all the way around.</h2>
+  <p class="lead">
+    Three tests cover the three protocol behaviors that matter: the happy path,
+    the RL-specific reward transition, and the backpressure case that software
+    tests almost always skip.
+  </p>
+
+  <div class="grid-3 fade" style="margin-bottom:24px;">
+    <div class="card">
+      <div class="badge green">test 1</div>
+      <h3>Basic decode → DONE</h3>
+      <p>Submit rollout 7 with <code>max_tokens=10</code>, <code>reward_model_id=1</code>. Tick until <code>poll_completion</code> returns true. Assert <code>status==0x01</code>, <code>rollout_id==7</code>, <code>final_seq_len==10</code>. Verifies the full IDLE→DECODE→COMPLETE path and that the bridge reads outputs correctly.</p>
+    </div>
+    <div class="card fade">
+      <div class="badge amber">test 2</div>
+      <h3>Reward boundary → REWARD_NEEDED</h3>
+      <p>Submit with <code>max_tokens=64</code>. The FSM emits <code>REWARD_NEEDED</code> at the configured 32-token boundary before reaching <code>max_tokens</code>. Assert <code>status==0x02</code> at <code>final_seq_len==32</code>, then a second completion with <code>status==0x01</code> at <code>final_seq_len==64</code>. Verifies the RL-specific mid-rollout completion path.</p>
+    </div>
+    <div class="card ice fade">
+      <div class="badge ice">test 3</div>
+      <h3>Backpressure → no lost completions</h3>
+      <p>Submit a descriptor. Hold <code>host_comp_ready=0</code> for 20 ticks after the worker reaches <code>S_COMPLETE</code>. Worker must remain in <code>S_COMPLETE</code>; <code>comp_valid</code> must stay asserted. Release <code>host_comp_ready</code>. Assert completion is received correctly. Verifies that the completion ring never silently drops.</p>
+    </div>
+  </div>
+
+  <pre class="fade">
+    <div class="pre-header"><div class="pre-lang">C++</div><div class="pre-file">sim/run_sim.cpp — test runner sketch</div></div>
+    <code><span class="cm">// test 1: basic decode</span>
+bridge.<span class="fn">reset</span>();
+<span class="kw">bool</span> ok = bridge.<span class="fn">submit_decode</span>(<span class="cm">/*rollout_id=*/</span><span class="num">7</span>, <span class="cm">/*seq_len=*/</span><span class="num">0</span>, <span class="cm">/*max_tokens=*/</span><span class="num">10</span>, <span class="cm">/*reward_model_id=*/</span><span class="num">1</span>);
+<span class="mac">ASSERT</span>(ok, <span class="str">"submit failed — push_ready was low?"</span>);
+
+<span class="ty">RtlCompletion</span> c{};
+<span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">0</span>; i < <span class="num">200</span> && !bridge.<span class="fn">poll_completion</span>(&c); ++i)
+    bridge.<span class="fn">tick</span>();                           <span class="cm">// tick until completion or timeout</span>
+<span class="mac">ASSERT</span>(c.status        == <span class="num">0x01</span>, <span class="str">"expected DONE"</span>);
+<span class="mac">ASSERT</span>(c.rollout_id    == <span class="num">7</span>,    <span class="str">"rollout_id mismatch"</span>);
+<span class="mac">ASSERT</span>(c.final_seq_len == <span class="num">10</span>,   <span class="str">"seq_len mismatch"</span>);
+
+<span class="cm">// test 3: backpressure — hold comp_ready low for 20 ticks</span>
+bridge.<span class="fn">reset</span>();
+bridge.<span class="fn">submit_decode</span>(<span class="num">42</span>, <span class="num">0</span>, <span class="num">5</span>, <span class="num">1</span>);
+<span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">0</span>; i < <span class="num">100</span>; ++i) bridge.<span class="fn">tick</span>();   <span class="cm">// wait for worker to reach S_COMPLETE</span>
+bridge.top_-><span class="fn">host_comp_ready</span> = <span class="num">0</span>;               <span class="cm">// hold backpressure</span>
+<span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">0</span>; i < <span class="num">20</span>; ++i) {
+    bridge.<span class="fn">tick</span>();
+    <span class="mac">ASSERT</span>(bridge.top_-><span class="fn">host_comp_valid</span>, <span class="str">"comp_valid must stay high"</span>);
+}
+bridge.top_-><span class="fn">host_comp_ready</span> = <span class="num">1</span>;               <span class="cm">// release — completion arrives</span>
+<span class="ty">RtlCompletion</span> c2{};
+<span class="kw">bool</span> got = bridge.<span class="fn">poll_completion</span>(&c2);
+<span class="mac">ASSERT</span>(got && c2.rollout_id == <span class="num">42</span>,             <span class="str">"completion lost under backpressure"</span>);</code>
+  </pre>
+
+  <div class="test-results fade">
+    <div class="test-results-bar">expected output</div>
+    <div class="test-results-body">
+      <span class="tr-suite">// RTL co-simulation suite — gb300-rl-runtime</span>
+      <div class="tr-pass">RTL co-sim [test 1]: basic decode — rollout_id=7, status=DONE, final_seq_len=10 — PASS</div>
+      <div class="tr-pass">RTL co-sim [test 2]: reward boundary — REWARD_NEEDED@32, DONE@64 — PASS</div>
+      <div class="tr-pass">RTL co-sim [test 3]: completion backpressure — comp_valid held 20 ticks, no loss — PASS</div>
+      <span class="tr-final">RTL bridge contract tests: 3/3 PASS</span>
+    </div>
+  </div>
+
+  <div class="pullquote">
+    A SystemVerilog testbench asks: does the RTL work by itself?
+    A C++ Verilator bridge asks: can host software drive the RTL the way it expects to drive hardware?
+    You need both questions answered.
+  </div>
+</section>
+
+<!-- ═══ HONESTY BOUNDARY ═══ -->
+<section class="section fade">
+  <div class="kicker">Honesty boundary</div>
+  <h2>What this does and does not prove.</h2>
+  <p>
+    It is easy to over-claim what a co-simulation result means. The bridge tests
+    the control-plane protocol, not the inference computation. Here is the precise scope.
+  </p>
+
+  <div class="grid-2 fade" style="margin-top:24px;">
+    <div class="card green">
+      <div class="badge green">Proven ✓</div>
+      <h3>Control-plane contract</h3>
+      <ul>
+        <li>Descriptor layout is correct: all fields map correctly from C++ to RTL ports</li>
+        <li>Valid/ready handshake works in the submit direction</li>
+        <li>Valid/ready handshake works in the completion direction</li>
+        <li>Worker FSM reaches S_COMPLETE for DECODE descriptors</li>
+        <li>Worker FSM emits REWARD_NEEDED at the correct token boundary</li>
+        <li>Completion ring retains completions under backpressure (no silent drops)</li>
+        <li>Reset correctly initializes all RTL state</li>
+        <li>C++ bridge correctly maps field widths and opcode constants</li>
+      </ul>
+    </div>
+    <div class="card fade">
+      <div class="badge red">Not proven ✗</div>
+      <h3>Real inference execution</h3>
+      <ul>
+        <li>Real transformer attention — no matrix math in RTL</li>
+        <li>Tensor-core or CUDA kernel scheduling</li>
+        <li>GB300 / Blackwell hardware behavior</li>
+        <li>NVIDIA MMIO doorbell semantics (NVLink, PCIe BAR)</li>
+        <li>HBM bandwidth or latency effects</li>
+        <li>NVSwitch topology or multi-GPU routing</li>
+        <li>Production inference serving throughput or tail latency</li>
+        <li>Physical descriptor layout (current gap — see §Next)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ NEXT ═══ -->
+<section id="next" class="section fade">
+  <div class="kicker">Next milestone</div>
+  <h2>Unify the descriptor into a 64-byte shared physical contract.</h2>
+  <p class="lead">
+    Right now the bridge maps fields one-by-one onto individual RTL ports.
+    This validates the logical contract — the field names, widths, and opcode values
+    are consistent. What it does not validate is the physical layout: are the bits
+    in the same position in the C struct as in the RTL packed descriptor?
+  </p>
+  <p>
+    In a real hardware system this matters. The CPU writes a cache-line-sized descriptor
+    into DRAM. The DMA engine reads it. The hardware queue engine parses it. If the C
+    struct and the RTL struct have different field ordering, endianness assumptions,
+    or padding, the hardware will misparse every work order.
+    The next milestone closes this gap.
+  </p>
+
+  <pre class="fade">
+    <div class="pre-header"><div class="pre-lang">target contract</div><div class="pre-file">shared physical layout — v0.6 goal</div></div>
+    <code><span class="cm">// Both sides must agree on every bit of this layout</span>
+
+C:   <span class="ty">__attribute__</span>((packed, aligned(<span class="num">64</span>))) <span class="ty">hw_desc_t</span>   → 64 bytes, little-endian
+RTL: <span class="kw">typedef</span> <span class="kw">struct</span> packed { ... } <span class="ty">desc_t</span>            → 512 bits, same field order
+
+Validation strategy:
+  1. Static assert: <span class="kw">sizeof</span>(<span class="ty">hw_desc_t</span>) == <span class="num">64</span>
+  2. Static assert: <span class="kw">offsetof</span>(hw_desc_t, rollout_id) == <span class="num">2</span>  <span class="cm">// after opcode + flags</span>
+  3. Verilator bridge: single DPI call with raw <span class="ty">uint8_t[64]</span> bus instead of N ports
+  4. Co-sim test: write known byte pattern, assert RTL parses fields correctly
+  5. Reverse test: RTL emits completion; assert C struct parses it correctly</code>
+  </pre>
+
+  <div class="timeline">
+    <div class="tl-item fade">
+      <div class="tl-badge done">v0.5</div>
+      <div>
+        <h3 style="color:var(--ice)">C + Verilator co-simulation — current milestone</h3>
+        <p>Logical field mapping. C++ bridge drives RTL ports directly. Three contract tests: decode, reward boundary, backpressure. All pass.</p>
+      </div>
+    </div>
+    <div class="tl-item fade">
+      <div class="tl-badge">v0.6</div>
+      <div>
+        <h3>64-byte physical descriptor layout</h3>
+        <p>Shared bit-level layout between C struct and RTL packed struct. Single raw bus in bridge. Static-assert validation. C and RTL must agree on every byte position and endianness assumption.</p>
+      </div>
+    </div>
+    <div class="tl-item fade">
+      <div class="tl-badge">v0.7</div>
+      <div>
+        <h3>Multi-worker dispatch</h3>
+        <p>Descriptor ring → round-robin dispatcher → N rollout worker FSMs → completion merge arbiter → completion ring. Per-worker token counters. M concurrent trajectories across N workers. Completion ordering tests.</p>
+      </div>
+    </div>
+    <div class="tl-item fade">
+      <div class="tl-badge">v0.8</div>
+      <div>
+        <h3>AXI4-Lite MMIO + MSI-X interrupt</h3>
+        <p>Replace bare MMIO block with proper AXI4-Lite slave interface. Add interrupt generator: assert IRQ line when completion ring is non-empty and interrupt enable bit is set. Host can switch from polling to interrupt-driven completion handling.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FINAL MENTAL MODEL ═══ -->
+<section class="section fade">
+  <div class="kicker">Final mental model</div>
+  <h2>The repo is becoming a contract lab.</h2>
+  <p class="lead">
+    After building the co-simulation bridge, the relationship between the C runtime
+    and the RTL engine changes. They are no longer two separate things that happen
+    to use the same vocabulary. They are two implementations of one contract —
+    and the bridge is the test harness that proves they agree.
+  </p>
+
+  <div class="grid-3 fade" style="margin-top:28px;">
+    <div class="card">
+      <div class="badge green">C runtime</div>
+      <h3>Submit work</h3>
+      <p>How do I submit rollout descriptors to a hardware queue without CPU involvement per token? Write the descriptor, check push_ready, assert push_valid, poll for completion.</p>
+    </div>
+    <div class="card fade">
+      <div class="badge amber">RTL engine</div>
+      <h3>Consume work</h3>
+      <p>What hardware queue protocol should accept descriptors, simulate rollout progression, emit reward checkpoints, and propagate backpressure — all without software assistance mid-rollout?</p>
+    </div>
+    <div class="card ice fade">
+      <div class="badge ice">Verilator bridge</div>
+      <h3>Prove contract</h3>
+      <p>Can the software runtime and the RTL engine agree on that protocol at the bit level, validated by executable tests that exercise the happy path, reward path, and backpressure path?</p>
+    </div>
+  </div>
+
+  <div class="pullquote" style="margin-top:36px;">
+    The bridge from runtime code to hardware-shaped inference design
+    is the descriptor control-plane contract.
+    Co-simulation is the proof it is real.
+  </div>
+</section>
+
+</div><!-- /wrap -->
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-inner">
+      <div>
+        <div class="brand" style="margin-bottom:12px;">
+          <div class="brand-icon">▣</div>
+          gb300-rl-runtime
+        </div>
+        <p class="footer-copy">
+          Systems note on descriptor-driven RL inference control planes,
+          Verilator co-simulation, and hardware/software co-design.
+          Documents the gb300-rl-runtime project as it moves from C/CUDA
+          runtime code toward a verified RTL hardware contract.
+        </p>
+        <div class="footer-tags">
+          <span class="footer-tag">SystemVerilog</span>
+          <span class="footer-tag">Verilator</span>
+          <span class="footer-tag">RL Inference</span>
+          <span class="footer-tag">Co-Simulation</span>
+          <span class="footer-tag">Hardware/Software Co-Design</span>
+          <span class="footer-tag">Descriptor Protocol</span>
+          <span class="footer-tag">Ready/Valid</span>
+          <span class="footer-tag">AXI4-Lite</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<footer class="site-footer site-global-footer" aria-label="Article footer">
+  <div class="site-footer-inner">
+    <div><strong><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span></strong><br/>Technical essays on AI infrastructure and systems.</div>
+    <div><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></div>
+  </div>
+</footer>
+<script>
+// ── Scroll-reveal ──
+const io = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting) e.target.classList.add('in'); });
+}, { threshold: 0.06 });
+document.querySelectorAll('.fade').forEach(el => io.observe(el));
+
+// ── Animate arch SVG paths with a subtle pulse ──
+(function() {
+  const svg = document.getElementById('archSvg');
+  if (!svg) return;
+  let t = 0;
+  const lines = svg.querySelectorAll('line[stroke-dasharray]');
+  function step() {
+    t += 0.5;
+    lines.forEach((l, i) => {
+      const offset = (t + i * 20) % 16;
+      l.style.strokeDashoffset = -offset;
+    });
+    requestAnimationFrame(step);
+  }
+  step();
+})();
+</script>
+</body>
+</html>
