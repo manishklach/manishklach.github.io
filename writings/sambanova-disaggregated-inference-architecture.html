@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>SambaNova Disaggregated Inference: The Architecture Reinventing How AI Thinks at Scale | MANISH AI</title>
+<meta name="description" content="A complete technical guide to SambaNova's disaggregated inference architecture: prefill vs decode, RDU dataflow execution, heterogeneous GPU-RDU-Xeon deployment, open software standards, and why agentic AI pushes inference away from one-size-fits-all GPU systems."/>
+<meta name="keywords" content="SambaNova disaggregated inference, RDU architecture, prefill decode split, agentic AI infrastructure, heterogeneous inference, Intel Xeon 6, vLLM, SGLang, NIXL"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/sambanova-disaggregated-inference-architecture.html"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="SambaNova Disaggregated Inference: The Architecture Reinventing How AI Thinks at Scale | MANISH AI"/>
+<meta property="og:description" content="A complete technical guide to SambaNova's disaggregated inference architecture: prefill vs decode, RDU dataflow execution, heterogeneous GPU-RDU-Xeon deployment, open software standards, and why agentic AI pushes inference away from one-size-fits-all GPU systems."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/sambanova-disaggregated-inference-architecture.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:image" content="https://manishklach.github.io/og/sambanova-disaggregated-inference-architecture.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="SambaNova Disaggregated Inference by MANISH AI"/>
+<meta property="article:published_time" content="2026-06-03T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-06-03T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="AI Inference Infrastructure"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="SambaNova Disaggregated Inference: The Architecture Reinventing How AI Thinks at Scale"/>
+<meta name="twitter:description" content="A complete technical guide to SambaNova's disaggregated inference architecture: prefill vs decode, RDU dataflow execution, heterogeneous GPU-RDU-Xeon deployment, open software standards, and why agentic AI pushes inference away from one-size-fits-all GPU systems."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/sambanova-disaggregated-inference-architecture.png"/>
+<meta name="twitter:image:alt" content="SambaNova Disaggregated Inference by MANISH AI"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"SambaNova Disaggregated Inference: The Architecture Reinventing How AI Thinks at Scale",
+  "description":"A complete technical guide to SambaNova's disaggregated inference architecture: prefill vs decode, RDU dataflow execution, heterogeneous GPU-RDU-Xeon deployment, open software standards, and why agentic AI pushes inference away from one-size-fits-all GPU systems.",
+  "url":"https://manishklach.github.io/writings/sambanova-disaggregated-inference-architecture.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/sambanova-disaggregated-inference-architecture.html",
+  "datePublished":"2026-06-03",
+  "dateModified":"2026-06-03",
+  "articleSection":"AI Inference Infrastructure",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+:root{
+  --color-page-bg:#f8f6f2;
+  --color-surface:#fffdf9;
+  --color-surface-soft:#f5f1eb;
+  --color-text-primary:#1d1b18;
+  --color-text-secondary:#5e584f;
+  --color-text-tertiary:#7c756b;
+  --color-border-secondary:rgba(74,72,69,.18);
+  --color-border-tertiary:rgba(74,72,69,.12);
+  --sn-orange:#E8590A;--sn-orange-light:#FDE8DA;--sn-blue:#1A5FA8;--sn-blue-light:#E0EEFB;
+  --sn-teal:#0E7A6A;--sn-teal-light:#D8F0EC;--sn-purple:#5B3DC4;--sn-purple-light:#ECDEFF;
+  --sn-gray:#4A4845;--sn-gray-light:#F5F4F1;
+  --shadow:0 24px 60px rgba(33,29,23,.08);
+}
+html.dark{
+  --color-page-bg:#12100e;
+  --color-surface:#171411;
+  --color-surface-soft:#1e1a16;
+  --color-text-primary:#f2ede6;
+  --color-text-secondary:#c7bbb0;
+  --color-text-tertiary:#a79789;
+  --color-border-secondary:rgba(242,237,230,.18);
+  --color-border-tertiary:rgba(242,237,230,.12);
+  --sn-orange-light:rgba(232,89,10,.16);
+  --sn-blue-light:rgba(26,95,168,.18);
+  --sn-teal-light:rgba(14,122,106,.18);
+  --sn-purple-light:rgba(91,61,196,.18);
+  --sn-gray-light:#221d18;
+  --shadow:0 28px 70px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  font-family:'Outfit',sans-serif;
+  font-weight:400;
+  color:var(--color-text-primary);
+  line-height:1.7;
+  background:
+    radial-gradient(circle at top left, rgba(232,89,10,.07), transparent 26%),
+    radial-gradient(circle at top right, rgba(26,95,168,.08), transparent 24%),
+    linear-gradient(180deg,var(--color-page-bg),color-mix(in srgb,var(--color-page-bg) 84%, var(--color-surface-soft)));
+}
+a{color:var(--sn-orange);text-decoration:none}
+a:hover{text-decoration:underline}
+.topbar{
+  position:sticky;top:0;z-index:40;
+  background:color-mix(in srgb,var(--color-surface) 88%, transparent);
+  backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--color-border-tertiary);
+}
+.topbar-inner,.blog-wrap,.site-note,.toc{
+  width:min(1080px,calc(100% - 32px));
+  margin:0 auto;
+}
+.topbar-inner{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;
+}
+.brand{
+  display:flex;align-items:center;gap:10px;
+  font-family:'DM Mono',monospace;font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--color-text-primary);
+}
+.brand-mark{
+  width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+  border:1px solid var(--color-border-secondary);
+  background:linear-gradient(135deg,var(--sn-orange-light),var(--sn-blue-light));
+  color:var(--sn-orange);
+}
+.nav{display:flex;align-items:center;gap:18px;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.nav a,#theme-toggle{color:var(--color-text-secondary)}
+#theme-toggle{border:1px solid currentColor;background:transparent;border-radius:999px;padding:6px 11px;font:inherit;cursor:pointer}
+
+.toc{
+  margin-top:28px;
+  padding:18px 20px;
+  border:1px solid var(--color-border-tertiary);
+  border-radius:16px;
+  background:color-mix(in srgb,var(--color-surface) 92%, transparent);
+  box-shadow:var(--shadow);
+}
+.toc h2{
+  margin:0 0 10px;
+  font-family:'DM Mono',monospace;
+  font-size:12px;
+  font-weight:500;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--color-text-secondary);
+}
+.toc-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px 18px;
+}
+.toc-grid a{font-size:14px;color:var(--color-text-secondary)}
+
+.blog-wrap{
+  margin:26px auto 0;
+  border:1px solid var(--color-border-tertiary);
+  border-radius:28px;
+  background:color-mix(in srgb,var(--color-surface) 96%, transparent);
+  box-shadow:var(--shadow);
+}
+.blog{max-width:760px;margin:0 auto;padding:2.25rem 1.5rem 4rem}
+.hero{border-bottom:.5px solid var(--color-border-tertiary);padding-bottom:2.5rem;margin-bottom:2.5rem}
+.tag-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:1.25rem}
+.tag{font-size:11px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;padding:3px 10px;border-radius:20px}
+.tag-orange{background:var(--sn-orange-light);color:var(--sn-orange)}
+.tag-blue{background:var(--sn-blue-light);color:var(--sn-blue)}
+.tag-teal{background:var(--sn-teal-light);color:var(--sn-teal)}
+h1{font-family:'DM Serif Display',serif;font-size:clamp(30px,5vw,46px);font-weight:400;line-height:1.14;letter-spacing:-.02em;margin-bottom:1rem;color:var(--color-text-primary)}
+.hero-sub{font-size:17px;color:var(--color-text-secondary);line-height:1.7;font-weight:300;max-width:640px}
+.byline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:1.5rem;font-size:13px;color:var(--color-text-tertiary)}
+.byline-dot{width:3px;height:3px;border-radius:50%;background:var(--color-text-tertiary)}
+h2{font-family:'DM Serif Display',serif;font-size:28px;font-weight:400;letter-spacing:-.01em;margin:2.5rem 0 .8rem;color:var(--color-text-primary)}
+h3{font-size:15px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--sn-orange);margin:2rem 0 .6rem}
+p{font-size:15.5px;line-height:1.8;margin-bottom:1rem;color:var(--color-text-primary)}
+strong{font-weight:500}
+.callout{background:var(--color-surface-soft);border-left:3px solid var(--sn-orange);border-radius:0 8px 8px 0;padding:1rem 1.25rem;margin:1.5rem 0}
+.callout p{margin:0;font-size:14.5px;color:var(--color-text-secondary)}
+.callout .callout-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--sn-orange);margin-bottom:.4rem}
+.stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:1.5rem 0}
+.stat-card{background:var(--color-surface-soft);border-radius:10px;padding:1rem;text-align:center}
+.stat-num{font-family:'DM Serif Display',serif;font-size:28px;color:var(--sn-orange);line-height:1.1}
+.stat-label{font-size:12px;color:var(--color-text-secondary);margin-top:.3rem;line-height:1.4}
+.divider{height:.5px;background:var(--color-border-tertiary);margin:2.5rem 0}
+.diagram-wrap{margin:1.5rem 0;border:.5px solid var(--color-border-tertiary);border-radius:12px;overflow:hidden;background:var(--color-surface-soft)}
+.diagram-wrap svg{display:block;height:auto}
+.diagram-caption{font-size:12.5px;color:var(--color-text-tertiary);padding:.6rem 1rem;border-top:.5px solid var(--color-border-tertiary);text-align:center;font-style:italic}
+.phase-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:1.5rem 0}
+.phase-card{border-radius:10px;padding:1rem 1.1rem;border:.5px solid var(--color-border-tertiary)}
+.phase-card h4{font-size:14px;font-weight:600;margin-bottom:.4rem}
+.phase-card p{font-size:13.5px;margin:0;color:var(--color-text-secondary)}
+.phase-prefill{background:var(--sn-blue-light)}
+.phase-prefill h4{color:var(--sn-blue)}
+.phase-decode{background:var(--sn-teal-light)}
+.phase-decode h4{color:var(--sn-teal)}
+.hw-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:1.5rem 0}
+.hw-card{border-radius:10px;border:.5px solid var(--color-border-tertiary);padding:.9rem 1rem;background:var(--color-surface)}
+.hw-card h4{font-size:13.5px;font-weight:600;margin-bottom:.25rem}
+.hw-card p{font-size:12.5px;margin:0;color:var(--color-text-secondary);line-height:1.5}
+.hw-chip{display:inline-block;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:20px;margin-bottom:.5rem}
+code{font-family:'DM Mono',monospace;font-size:13px;background:var(--color-surface-soft);padding:2px 6px;border-radius:4px;color:var(--sn-orange)}
+.metric-table{width:100%;border-collapse:collapse;margin:1.2rem 0;font-size:14px}
+.metric-table th{text-align:left;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-secondary);padding:.6rem .8rem;border-bottom:1px solid var(--color-border-tertiary)}
+.metric-table td{padding:.55rem .8rem;border-bottom:.5px solid var(--color-border-tertiary);vertical-align:top}
+.metric-table tr:last-child td{border-bottom:none}
+.timeline{position:relative;margin:1.5rem 0;padding-left:28px}
+.timeline::before{content:'';position:absolute;left:6px;top:8px;bottom:8px;width:1px;background:var(--color-border-secondary)}
+.tl-item{position:relative;margin-bottom:1.2rem}
+.tl-item::before{content:'';position:absolute;left:-25px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--color-surface);border:2px solid var(--sn-orange)}
+.tl-year{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--sn-orange);margin-bottom:.2rem}
+.tl-text{font-size:14px;color:var(--color-text-secondary);line-height:1.6}
+.quote-block{border-top:2px solid var(--sn-orange);padding:1.25rem 0 0;margin:2rem 0 1.5rem}
+.quote-block blockquote{font-family:'DM Serif Display',serif;font-size:20px;font-style:italic;line-height:1.5;color:var(--color-text-primary);margin-bottom:.6rem}
+.quote-attr{font-size:13px;color:var(--color-text-secondary)}
+.conclusion-box{background:linear-gradient(135deg,var(--sn-orange-light),var(--sn-blue-light));border-radius:12px;padding:1.75rem;margin:2rem 0}
+.conclusion-box h2{margin:0 0 .75rem;font-size:22px}
+.conclusion-box p{font-size:14.5px;margin-bottom:.6rem;color:var(--color-text-primary)}
+.conclusion-box p:last-child{margin-bottom:0}
+.site-note{padding:0 0 40px}
+.site-note-card{
+  border:1px solid var(--color-border-tertiary);
+  border-radius:18px;
+  background:color-mix(in srgb,var(--color-surface) 94%, transparent);
+  box-shadow:var(--shadow);
+  padding:20px;
+}
+.site-note-card p{margin:0;color:var(--color-text-secondary)}
+@media(max-width:760px){
+  .toc-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:500px){
+  .stat-row,.hw-grid,.toc-grid{grid-template-columns:1fr}
+  .phase-grid{grid-template-columns:1fr}
+  h1{font-size:28px}
+  .nav a:not(:last-of-type){display:none}
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/index.html" aria-label="MANISH AI home">
+      <span class="brand-mark">▣</span>
+      <span>MAN<span class="logo-i">\</span>SH AI</span>
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a href="/writings.html">Writings</a>
+      <a href="/patents.html">Patents</a>
+      <a href="/feed.xml">RSS</a>
+      <button id="theme-toggle" type="button" aria-label="Toggle light and dark mode">Theme</button>
+    </nav>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Table of contents">
+  <h2>Contents</h2>
+  <div class="toc-grid">
+    <a href="#crisis">Inference crisis</a>
+    <a href="#prefill-decode">Prefill vs decode</a>
+    <a href="#rdu">RDU architecture</a>
+    <a href="#disaggregation">Three-way split</a>
+    <a href="#agentic">Agentic AI layer</a>
+    <a href="#software">Software stack</a>
+    <a href="#goldilocks">Goldilocks zone</a>
+    <a href="#power">Power economics</a>
+    <a href="#timeline">Timeline</a>
+  </div>
+</nav>
+
+<div class="blog-wrap">
+<div class="blog">
+
+  <header class="hero">
+    <div class="tag-row">
+      <span class="tag tag-orange">Architecture Deep Dive</span>
+      <span class="tag tag-blue">AI Infrastructure</span>
+      <span class="tag tag-teal">Agentic AI</span>
+    </div>
+    <h1>SambaNova Disaggregated Inference: The Architecture Reinventing How AI Thinks at Scale</h1>
+    <p class="hero-sub">A complete technical guide to SambaNova's heterogeneous inference blueprint, from the fundamentals of prefill vs decode, through the RDU dataflow architecture, to the full three-way split with Intel Xeon 6 that defines the agentic AI stack of 2026.</p>
+    <div class="byline">
+      <span>June 3, 2026</span>
+      <span class="byline-dot"></span>
+      <span>18 min read</span>
+      <span class="byline-dot"></span>
+      <span>Architecture · Systems · Silicon</span>
+    </div>
+  </header>
+
+  <h2 id="crisis">The Inference Crisis Nobody Saw Coming</h2>
+  <p>For years, the AI industry obsessed over training. More GPUs. Bigger clusters. Faster interconnects. The assumption was simple: the same parallel compute that trained a model would serve it too. That assumption is quietly breaking.</p>
+  <p>Today, inference, the act of running a trained model on real user requests, consumes the majority of production AI compute cycles. And it turns out inference has a fundamentally different computational character than training. Where training is a <strong>data processing problem</strong>, inference is a <strong>data flow problem</strong>: sequential, memory-hungry, and brutally sensitive to latency.</p>
+
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="stat-num">31×</div>
+      <div class="stat-label">projected growth in AI data-center power demand from 2024 to 2035</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">120kW</div>
+      <div class="stat-label">per rack for top-end GPU systems like Blackwell NVL72</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">~10×</div>
+      <div class="stat-label">lower power draw claimed for SambaNova RDU racks versus comparable GPU systems</div>
+    </div>
+  </div>
+
+  <p>GPUs were engineered for maximum throughput on large, batched operations. But the decode phase of inference, where a model generates one token at a time, is nothing like that. It is sequential, it is memory-bandwidth-bound, and it is where GPU efficiency collapses. This is the crack in the foundation that SambaNova is building on.</p>
+
+  <div class="divider"></div>
+
+  <h2 id="prefill-decode">LLM Inference 101: Prefill vs Decode</h2>
+  <p>Before understanding SambaNova's architecture, you need to internalize the two distinct phases of every LLM inference request. They are computationally almost nothing alike.</p>
+
+  <div class="phase-grid">
+    <div class="phase-card phase-prefill">
+      <h4>Prefill Phase</h4>
+      <p>The entire input prompt is processed in parallel. The model reads all input tokens simultaneously, building a KV cache of attention states. This phase is <strong>compute-bound</strong> and naturally fits GPU-style matrix engines.</p>
+    </div>
+    <div class="phase-card phase-decode">
+      <h4>Decode Phase</h4>
+      <p>Tokens are generated one at a time. Each new token requires reading the KV cache and large weight slices from memory. This phase is <strong>memory-bandwidth-bound</strong>, sequential, and latency-sensitive.</p>
+    </div>
+  </div>
+
+  <p>This asymmetry is profound. During prefill, you can throw thousands of GPU CUDA cores at the problem simultaneously. During decode, you are waiting on memory reads, and adding more compute cores does almost nothing to speed it up. The two phases want entirely different hardware profiles.</p>
+
+  <div class="callout">
+    <div class="callout-label">Key insight</div>
+    <p>A GPU running the decode phase is like a sports car in a traffic jam. The engine is powerful, but the bottleneck is the road: memory bandwidth, not arithmetic throughput. RDUs are purpose-built for exactly that road.</p>
+  </div>
+
+  <div class="diagram-wrap">
+    <svg width="100%" viewBox="0 0 680 230" role="img">
+      <title>LLM inference pipeline</title>
+      <defs>
+        <marker id="arr1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <g>
+        <text x="50" y="30" text-anchor="middle" style="font-size:11px;fill:var(--color-text-tertiary)">Input prompt</text>
+        <rect x="14" y="38" width="72" height="26" rx="5" fill="var(--sn-blue-light)" stroke="var(--sn-blue)" stroke-width="0.5"/>
+        <text x="50" y="55" text-anchor="middle" style="font-size:12px;font-weight:500;fill:var(--sn-blue)">Tell me</text>
+        <rect x="14" y="68" width="72" height="26" rx="5" fill="var(--sn-blue-light)" stroke="var(--sn-blue)" stroke-width="0.5"/>
+        <text x="50" y="85" text-anchor="middle" style="font-size:12px;font-weight:500;fill:var(--sn-blue)">about AI</text>
+        <rect x="14" y="98" width="72" height="26" rx="5" fill="var(--sn-blue-light)" stroke="var(--sn-blue)" stroke-width="0.5"/>
+        <text x="50" y="115" text-anchor="middle" style="font-size:12px;font-weight:500;fill:var(--sn-blue)">3 tokens</text>
+      </g>
+      <line x1="88" y1="90" x2="108" y2="90" stroke="var(--color-text-tertiary)" stroke-width="1" marker-end="url(#arr1)"/>
+      <rect x="110" y="50" width="170" height="80" rx="10" fill="var(--sn-blue-light)" stroke="var(--sn-blue)" stroke-width="1"/>
+      <text x="195" y="78" text-anchor="middle" style="font-size:13px;font-weight:600;fill:var(--sn-blue)">PREFILL</text>
+      <text x="195" y="96" text-anchor="middle" style="font-size:11px;fill:var(--sn-blue)">Parallel processing</text>
+      <text x="195" y="112" text-anchor="middle" style="font-size:11px;fill:var(--sn-blue)">Compute-bound</text>
+      <line x1="282" y1="90" x2="302" y2="90" stroke="var(--color-text-tertiary)" stroke-width="1" marker-end="url(#arr1)"/>
+      <rect x="304" y="58" width="100" height="64" rx="8" fill="var(--sn-gray-light)" stroke="var(--color-border-secondary)" stroke-width="1"/>
+      <text x="354" y="82" text-anchor="middle" style="font-size:12px;font-weight:600;fill:var(--color-text-primary)">KV Cache</text>
+      <text x="354" y="98" text-anchor="middle" style="font-size:10.5px;fill:var(--color-text-secondary)">Attention states</text>
+      <text x="354" y="113" text-anchor="middle" style="font-size:10.5px;fill:var(--color-text-secondary)">stored</text>
+      <line x1="406" y1="90" x2="426" y2="90" stroke="var(--color-text-tertiary)" stroke-width="1" marker-end="url(#arr1)"/>
+      <rect x="428" y="50" width="170" height="80" rx="10" fill="var(--sn-teal-light)" stroke="var(--sn-teal)" stroke-width="1"/>
+      <text x="513" y="78" text-anchor="middle" style="font-size:13px;font-weight:600;fill:var(--sn-teal)">DECODE</text>
+      <text x="513" y="96" text-anchor="middle" style="font-size:11px;fill:var(--sn-teal)">Sequential generation</text>
+      <text x="513" y="112" text-anchor="middle" style="font-size:11px;fill:var(--sn-teal)">Memory-bandwidth-bound</text>
+      <text x="340" y="172" text-anchor="middle" style="font-size:11px;fill:var(--color-text-tertiary)">Output tokens one at a time</text>
+      <rect x="440" y="182" width="44" height="22" rx="4" fill="var(--sn-teal-light)" stroke="var(--sn-teal)" stroke-width="0.5"/>
+      <text x="462" y="197" text-anchor="middle" style="font-size:11px;font-weight:500;fill:var(--sn-teal)">tok1</text>
+      <rect x="492" y="182" width="44" height="22" rx="4" fill="var(--sn-teal-light)" stroke="var(--sn-teal)" stroke-width="0.5"/>
+      <text x="514" y="197" text-anchor="middle" style="font-size:11px;font-weight:500;fill:var(--sn-teal)">tok2</text>
+      <rect x="544" y="182" width="44" height="22" rx="4" fill="var(--sn-teal-light)" stroke="var(--sn-teal)" stroke-width="0.5"/>
+      <text x="566" y="197" text-anchor="middle" style="font-size:11px;font-weight:500;fill:var(--sn-teal)">tok3</text>
+      <text x="612" y="197" text-anchor="middle" style="font-size:13px;fill:var(--color-text-tertiary)">...</text>
+      <line x1="88" y1="168" x2="428" y2="168" stroke="var(--color-text-tertiary)" stroke-width="0.5" stroke-dasharray="2,3"/>
+      <text x="193" y="175" text-anchor="middle" style="font-size:10.5px;fill:var(--color-text-tertiary)">TTFT window</text>
+    </svg>
+    <div class="diagram-caption">Fig 1. Prefill processes the prompt in parallel and builds the KV cache. Decode then generates output one token at a time using that cache.</div>
+  </div>
+
+  <p>The key metrics here are <code>TTFT</code> (Time to First Token) and <code>TPS</code> (Tokens per Second). Optimizing only one is not enough for real workloads. A system with great TTFT but weak decode throughput will still feel slow once long reasoning chains begin.</p>
+
+  <div class="divider"></div>
+
+  <h2 id="rdu">The RDU: A Chip Born for Dataflow</h2>
+  <p>SambaNova's core hardware insight is that a reconfigurable <strong>dataflow architecture</strong> fundamentally outperforms a GPU for the decode phase of inference. The SN40L and SN50 Reconfigurable Dataflow Units were built around this premise.</p>
+
+  <h3>What Makes a GPU Inefficient for Decode</h3>
+  <p>GPUs operate on a SIMD-style execution model and shine when the same operation is broadcast across large tensors. Decode is the opposite. Each step streams large weight slices and KV state, performs relatively modest compute, and then immediately stalls on the next memory movement. The compute-to-memory-access ratio collapses, so the expensive arithmetic fabric waits on data.</p>
+
+  <h3>The Dataflow Difference</h3>
+  <p>An RDU flips the architecture. Rather than a pool of generic cores repeatedly launching kernels, the compute fabric is reconfigured to match the model's dataflow graph at compile time. Data moves through fused operators with fewer redundant trips to external memory. SambaNova's compiler stack translates PyTorch or TensorFlow models into this fused execution graph.</p>
+
+  <div class="diagram-wrap">
+    <svg width="100%" viewBox="0 0 680 260" role="img">
+      <title>GPU versus RDU memory pattern</title>
+      <defs>
+        <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <text x="170" y="28" text-anchor="middle" style="font-size:13px;font-weight:600;fill:var(--sn-blue)">GPU approach</text>
+      <text x="170" y="44" text-anchor="middle" style="font-size:11px;fill:var(--color-text-secondary)">Repeated DRAM trips per kernel</text>
+      <rect x="40" y="58" width="90" height="36" rx="6" fill="var(--sn-blue-light)" stroke="var(--sn-blue)" stroke-width="0.7"/>
+      <text x="85" y="80" text-anchor="middle" style="font-size:12px;font-weight:500;fill:var(--sn-blue)">DRAM</text>
+      <rect x="180" y="55" width="60" height="26" rx="5" fill="var(--sn-blue-light)" stroke="var(--sn-blue)" stroke-width="0.5"/>
+      <text x="210" y="73" text-anchor="middle" style="font-size:11px;fill:var(--sn-blue)">Op A</text>
+      <rect x="180" y="90" width="60" height="26" rx="5" fill="var(--sn-blue-light)" stroke="var(--sn-blue)" stroke-width="0.5"/>
+      <text x="210" y="108" text-anchor="middle" style="font-size:11px;fill:var(--sn-blue)">Op B</text>
+      <rect x="180" y="125" width="60" height="26" rx="5" fill="var(--sn-blue-light)" stroke="var(--sn-blue)" stroke-width="0.5"/>
+      <text x="210" y="143" text-anchor="middle" style="font-size:11px;fill:var(--sn-blue)">Op C</text>
+      <line x1="130" y1="76" x2="178" y2="68" stroke="var(--sn-blue)" stroke-width="1" marker-end="url(#arr2)"/>
+      <line x1="130" y1="76" x2="178" y2="103" stroke="var(--sn-blue)" stroke-width="1" marker-end="url(#arr2)"/>
+      <line x1="130" y1="76" x2="178" y2="138" stroke="var(--sn-blue)" stroke-width="1" marker-end="url(#arr2)"/>
+      <line x1="242" y1="68" x2="130" y2="68" stroke="var(--sn-blue)" stroke-width="1" marker-end="url(#arr2)"/>
+      <line x1="242" y1="103" x2="130" y2="76" stroke="var(--sn-blue)" stroke-width="1" marker-end="url(#arr2)"/>
+      <line x1="242" y1="138" x2="130" y2="84" stroke="var(--sn-blue)" stroke-width="1" marker-end="url(#arr2)"/>
+      <text x="170" y="198" text-anchor="middle" style="font-size:11px;fill:var(--color-text-secondary)">Memory dominates; kernels bounce in and out</text>
+
+      <text x="510" y="28" text-anchor="middle" style="font-size:13px;font-weight:600;fill:var(--sn-teal)">RDU approach</text>
+      <text x="510" y="44" text-anchor="middle" style="font-size:11px;fill:var(--color-text-secondary)">Fused dataflow graph</text>
+      <rect x="374" y="58" width="90" height="36" rx="6" fill="var(--sn-gray-light)" stroke="var(--color-border-secondary)" stroke-width="0.7"/>
+      <text x="419" y="80" text-anchor="middle" style="font-size:12px;font-weight:500;fill:var(--color-text-primary)">Weights / KV</text>
+      <rect x="500" y="55" width="52" height="26" rx="5" fill="var(--sn-teal-light)" stroke="var(--sn-teal)" stroke-width="0.5"/>
+      <text x="526" y="73" text-anchor="middle" style="font-size:11px;fill:var(--sn-teal)">Fuse A</text>
+      <rect x="560" y="55" width="52" height="26" rx="5" fill="var(--sn-teal-light)" stroke="var(--sn-teal)" stroke-width="0.5"/>
+      <text x="586" y="73" text-anchor="middle" style="font-size:11px;fill:var(--sn-teal)">Fuse B</text>
+      <rect x="530" y="95" width="52" height="26" rx="5" fill="var(--sn-teal-light)" stroke="var(--sn-teal)" stroke-width="0.5"/>
+      <text x="556" y="113" text-anchor="middle" style="font-size:11px;fill:var(--sn-teal)">Fuse C</text>
+      <line x1="464" y1="76" x2="498" y2="68" stroke="var(--sn-teal)" stroke-width="1" marker-end="url(#arr2)"/>
+      <line x1="464" y1="76" x2="558" y2="108" stroke="var(--sn-teal)" stroke-width="1" marker-end="url(#arr2)"/>
+      <line x1="552" y1="68" x2="558" y2="94" stroke="var(--sn-teal)" stroke-width="1" marker-end="url(#arr2)"/>
+      <line x1="612" y1="68" x2="586" y2="94" stroke="var(--sn-teal)" stroke-width="1" marker-end="url(#arr2)"/>
+      <text x="510" y="198" text-anchor="middle" style="font-size:11px;fill:var(--color-text-secondary)">Data stays in a tighter graph; fewer wasted trips</text>
+    </svg>
+    <div class="diagram-caption">Fig 2. GPUs repeatedly shuttle data between memory and kernels. RDUs try to keep the execution graph fused so decode spends less time paying that tax.</div>
+  </div>
+
+  <p>The punchline is not that GPUs are bad. It is that decode exposes a very specific weakness in GPU-style execution, and SambaNova designed a different machine around that weakness.</p>
+
+  <div class="divider"></div>
+
+  <h2 id="disaggregation">Disaggregated Inference: The Three-Way Split</h2>
+  <p>SambaNova's bigger systems claim is that inference should not run on one hardware type at all. Instead, each phase should land on the device that actually matches its physics.</p>
+
+  <div class="callout">
+    <div class="callout-label">Architecture thesis</div>
+    <p>GPU for prefill, RDU for decode, x86 CPUs for action and orchestration. That is not vendor politics. It is workload decomposition.</p>
+  </div>
+
+  <div class="diagram-wrap">
+    <svg width="100%" viewBox="0 0 680 320" role="img">
+      <title>Three-way disaggregated inference architecture</title>
+      <defs>
+        <marker id="arr3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <rect x="40" y="55" width="228" height="180" rx="12" fill="var(--sn-blue-light)" stroke="var(--sn-blue)" stroke-width="0.8"/>
+      <text x="154" y="80" text-anchor="middle" style="font-size:11px;font-weight:600;fill:var(--sn-blue);text-transform:uppercase;letter-spacing:.05em">GPU racks</text>
+      <text x="154" y="96" text-anchor="middle" style="font-size:10.5px;fill:var(--sn-blue)">prefill layer</text>
+      <rect x="84" y="110" width="140" height="34" rx="6" fill="var(--color-surface)" stroke="var(--sn-blue)" stroke-width="0.5"/>
+      <text x="154" y="129" text-anchor="middle" style="font-size:11.5px;font-weight:500;fill:var(--sn-blue)">PREFILL</text>
+      <rect x="84" y="150" width="140" height="26" rx="5" fill="var(--color-surface)" stroke="var(--sn-blue)" stroke-width="0.4"/>
+      <text x="154" y="167" text-anchor="middle" style="font-size:10.5px;fill:var(--sn-blue)">Compute-bound</text>
+      <rect x="84" y="182" width="140" height="26" rx="5" fill="var(--color-surface)" stroke="var(--sn-blue)" stroke-width="0.4"/>
+      <text x="154" y="199" text-anchor="middle" style="font-size:10.5px;fill:var(--sn-blue)">Parallel matrix ops</text>
+
+      <line x1="270" y1="145" x2="316" y2="145" stroke="var(--sn-teal)" stroke-width="1.2" marker-end="url(#arr3)"/>
+      <text x="293" y="138" text-anchor="middle" style="font-size:10px;fill:var(--sn-teal)">KV cache</text>
+
+      <rect x="318" y="55" width="138" height="180" rx="12" fill="var(--sn-teal-light)" stroke="var(--sn-teal)" stroke-width="0.8"/>
+      <text x="387" y="80" text-anchor="middle" style="font-size:11px;font-weight:600;fill:var(--sn-teal);text-transform:uppercase;letter-spacing:.05em">SambaRacks</text>
+      <text x="387" y="96" text-anchor="middle" style="font-size:10.5px;fill:var(--sn-teal)">SN40 / SN50 RDUs</text>
+      <rect x="332" y="108" width="110" height="34" rx="6" fill="var(--color-surface)" stroke="var(--sn-teal)" stroke-width="0.5"/>
+      <text x="387" y="127" text-anchor="middle" style="font-size:11.5px;font-weight:500;fill:var(--sn-teal)">DECODE</text>
+      <rect x="332" y="150" width="110" height="26" rx="5" fill="var(--color-surface)" stroke="var(--sn-teal)" stroke-width="0.4"/>
+      <text x="387" y="167" text-anchor="middle" style="font-size:10.5px;fill:var(--sn-teal)">Memory-bandwidth</text>
+      <rect x="332" y="182" width="110" height="26" rx="5" fill="var(--color-surface)" stroke="var(--sn-teal)" stroke-width="0.4"/>
+      <text x="387" y="199" text-anchor="middle" style="font-size:10.5px;fill:var(--sn-teal)">Token-by-token</text>
+
+      <line x1="458" y1="145" x2="490" y2="145" stroke="var(--sn-orange)" stroke-width="1.2" marker-end="url(#arr3)"/>
+      <text x="474" y="138" text-anchor="middle" style="font-size:10px;fill:var(--sn-orange)">actions</text>
+
+      <rect x="492" y="55" width="148" height="180" rx="12" fill="var(--sn-orange-light)" stroke="var(--sn-orange)" stroke-width="0.8"/>
+      <text x="566" y="80" text-anchor="middle" style="font-size:11px;font-weight:600;fill:var(--sn-orange);text-transform:uppercase;letter-spacing:.05em">Intel Xeon 6</text>
+      <text x="566" y="96" text-anchor="middle" style="font-size:10.5px;fill:var(--sn-orange)">action CPUs</text>
+      <rect x="506" y="108" width="120" height="34" rx="6" fill="var(--color-surface)" stroke="var(--sn-orange)" stroke-width="0.5"/>
+      <text x="566" y="127" text-anchor="middle" style="font-size:11.5px;font-weight:500;fill:var(--sn-orange)">ORCHESTRATION</text>
+      <rect x="506" y="150" width="120" height="22" rx="5" fill="var(--color-surface)" stroke="var(--sn-orange)" stroke-width="0.4"/>
+      <text x="566" y="165" text-anchor="middle" style="font-size:10px;fill:var(--sn-orange)">Tool calls and APIs</text>
+      <rect x="506" y="178" width="120" height="22" rx="5" fill="var(--color-surface)" stroke="var(--sn-orange)" stroke-width="0.4"/>
+      <text x="566" y="193" text-anchor="middle" style="font-size:10px;fill:var(--sn-orange)">Compilation and systems</text>
+      <text x="154" y="260" text-anchor="middle" style="font-size:10.5px;fill:var(--color-text-tertiary)">Existing GPU investment</text>
+      <text x="387" y="260" text-anchor="middle" style="font-size:10.5px;fill:var(--color-text-tertiary)">Decode-optimized silicon</text>
+      <text x="566" y="260" text-anchor="middle" style="font-size:10.5px;fill:var(--color-text-tertiary)">Enterprise x86 compatibility</text>
+      <rect x="144" y="275" width="496" height="8" rx="3" fill="none" stroke="var(--color-border-tertiary)" stroke-width="0.5" stroke-dasharray="2,3"/>
+      <text x="392" y="296" text-anchor="middle" style="font-size:10px;fill:var(--color-text-tertiary)">vLLM · SGLang · NIXL across the tiers</text>
+    </svg>
+    <div class="diagram-caption">Fig 3. SambaNova's heterogeneous inference stack: GPUs handle prefill, RDUs handle decode, and Intel Xeon 6 handles the action layer around the model.</div>
+  </div>
+
+  <h3>Why This Makes Sense Economically</h3>
+  <p>Most data centers already have GPU racks. Those GPUs are excellent at prefill. Rather than replacing them entirely, this architecture lets organizations keep existing GPU investment where it performs well and deploy RDUs specifically where GPUs underperform: long-running, memory-bound decode.</p>
+
+  <div class="divider"></div>
+
+  <h2 id="agentic">The Agentic AI Problem: Why Disaggregation Goes Deeper</h2>
+  <p>Simple chatbot inference is one thing. Modern AI systems are increasingly <strong>agentic</strong>: they reason in loops, call external tools, write and execute code, query databases, and interact with messy enterprise software stacks. That introduces a third hardware requirement beyond prefill and decode: <strong>tool execution</strong>.</p>
+
+  <div class="callout">
+    <div class="callout-label">The agentic bottleneck</div>
+    <p>A coding agent can spend most of its wall-clock time waiting on token generation, not because the model is bad, but because decode throughput has not kept pace with longer reasoning chains and tool-rich workflows.</p>
+  </div>
+
+  <p>This is where Intel Xeon 6 enters the design. Those CPUs act both as host CPUs on SambaNova's own cards and as the <strong>action layer</strong> for everything that is not raw model inference: tool calls, API requests, compilation, database queries, and general orchestration.</p>
+
+  <table class="metric-table">
+    <thead>
+      <tr><th>Operation</th><th>Hardware</th><th>Why it fits</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Prompt processing / prefill</td><td>GPU racks</td><td>Compute-dense, parallel matrix operations</td></tr>
+      <tr><td>Token generation / decode</td><td>SambaNova RDUs</td><td>Memory-bandwidth optimized, fused dataflow execution</td></tr>
+      <tr><td>Tool calls and APIs</td><td>Intel Xeon 6</td><td>Native compatibility with enterprise middleware and services</td></tr>
+      <tr><td>Code compilation</td><td>Intel Xeon 6</td><td>CPU-native workflows and mature compiler ecosystem</td></tr>
+      <tr><td>Vector DB and system orchestration</td><td>Intel Xeon 6</td><td>Good fit for general-purpose infrastructure work</td></tr>
+    </tbody>
+  </table>
+
+  <p>Enterprise AI cannot operate in a vacuum. It needs to read from databases, trigger webhooks, query search systems, and interact with decades-old operational software. The x86 layer is what makes agentic AI actually deployable rather than merely benchmarkable.</p>
+
+  <div class="divider"></div>
+
+  <h2 id="software">The Software Stack: Standards Over Silos</h2>
+  <p>Hardware disaggregation only works if the software pieces can communicate cleanly across heterogeneous boundaries. SambaNova's strategy here is notable because it aligns with open-source interfaces rather than pretending the whole stack will remain proprietary forever.</p>
+
+  <div class="hw-grid">
+    <div class="hw-card">
+      <div class="hw-chip" style="background:var(--sn-blue-light);color:var(--sn-blue)">Inference engine</div>
+      <h4>vLLM and SGLang</h4>
+      <p>Open-source inference frameworks that increasingly support heterogeneous and disaggregated execution patterns.</p>
+    </div>
+    <div class="hw-card">
+      <div class="hw-chip" style="background:var(--sn-teal-light);color:var(--sn-teal)">Transport</div>
+      <h4>NIXL</h4>
+      <p>A standardized data-transfer layer for moving artifacts like KV cache between heterogeneous hardware tiers.</p>
+    </div>
+    <div class="hw-card">
+      <div class="hw-chip" style="background:var(--sn-orange-light);color:var(--sn-orange)">Compiler</div>
+      <h4>SambaStack</h4>
+      <p>SambaNova's compiler and runtime layer, evolved from SambaFlow, for translating models into optimized RDU execution graphs.</p>
+    </div>
+  </div>
+
+  <p>The use of standardized transport and open inference stacks suggests something bigger than one vendor announcement: the industry increasingly understands that heterogeneous inference only becomes credible when the seams between hardware types are treated as product surfaces, not as proprietary traps.</p>
+
+  <div class="divider"></div>
+
+  <h2 id="goldilocks">The Goldilocks Zone: Balancing Throughput and Latency</h2>
+  <p>SambaNova frames the problem around a practical trade-off space. The target is not maximum throughput in isolation or minimum latency in isolation. The target is strong decode speed <em>and</em> strong concurrent session count for real agentic workloads.</p>
+
+  <div class="diagram-wrap">
+    <svg width="100%" viewBox="0 0 680 200" role="img">
+      <title>Inference Goldilocks zone</title>
+      <defs>
+        <marker id="arr4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <line x1="80" y1="170" x2="620" y2="170" stroke="var(--color-border-secondary)" stroke-width="1" marker-end="url(#arr4)"/>
+      <line x1="80" y1="170" x2="80" y2="20" stroke="var(--color-border-secondary)" stroke-width="1" marker-end="url(#arr4)"/>
+      <text x="630" y="174" style="font-size:11px;fill:var(--color-text-secondary)">Token speed</text>
+      <text x="24" y="90" text-anchor="middle" style="font-size:11px;fill:var(--color-text-secondary)" transform="rotate(-90,24,90)">Throughput</text>
+      <circle cx="520" cy="145" r="18" fill="var(--sn-blue-light)" stroke="var(--sn-blue)" stroke-width="0.8"/>
+      <text x="520" y="149" text-anchor="middle" style="font-size:10.5px;font-weight:500;fill:var(--sn-blue)">SRAM</text>
+      <text x="520" y="168" text-anchor="middle" style="font-size:10px;fill:var(--color-text-secondary)">fast, rigid</text>
+      <circle cx="180" cy="60" r="22" fill="var(--sn-purple-light)" stroke="var(--sn-purple)" stroke-width="0.8"/>
+      <text x="180" y="57" text-anchor="middle" style="font-size:10.5px;font-weight:500;fill:var(--sn-purple)">GPU</text>
+      <text x="180" y="70" text-anchor="middle" style="font-size:10px;fill:var(--sn-purple)">cluster</text>
+      <text x="180" y="88" text-anchor="middle" style="font-size:10px;fill:var(--color-text-secondary)">throughput-heavy</text>
+      <ellipse cx="400" cy="75" rx="90" ry="55" fill="var(--sn-teal-light)" stroke="var(--sn-teal)" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="400" y="62" text-anchor="middle" style="font-size:12px;font-weight:600;fill:var(--sn-teal)">Goldilocks zone</text>
+      <text x="400" y="79" text-anchor="middle" style="font-size:10.5px;fill:var(--sn-teal)">SambaNova RDUs</text>
+      <text x="400" y="95" text-anchor="middle" style="font-size:10px;fill:var(--sn-teal)">Fast decode + concurrency</text>
+      <text x="390" y="165" text-anchor="middle" style="font-size:10.5px;fill:var(--color-text-tertiary)">Target: agentic inference sweet spot</text>
+    </svg>
+    <div class="diagram-caption">Fig 4. The trade-off space as framed by heterogeneous inference advocates: GPUs are strong at throughput-heavy prefill, SRAM systems at raw speed, and RDUs aim for the middle ground that suits agentic decode.</div>
+  </div>
+
+  <p>Whether every benchmark will agree on the exact shape of this zone is secondary. The systems argument is the important part: the frontier is moving toward mixed architectures because no single device profile cleanly wins every phase of inference anymore.</p>
+
+  <div class="divider"></div>
+
+  <h2 id="power">The Power Angle: Why Air Cooling Matters</h2>
+  <p>There is a dimension to this story that does not show up in isolated throughput charts: deployment realism. Extremely dense GPU racks increasingly drag facilities into liquid-cooling upgrades, power-delivery rewrites, and painful row-level retrofits.</p>
+  <p>SambaNova's air-cooled story matters because many enterprises, sovereign clouds, and public-sector environments cannot casually absorb the rack power densities of the newest GPU generations. Lower power and easier cooling are not aesthetic benefits. They are adoption multipliers.</p>
+
+  <div class="quote-block">
+    <blockquote>The practical infrastructure constraint is often not whether a model can run somewhere, but whether the building can support the system that runs it.</blockquote>
+    <div class="quote-attr">A useful way to read the SambaNova value proposition</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <h2 id="timeline">How We Got Here: A Brief Timeline</h2>
+  <div class="timeline">
+    <div class="tl-item">
+      <div class="tl-year">2017</div>
+      <div class="tl-text">SambaNova Systems is founded around reconfigurable dataflow hardware for machine learning acceleration.</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year">2023</div>
+      <div class="tl-text">SN40L arrives and the company increasingly pivots toward inference rather than training as the primary commercial wedge.</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year">2024</div>
+      <div class="tl-text">SambaNova Cloud appears, turning the hardware thesis into an externally consumable inference service.</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year">2025</div>
+      <div class="tl-text">Managed deployments and broader cloud-service positioning sharpen the company around production inference use cases.</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year">2026</div>
+      <div class="tl-text">SN50, Intel Xeon 6 collaboration, and the public framing of a three-way heterogeneous inference architecture bring the disaggregated story into sharper focus.</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <h2>Where This Fits in the Competitive Landscape</h2>
+  <table class="metric-table">
+    <thead>
+      <tr><th>Approach</th><th>Representative</th><th>Strength</th><th>Limitation</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>GPU-only inference</td><td>NVIDIA H100/H200</td><td>Massive ecosystem, excellent prefill</td><td>Decode underutilization, high power density</td></tr>
+      <tr><td>SRAM-first accelerator</td><td>Groq</td><td>Very low decode latency</td><td>Capacity constraints and tighter scaling envelopes</td></tr>
+      <tr><td>RDU dataflow</td><td>SambaNova SN50</td><td>Decode optimization, air-cooled deployments, large-model support</td><td>Smaller ecosystem than GPUs</td></tr>
+      <tr><td>Heterogeneous disaggregation</td><td>SambaNova + Intel</td><td>Best hardware for each phase, leverages existing GPU investment</td><td>Higher system complexity</td></tr>
+    </tbody>
+  </table>
+
+  <div class="conclusion-box">
+    <h2>The Bigger Picture</h2>
+    <p>SambaNova's disaggregated inference architecture represents a broader shift: the recognition that <strong>inference is not a monolithic workload</strong> and the era of one accelerator type doing everything gracefully is ending.</p>
+    <p>The prefill-decode split exposes a real hardware mismatch that the industry has often papered over by throwing more GPUs at the problem. As models get larger, reasoning chains get longer, and agentic workflows demand both concurrency and fast token emission, that workaround becomes harder to justify economically and physically.</p>
+    <p>The three-way disaggregation of GPUs, RDUs, and x86 CPUs is a clean systems answer to that reality. Whether SambaNova wins the category or not, the architectural direction it is naming feels much bigger than one company.</p>
+  </div>
+
+</div>
+</div>
+
+<div class="site-note">
+  <div class="site-note-card">
+    <p>This essay covers the systems logic behind SambaNova's disaggregated inference strategy: why prefill and decode want different silicon, why agentic AI adds a third orchestration layer, and why open software seams matter as much as raw chip benchmarks.</p>
+  </div>
+</div>
+
+<footer class="site-footer site-global-footer" aria-label="Article footer">
+  <div class="site-footer-inner">
+    <div><strong><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span></strong><br/>Technical essays on AI infrastructure and systems.</div>
+    <div><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></div>
+  </div>
+</footer>
+</body>
+</html>
