@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>The Hidden Cost of KV Cache Compression | MANISH AI</title>
+<meta name="description" content="A systems deep dive into KV cache compression for LLM inference: eviction, quantization, low-rank methods, latency tradeoffs, and why agentic AI makes compression failures much more dangerous than benchmark tables imply."/>
+<meta name="keywords" content="KV cache compression, LLM inference, agentic AI, token eviction, KV quantization, long-context inference, multi-agent systems, memory bandwidth"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/hidden-cost-kv-cache-compression.html"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="The Hidden Cost of KV Cache Compression | MANISH AI"/>
+<meta property="og:description" content="A systems deep dive into KV cache compression for LLM inference: eviction, quantization, low-rank methods, latency tradeoffs, and why agentic AI makes compression failures much more dangerous than benchmark tables imply."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/hidden-cost-kv-cache-compression.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:image" content="https://manishklach.github.io/og/hidden-cost-kv-cache-compression.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="The Hidden Cost of KV Cache Compression by MANISH AI"/>
+<meta property="article:published_time" content="2026-06-04T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-06-04T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="Inference Systems"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="The Hidden Cost of KV Cache Compression"/>
+<meta name="twitter:description" content="A systems deep dive into KV cache compression for LLM inference: eviction, quantization, low-rank methods, latency tradeoffs, and why agentic AI makes compression failures much more dangerous than benchmark tables imply."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/hidden-cost-kv-cache-compression.png"/>
+<meta name="twitter:image:alt" content="The Hidden Cost of KV Cache Compression by MANISH AI"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"The Hidden Cost of KV Cache Compression",
+  "description":"A systems deep dive into KV cache compression for LLM inference: eviction, quantization, low-rank methods, latency tradeoffs, and why agentic AI makes compression failures much more dangerous than benchmark tables imply.",
+  "url":"https://manishklach.github.io/writings/hidden-cost-kv-cache-compression.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/hidden-cost-kv-cache-compression.html",
+  "datePublished":"2026-06-04",
+  "dateModified":"2026-06-04",
+  "articleSection":"Inference Systems",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+  :root {
+    --ink: #0e0e0e;
+    --ink-muted: #4a4a4a;
+    --ink-faint: #888;
+    --paper: #fafaf7;
+    --paper-warm: #f2f0ea;
+    --paper-card: #ffffff;
+    --accent: #c0392b;
+    --accent-muted: #e8d5d3;
+    --accent-dark: #8b2520;
+    --teal: #0d6e6e;
+    --teal-bg: #e0f0ef;
+    --amber: #b35c00;
+    --amber-bg: #fdf0e0;
+    --purple: #5534a4;
+    --purple-bg: #eeebf8;
+    --rule: #d8d4cc;
+    --mono: 'JetBrains Mono', monospace;
+  }
+  html.dark {
+    --ink: #f3efe8;
+    --ink-muted: #c5beb4;
+    --ink-faint: #9f9588;
+    --paper: #11100f;
+    --paper-warm: #1b1815;
+    --paper-card: #171513;
+    --accent-muted: rgba(192,57,43,0.18);
+    --teal-bg: rgba(13,110,110,0.18);
+    --amber-bg: rgba(179,92,0,0.18);
+    --purple-bg: rgba(85,52,164,0.18);
+    --rule: rgba(216,212,204,0.16);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Source Serif 4', Georgia, serif;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 18px;
+    line-height: 1.78;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: color-mix(in srgb, var(--paper-card) 90%, transparent);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .topbar-inner,
+  .article-shell,
+  .toc-shell {
+    width: min(1100px, calc(100% - 32px));
+    margin: 0 auto;
+  }
+  .topbar-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 0;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .brand-mark {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--rule);
+    background: linear-gradient(135deg, var(--accent-muted), var(--teal-bg));
+    color: var(--accent);
+  }
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .nav a,
+  #theme-toggle { color: var(--ink-muted); }
+  #theme-toggle {
+    border: 1px solid currentColor;
+    background: transparent;
+    border-radius: 999px;
+    padding: 6px 11px;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .article-shell {
+    margin: 28px auto 48px;
+    border: 1px solid var(--rule);
+    background: var(--paper-card);
+  }
+
+  .masthead {
+    background: #0e0e0e;
+    color: #fafaf7;
+    padding: 16px 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 3px solid var(--accent);
+  }
+  .masthead-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #fafaf7;
+  }
+  .masthead-tag {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: rgba(192,57,43,0.15);
+    padding: 4px 10px;
+    border: 1px solid rgba(192,57,43,0.3);
+  }
+
+  .hero {
+    background: #0e0e0e;
+    color: #fafaf7;
+    padding: 80px 48px 60px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 40%;
+    height: 100%;
+    background: repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 8px,
+      rgba(192,57,43,0.07) 8px,
+      rgba(192,57,43,0.07) 9px
+    );
+  }
+  .hero-kicker {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .hero-kicker::before {
+    content: '';
+    display: block;
+    width: 32px;
+    height: 2px;
+    background: var(--accent);
+  }
+  .hero h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(34px, 6vw, 52px);
+    line-height: 1.05;
+    max-width: 720px;
+    margin-bottom: 28px;
+    color: #fafaf7;
+    position: relative;
+    z-index: 1;
+  }
+  .hero h1 em {
+    font-style: italic;
+    font-family: 'Source Serif 4', serif;
+    color: #e87068;
+  }
+  .hero-deck {
+    font-family: 'Source Serif 4', serif;
+    font-size: 20px;
+    font-style: italic;
+    color: #b8b4ac;
+    max-width: 640px;
+    line-height: 1.6;
+    position: relative;
+    z-index: 1;
+    margin-bottom: 36px;
+  }
+  .hero-meta {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex-wrap: wrap;
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: #888;
+    position: relative;
+    z-index: 1;
+  }
+  .hero-meta span { color: #f2f0ea; }
+
+  .article-wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 48px 80px;
+  }
+
+  .toc-shell {
+    margin: 26px auto 0;
+  }
+  .toc-block {
+    background: var(--paper-card);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--accent);
+    padding: 28px 32px;
+    margin: 0 0 32px;
+  }
+  .toc-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+  .toc-block ol {
+    list-style: decimal;
+    padding-left: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 24px;
+  }
+  .toc-block li {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--ink-muted);
+  }
+  .toc-block a {
+    color: var(--ink-muted);
+    text-decoration: none;
+  }
+  .toc-block a:hover { color: var(--accent); }
+
+  h2.section-head {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 26px;
+    line-height: 1.2;
+    color: var(--ink);
+    margin-top: 64px;
+    margin-bottom: 20px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  h2.section-head .num {
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    background: var(--accent-muted);
+    padding: 3px 8px;
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+  h3.sub-head {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 17px;
+    color: var(--ink);
+    margin-top: 36px;
+    margin-bottom: 12px;
+  }
+  p { margin-bottom: 22px; }
+  .lead {
+    font-size: 20px;
+    font-weight: 300;
+    line-height: 1.7;
+    color: var(--ink);
+    margin-bottom: 28px;
+    font-style: italic;
+  }
+
+  .callout {
+    background: var(--paper-warm);
+    border-left: 3px solid var(--ink);
+    padding: 20px 24px;
+    margin: 32px 0;
+    font-size: 17px;
+    line-height: 1.65;
+  }
+  .callout-danger {
+    background: #fdf1f0;
+    border-left: 3px solid var(--accent);
+  }
+  html.dark .callout-danger { background: rgba(192,57,43,0.12); }
+  .callout-info {
+    background: var(--teal-bg);
+    border-left: 3px solid var(--teal);
+  }
+  .callout-warn {
+    background: var(--amber-bg);
+    border-left: 3px solid var(--amber);
+  }
+  .callout strong {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 6px;
+    color: var(--ink-muted);
+  }
+  .callout-danger strong { color: var(--accent-dark); }
+  .callout-info strong { color: var(--teal); }
+  .callout-warn strong { color: var(--amber); }
+
+  .technique-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 32px 0;
+  }
+  .technique-card {
+    background: var(--paper-card);
+    border: 1px solid var(--rule);
+    padding: 22px 24px;
+    position: relative;
+  }
+  .technique-card::before {
+    content: attr(data-num);
+    position: absolute;
+    top: 16px;
+    right: 18px;
+    font-family: 'Syne', sans-serif;
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--paper-warm);
+    line-height: 1;
+  }
+  .technique-card h4 {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+  .technique-card p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--ink-muted);
+    margin-bottom: 14px;
+  }
+
+  .badge {
+    display: inline-block;
+    font-family: 'Syne', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+  }
+  .badge-red { background: var(--accent-muted); color: var(--accent-dark); }
+  .badge-green { background: #e0f0e0; color: #1a6b1a; }
+  html.dark .badge-green { background: rgba(26,107,26,0.18); color: #86d786; }
+  .badge-amber { background: var(--amber-bg); color: var(--amber); }
+  .badge-teal { background: var(--teal-bg); color: var(--teal); }
+  .badge-purple { background: var(--purple-bg); color: var(--purple); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: var(--paper-warm);
+    padding: 2px 6px;
+    border: 1px solid var(--rule);
+    color: var(--ink);
+  }
+
+  .impact-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 28px 0;
+    font-size: 14px;
+  }
+  .impact-table th {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--rule);
+  }
+  .impact-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+  .impact-table tr:last-child td { border-bottom: none; }
+  .impact-table tr:nth-child(even) td { background: var(--paper); }
+
+  .pullquote {
+    font-family: 'Source Serif 4', serif;
+    font-size: 24px;
+    font-weight: 300;
+    font-style: italic;
+    line-height: 1.45;
+    color: var(--ink);
+    padding: 36px 0 36px 28px;
+    border-left: 3px solid var(--accent);
+    margin: 40px 0;
+  }
+
+  .diagram-box {
+    background: #0e0e0e;
+    color: #fafaf7;
+    padding: 32px;
+    margin: 32px 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.8;
+    overflow-x: auto;
+  }
+  .diagram-box .comment { color: #888; }
+  .diagram-box .highlight { color: #e87068; }
+  .diagram-box .ok { color: #7ec87e; }
+  .diagram-box .warn { color: #f0c060; }
+
+  .flow-strip {
+    display: flex;
+    align-items: stretch;
+    margin: 28px 0;
+    border: 1px solid var(--rule);
+    overflow: hidden;
+  }
+  .flow-step {
+    flex: 1;
+    padding: 18px 16px;
+    background: var(--paper-card);
+    border-right: 1px solid var(--rule);
+    position: relative;
+  }
+  .flow-step:last-child { border-right: none; }
+  .flow-step.broken { background: #fdf1f0; }
+  html.dark .flow-step.broken { background: rgba(192,57,43,0.12); }
+  .flow-step-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 6px;
+  }
+  .flow-step h5 {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .flow-step.broken h5 { color: var(--accent-dark); }
+  .flow-step p {
+    font-size: 12px;
+    color: var(--ink-muted);
+    line-height: 1.5;
+    margin: 0;
+  }
+  .flow-step.broken::after {
+    content: '!';
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 14px;
+    color: var(--accent);
+    font-family: var(--mono);
+  }
+
+  .section-divider {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 72px 0 0;
+  }
+  .section-divider::before, .section-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--rule);
+  }
+  .section-divider span {
+    font-family: 'Syne', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .closing-note {
+    background: #0e0e0e;
+    color: #fafaf7;
+    padding: 48px;
+    margin-top: 72px;
+  }
+  .closing-note h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    color: #fafaf7;
+    margin-bottom: 16px;
+  }
+  .closing-note p {
+    font-size: 16px;
+    line-height: 1.7;
+    color: #b8b4ac;
+    margin-bottom: 0;
+  }
+  .closing-note p:not(:last-child) { margin-bottom: 16px; }
+
+  ul.prose-list {
+    padding-left: 0;
+    list-style: none;
+    margin-bottom: 22px;
+  }
+  ul.prose-list li {
+    padding-left: 22px;
+    position: relative;
+    font-size: 17px;
+    line-height: 1.7;
+    margin-bottom: 10px;
+    color: var(--ink);
+  }
+  ul.prose-list li::before {
+    content: '-';
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  @media (max-width: 760px) {
+    .hero { padding: 48px 24px 40px; }
+    .article-wrap { padding: 0 24px 60px; }
+    .masthead { padding: 12px 24px; }
+    .hero h1 { font-size: 34px; }
+    .technique-grid, .toc-block ol { grid-template-columns: 1fr; }
+    .flow-strip { display: grid; }
+    .flow-step { border-right: none; border-bottom: 1px solid var(--rule); }
+    .flow-step:last-child { border-bottom: none; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/index.html" aria-label="MANISH AI home">
+      <span class="brand-mark">▣</span>
+      <span>MAN<span class="logo-i">\</span>SH AI</span>
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a href="/writings.html">Writings</a>
+      <a href="/patents.html">Patents</a>
+      <a href="/feed.xml">RSS</a>
+      <button id="theme-toggle" type="button" aria-label="Toggle light and dark mode">Theme</button>
+    </nav>
+  </div>
+</header>
+
+<div class="toc-shell">
+  <nav class="toc-block" aria-label="Contents">
+    <div class="toc-label">Contents</div>
+    <ol>
+      <li><a href="#primer">What is the KV cache?</a></li>
+      <li><a href="#why">Why compress at all?</a></li>
+      <li><a href="#techniques">The compression taxonomy</a></li>
+      <li><a href="#accuracy">Accuracy and coherence losses</a></li>
+      <li><a href="#latency">Latency and throughput effects</a></li>
+      <li><a href="#agentic">Impact on agentic AI</a></li>
+      <li><a href="#multiagent">Large-scale multi-agent systems</a></li>
+      <li><a href="#tradeoffs">The hard tradeoffs</a></li>
+      <li><a href="#outlook">Future directions</a></li>
+    </ol>
+  </nav>
+</div>
+
+<div class="article-shell">
+<header class="masthead">
+  <span class="masthead-title">Systems &amp; AI Infrastructure</span>
+  <span class="masthead-tag">Deep Dive · June 2026</span>
+</header>
+
+<section class="hero">
+  <div class="hero-kicker">KV Cache · LLM Inference · Agentic AI</div>
+  <h1>The Hidden Cost of<br><em>Compressing</em><br>KV Cache</h1>
+  <p class="hero-deck">Every token you evict, quantize, or merge is a decision the model can never revisit. Here is what the benchmarks do not tell you, and why it matters far more in agentic systems.</p>
+  <div class="hero-meta">
+    <span>Approx. 4,800 words</span>
+    <span>·</span>
+    <span>Systems Architecture</span>
+    <span>·</span>
+    <span>June 4, 2026</span>
+  </div>
+</section>
+
+<main class="article-wrap">
+  <p class="lead">Compression is always a bargain. You give up fidelity in exchange for efficiency. In image compression, the artifacts are visible pixels. In KV cache compression, the artifacts are invisible, until your agent forgets a constraint from 40 messages ago and corrupts a 12-step workflow.</p>
+
+  <p>The KV cache is one of the most important optimizations in modern LLM inference. It is also, increasingly, one of the most dangerous places to cut corners. As context windows stretch into the hundreds of thousands of tokens and agentic systems maintain live state across dozens of sequential steps, the memory pressure on KV cache has become a first-class engineering problem, and the solutions being deployed have consequences far beyond simple accuracy benchmarks.</p>
+
+  <p>This essay examines the current state of KV cache compression: what techniques are in use, what they genuinely deliver, and, crucially, what they silently break, especially in the agentic workloads that are rapidly becoming the dominant deployment pattern for frontier LLMs.</p>
+
+  <h2 class="section-head" id="primer"><span class="num">01</span>What is the KV cache, and why does it grow?</h2>
+  <p>During transformer inference, self-attention needs, for each new token generated, to compute attention scores against every previous token. Without caching, this would require reprocessing the entire input on every decoding step.</p>
+  <p>The KV cache solves this by storing the key and value vectors computed for all previous tokens. Each new decoding step reads from this cache rather than recomputing from scratch. The result is that decoding becomes incremental rather than a full sequence re-scan.</p>
+
+  <div class="diagram-box">
+<span class="comment">// KV cache growth during inference</span>
+
+<span class="ok">Token 1</span>:  K1, V1  -> cache size: 1 x (d_head x n_heads x n_layers x 2) x sizeof(dtype)
+<span class="ok">Token 2</span>:  K2, V2  -> cache size: 2 x ...
+<span class="warn">Token 8192</span>: K8192, V8192 -> <span class="highlight">many GB for a large model</span>
+
+<span class="comment">// Prefill: quadratic attention cost</span>
+<span class="comment">// Decode: cache grows until end-of-turn, and memory dominates</span>
+  </div>
+
+  <p>The memory footprint is not trivial. For large frontier models, a single long sequence can consume many gigabytes of memory in KV cache alone, before accounting for the model weights themselves. At production batch sizes, that pressure becomes severe.</p>
+  <p>As applications have moved toward longer contexts, RAG pipelines, multi-document reasoning, and autonomous code agents reading entire repositories, the pressure has become critical. Models now advertise context windows of 128K, 200K, and beyond, but the hardware to serve them naively at scale does not exist at reasonable cost. Compression became inevitable.</p>
+
+  <h2 class="section-head" id="why"><span class="num">02</span>Why compress: the economic and physical constraints</h2>
+  <p>The core constraint is memory bandwidth, not just capacity. Modern accelerators can hold large caches, but every decode step must still read the entire active KV region into the compute fabric. At long sequence lengths, that load operation dominates decode latency.</p>
+
+  <div class="callout callout-info">
+    <strong>The bandwidth wall</strong>
+    During decode, generating each output token requires reading the active KV cache from accelerator memory. At very long contexts, tens of gigabytes can move per token step. Long before arithmetic runs out, bandwidth becomes the bottleneck.
+  </div>
+
+  <p>Serving infrastructure must also batch concurrent requests. The KV cache for each active sequence occupies a distinct region of memory. High-traffic deployments serving thousands of users need KV caches for all of them to fit simultaneously, or accept the latency penalty of swapping to slower tiers.</p>
+  <p>Compression is therefore the lever that makes production serving of long-context models economically viable. Reduce each session's KV footprint by 4x, and you can serve more concurrent users on the same hardware or serve the same users at longer context lengths. The business case is obvious. The question is what you sacrifice.</p>
+
+  <h2 class="section-head" id="techniques"><span class="num">03</span>A taxonomy of current compression techniques</h2>
+  <p>Research in this area has produced a rich landscape of methods. They cluster into four main families, often combined in hybrids.</p>
+
+  <div class="technique-grid">
+    <div class="technique-card" data-num="I">
+      <h4>Token eviction and selective compression</h4>
+      <p>Removes KV pairs for tokens deemed unimportant based on attention scores, recency, or learned importance metrics. Once evicted, those tokens cannot be attended to again.</p>
+      <p>Examples include <code>StreamingLLM</code>, <code>H2O</code>, <code>SnapKV</code>, <code>TOVA</code>, and related policies.</p>
+      <span class="badge badge-red">Lossy · Irreversible</span>
+    </div>
+    <div class="technique-card" data-num="II">
+      <h4>KV quantization</h4>
+      <p>Reduces numerical precision of stored key and value vectors, for example from FP16 to INT8, INT4, or even lower-bit formats.</p>
+      <p>Examples include <code>KIVI</code>, <code>KVQuant</code>, and more aggressive low-bit variants.</p>
+      <span class="badge badge-amber">Lossy · Structured</span>
+    </div>
+    <div class="technique-card" data-num="III">
+      <h4>Low-rank and channel-axis compression</h4>
+      <p>Uses low-rank structure across heads and layers, often with SVD-style projections or latent compression.</p>
+      <p>Examples include <code>Palu</code>, <code>CommonKV</code>, <code>EchoKV</code>, and model-native latent-attention approaches.</p>
+      <span class="badge badge-purple">Structural</span>
+    </div>
+    <div class="technique-card" data-num="IV">
+      <h4>Hybrid memory-tier strategies</h4>
+      <p>Keeps some KV blocks hot in fast memory and demotes older or colder blocks to slower tiers rather than fully compressing them away.</p>
+      <p>This shifts the problem toward runtime orchestration and memory-system design.</p>
+      <span class="badge badge-teal">Tiered · Runtime heavy</span>
+    </div>
+  </div>
+
+  <p>The important point is that these methods do not fail in the same way. Eviction changes semantics. Quantization distorts values. Low-rank methods reshape representational structure. Tiered approaches trade fidelity loss for latency and orchestration complexity.</p>
+
+  <h2 class="section-head" id="accuracy"><span class="num">04</span>Accuracy and coherence losses are rarely local</h2>
+  <p>Published compression results are often presented as small benchmark deltas: a few points on retrieval, QA, or reasoning tasks. That framing is too forgiving. In real systems, errors caused by cache compression are not always smooth degradations. They can be discrete failures.</p>
+
+  <h3 class="sub-head">Eviction silently changes what the model is allowed to remember</h3>
+  <p>When token eviction decides that an old instruction, tool result, or constraint is no longer important enough to retain, the model does not merely become fuzzier about it. It loses the ability to attend to it at all. That is a structural removal of information, not a probabilistic weakening.</p>
+
+  <div class="callout callout-danger">
+    <strong>What the benchmark misses</strong>
+    A model that loses one instruction in a long agent trace may still produce locally fluent output. The failure only becomes visible when you compare the later action to the original instruction that has already been evicted.
+  </div>
+
+  <p>Quantization looks gentler because the information is still there in compressed form, but aggressive low-bit quantization can still distort attention enough to damage retrieval, reasoning, or code-state tracking. And low-rank approximations can smooth over distinctions that mattered more than the compressive heuristic understood.</p>
+
+  <div class="pullquote">The problem is not simply that compression lowers quality. The problem is that it changes the memory model the system is reasoning over, often without any explicit signal that this happened.</div>
+
+  <h2 class="section-head" id="latency"><span class="num">05</span>Latency, throughput, and the prefill-decode coupling problem</h2>
+  <p>The narrative around KV compression is usually framed in terms of memory savings: shrink the cache, serve more users. The latency picture is much messier.</p>
+
+  <h3 class="sub-head">Compression overhead during prefill</h3>
+  <p>Many methods require analysis of the KV tensor during or after prefill to decide what to evict or how to quantize. That adds work to the already expensive prefill phase. For very long prompts, this can directly worsen time-to-first-token even if later decode steps become cheaper.</p>
+
+  <h3 class="sub-head">The prefill-decode coupling trap</h3>
+  <p>Some methods accelerate serving by reducing context early in the forward pass, which means the decode stage inherits the consequences of compression choices made before the model has fully settled on what matters. The decode phase may later need to revisit context that prefill-time compression already discarded.</p>
+
+  <p>Quantized caches add another wrinkle: every decode step may require dequantization before attention can run. That reduces bandwidth pressure but adds compute overhead. The net effect depends heavily on the workload and hardware regime.</p>
+
+  <div class="callout">
+    <strong>The real trade</strong>
+    Quantization often turns a bandwidth problem into a mixed bandwidth-and-compute problem. On bandwidth-saturated workloads this can be a win. On the wrong workload, it merely moves the bottleneck rather than removing it.
+  </div>
+
+  <h2 class="section-head" id="agentic"><span class="num">06</span>Impact on agentic AI: where compression turns systemic</h2>
+  <p>Single-turn inference is forgiving. A compressed response that loses nuance is a quality issue. A user can ask again. The error is local.</p>
+  <p>Agentic AI is not forgiving. Agents maintain multi-step plans, execute tool calls with external effects, track task state across long contexts, and often operate without a human in the immediate loop. Errors introduced by KV compression compound across steps in ways that are qualitatively different from single-turn degradation.</p>
+
+  <h3 class="sub-head">The long-horizon coherence problem</h3>
+  <p>A long-horizon agentic task can unfold across dozens or hundreds of reasoning steps. The KV cache in such a task is not background context. It is the active working memory of the system.</p>
+
+  <div class="flow-strip">
+    <div class="flow-step">
+      <div class="flow-step-num">Step 1</div>
+      <h5>Task decomposition</h5>
+      <p>Agent reads goals, constraints, and tools. KV stores the full context.</p>
+    </div>
+    <div class="flow-step">
+      <div class="flow-step-num">Step 8</div>
+      <h5>Mid-task retrieval</h5>
+      <p>Agent fetches documents. Cache pressure rises. Compression begins.</p>
+    </div>
+    <div class="flow-step broken">
+      <div class="flow-step-num">Step 15</div>
+      <h5>Constraint evicted</h5>
+      <p>An original low-attention constraint disappears from working memory.</p>
+    </div>
+    <div class="flow-step broken">
+      <div class="flow-step-num">Step 22</div>
+      <h5>Downstream failure</h5>
+      <p>The agent violates the forgotten constraint and produces a wrong external action.</p>
+    </div>
+  </div>
+
+  <p>This is particularly dangerous because the final output may still look locally coherent. Only by comparing the later action against the original instruction do you discover the failure. That makes compression-induced errors hard to observe, harder to debug, and easy to misattribute.</p>
+
+  <h3 class="sub-head">Tool-call integrity</h3>
+  <p>Agentic systems issue API requests, file operations, database writes, and other actions with external effects. If compression evicts state-tracking tokens, the agent may issue duplicate tool calls, omit required parameters, or violate ordering constraints. Those are not just textual mistakes. They are systems reliability failures.</p>
+
+  <div class="callout callout-danger">
+    <strong>External-effect irreversibility</strong>
+    A text-generation error can be corrected in the next turn. A file overwritten, row deleted, or API called with bad parameters may not be recoverable at all.
+  </div>
+
+  <h2 class="section-head" id="multiagent"><span class="num">07</span>Large-scale multi-agent systems: the problems compound</h2>
+  <p>Single-agent systems already expose KV compression as a reliability concern. Multi-agent deployments add more failure modes.</p>
+
+  <h3 class="sub-head">Cross-agent context transmission</h3>
+  <p>In orchestrator-worker pipelines, one agent often hands context to another. If compressed caches or compressed summaries are handed across agents, the artifacts from one agent's attention pattern become the starting point for another agent with different information needs. The compression is now being applied under the wrong semantic model.</p>
+
+  <h3 class="sub-head">Cache contention and priority inversion</h3>
+  <p>In production, many agent sessions share the same memory pool. When aggregate KV demand exceeds available memory, the system may evict not just tokens but entire active sessions or cold-but-important state. A stalled agent waiting on a tool call can easily lose its cache to a less important but busier session, creating expensive recomputation and weird tail latencies.</p>
+
+  <h3 class="sub-head">Distributed handoff costs</h3>
+  <p>Distributed multi-agent systems often need to move context between nodes. Compression reduces transfer volume, but now the handoff is no longer lossless. The system must choose between transfer latency and context fidelity, and many stacks make that trade implicitly rather than explicitly.</p>
+
+  <table class="impact-table">
+    <thead>
+      <tr>
+        <th>System property</th>
+        <th>Single inference</th>
+        <th>Single agent</th>
+        <th>Multi-agent pipeline</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Error locality</td>
+        <td>Local to response</td>
+        <td>Propagates within session</td>
+        <td>Propagates across agents</td>
+      </tr>
+      <tr>
+        <td>Error visibility</td>
+        <td>Often detectable</td>
+        <td>Detectable with logging</td>
+        <td>Often invisible downstream</td>
+      </tr>
+      <tr>
+        <td>External effects</td>
+        <td>None</td>
+        <td>Tool calls and writes</td>
+        <td>Compound external effects</td>
+      </tr>
+      <tr>
+        <td>Compression sensitivity</td>
+        <td>Low to medium</td>
+        <td>Medium to high</td>
+        <td>Very high</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>The larger lesson is that KV compression stops being a local inference optimization once agents share, inherit, or depend on compressed working memory over time.</p>
+
+  <h2 class="section-head" id="tradeoffs"><span class="num">08</span>The hard tradeoffs: what you are actually choosing</h2>
+  <p>Framing KV compression as a memory optimization misses the deeper point. What you are actually doing is making irreversible information-loss decisions on behalf of the model, using heuristics often calibrated on benchmark distributions that may not match your workload.</p>
+
+  <ul class="prose-list">
+    <li><strong>Memory versus correctness:</strong> every evicted token is gone. In long agent traces, this can become a structural inability to complete the task correctly.</li>
+    <li><strong>Throughput versus latency:</strong> compression may enable more concurrent sessions while making individual requests slower, especially at TTFT.</li>
+    <li><strong>Mild versus aggressive compression:</strong> 2x compression may cause tolerable drift. 8x or 16x compression can create sharp behavioral discontinuities.</li>
+    <li><strong>Task-agnostic versus task-aware policies:</strong> a code agent and a creative assistant do not have the same token-importance structure, so one generic eviction policy is rarely ideal.</li>
+    <li><strong>Static versus adaptive strategies:</strong> fixed compression ratios are simple. Adaptive policies are more faithful to workload reality, but much harder to engineer.</li>
+  </ul>
+
+  <div class="callout callout-danger">
+    <strong>The enterprise deployment gap</strong>
+    In real enterprise use cases, the most damaging failures are rarely visible in standard benchmark tables. They show up as forgotten constraints, corrupted tool actions, or silently degraded long-horizon reasoning.
+  </div>
+
+  <h2 class="section-head" id="outlook"><span class="num">09</span>Future directions: beyond the compression-accuracy tradeoff</h2>
+  <p>The field is increasingly recognizing that the framing of KV compression as a simple compression-versus-accuracy tradeoff is too narrow. Several more promising directions are emerging.</p>
+
+  <h3 class="sub-head">Task-aware and structure-aware compression</h3>
+  <p>Rather than applying uniform attention-score eviction across all token types, task-aware methods try to protect semantically critical material: variable definitions in code, constraints in multi-instruction prompts, schema anchors in tool-rich workflows.</p>
+
+  <h3 class="sub-head">Recoverable compression</h3>
+  <p>Instead of irreversible deletion, some methods try to summarize, project, or reconstruct lower-dimensional variants that can be partially recovered if needed. That does not make compression free, but it changes the failure mode from hard deletion to approximation.</p>
+
+  <h3 class="sub-head">Hardware-software co-design</h3>
+  <p>Lossy compression is not the only answer. Tiered memory, near-memory processing, and better runtime orchestration may let systems keep more KV state intact while paying complexity elsewhere in the stack.</p>
+
+  <h3 class="sub-head">Model-native compression</h3>
+  <p>The strongest long-term answer may be to train architectures that need less KV cache by design. If compression is built into the model's representational structure rather than bolted on after the fact, the tradeoffs become cleaner.</p>
+
+  <div class="section-divider"><span>Conclusion</span></div>
+
+  <div class="closing-note">
+    <h3>The bottom line for builders</h3>
+    <p>KV cache compression is not optional at production scale. The memory economics of modern LLMs make some form of compression necessary for viable serving.</p>
+    <p>But it is not free, and the cost is not uniformly distributed across use cases. For bounded single-turn applications, conservative compression can be quite safe. For long-horizon agentic systems, especially those with external tool access and irreversible effects, current compression techniques introduce reliability risks that standard accuracy benchmarks do a poor job of surfacing.</p>
+    <p>The right engineering discipline is not “apply compression, check a benchmark, ship.” It is: understand your workload's memory semantics, know which failures are acceptable, instrument the system to detect behavioral discontinuities, and choose strategies that fit the structure of the task, not just the budget of the hardware.</p>
+    <p>The benchmarks say compression is safe. The agentic systems say otherwise. Trust the systems.</p>
+  </div>
+</main>
+</div>
+
+<footer class="site-footer site-global-footer" aria-label="Article footer">
+  <div class="site-footer-inner">
+    <div><strong><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span></strong><br/>Technical essays on AI infrastructure and systems.</div>
+    <div><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></div>
+  </div>
+</footer>
+</body>
+</html>
