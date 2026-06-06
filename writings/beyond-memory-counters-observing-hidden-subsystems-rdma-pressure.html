@@ -1,0 +1,1653 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Beyond Memory Counters: Observing the Hidden Subsystems Under RDMA Pressure | MANISH AI</title>
+<meta name="description" content="A deep guide to Linux subsystem observability under RDMA pressure, from PCIe AER and IOMMU faults to softirq squeeze, NUMA drift, GPU BAR1 pressure, and cgroup-level failure chains.">
+<meta name="keywords" content="RDMA observability, Linux subsystem observability, PCIe AER, IOMMU DMA faults, softirq pressure, NUMA drift, mlx5, devlink health, GPU BAR1, Linux performance debugging">
+<meta name="author" content="MANISH AI">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://manishklach.github.io/writings/beyond-memory-counters-observing-hidden-subsystems-rdma-pressure.html">
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Beyond Memory Counters: Observing the Hidden Subsystems Under RDMA Pressure | MANISH AI">
+<meta property="og:description" content="A deep guide to Linux subsystem observability under RDMA pressure, from PCIe AER and IOMMU faults to softirq squeeze, NUMA drift, GPU BAR1 pressure, and cgroup-level failure chains.">
+<meta property="og:url" content="https://manishklach.github.io/writings/beyond-memory-counters-observing-hidden-subsystems-rdma-pressure.html">
+<meta property="og:site_name" content="MANISH AI Writings">
+<meta property="og:image" content="https://manishklach.github.io/og/beyond-memory-counters-observing-hidden-subsystems-rdma-pressure.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Beyond Memory Counters by MANISH AI">
+<meta property="article:published_time" content="2026-06-06T00:00:00Z">
+<meta property="article:modified_time" content="2026-06-06T00:00:00Z">
+<meta property="article:author" content="MANISH AI">
+<meta property="article:section" content="Linux / RDMA Observability">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Beyond Memory Counters: Observing the Hidden Subsystems Under RDMA Pressure">
+<meta name="twitter:description" content="A deep guide to Linux subsystem observability under RDMA pressure, from PCIe AER and IOMMU faults to softirq squeeze, NUMA drift, GPU BAR1 pressure, and cgroup-level failure chains.">
+<meta name="twitter:image" content="https://manishklach.github.io/og/beyond-memory-counters-observing-hidden-subsystems-rdma-pressure.png">
+<meta name="twitter:image:alt" content="Beyond Memory Counters by MANISH AI">
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"Beyond Memory Counters: Observing the Hidden Subsystems Under RDMA Pressure",
+  "description":"A deep guide to Linux subsystem observability under RDMA pressure, from PCIe AER and IOMMU faults to softirq squeeze, NUMA drift, GPU BAR1 pressure, and cgroup-level failure chains.",
+  "url":"https://manishklach.github.io/writings/beyond-memory-counters-observing-hidden-subsystems-rdma-pressure.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/beyond-memory-counters-observing-hidden-subsystems-rdma-pressure.html",
+  "datePublished":"2026-06-06",
+  "dateModified":"2026-06-06",
+  "articleSection":"Linux / RDMA Observability",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,700;1,9..144,300;1,9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml">
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention">
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+:root {
+  --bg:        #f5f2eb;
+  --bg2:       #edeae1;
+  --ink:       #1a1812;
+  --ink2:      #3d3a30;
+  --muted:     #8a8578;
+  --border:    #d8d4c8;
+  --accent:    #c0392b;       /* deep red */
+  --accent2:   #2980b9;       /* steel blue */
+  --accent3:   #27ae60;       /* terminal green */
+  --amber:     #d35400;
+  --surface:   #ffffff;
+  --code-bg:   #1c1c1e;
+  --code-text: #e8e8e0;
+}
+
+html.dark {
+  --bg: #0f1013;
+  --bg2: #17191f;
+  --ink: #ece8de;
+  --ink2: #c9c1b2;
+  --muted: #9d9586;
+  --border: #313640;
+  --accent: #ff7b5c;
+  --accent2: #6db5ff;
+  --accent3: #58d68d;
+  --amber: #ff9f43;
+  --surface: #16191f;
+  --code-bg: #0d1117;
+  --code-text: #f1efe8;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 17px;
+  line-height: 1.8;
+  overflow-x: hidden;
+}
+
+.topbar {
+  position: sticky; top: 0; z-index: 120;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--accent);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.nav a,
+#theme-toggle {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: none;
+}
+
+#theme-toggle {
+  border: 1px solid currentColor;
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 11px;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ── GRAIN ── */
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 999;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.04'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+
+/* ── PROGRESS ── */
+#prog {
+  position: fixed; top: 0; left: 0; height: 3px;
+  background: var(--accent);
+  z-index: 1000; width: 0%;
+}
+
+/* ── LAYOUT ── */
+.page-wrap {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 0;
+  min-height: 100vh;
+}
+
+/* ── SIDEBAR ── */
+aside {
+  position: sticky; top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--ink);
+  color: #e8e4d8;
+  padding: 2.5rem 1.5rem;
+  border-right: 0;
+  display: flex; flex-direction: column;
+}
+
+.sidebar-brand {
+  font-family: 'Fraunces', serif;
+  font-size: 0.85rem;
+  font-weight: 300;
+  letter-spacing: 0.05em;
+  color: rgba(232,228,216,0.5);
+  margin-bottom: 2.5rem;
+  line-height: 1.4;
+}
+
+.sidebar-brand strong {
+  display: block;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e8e4d8;
+  margin-bottom: 0.2rem;
+}
+
+.sidebar-nav { flex: 1; }
+
+.sidebar-nav p {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(232,228,216,0.35);
+  margin-bottom: 0.8rem;
+  margin-top: 1.5rem;
+}
+
+.sidebar-nav p:first-child { margin-top: 0; }
+
+.sidebar-nav a {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.78rem;
+  color: rgba(232,228,216,0.65);
+  text-decoration: none;
+  padding: 0.35rem 0;
+  border-left: 2px solid transparent;
+  padding-left: 0.5rem;
+  transition: all 0.2s;
+  line-height: 1.3;
+}
+
+.sidebar-nav a:hover,
+.sidebar-nav a.active {
+  color: #e8e4d8;
+  border-left-color: var(--accent);
+}
+
+.sidebar-nav a .num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.6rem;
+  color: rgba(232,228,216,0.3);
+  flex-shrink: 0;
+}
+
+.sidebar-footer {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.6rem;
+  color: rgba(232,228,216,0.25);
+  letter-spacing: 0.05em;
+  margin-top: 2rem;
+}
+
+/* ── MAIN ── */
+main {
+  min-width: 0;
+  max-width: 820px;
+  padding: 0 3.5rem 6rem;
+  margin: 0 auto;
+}
+
+/* ── HERO ── */
+.hero {
+  padding: 4rem 0 3rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4rem;
+  position: relative;
+}
+
+.hero-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.67rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1.2rem;
+  display: flex; align-items: center; gap: 0.6rem;
+}
+
+.hero-label::before {
+  content: '';
+  display: inline-block;
+  width: 24px; height: 2px;
+  background: var(--accent);
+}
+
+h1 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(2.2rem, 5vw, 3.6rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin-bottom: 1.2rem;
+}
+
+h1 em {
+  font-style: italic;
+  color: var(--accent);
+}
+
+.hero-sub {
+  font-size: 1.1rem;
+  color: var(--ink2);
+  max-width: 580px;
+  line-height: 1.65;
+  margin-bottom: 2rem;
+}
+
+.hero-meta {
+  display: flex; gap: 2rem; flex-wrap: wrap;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+/* ── SECTION ── */
+section {
+  margin-bottom: 5rem;
+  scroll-margin-top: 2rem;
+}
+
+h2 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  margin-bottom: 1.4rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+}
+
+.sec-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.2em 0.55em;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.tag-red   { background: rgba(192,57,43,0.1);  color: var(--accent); }
+.tag-blue  { background: rgba(41,128,185,0.1); color: var(--accent2); }
+.tag-green { background: rgba(39,174,96,0.1);  color: var(--accent3); }
+.tag-amber { background: rgba(211,84,0,0.1);   color: var(--amber); }
+.tag-grey  { background: rgba(138,133,120,0.1); color: var(--muted); }
+
+h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 2.4rem 0 0.7rem;
+  font-style: italic;
+}
+
+p { margin-bottom: 1.1rem; color: var(--ink2); }
+p strong { color: var(--ink); font-weight: 600; }
+
+a { color: var(--accent2); text-decoration: underline; text-decoration-color: rgba(41,128,185,0.35); }
+
+/* ── CODE ── */
+pre, code {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+code {
+  background: rgba(0,0,0,0.07);
+  color: var(--ink);
+  padding: 0.12em 0.4em;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+
+pre {
+  background: var(--code-bg);
+  color: var(--code-text);
+  border-radius: 8px;
+  padding: 1.5rem 1.8rem;
+  overflow-x: auto;
+  margin: 1.8rem 0;
+  font-size: 0.8rem;
+  line-height: 1.65;
+  position: relative;
+}
+
+pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+.cm  { color: #636d83; }   /* comment */
+.kw  { color: #c678dd; }   /* keyword */
+.str { color: #98c379; }   /* string */
+.num { color: #d19a66; }   /* number */
+.fn  { color: #61afef; }   /* function */
+.ok  { color: #98c379; }   /* ok/success */
+.er  { color: #e06c75; font-weight: 600; }  /* error */
+.hl  { color: #e5c07b; }   /* highlight */
+
+.pre-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+
+/* ── CALLOUTS ── */
+.callout {
+  border-radius: 8px;
+  padding: 1.2rem 1.5rem;
+  margin: 2rem 0;
+  border: 1px solid var(--border);
+  position: relative;
+}
+
+.callout-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.callout p:last-child { margin-bottom: 0; }
+
+.c-red    { background: rgba(192,57,43,0.05); border-color: rgba(192,57,43,0.2); }
+.c-red    .callout-label { color: var(--accent); }
+.c-blue   { background: rgba(41,128,185,0.05); border-color: rgba(41,128,185,0.2); }
+.c-blue   .callout-label { color: var(--accent2); }
+.c-green  { background: rgba(39,174,96,0.05);  border-color: rgba(39,174,96,0.2); }
+.c-green  .callout-label { color: var(--accent3); }
+.c-amber  { background: rgba(211,84,0,0.05);   border-color: rgba(211,84,0,0.2); }
+.c-amber  .callout-label { color: var(--amber); }
+
+/* ── DIAGRAM ── */
+.diagram {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.6rem;
+  margin: 2rem 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.76rem;
+  line-height: 1.85;
+  overflow-x: auto;
+}
+
+.diagram .d-title {
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── TABLE ── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2rem 0;
+  font-size: 0.87rem;
+}
+
+th {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: left;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 2px solid var(--border);
+}
+
+td {
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  color: var(--ink2);
+}
+
+tr:hover td { background: rgba(0,0,0,0.02); }
+td code { font-size: 0.74rem; }
+td strong { color: var(--ink); }
+
+/* ── PULL QUOTE ── */
+.pull {
+  font-family: 'Fraunces', serif;
+  font-style: italic;
+  font-size: 1.35rem;
+  line-height: 1.5;
+  color: var(--ink);
+  padding: 1.8rem 0 1.8rem 2rem;
+  border-left: 3px solid var(--accent);
+  margin: 2.5rem 0;
+}
+
+/* ── SUBSYSTEM CARD ── */
+.sys-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.6rem;
+  margin: 1.5rem 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.sys-card-header {
+  display: flex; align-items: center; gap: 0.8rem;
+  margin-bottom: 0.8rem;
+}
+
+.sys-card-icon {
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+
+.sys-card-title {
+  font-family: 'Fraunces', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sys-card-sub {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  display: block;
+}
+
+.sys-card p:last-child { margin-bottom: 0; }
+
+/* ── DIVIDER ── */
+.div {
+  display: flex; align-items: center; gap: 1rem;
+  margin: 3rem 0;
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+}
+.div::before, .div::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── FOOTER ── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 2rem 3.5rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.67rem;
+  color: var(--muted);
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+.site-global-footer {
+  background: var(--surface);
+  padding: 2rem 0;
+}
+
+.site-footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  text-align: left;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.95rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.site-global-footer a {
+  color: var(--accent2);
+  text-decoration: none;
+  border-bottom: none;
+}
+
+.logo-word { letter-spacing: .08em; }
+.logo-i { color: var(--accent); }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  .page-wrap { grid-template-columns: 1fr; }
+  aside { display: none; }
+  main { padding: 0 1.2rem 4rem; }
+  footer { padding: 1.5rem; }
+  .topbar-inner { padding: 12px 16px; }
+  .nav { gap: 10px; }
+  .site-footer-inner { padding: 0 16px; }
+}
+
+/* ── ANIMATIONS ── */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.hero { animation: slideIn 0.5s ease both; }
+section { opacity: 0; animation: slideIn 0.45s ease both; }
+section:nth-child(1)  { animation-delay: 0.08s; }
+section:nth-child(2)  { animation-delay: 0.14s; }
+section:nth-child(3)  { animation-delay: 0.20s; }
+section:nth-child(4)  { animation-delay: 0.26s; }
+section:nth-child(5)  { animation-delay: 0.32s; }
+section:nth-child(6)  { animation-delay: 0.38s; }
+section:nth-child(7)  { animation-delay: 0.44s; }
+section:nth-child(8)  { animation-delay: 0.50s; }
+section:nth-child(9)  { animation-delay: 0.56s; }
+section:nth-child(10) { animation-delay: 0.62s; }
+section:nth-child(11) { animation-delay: 0.68s; }
+section:nth-child(12) { animation-delay: 0.74s; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/">
+      <span class="brand-mark">M</span>
+      <span>MAN<span class="logo-i">\</span>SH AI</span>
+    </a>
+    <div class="nav">
+      <a href="/writings.html">Writings</a>
+      <a href="/about.html">About</a>
+      <button id="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
+    </div>
+  </div>
+</div>
+
+<div id="prog"></div>
+
+<div class="page-wrap">
+
+<!-- ══════════ SIDEBAR ══════════ -->
+<aside>
+  <div class="sidebar-brand">
+    <strong>Linux Deep Dive</strong>
+    Subsystem Observability<br>Series II
+  </div>
+
+  <nav class="sidebar-nav">
+    <p>Overview</p>
+    <a href="#intro"><span class="num">00</span> Introduction</a>
+    <a href="#overview"><span class="num">01</span> Architecture Map</a>
+
+    <p>Hardware Layer</p>
+    <a href="#pcie"><span class="num">02</span> PCIe / AER</a>
+    <a href="#iommu"><span class="num">03</span> IOMMU / DMA</a>
+    <a href="#vfio"><span class="num">04</span> VFIO / VM Path</a>
+
+    <p>Network & Transport</p>
+    <a href="#nic"><span class="num">05</span> NIC & RDMA</a>
+    <a href="#interrupts"><span class="num">06</span> Interrupts</a>
+    <a href="#softirq"><span class="num">07</span> Softirq / NET Stack</a>
+
+    <p>CPU & Memory</p>
+    <a href="#scheduler"><span class="num">08</span> CPU Scheduler</a>
+    <a href="#numa"><span class="num">09</span> NUMA Locality</a>
+
+    <p>Infrastructure</p>
+    <a href="#gpu"><span class="num">10</span> GPU Corroboration</a>
+    <a href="#firmware"><span class="num">11</span> Firmware & Resets</a>
+    <a href="#cgroup"><span class="num">12</span> cgroup / systemd-oomd</a>
+    <a href="#synthesis"><span class="num">13</span> Synthesis</a>
+  </nav>
+
+  <div class="sidebar-footer">
+    2026 · Linux Internals Series
+  </div>
+</aside>
+
+<!-- ══════════ MAIN ══════════ -->
+<main>
+
+<div class="hero">
+  <p class="hero-label">Linux Internals — Series II</p>
+  <h1>Beyond<br><em>Memory Counters</em></h1>
+  <p class="hero-sub">The hidden subsystems that fail first under RDMA and high-performance networking pressure — PCIe health, IOMMU stalls, NIC transport stats, NUMA mismatches, and the full picture you need before the kernel OOM killer fires.</p>
+  <div class="hero-meta">
+    <span>📅 2025</span>
+    <span>⏱ ~25 min read</span>
+    <span>🔌 RDMA / HPC / Infra</span>
+    <span>🔧 Advanced</span>
+  </div>
+</div>
+
+<!-- ══ 00: INTRO ══ -->
+<section id="intro">
+  <h2>Introduction <span class="sec-tag tag-grey">§ 00</span></h2>
+
+  <p>The previous installment in this series covered the most visible Linux failure modes — kernel panics, OOM kills, and lockups. Those are the loud catastrophic events: the kernel screaming, the process dying, the watchdog firing. But a cluster node under RDMA-intensive workloads can degrade badly and silently, long before any of those events trigger.</p>
+
+  <p>Consider a host running high-bandwidth GPU-to-GPU transfers over InfiniBand or RoCEv2. The kernel OOM killer never fires. No kernel panic in dmesg. Throughput simply collapses. Latency spikes. Jobs stall. Why? Because the pathology isn't in main memory — it's in a cascade: a PCIe AER correctable error storm causing a link retrain, which briefly pulls down DMA throughput, which backs up IOMMU mapping queues, which causes NIC CQ overflows, which triggers RNR NAKs, which causes exponential backoff in the RDMA transport. Each subsystem looks healthy in isolation. The cascade is only visible when you look at all of them together.</p>
+
+  <div class="pull">
+    The most dangerous failures are the ones that don't look like failures — they look like performance.
+  </div>
+
+  <p>This guide is the expanded observability map for those situations. It covers eleven subsystems, from the PCIe bus up through the software networking stack, with concrete commands, real log examples, and the causal chains that connect them.</p>
+</section>
+
+<!-- ══ 01: OVERVIEW ══ -->
+<section id="overview">
+  <h2>Architecture Map — How These Subsystems Connect <span class="sec-tag tag-grey">§ 01</span></h2>
+
+  <p>Before diving into each subsystem, it helps to see the full stack and where failures propagate:</p>
+
+  <div class="diagram">
+    <p class="d-title">Host subsystem stack — failure propagation paths</p>
+    <pre>
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  GPU / Accelerator                                                  │
+  │  ├─ Device memory (VRAM, BAR1)  ├─ NVLink / PCIe throughput        │
+  │  └─ Transfer stalls / XID errors                                    │
+  └────────────────────────┬────────────────────────────────────────────┘
+                           │ PCIe slot / Gen4/Gen5 lanes
+  ┌────────────────────────▼────────────────────────────────────────────┐
+  │  PCIe / AER layer                                                   │
+  │  ├─ Corrected errors (ECRCs, replay timeouts) → link retrain risk   │
+  │  ├─ Uncorrected fatal errors → device reset / panic                 │
+  │  └─ Link retrains → DMA stalls, NIC blip, driver recovery           │
+  └──────────────┬──────────────────────────────┬────────────────────── ┘
+                 │                              │
+  ┌──────────────▼───────────┐   ┌─────────────▼───────────────────────┐
+  │  IOMMU / DMA layer       │   │  NIC (mlx5 / Mellanox / RoCEv2)     │
+  │  ├─ DMAR faults          │   │  ├─ ethtool -S: rx/tx drops          │
+  │  ├─ mapping invalidation │   │  ├─ RDMA: RNR NAKs, CQ overflows     │
+  │  └─ VFIO passthrough     │   │  ├─ mlx5 health reporter             │
+  └──────────────────────────┘   │  └─ firmware reset syndrome          │
+                                 └─────────────┬───────────────────────┘
+                                               │
+  ┌────────────────────────────────────────────▼───────────────────────┐
+  │  Linux Interrupt / Softirq layer                                   │
+  │  ├─ /proc/interrupts: mlx5 IRQ affinity, storm detection           │
+  │  ├─ /proc/softirqs: NET_RX, NET_TX, SCHED, RCU                     │
+  │  └─ /proc/net/softnet_stat: drops, throttled, time_squeeze         │
+  └────────────────────────────────────────────┬───────────────────────┘
+                                               │
+  ┌────────────────────────────────────────────▼───────────────────────┐
+  │  CPU Scheduler / Pressure                                          │
+  │  ├─ /proc/pressure/{cpu,memory,io}: PSI metrics                    │
+  │  ├─ Run queue depth, load average, softirq %                       │
+  │  └─ NUMA: local vs remote memory access, CPU/NIC/GPU affinity       │
+  └────────────────────────────────────────────┬───────────────────────┘
+                                               │
+  ┌────────────────────────────────────────────▼───────────────────────┐
+  │  cgroup / systemd-oomd                                             │
+  │  ├─ MemoryHigh / MemoryMax events                                  │
+  │  └─ systemd-oomd kills (before kernel OOM)                         │
+  └────────────────────────────────────────────────────────────────────┘</pre>
+  </div>
+
+  <p>Key insight: failures flow <em>downward</em> in hardware and <em>upward</em> in symptom visibility. A PCIe link retrain (hardware layer) causes a DMA stall (kernel driver layer) which causes NIC queue backup (transport layer) which appears as CPU softirq pressure and high run queue depth (scheduler layer). By the time you notice the CPU pressure, the root cause is four layers below it.</p>
+</section>
+
+<!-- ══ 02: PCIE ══ -->
+<section id="pcie">
+  <h2>PCIe / AER — Bus Health <span class="sec-tag tag-red">§ 02</span></h2>
+
+  <p><strong>PCIe Advanced Error Reporting (AER)</strong> is the hardware error reporting mechanism built into every modern PCIe device and root port. It is the single most underused diagnostic tool in high-performance Linux environments. AER errors arrive in dmesg and — if configured — are available through <code>/sys/bus/pci/</code>. They divide into three categories: <strong>corrected</strong>, <strong>uncorrected non-fatal</strong>, and <strong>uncorrected fatal</strong>.</p>
+
+  <h3>Why PCIe Errors Matter for RDMA Workloads</h3>
+
+  <p>RDMA NICs (Mellanox/NVIDIA ConnectX, Intel Omni-Path) generate enormous PCIe traffic. A single ConnectX-7 in HDR InfiniBand mode can sustain 200 Gb/s, which is near the maximum bandwidth of a ×16 PCIe Gen4 slot. At those bandwidths, even occasional corrected errors (which the hardware transparently retries) can cause enough retransmit latency to trigger RDMA timeout events or RNR NAKs at the transport layer.</p>
+
+  <h3>Reading AER Events in dmesg</h3>
+
+  <span class="pre-label">dmesg — PCIe AER corrected error</span>
+  <pre><code><span class="cm"># Corrected error — hardware retried, but worth monitoring for frequency</span>
+[ 4521.003412] pcieport 0000:00:1c.0: AER: Corrected error received: 0000:04:00.0
+[ 4521.003428] 0000:04:00.0: <span class="hl">PCIe Bus Error: severity=Corrected</span>, type=Physical Layer, (Receiver ID)
+[ 4521.003431]   device [15b3:101b] error status/mask=00000001/00002000
+[ 4521.003434]     [ 0] <span class="ok">RxErr</span>           (First)
+
+<span class="cm"># Uncorrected Fatal — device will reset and driver will reload</span>
+[ 7823.441209] pcieport 0000:00:1c.0: AER: <span class="er">Uncorrected (Fatal) error received: 0000:04:00.0</span>
+[ 7823.441215] 0000:04:00.0: PCIe Bus Error: severity=Uncorrected (Fatal), type=Transaction Layer
+[ 7823.441220]   device [15b3:101b] error status/mask=00040000/00000000
+[ 7823.441223]     [18] <span class="er">MalTLP</span>          (First)     <span class="cm">← Malformed TLP: hardware bug or signal integrity</span>
+[ 7823.441230] 0000:04:00.0: <span class="er">Device recovery failed</span>
+[ 7823.441235] <span class="er">mlx5_core 0000:04:00.0: Unrecoverable error: removing device</span></code></pre>
+
+  <h3>Link Retrains — The Hidden DMA Stall</h3>
+
+  <p>A <strong>link retrain</strong> occurs when the PCIe physical layer renegotiates the link — typically after signal integrity problems, thermal events, or corrected error accumulation. During a retrain, the device is temporarily offline. For a NIC, this means all in-flight DMA operations stall. For RDMA, all active QPs (Queue Pairs) see a timeout and may trigger error recovery.</p>
+
+  <span class="pre-label">dmesg — PCIe link retrain</span>
+  <pre><code>[ 4521.445001] pcieport 0000:00:1c.0: <span class="hl">PCIe Link retrained: speed=32GT/s width=x16</span>
+[ 4521.445088] mlx5_core 0000:04:00.0: <span class="er">communication channel timeout, will try PCIe reset</span>
+[ 4521.510023] mlx5_core 0000:04:00.0: <span class="ok">device recovered after PCIe link retrain</span>
+<span class="cm"># Gap of ~65ms — during which all DMA on this NIC was stalled</span></code></pre>
+
+  <h3>Monitoring and Tooling</h3>
+
+  <span class="pre-label">PCIe AER monitoring commands</span>
+  <pre><code><span class="cm"># List all PCIe errors via AER driver sysfs</span>
+<span class="fn">find</span> /sys/bus/pci/devices -name "aer_*_count" -exec <span class="fn">sh</span> -c \
+  '<span class="fn">echo</span> "$1: $(cat $1)"' _ {} \; 2>/dev/null | grep -v ": 0$"
+
+<span class="cm"># Use rasdaemon for structured AER logging to SQLite</span>
+<span class="fn">apt</span> install rasdaemon
+<span class="fn">systemctl</span> enable --now rasdaemon
+<span class="fn">ras-mc-ctl</span> --summary        <span class="cm"># summary of all hardware errors</span>
+<span class="fn">ras-mc-ctl</span> --errors          <span class="cm"># full error table with timestamps</span>
+
+<span class="cm"># Check link speed and width — unexpected downgrade indicates link retrain</span>
+<span class="fn">lspci</span> -vv -s 0000:04:00.0 | grep -E "LnkSta:|LnkCap:"
+<span class="cm"># LnkCap: Speed 32GT/s (ok), Width x16 (ok)</span>
+<span class="cm"># LnkSta: Speed 16GT/s (!), Width x8 (!)  ← DOWNGRADED — signal integrity issue</span>
+
+<span class="cm"># Monitor link state changes in real time</span>
+<span class="fn">watch</span> -n1 '<span class="fn">lspci</span> -vv -s 0000:04:00.0 | grep LnkSta'
+
+<span class="cm"># Trigger AER error injection for testing (kernel must have CONFIG_PCIEAER_INJECT)</span>
+<span class="fn">modprobe</span> aer-inject
+<span class="cm"># Not recommended on production — causes device reset</span></code></pre>
+
+  <div class="callout c-amber">
+    <p class="callout-label">⚠ thermal correlation</p>
+    <p>PCIe corrected error rates often spike during thermal events. If you see periodic AER corrected error bursts, cross-reference with <code>sensors</code> or IPMI thermal data. A ConnectX NIC running at 85°C+ will produce more signal integrity errors. Always check whether AER error timestamps correlate with fan speed changes or compute workload peaks.</p>
+  </div>
+</section>
+
+<!-- ══ 03: IOMMU ══ -->
+<section id="iommu">
+  <h2>IOMMU / DMA Mapping Pressure <span class="sec-tag tag-red">§ 03</span></h2>
+
+  <p>The <strong>IOMMU (Input-Output Memory Management Unit)</strong> — Intel VT-d or AMD-Vi — sits between PCIe devices and physical memory. Every DMA operation by a NIC, GPU, or NVMe device goes through the IOMMU, which translates device-visible addresses (IOVAs) to physical addresses. Under sustained DMA load, IOMMU resources can become a bottleneck that's invisible from both the device and the CPU perspective.</p>
+
+  <h3>IOMMU Failure Modes</h3>
+
+  <p><strong>DMAR faults</strong> occur when a device attempts a DMA to an address that has no valid IOMMU mapping. This is usually a driver bug (mapping freed before DMA completes) but can also indicate memory corruption. <strong>IOVA exhaustion</strong> occurs when the pool of available IOMMU virtual addresses runs out — common on systems with many devices doing many small DMA operations simultaneously. <strong>Invalidation stalls</strong> occur when the CPU issuing TLB invalidations to the IOMMU takes longer than expected — this blocks new DMA mappings and can serialize normally-parallel DMA operations.</p>
+
+  <span class="pre-label">dmesg — IOMMU/DMA fault messages</span>
+  <pre><code><span class="cm"># DMAR fault — device tried to DMA to unmapped address</span>
+[ 8901.234567] DMAR: <span class="er">DRHD: handling fault status reg 2</span>
+[ 8901.234570] DMAR: [DMA Read] <span class="er">Request device [04:00.0] fault addr 0xffff800000000000</span>
+               IOMMU perfmon counter overflow  <span class="cm">← Too many DMAR events</span>
+               reason: Present bit in pasid table entry is clear
+
+<span class="cm"># IOMMU mapping failure under load</span>
+[ 9012.445801] mlx5_core 0000:04:00.0: <span class="er">DMA map failed for iova 0x100000000, size 4096</span>
+[ 9012.445810] mlx5_core 0000:04:00.0: <span class="er">IOVA space exhausted, consider increasing iommu_iova_rcache_size</span>
+
+<span class="cm"># On AMD IOMMU:</span>
+[ 5432.112233] AMD-Vi: <span class="er">Event logged [IO_PAGE_FAULT device=04:00.0 domain=0x0019</span>
+               address=0x00000000beef1234 flags=0x0000]</code></pre>
+
+  <h3>IOMMU Tuning for High-DMA Workloads</h3>
+
+  <span class="pre-label">IOMMU performance tuning</span>
+  <pre><code><span class="cm"># Check if IOMMU is active and in what mode</span>
+<span class="fn">dmesg</span> | grep -i iommu | head -20
+<span class="cm"># DMAR: IOMMU enabled</span>
+<span class="cm"># DMAR: Intel(R) Virtualization Technology for Directed I/O</span>
+
+<span class="cm"># Check current IOMMU groups (each group shares IOMMU domain)</span>
+<span class="fn">find</span> /sys/kernel/iommu_groups -type l | sort -V | head -30
+
+<span class="cm"># For RDMA workloads without VMs: consider iommu=pt (passthrough mode)</span>
+<span class="cm"># This disables address translation for physical machines, removing IOMMU overhead</span>
+<span class="cm"># Add to kernel cmdline in GRUB:</span>
+<span class="cm"># intel_iommu=on iommu=pt</span>
+
+<span class="cm"># Monitor IOMMU performance counters (if supported)</span>
+<span class="fn">cat</span> /sys/kernel/debug/iommu/intel/iommu_perf  <span class="cm"># Intel IOMMU perf stats</span>
+
+<span class="cm"># Check for IOVA cache tuning (Linux 5.15+)</span>
+<span class="fn">cat</span> /sys/module/iommu/parameters/iova_cookie_pool_size
+
+<span class="cm"># Force strict IOMMU (no lazy invalidation) — use for debugging only</span>
+<span class="cm"># iommu.strict=1 in kernel cmdline</span></code></pre>
+
+  <div class="callout c-blue">
+    <p class="callout-label">ℹ passthrough vs strict</p>
+    <p>For bare-metal HPC nodes that don't use VMs or VFIO, <code>iommu=pt</code> (passthrough) is the standard recommendation from Mellanox/NVIDIA for ConnectX deployments. It eliminates IOMMU translation overhead entirely. However, if you're using SR-IOV VFs or any VFIO passthrough to VMs, you <em>must</em> use full IOMMU translation. Mixing passthrough and strict modes on the same host with VFIO is a common misconfiguration.</p>
+  </div>
+</section>
+
+<!-- ══ 04: VFIO ══ -->
+<section id="vfio">
+  <h2>VFIO / Virtualization Path <span class="sec-tag tag-red">§ 04</span></h2>
+
+  <p><strong>VFIO (Virtual Function I/O)</strong> is the kernel framework that enables PCIe device passthrough to virtual machines, and also underlies userspace DMA in DPDK and SPDK. When a NIC or GPU is passed through to a VM via VFIO, the IOMMU enforces isolation between guest DMA and host memory — but every VM exit, balloon event, or guest memory map change creates work for the host kernel.</p>
+
+  <h3>Key VFIO Failure Modes</h3>
+
+  <p><strong>VM exits on every DMA</strong>: In older configurations without posted interrupts or without nested page table support, every DMA operation can cause a VM exit — catastrophic for RDMA where DMA completions are the critical path. <strong>Memory ballooning interference</strong>: If the guest balloon driver reclaims pages that were pinned for DMA, it creates IOMMU mapping invalidation pressure on the host. <strong>VFIO group resets</strong>: Any error in the VFIO group (e.g., a fatal PCIe error on one VF) can trigger a full function-level reset that affects all VFs in the group.</p>
+
+  <span class="pre-label">monitoring VFIO events</span>
+  <pre><code><span class="cm"># Watch for VFIO-related events in dmesg</span>
+<span class="fn">dmesg</span> -w | grep -iE "vfio|vm exit|balloon|iommu|passthrough"
+
+<span class="cm"># Check VFIO device state</span>
+<span class="fn">ls</span> -la /dev/vfio/
+<span class="fn">cat</span> /sys/bus/pci/drivers/vfio-pci/*/reset_method  <span class="cm"># FLR, bus, or hot-reset</span>
+
+<span class="cm"># Monitor VM exit rates via KVM perf counters</span>
+<span class="fn">perf</span> kvm stat live -p &lt;qemu_pid&gt;
+<span class="cm"># Output shows VM exit reasons and frequency:</span>
+<span class="cm"># Reason                    Count        Frequency</span>
+<span class="cm"># EXTERNAL_INTERRUPT         18291234     45.2%</span>
+<span class="cm"># HLT                         8123456     20.1%</span>
+<span class="cm"># EPT_VIOLATION               1024511      2.5%   ← watch this under DMA load</span>
+
+<span class="cm"># Check if SR-IOV VFs are configured correctly</span>
+<span class="fn">cat</span> /sys/bus/pci/devices/0000:04:00.0/sriov_numvfs
+<span class="fn">cat</span> /sys/bus/pci/devices/0000:04:00.0/sriov_totalvfs
+
+<span class="cm"># VFIO IOMMU group membership (all devices in same group share fate)</span>
+<span class="fn">readlink</span> -f /sys/bus/pci/devices/0000:04:00.*/iommu_group</code></pre>
+</section>
+
+<!-- ══ 05: NIC / RDMA ══ -->
+<section id="nic">
+  <h2>NIC Queue and RDMA Transport Health <span class="sec-tag tag-blue">§ 05</span></h2>
+
+  <p>This is the subsystem closest to the actual RDMA workload. Mellanox/NVIDIA ConnectX NICs expose an enormous set of statistics through both <code>ethtool</code> and the <code>rdma</code> / <code>perfquery</code> toolchain. The trick is knowing which counters matter and what the causal chains are between them.</p>
+
+  <h3>ethtool Statistics — The NIC's Own Counters</h3>
+
+  <span class="pre-label">ethtool -S — key counters explained</span>
+  <pre><code><span class="fn">ethtool</span> -S mlx5_0 | grep -vE "^\s+[a-z_]+: 0$"  <span class="cm"># only non-zero stats</span>
+
+<span class="cm"># ── Receive path ──────────────────────────────────────────────</span>
+rx_out_of_buffer: <span class="num">1423</span>      <span class="cm"># ← CRITICAL: NIC had no receive buffers, dropped pkts</span>
+rx_buff_alloc_err: <span class="num">42</span>       <span class="cm"># RX buffer allocation failed (memory pressure on host)</span>
+rx_cqe_err: <span class="num">7</span>               <span class="cm"># Completion Queue Entry error — hardware/protocol error</span>
+rx_wqe_err: <span class="num">3</span>               <span class="cm"># Work Queue Entry error (WQE posted incorrectly)</span>
+
+<span class="cm"># ── Transmit path ─────────────────────────────────────────────</span>
+tx_queue_stopped: <span class="num">891</span>       <span class="cm"># TX queue was paused (backpressure — flow control fired)</span>
+tx_timeout: <span class="num">2</span>               <span class="cm"># ← CRITICAL: TX timeout, driver reset the queue</span>
+tx_cqe_err: <span class="num">0</span>               <span class="cm"># Completion errors on transmit (0 is good)</span>
+
+<span class="cm"># ── PFC (Priority Flow Control) — RoCEv2 specific ─────────────</span>
+rx_prio0_pause: <span class="num">0</span>
+rx_prio3_pause: <span class="num">88421</span>       <span class="cm"># ← Received pause frames on priority 3 (RDMA traffic class)</span>
+                             <span class="cm"># High count = downstream congestion is pausing our TX</span>
+tx_prio3_pause: <span class="num">12033</span>       <span class="cm"># ← We are sending pause frames — we're congested!</span>
+
+<span class="cm"># ── PCIe / DMA ────────────────────────────────────────────────</span>
+rx_pci_signal_integrity: <span class="num">3</span>  <span class="cm"># PCIe signal integrity errors (correlates with AER)</span>
+tx_pci_signal_integrity: <span class="num">1</span>
+rx_pci_transport_nonfatal_err: <span class="num">2</span>
+
+<span class="cm"># ── Health ────────────────────────────────────────────────────</span>
+rx_discards_phy: <span class="num">0</span>
+tx_discards_phy: <span class="num">0</span>
+<span class="ok">link_down_events_phy: 1</span>     <span class="cm"># Physical link went down once (correlates with link retrain)</span></code></pre>
+
+  <h3>RDMA/InfiniBand Counters — perfquery and rdmatool</h3>
+
+  <span class="pre-label">RDMA transport counters</span>
+  <pre><code><span class="cm"># InfiniBand counters via perfquery (from infiniband-diags)</span>
+<span class="fn">perfquery</span> -x 0 1   <span class="cm"># port 1, xmit + recv counters</span>
+
+<span class="cm"># Or via sysfs — same data, scriptable</span>
+PORT=/sys/class/infiniband/mlx5_0/ports/1/counters
+<span class="fn">echo</span> "=== RDMA Port Counters ==="
+<span class="fn">for</span> f in $PORT/*; <span class="kw">do</span>
+  val=$(<span class="fn">cat</span> $f)
+  [ "$val" != "0" ] &amp;&amp; <span class="fn">echo</span> "$(basename $f): $val"
+<span class="kw">done</span>
+
+<span class="cm"># Key counters to watch:</span>
+<span class="cm">#</span>
+<span class="cm"># VL15Dropped       — congestion on VL15 (management traffic)</span>
+<span class="cm"># ExcessiveBufferOverrunErrors — RX buffer overrun (too slow to consume)</span>
+<span class="cm"># PortXmitDiscards  — ← CRITICAL: packets discarded on TX (congestion)</span>
+<span class="cm"># PortRcvErrors     — Physical/link errors on receive</span>
+<span class="cm"># PortRcvRemotePhysicalErrors — signal integrity on the remote end</span>
+<span class="cm"># SymbolErrorCounter — bit errors on the wire</span>
+<span class="cm"># LinkErrorRecoveryCounter — link recovery events</span>
+<span class="cm"># LinkDownedCounter — full link down events</span>
+
+<span class="cm"># RoCEv2 / RDMA extended counters (kernel 5.x+)</span>
+PORT_XSTATS=/sys/class/infiniband/mlx5_0/ports/1/ext_stats
+<span class="fn">cat</span> $PORT_XSTATS/RoceRetransmits          <span class="cm"># RDMA retransmits (timeout-based)</span>
+<span class="fn">cat</span> $PORT_XSTATS/RoceSlowRestart          <span class="cm"># Go-back-N slow restart events</span>
+<span class="fn">cat</span> $PORT_XSTATS/RNRNAKRetries            <span class="cm"># ← CRITICAL: receiver-not-ready NAKs</span>
+
+<span class="cm"># mlx5 diagnostic counters via rdma tool (iproute2)</span>
+<span class="fn">rdma</span> statistic show mode auto            <span class="cm"># show all QP statistics</span>
+<span class="fn">rdma</span> statistic qp show                   <span class="cm"># per-QP stats</span></code></pre>
+
+  <h3>Understanding RNR NAKs — The RDMA Cascade Trigger</h3>
+
+  <p>An <strong>RNR (Receiver Not Ready) NAK</strong> is sent when an RDMA message arrives at a QP but the receiver hasn't posted a receive Work Queue Entry (WQE) to accept it. The sender must wait for the RNR timeout (configurable, typically 1ms to 491ms in IB spec) before retrying. Under load, this creates a cascade: slow application posting WQEs → RNR NAKs → sender backs off → throughput drops → application falls further behind on WQE posting.</p>
+
+  <div class="diagram">
+    <p class="d-title">RNR NAK cascade — causal chain</p>
+    <pre>
+  Application under CPU pressure
+      │
+      └─ Slow to post Receive WQEs to QP
+             │
+             └─ Incoming RDMA message arrives; no WQE available
+                    │
+                    └─ NIC sends RNR NAK to sender
+                           │
+                           ├─ Sender backs off (RNR timer: 1ms–491ms)
+                           │
+                           ├─ In-flight messages queue up in sender NIC
+                           │
+                           ├─ NIC TX queue backpressure → tx_queue_stopped↑
+                           │
+                           └─ PCIe DMA backs up → DMA latency↑
+                                  │
+                                  └─ CPU softirq budget exceeded
+                                         │
+                                         └─ /proc/net/softnet_stat time_squeeze↑</pre>
+  </div>
+
+  <p>The fix depends on the root cause: if RNR NAKs are due to CPU pressure, fix the scheduler affinity or increase the RNR timer on the QP. If they're due to application behavior, increase the pre-posted WQE depth or use SRQ (Shared Receive Queues).</p>
+</section>
+
+<!-- ══ 06: INTERRUPTS ══ -->
+<section id="interrupts">
+  <h2>Interrupt Behavior — IRQ Affinity and Storms <span class="sec-tag tag-blue">§ 06</span></h2>
+
+  <p>Modern NICs generate one interrupt per receive queue completion, and a high-bandwidth NIC under load can generate millions of interrupts per second. How those interrupts are distributed across CPUs — and whether the distribution is sane — directly determines networking latency and throughput.</p>
+
+  <h3>Reading /proc/interrupts</h3>
+
+  <span class="pre-label">/proc/interrupts — IRQ distribution analysis</span>
+  <pre><code><span class="cm"># Show all mlx5 interrupts and their per-CPU counts</span>
+<span class="fn">grep</span> mlx5 /proc/interrupts
+<span class="cm">#           CPU0     CPU1     CPU2     CPU3  ... CPU31</span>
+<span class="cm">#  124:  18234120   892341   871234   912456 ...  891023  IR-PCI-MSI mlx5_core@pci:0000:04:00.0</span>
+<span class="cm">#  125:     12345 17891234  1023456   982341 ...  123456  IR-PCI-MSI mlx5_core@pci:0000:04:00.0</span>
+<span class="cm">#                ↑                                        ↑</span>
+<span class="cm">#         CPU0 taking 18M vs CPU1 taking 0.8M — BAD SKEW</span>
+
+<span class="cm"># Total interrupt count per CPU (shows imbalance)</span>
+<span class="fn">awk</span> 'NR==1{next} /mlx5/{for(i=2;i&lt;=NF-3;i++) sum[i]+=$i} END{for(i in sum) print "CPU"(i-2)": "sum[i]}' \
+  /proc/interrupts | sort -t: -k2 -rn | head -8
+
+<span class="cm"># Check current IRQ affinity for mlx5 queues</span>
+<span class="fn">for</span> irq in $(<span class="fn">grep</span> mlx5 /proc/interrupts | <span class="fn">awk</span> '{print $1}' | tr -d ':'); <span class="kw">do</span>
+  <span class="fn">echo</span> "IRQ $irq affinity: $(cat /proc/irq/$irq/smp_affinity_list 2>/dev/null)"
+<span class="kw">done</span></code></pre>
+
+  <h3>IRQ Affinity Tuning</h3>
+
+  <p>The goal for RDMA/high-bandwidth NICs is to pin each NIC receive queue's interrupt to a dedicated CPU core, ideally one on the same NUMA node as the NIC. This avoids cross-NUMA interrupt delivery (which incurs remote memory latency) and prevents any single CPU from becoming the interrupt bottleneck.</p>
+
+  <span class="pre-label">setting IRQ affinity for mlx5 NIC queues</span>
+  <pre><code><span class="cm"># Use the mlnx-tools irqbalancer or manual approach:</span>
+
+<span class="cm"># Find which NUMA node the NIC is on</span>
+<span class="fn">cat</span> /sys/bus/pci/devices/0000:04:00.0/numa_node
+<span class="cm"># 0  → NUMA node 0</span>
+
+<span class="cm"># Find CPUs on NUMA node 0</span>
+<span class="fn">cat</span> /sys/devices/system/node/node0/cpulist
+<span class="cm"># 0-31  → CPUs 0–31 are on NUMA node 0</span>
+
+<span class="cm"># Assign each mlx5 IRQ to successive CPUs on node 0</span>
+CPU=0
+<span class="fn">grep</span> mlx5 /proc/interrupts | <span class="fn">awk</span> -F: '{print $1}' | <span class="kw">while</span> read IRQ; <span class="kw">do</span>
+  <span class="fn">echo</span> $CPU > /proc/irq/$IRQ/smp_affinity_list
+  CPU=$(( (CPU + 1) % 32 ))
+<span class="kw">done</span>
+
+<span class="cm"># Disable irqbalance for mlx5 (it will undo your settings)</span>
+<span class="fn">systemctl</span> mask irqbalance
+<span class="cm"># OR configure irqbalance to exclude your mlx5 IRQs:</span>
+<span class="cm"># IRQBALANCE_BANNED_CPUS=00000000,0000ffff  in /etc/default/irqbalance</span>
+
+<span class="cm"># Verify with watch</span>
+<span class="fn">watch</span> -n1 '<span class="fn">grep</span> mlx5 /proc/interrupts | <span class="fn">awk</span> "{print \$1, \$2, \$NF}"'</code></pre>
+
+  <h3>Interrupt Storm Detection</h3>
+
+  <span class="pre-label">detecting and diagnosing interrupt storms</span>
+  <pre><code><span class="cm"># Check total interrupt rate per second (high rate = storm)</span>
+<span class="fn">watch</span> -n 0.5 'grep -c "^" /proc/interrupts'  <span class="cm"># changes if new IRQs appear</span>
+
+<span class="cm"># Use sar to track interrupt rate over time</span>
+<span class="fn">sar</span> -I ALL 1 10 | grep -v "^$" | grep -v "^Average" | sort -k3 -rn | head -5
+
+<span class="cm"># perf top for IRQ context — see what's running in interrupt handlers</span>
+<span class="fn">perf</span> top -e irq:irq_handler_entry --sort comm,sym
+
+<span class="cm"># Check softirq counts — NET_RX is the primary indicator of NIC storm</span>
+<span class="fn">watch</span> -n1 'grep -E "NET_RX|NET_TX|SCHED" /proc/softirqs'</code></pre>
+</section>
+
+<!-- ══ 07: SOFTIRQ ══ -->
+<section id="softirq">
+  <h2>Softirq / Networking Stack <span class="sec-tag tag-blue">§ 07</span></h2>
+
+  <p>Linux uses <strong>softirqs</strong> (software interrupts) to defer non-urgent interrupt work from hard interrupt context to a slightly lower-priority processing context. The networking stack's receive and transmit paths are both softirq-based: <code>NET_RX</code> handles incoming packet processing, and <code>NET_TX</code> handles transmit queue wakeups. Under sustained load, these softirqs compete with application threads for CPU time.</p>
+
+  <h3>The Three Canonical Softnet Stats</h3>
+
+  <span class="pre-label">/proc/net/softnet_stat — annotated</span>
+  <pre><code><span class="cm"># Each line = one CPU. Columns are hex values.</span>
+<span class="fn">cat</span> /proc/net/softnet_stat
+<span class="cm"># total     dropped  time_sq  0        0        0        0        0        0       throttle  rx_rps  flow_lim_count</span>
+<span class="cm"># 01234567  00000000 0000001a  ...</span>
+
+<span class="cm"># Human-readable parsing script:</span>
+<span class="fn">awk</span> '{
+  printf "CPU%d: total=%d dropped=%d time_squeeze=%d throttled=%d\n",
+    NR-1,
+    strtonum("0x"$1),
+    strtonum("0x"$2),
+    strtonum("0x"$3),
+    strtonum("0x"$10)
+}' /proc/net/softnet_stat
+
+<span class="cm"># What each counter means:</span>
+<span class="cm">#</span>
+<span class="cm"># total       — total frames processed by this CPU's NET_RX softirq</span>
+<span class="cm"># dropped     — ← CRITICAL: frames dropped because netif_receive_skb</span>
+<span class="cm">#                queue was full. Each count = packet loss.</span>
+<span class="cm"># time_squeeze — ← IMPORTANT: softirq budget exhausted before queue empty.</span>
+<span class="cm">#                Means more work arrived than the NAPI budget allowed.</span>
+<span class="cm">#                High values mean you need bigger net.core.netdev_budget</span>
+<span class="cm">#                or more CPUs/queues.</span>
+<span class="cm"># throttled   — RPS (Receive Packet Steering) throttle events</span></code></pre>
+
+  <h3>NAPI Budget Tuning</h3>
+
+  <span class="pre-label">tuning NAPI and softirq budget</span>
+  <pre><code><span class="cm"># Current NAPI budget (packets processed per NET_RX softirq poll cycle)</span>
+<span class="fn">sysctl</span> net.core.netdev_budget
+<span class="cm"># net.core.netdev_budget = 300  ← default</span>
+
+<span class="cm"># For high-throughput RDMA hosts, increase to 600-1200</span>
+<span class="fn">sysctl</span> -w net.core.netdev_budget=<span class="num">1200</span>
+<span class="fn">sysctl</span> -w net.core.netdev_budget_usecs=<span class="num">8000</span>  <span class="cm"># time budget companion (us)</span>
+
+<span class="cm"># Also increase RX/TX ring buffer sizes on the NIC</span>
+<span class="fn">ethtool</span> -g mlx5_0          <span class="cm"># current ring sizes</span>
+<span class="fn">ethtool</span> -G mlx5_0 rx <span class="num">8192</span> tx <span class="num">8192</span>  <span class="cm"># maximize buffers</span>
+
+<span class="cm"># Monitor softirq time per CPU with mpstat</span>
+<span class="fn">mpstat</span> -I SCPU 1 5 | grep -E "CPU|soft"
+<span class="cm"># CPU    %soft</span>
+<span class="cm"># 0      45.2   ← 45% of CPU0 time in softirq context — dangerously high</span>
+<span class="cm"># 1       2.1</span>
+<span class="cm"># ...</span>
+<span class="cm"># CPU0 is your softirq bottleneck — fix IRQ affinity first</span>
+
+<span class="cm"># Use sar for historical softirq breakdown</span>
+<span class="fn">sar</span> -u ALL 1 10 | head -20
+<span class="fn">sar</span> -n SOCK 1 5   <span class="cm"># socket statistics</span>
+<span class="fn">nstat</span> -az         <span class="cm"># netstat counters in one shot (from iproute2)</span></code></pre>
+
+  <h3>RPS/RFS — Steering Packets to the Right CPU</h3>
+
+  <p><strong>RPS (Receive Packet Steering)</strong> and <strong>RFS (Receive Flow Steering)</strong> are kernel features that distribute packet processing across CPUs in software — useful when the NIC has fewer hardware queues than CPU cores. For RDMA workloads, RPS is typically <em>not</em> used (RDMA bypasses the kernel IP stack), but for the accompanying RoCEv2 control traffic or any kernel-bypass datapath that falls back to the kernel stack, RPS configuration matters.</p>
+
+  <span class="pre-label">configuring RPS for multi-queue NICs</span>
+  <pre><code><span class="cm"># Check how many queues the NIC has</span>
+<span class="fn">ethtool</span> -l mlx5_0
+<span class="cm"># Current hardware settings:</span>
+<span class="cm"># RX: 16</span>
+<span class="cm"># TX: 16</span>
+
+<span class="cm"># For a 128-core system, enable RPS to spread across all CPUs</span>
+<span class="kw">for</span> rx in /sys/class/net/mlx5_0/queues/rx-*/rps_cpus; <span class="kw">do</span>
+  <span class="cm"># Set to all 128 CPUs (4x 32-bit hex bitmask for 128 CPUs)</span>
+  <span class="fn">echo</span> ffffffffffffffffffffffffffffffff > $rx
+<span class="kw">done</span>
+
+<span class="cm"># Enable RFS (steers packets to the CPU running the receiving socket)</span>
+<span class="fn">sysctl</span> -w net.core.rps_sock_flow_entries=<span class="num">32768</span>
+<span class="kw">for</span> rx in /sys/class/net/mlx5_0/queues/rx-*/rps_flow_cnt; <span class="kw">do</span>
+  <span class="fn">echo</span> <span class="num">2048</span> > $rx
+<span class="kw">done</span></code></pre>
+</section>
+
+<!-- ══ 08: SCHEDULER ══ -->
+<section id="scheduler">
+  <h2>CPU Scheduler Pressure <span class="sec-tag tag-amber">§ 08</span></h2>
+
+  <p>Networking stress — especially RDMA completion processing and userspace polling loops — manifests in the CPU scheduler before it shows up as packet drops or OOM events. PSI (Pressure Stall Information) is the modern, authoritative way to measure this.</p>
+
+  <h3>PSI — Pressure Stall Information</h3>
+
+  <p>Available since Linux 4.20, PSI measures the fraction of time in which tasks were <em>stalled waiting for a resource</em>. For CPU: stalled means runnable but not running. For memory: stalled means waiting for a page fault or reclaim. For I/O: stalled means waiting for I/O to complete.</p>
+
+  <span class="pre-label">/proc/pressure — reading PSI</span>
+  <pre><code><span class="fn">cat</span> /proc/pressure/cpu
+<span class="cm"># some avg10=2.45 avg60=1.89 avg300=0.92 total=1234567890</span>
+<span class="cm"># full avg10=0.00 avg60=0.00 avg300=0.00 total=0</span>
+<span class="cm">#</span>
+<span class="cm"># "some" = at least one task was stalled</span>
+<span class="cm"># "full" = ALL runnable tasks were stalled (CPU completely unavailable)</span>
+<span class="cm"># avg10/60/300 = exponential moving average over 10s/60s/5min (as %)</span>
+<span class="cm"># total = cumulative microseconds of stall time</span>
+
+<span class="fn">cat</span> /proc/pressure/memory
+<span class="cm"># some avg10=12.44 avg60=8.32 avg300=3.11 total=98765432</span>
+<span class="cm"># full avg10=4.21  avg60=2.10 avg300=0.88 total=23456789</span>
+<span class="cm">#</span>
+<span class="cm"># avg10=12.44% means: 12% of the last 10s, at least one task</span>
+<span class="cm"># was stalled waiting for memory. That's significant.</span>
+
+<span class="fn">cat</span> /proc/pressure/io
+<span class="cm"># some avg10=0.22 avg60=0.18 avg300=0.05 total=112233</span>
+
+<span class="cm"># Practical thresholds for alerts:</span>
+<span class="cm"># cpu.some.avg10    > 30%  → CPU saturation</span>
+<span class="cm"># memory.some.avg10 > 10%  → memory pressure worth investigating</span>
+<span class="cm"># memory.full.avg10 > 1%   → severe memory pressure, OOM risk</span>
+<span class="cm"># io.some.avg10     > 10%  → I/O bottleneck</span></code></pre>
+
+  <h3>Run Queue Depth and Load Average</h3>
+
+  <span class="pre-label">run queue and load analysis</span>
+  <pre><code><span class="cm"># vmstat: r column is run queue depth (processes wanting CPU right now)</span>
+<span class="fn">vmstat</span> 1 10
+<span class="cm"># procs ---memory--- ---swap-- -----io---- -system-- ------cpu-----</span>
+<span class="cm">#  r  b  swpd  free   si   so  bi   bo     in   cs  us sy id wa st</span>
+<span class="cm"># 48  2     0 892344   0    0   0    12   89234 231234 24 31 44  0  0</span>
+<span class="cm"># ↑                                        ↑          ↑  ↑</span>
+<span class="cm"># r=48 with 32 CPUs → 16 tasks waiting    high irqs  hi sys = softirq heavy</span>
+
+<span class="cm"># sar for historical run queue data</span>
+<span class="fn">sar</span> -q 1 10
+<span class="cm"># runq-sz  plist-sz  ldavg-1  ldavg-5  ldavg-15  blocked</span>
+<span class="cm">#      42      1523    40.22    35.18     22.41        8</span>
+<span class="cm"># 42 tasks in run queue with 32 CPUs → CPU-saturated</span>
+
+<span class="cm"># Check scheduler statistics for specific process</span>
+<span class="fn">cat</span> /proc/&lt;pid&gt;/schedstat
+<span class="cm"># 1234567890 987654321 4521</span>
+<span class="cm"># ^time on CPU (ns) ^wait time (ns) ^involuntary context switches</span>
+<span class="cm"># High wait/run ratio = process is CPU-starved (scheduler pressure)</span></code></pre>
+</section>
+
+<!-- ══ 09: NUMA ══ -->
+<section id="numa">
+  <h2>NUMA Locality — The Topology Tax <span class="sec-tag tag-amber">§ 09</span></h2>
+
+  <p>On multi-socket servers and systems with PCIe-attached GPUs, <strong>NUMA topology</strong> is one of the most impactful and most commonly ignored performance factors. Every memory access, DMA operation, and interrupt has a <em>home node</em>. Crossing NUMA node boundaries adds 30–120ns of latency per access. At RDMA bandwidths, this compounds rapidly.</p>
+
+  <h3>The Three Topology Mismatches</h3>
+
+  <p><strong>CPU-NIC mismatch:</strong> Application threads running on NUMA node 1, while the NIC is on NUMA node 0's PCIe root complex. Every receive buffer posted by the application and every DMA by the NIC crosses the QPI/UPI interconnect. <strong>GPU-NIC mismatch:</strong> GPU on one NUMA node, NIC on another. GPUDirect RDMA depends on both being on the same NUMA node to avoid the CPU bottleneck entirely. <strong>Memory allocation mismatch:</strong> RDMA registration pins physical pages. If those pages are on a remote NUMA node (because the allocating process ran on a different node), every DMA access pays remote memory latency.</p>
+
+  <div class="diagram">
+    <p class="d-title">NUMA topology example — 2-socket server with GPU and NIC</p>
+    <pre>
+  Socket 0 (NUMA Node 0)              Socket 1 (NUMA Node 1)
+  ┌────────────────────────┐           ┌────────────────────────┐
+  │ CPUs: 0–31             │           │ CPUs: 32–63            │
+  │ RAM: 256 GB            │  ←QPI→   │ RAM: 256 GB            │
+  │                        │           │                        │
+  │ PCIe Root Complex 0    │           │ PCIe Root Complex 1    │
+  │ ├─ NIC (ConnectX-7)   │           │ ├─ GPU 0 (A100)        │
+  │ └─ NVMe 0              │           ├─ GPU 1 (A100)          │
+  └────────────────────────┘           └────────────────────────┘
+
+  MISMATCH: GPU is on Node 1, NIC is on Node 0.
+  GPUDirect RDMA must cross the QPI link for every transfer.
+  → Bandwidth limited to ~60 GB/s (QPI) instead of ~100 GB/s (PCIe)
+  → Latency penalty ~80ns per DMA access
+
+  CORRECT: Move either the NIC to Node 1's PCIe slot,
+  OR ensure the NIC QP buffers are allocated on Node 1 memory.</pre>
+  </div>
+
+  <h3>NUMA Monitoring Commands</h3>
+
+  <span class="pre-label">NUMA topology and access monitoring</span>
+  <pre><code><span class="cm"># Show NUMA topology overview</span>
+<span class="fn">numactl</span> --hardware
+<span class="cm"># available: 2 nodes (0-1)</span>
+<span class="cm"># node 0 cpus: 0 1 2 3 ... 31</span>
+<span class="cm"># node 0 size: 257842 MB</span>
+<span class="cm"># node 0 free: 189234 MB</span>
+<span class="cm"># node distances:</span>
+<span class="cm"># node   0   1</span>
+<span class="cm">#   0:  10  21   ← local=10, remote=21 (2.1× penalty)</span>
+<span class="cm">#   1:  21  10</span>
+
+<span class="cm"># Show current NUMA statistics — remote memory accesses</span>
+<span class="fn">numastat</span>
+<span class="cm">#                            node0    node1</span>
+<span class="cm"># numa_hit                12345678  9876543</span>
+<span class="cm"># numa_miss                  89234     1234  ← processes got remote memory</span>
+<span class="cm"># numa_foreign               1234    89234</span>
+<span class="cm"># interleave_hit              4567      891</span>
+<span class="cm"># local_node              12256444  9875309</span>
+<span class="cm"># other_node                 89234     1234  ← !! cross-NUMA allocation</span>
+
+<span class="cm"># Show per-process NUMA memory usage</span>
+<span class="fn">numastat</span> -p &lt;pid&gt;
+<span class="fn">numastat</span> -s              <span class="cm"># sort by total memory</span>
+
+<span class="cm"># Where is the NIC on the NUMA topology?</span>
+<span class="fn">cat</span> /sys/bus/pci/devices/0000:04:00.0/numa_node
+
+<span class="cm"># Pin a process to the correct NUMA node (where the NIC is)</span>
+<span class="fn">numactl</span> --cpunodebind=0 --membind=0 ./my_rdma_app
+
+<span class="cm"># For MPI / HPC: use --membind and --cpubind together</span>
+<span class="fn">numactl</span> --cpunodebind=0 --membind=0 mpirun -np 32 ./collective_op
+
+<span class="cm"># perf stat for NUMA events (needs PMU access)</span>
+<span class="fn">perf</span> stat -e numa:numa_miss,numa:local_node,uncore_cha/event=0x35/ -a sleep 5</code></pre>
+
+  <div class="callout c-red">
+    <p class="callout-label">🚨 GPUDirect RDMA topology requirement</p>
+    <p>GPUDirect RDMA (<code>nvidia_peermem</code> or <code>nv_peer_mem</code>) requires the GPU and the RDMA NIC to be on the same PCIe root complex or at minimum the same NUMA node. If they're on different sockets, GPUDirect will still "work" but all transfers will cross the UPI/QPI link, capping bandwidth at the interconnect speed (~50–80 GB/s) rather than PCIe Gen4 ×16 speed (~64 GB/s unidirectional from the NIC's perspective). Use <code>nvidia-smi topo -m</code> to see the exact topology matrix before deploying RDMA workloads.</p>
+  </div>
+</section>
+
+<!-- ══ 10: GPU ══ -->
+<section id="gpu">
+  <h2>GPU-Side Corroboration <span class="sec-tag tag-green">§ 10</span></h2>
+
+  <p>When debugging RDMA performance problems on GPU-accelerated nodes, the GPU has its own visibility into what's happening. GPU-side counters can confirm or contradict what the host networking stack is reporting — a "healthy GPU" with a "sick NIC" is a different problem from both being sick.</p>
+
+  <h3>Key GPU Metrics to Track</h3>
+
+  <span class="pre-label">GPU monitoring for RDMA corroboration</span>
+  <pre><code><span class="cm"># nvidia-smi: comprehensive GPU state</span>
+<span class="fn">nvidia-smi</span> dmon -s pucvmet -d 1 -c 30
+<span class="cm"># Fields: power, utilization, clock, memory, ECC, thermal, NVLINK</span>
+
+<span class="cm"># BAR1 usage — critical for GPUDirect RDMA</span>
+<span class="cm"># BAR1 is the GPU's PCIe aperture for peer mapping; if full, new RDMA</span>
+<span class="cm"># registrations will fail even if GPU VRAM has free space</span>
+<span class="fn">nvidia-smi</span> --query-gpu=bar1.used,bar1.free,bar1.total --format=csv,noheader
+<span class="cm"># 12288 MiB, 4096 MiB, 16384 MiB</span>
+<span class="cm"># bar1.free = 4096 MiB — getting low if multiple processes register buffers</span>
+
+<span class="cm"># GPU memory breakdown</span>
+<span class="fn">nvidia-smi</span> --query-gpu=memory.used,memory.free,memory.total --format=csv
+
+<span class="cm"># NVLink throughput (for multi-GPU nodes with NVLink)</span>
+<span class="fn">nvidia-smi</span> nvlink -g 0 -s  <span class="cm"># throughput counters for GPU 0</span>
+
+<span class="cm"># XID errors — GPU-side error events (mapped to dmesg)</span>
+<span class="fn">dmesg</span> | grep -i "NVRM: Xid"
+<span class="cm"># NVRM: Xid (PCI:0000:41:00): 79, ...  → GPU has fallen off the bus</span>
+<span class="cm"># NVRM: Xid (PCI:0000:41:00): 48, ...  → Double Bit ECC Error</span>
+<span class="cm"># NVRM: Xid (PCI:0000:41:00): 45, ...  → Preemptive channel removal</span>
+
+<span class="cm"># CUDA memory registration failures (userspace, check app logs)</span>
+<span class="cm"># cuMemAddressReserve: CUDA_ERROR_OUT_OF_MEMORY → BAR1 or VRAM full</span>
+
+<span class="cm"># PCIe throughput counter via nvidia-smi</span>
+<span class="fn">nvidia-smi</span> --query-gpu=pcie.link.gen.current,pcie.link.width.current \
+           --format=csv,noheader
+<span class="cm"># 4, 16   ← PCIe Gen4, x16 — if it says "3, 8", the link downgraded</span></code></pre>
+
+  <h3>Topology Verification</h3>
+
+  <span class="pre-label">nvidia-smi topology matrix</span>
+  <pre><code><span class="fn">nvidia-smi</span> topo -m
+<span class="cm">#         GPU0    GPU1    GPU2    GPU3    mlx5_0  CPU Affinity</span>
+<span class="cm"># GPU0     X      NV4     NV4     NV4     PIX     0-31</span>
+<span class="cm"># GPU1    NV4      X      NV4     NV4     PIX     0-31</span>
+<span class="cm"># GPU2    NV4     NV4      X      NV4     PHB     32-63</span>
+<span class="cm"># GPU3    NV4     NV4     NV4      X      PHB     32-63</span>
+<span class="cm"># mlx5_0  PIX     PIX     PHB     PHB      X      0-31</span>
+<span class="cm">#</span>
+<span class="cm"># NV4  = connected via NVLink with 4 links (best)</span>
+<span class="cm"># PIX  = connected via PCIe same root complex (good — GPUDirect optimal)</span>
+<span class="cm"># PHB  = connected via PCIe host bridge (cross-NUMA — GPUDirect suboptimal)</span>
+<span class="cm">#</span>
+<span class="cm"># GPU2 and GPU3 show PHB to mlx5_0 → they will underperform in RDMA</span></code></pre>
+</section>
+
+<!-- ══ 11: FIRMWARE ══ -->
+<section id="firmware">
+  <h2>Firmware / Device Reset Signals <span class="sec-tag tag-red">§ 11</span></h2>
+
+  <p>RDMA NICs — particularly Mellanox/NVIDIA ConnectX series — expose a rich set of firmware-level health signals that sit below the Linux driver. These signals often appear <em>before</em> the driver-level counters show problems, making them the best early warning system for NIC health.</p>
+
+  <h3>mlx5 Health Reporter</h3>
+
+  <span class="pre-label">mlx5 devlink health reporter</span>
+  <pre><code><span class="cm"># List all health reporters for the mlx5 device</span>
+<span class="fn">devlink</span> health show pci/0000:04:00.0
+<span class="cm"># pci/0000:04:00.0:</span>
+<span class="cm">#   reporter fw_fatal</span>
+<span class="cm">#     state healthy  error 0  recover 0  grace_period 500  auto_recover true</span>
+<span class="cm">#   reporter fw</span>
+<span class="cm">#     state healthy  error 0  recover 0  grace_period 500  auto_recover true</span>
+<span class="cm">#   reporter rx</span>
+<span class="cm">#     state healthy  error 0  recover 0  grace_period 500  auto_recover true</span>
+<span class="cm">#   reporter tx</span>
+<span class="cm">#     state error  error 3  recover 2   ← TX reporter has errors!</span>
+<span class="cm">#                                          NIC attempted 2 self-recoveries</span>
+
+<span class="cm"># Dump the health report from the TX reporter</span>
+<span class="fn">devlink</span> health dump show pci/0000:04:00.0 reporter tx
+<span class="cm"># Shows: which SQ (send queue) errored, error syndrome, timestamp</span>
+
+<span class="cm"># Manually trigger a health report (non-destructive)</span>
+<span class="fn">devlink</span> health diagnose pci/0000:04:00.0 reporter fw
+
+<span class="cm"># Force recovery if auto-recover is disabled</span>
+<span class="fn">devlink</span> health recover pci/0000:04:00.0 reporter tx</code></pre>
+
+  <h3>Firmware Fatal Syndrome Logs</h3>
+
+  <span class="pre-label">dmesg — mlx5 firmware syndrome messages</span>
+  <pre><code><span class="cm"># Fatal syndrome: NIC firmware detected an unrecoverable internal error</span>
+[ 12345.678901] mlx5_core 0000:04:00.0: <span class="er">Fatal FW syndrome 0x1FF1FF reported</span>
+[ 12345.678910] mlx5_core 0000:04:00.0: <span class="er">internal state dump:</span>
+[ 12345.678920] mlx5_core 0000:04:00.0: 0x00000000 0x00000000 0xff1ff2aa ...
+[ 12345.678950] mlx5_core 0000:04:00.0: <span class="er">device is going to be reset</span>
+
+<span class="cm"># Non-fatal health check failure</span>
+[ 9876.543210] mlx5_core 0000:04:00.0: <span class="hl">health: nic state:2 sxp:0 rxp:0 sxb:0 rxb:0</span>
+[ 9876.543215] mlx5_core 0000:04:00.0: <span class="hl">Unexpected event sxp timeout on port 1</span>
+
+<span class="cm"># Grabbing syndrome codes for Mellanox support</span>
+<span class="fn">dmesg</span> | grep -i "syndrome\|fatal\|fw_fatal\|mlx5.*error\|mlx5.*reset" | tail -50
+
+<span class="cm"># mst (Mellanox Software Tools) for firmware-level access</span>
+<span class="cm"># apt install mstflint</span>
+<span class="fn">mst</span> start
+<span class="fn">mlxfwmanager</span> --query         <span class="cm"># current FW version</span>
+<span class="fn">mlxfwreset</span>   -d /dev/mst/mt4123_pciconf0 query  <span class="cm"># reset capability</span>
+
+<span class="cm"># Check if NIC firmware is up to date</span>
+<span class="fn">mlxfwmanager</span> --online-query-psid  <span class="cm"># compare to latest available FW</span></code></pre>
+</section>
+
+<!-- ══ 12: CGROUP ══ -->
+<section id="cgroup">
+  <h2>cgroup / systemd-oomd Layer <span class="sec-tag tag-amber">§ 12</span></h2>
+
+  <p>Modern Linux distributions ship with <strong>systemd-oomd</strong> enabled by default. This daemon monitors PSI memory pressure across cgroups and kills services <em>before</em> the kernel OOM killer fires. On RDMA workloads, this creates a subtle trap: your job might be killed by systemd-oomd rather than the kernel OOM killer, with completely different logging and no vmcore dump.</p>
+
+  <h3>systemd-oomd Kill Events</h3>
+
+  <span class="pre-label">detecting systemd-oomd kills</span>
+  <pre><code><span class="cm"># Check if systemd-oomd is running</span>
+<span class="fn">systemctl</span> status systemd-oomd
+
+<span class="cm"># View oomd logs</span>
+<span class="fn">journalctl</span> -u systemd-oomd -f
+
+<span class="cm"># oomd kill event in journal:</span>
+<span class="cm"># Killed /system.slice/myapp.service due to memory pressure:</span>
+<span class="cm">#   memory pressure: 89.45% 10sec avg, kill threshold: 60%</span>
+<span class="cm">#   swap usage: 98.2% above 90% threshold</span>
+<span class="cm">#   killed process: myapp (pid 9821) with SIGKILL</span>
+<span class="cm">#   freed: 8192 MB</span>
+
+<span class="cm"># Monitoring oomd decisions in real time</span>
+<span class="fn">oomctl</span>     <span class="cm"># systemd-oomd's CLI tool (systemd 247+)</span>
+
+<span class="cm"># Check per-cgroup memory pressure PSI</span>
+<span class="fn">cat</span> /sys/fs/cgroup/system.slice/myapp.service/memory.pressure
+<span class="cm"># some avg10=78.43 avg60=45.23 avg300=12.11 total=9876543210</span>
+<span class="cm"># full avg10=23.11 avg60=15.67 avg300=4.89 total=2345678901</span>
+<span class="cm"># This is the signal oomd uses — before kernel OOM fires</span>
+
+<span class="cm"># Current cgroup memory usage</span>
+<span class="fn">cat</span> /sys/fs/cgroup/system.slice/myapp.service/memory.current
+<span class="fn">cat</span> /sys/fs/cgroup/system.slice/myapp.service/memory.max
+<span class="fn">cat</span> /sys/fs/cgroup/system.slice/myapp.service/memory.events
+<span class="cm"># low 0</span>
+<span class="cm"># high 234        ← hit MemoryHigh limit 234 times (throttled + reclaim)</span>
+<span class="cm"># max 12          ← hit MemoryMax limit 12 times</span>
+<span class="cm"># oom 0</span>
+<span class="cm"># oom_kill 0</span></code></pre>
+
+  <h3>Configuring oomd Thresholds</h3>
+
+  <span class="pre-label">/etc/systemd/oomd.conf — tuning oomd for RDMA workloads</span>
+  <pre><code>[OOM]
+<span class="cm"># Swap usage threshold before considering killing (default: 90%)</span>
+SwapUsedLimit=<span class="num">90%</span>
+
+<span class="cm"># Memory pressure (PSI) threshold over 10s avg to consider killing</span>
+DefaultMemoryPressureLimit=<span class="num">60%</span>
+
+<span class="cm"># How long to wait at/above the pressure limit before acting</span>
+DefaultMemoryPressureDurationSec=<span class="num">30s</span>
+
+<span class="cm"># For RDMA workloads: increase duration and pressure threshold</span>
+<span class="cm"># to avoid premature kills during burst allocation phases:</span>
+<span class="cm"># DefaultMemoryPressureLimit=80%</span>
+<span class="cm"># DefaultMemoryPressureDurationSec=60s</span></code></pre>
+
+  <div class="callout c-green">
+    <p class="callout-label">✅ exempt critical services from oomd</p>
+    <p>For services that absolutely must not be killed by oomd — RDMA daemons, MPI managers, or persistent communication endpoints — set <code>ManagedOOMMemoryPressure=kill</code> and <code>ManagedOOMSwap=skip</code> in their unit file, or use <code>OOMPolicy=continue</code> to prevent kill propagation. However, be careful: exempting too many services defeats oomd's purpose and means you'll fall back to the kernel OOM killer anyway, just later and with more damage.</p>
+  </div>
+</section>
+
+<!-- ══ 13: SYNTHESIS ══ -->
+<section id="synthesis">
+  <h2>Synthesis — A Unified Monitoring Playbook <span class="sec-tag tag-grey">§ 13</span></h2>
+
+  <p>All of these subsystems emit signals, but they're only useful if you have a coherent playbook for correlating them. Here's how the most common RDMA-under-pressure failure chains look when you instrument all the layers simultaneously:</p>
+
+  <h3>The "Throughput Cliff" Pattern</h3>
+
+  <p>RDMA throughput collapses suddenly rather than degrading gradually. Check in this order:</p>
+
+  <table>
+    <thead><tr><th>#</th><th>Layer</th><th>Signal</th><th>Command</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><strong>PCIe</strong></td><td>AER corrected error burst or link retrain</td><td><code>dmesg | grep -E "AER|LnkSta|retrain"</code></td></tr>
+      <tr><td>2</td><td><strong>NIC Health</strong></td><td>mlx5 health reporter <code>tx</code> in error state</td><td><code>devlink health show</code></td></tr>
+      <tr><td>3</td><td><strong>NIC Stats</strong></td><td><code>tx_timeout</code> or <code>link_down_events_phy</code> &gt; 0</td><td><code>ethtool -S mlx5_0</code></td></tr>
+      <tr><td>4</td><td><strong>RDMA</strong></td><td><code>RNRNAKRetries</code> or <code>PortXmitDiscards</code> increasing</td><td><code>cat /sys/class/infiniband/mlx5_0/ports/1/counters/*</code></td></tr>
+      <tr><td>5</td><td><strong>IOMMU</strong></td><td>DMAR fault or DMA map failure</td><td><code>dmesg | grep -i "DMAR\|iommu\|DMA map"</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>The "Slow Creep" Pattern</h3>
+
+  <p>Performance degrades over hours. Usually a resource leak or NUMA drift. Check:</p>
+
+  <table>
+    <thead><tr><th>#</th><th>Layer</th><th>Signal</th><th>Command</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><strong>Memory</strong></td><td><code>memory.some.avg10</code> slowly rising over time</td><td><code>cat /proc/pressure/memory</code></td></tr>
+      <tr><td>2</td><td><strong>NUMA</strong></td><td><code>numa_miss</code> / <code>other_node</code> counts increasing</td><td><code>numastat</code></td></tr>
+      <tr><td>3</td><td><strong>GPU BAR1</strong></td><td><code>bar1.free</code> approaching 0</td><td><code>nvidia-smi --query-gpu=bar1.free</code></td></tr>
+      <tr><td>4</td><td><strong>Softirq</strong></td><td><code>time_squeeze</code> increasing on specific CPU</td><td><code>watch -n1 'awk ... /proc/net/softnet_stat'</code></td></tr>
+      <tr><td>5</td><td><strong>cgroup</strong></td><td><code>memory.events high</code> counter rising</td><td><code>cat .../memory.events</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>A Minimal One-Shot Diagnostic Script</h3>
+
+  <span class="pre-label">rdma-health-check.sh — collect all signals at once</span>
+  <pre><code><span class="cm">#!/bin/bash</span>
+<span class="cm"># Collect all RDMA-adjacent health signals in one snapshot</span>
+NIC=<span class="str">"mlx5_0"</span>
+PCI=<span class="str">"0000:04:00.0"</span>
+IB_PORT=<span class="str">"/sys/class/infiniband/${NIC}/ports/1"</span>
+TS=$(<span class="fn">date</span> +%Y%m%d_%H%M%S)
+
+<span class="fn">echo</span> <span class="str">"=== RDMA Health Snapshot: $TS ==="</span>
+
+<span class="fn">echo</span> <span class="str">"\n--- PCIe Link State ---"</span>
+<span class="fn">lspci</span> -vv -s $PCI 2>/dev/null | grep -E "LnkSta:|LnkCap:"
+
+<span class="fn">echo</span> <span class="str">"\n--- PCIe AER Error Counts ---"</span>
+<span class="fn">find</span> /sys/bus/pci/devices/$PCI -name "aer_*_count" 2>/dev/null | \
+  <span class="fn">xargs</span> -I{} sh -c 'v=$(cat {}); [ "$v" != "0" ] &amp;&amp; echo "$(basename {}): $v"'
+
+<span class="fn">echo</span> <span class="str">"\n--- NIC Health Reporters ---"</span>
+<span class="fn">devlink</span> health show pci/$PCI 2>/dev/null
+
+<span class="fn">echo</span> <span class="str">"\n--- RDMA Port Counters (non-zero) ---"</span>
+<span class="kw">for</span> f in $IB_PORT/counters/* $IB_PORT/ext_stats/*; <span class="kw">do</span>
+  v=$(<span class="fn">cat</span> $f 2>/dev/null)
+  [ "$v" != "0" ] &amp;&amp; [ "$v" != "" ] &amp;&amp; <span class="fn">echo</span> "  $(basename $f): $v"
+<span class="kw">done</span>
+
+<span class="fn">echo</span> <span class="str">"\n--- ethtool Errors (non-zero) ---"</span>
+<span class="fn">ethtool</span> -S $NIC 2>/dev/null | grep -vE "^\s+[a-z_]+: 0$" | head -30
+
+<span class="fn">echo</span> <span class="str">"\n--- PSI Pressure ---"</span>
+<span class="fn">cat</span> /proc/pressure/{cpu,memory,io}
+
+<span class="fn">echo</span> <span class="str">"\n--- Softnet Stats ---"</span>
+<span class="fn">awk</span> '{printf "CPU%d: total=%d dropped=%d squeeze=%d\n",NR-1,strtonum("0x"$1),strtonum("0x"$2),strtonum("0x"$3)}' \
+  /proc/net/softnet_stat | grep -v "dropped=0 squeeze=0"
+
+<span class="fn">echo</span> <span class="str">"\n--- NUMA Stats ---"</span>
+<span class="fn">numastat</span> 2>/dev/null | head -15
+
+<span class="fn">echo</span> <span class="str">"\n--- GPU BAR1 + Topology ---"</span>
+<span class="fn">nvidia-smi</span> --query-gpu=name,bar1.used,bar1.free,pcie.link.gen.current,pcie.link.width.current \
+  --format=csv 2>/dev/null
+
+<span class="fn">echo</span> <span class="str">"\n--- Recent dmesg (errors only) ---"</span>
+<span class="fn">dmesg</span> --level=err,crit,alert,emerg --since="10 minutes ago" 2>/dev/null | tail -30</code></pre>
+
+  <div class="div">END</div>
+
+  <p>The hosts that fail silently are the hardest to debug — and they're the ones where every individual subsystem looks "fine" until you look at all of them together and see the cascade. The goal of this monitoring stack is not to generate more dashboards; it's to make the invisible causal chain between a PCIe AER event and an RDMA throughput collapse legible in under five minutes.</p>
+
+  <p>Instrument early. Log continuously. Correlate timestamps aggressively. The root cause is almost always in the layer you <em>weren't</em> watching.</p>
+</section>
+
+</main>
+</div>
+
+<footer>
+  Linux Internals Series — Part II · Advanced Subsystem Observability · 2026
+</footer>
+
+<footer class="site-global-footer" aria-label="Site footer">
+  <div class="site-footer-inner">
+    <div><strong><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span></strong><br/>Technical essays on AI infrastructure and systems.</div>
+    <div><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></div>
+  </div>
+</footer>
+
+<script>
+// Progress bar
+const bar = document.getElementById('prog');
+window.addEventListener('scroll', () => {
+  const h = document.documentElement.scrollHeight - window.innerHeight;
+  bar.style.width = (window.scrollY / h * 100) + '%';
+}, { passive: true });
+
+// Sidebar active link
+const secs = document.querySelectorAll('section[id]');
+const links = document.querySelectorAll('aside a');
+const io = new IntersectionObserver(es => {
+  es.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(l => l.classList.remove('active'));
+      const a = document.querySelector(`aside a[href="#${e.target.id}"]`);
+      if (a) a.classList.add('active');
+    }
+  });
+}, { rootMargin: '-30% 0px -60% 0px' });
+secs.forEach(s => io.observe(s));
+</script>
+</body>
+</html>
