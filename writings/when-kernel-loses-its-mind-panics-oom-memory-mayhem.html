@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>When the Kernel Loses Its Mind: Panics, OOM Killer & Memory Mayhem | MANISH AI</title>
+<meta name="description" content="A deep guide to Linux kernel panics, oopses, the OOM killer, soft lockups, hung tasks, and production debugging. How the kernel fails, why it fails, and how to investigate and harden systems."/>
+<meta name="keywords" content="Linux kernel panic, OOM killer, kernel oops, soft lockup, hung task, Linux debugging, kernel hardening, sysrq, kdump"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/when-kernel-loses-its-mind-panics-oom-memory-mayhem.html"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="When the Kernel Loses Its Mind: Panics, OOM Killer & Memory Mayhem | MANISH AI"/>
+<meta property="og:description" content="A deep guide to Linux kernel panics, oopses, the OOM killer, soft lockups, hung tasks, and production debugging. How the kernel fails, why it fails, and how to investigate and harden systems."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/when-kernel-loses-its-mind-panics-oom-memory-mayhem.html"/>
+<meta property="og:site_name" content="MANISH AI Writings"/>
+<meta property="og:image" content="https://manishklach.github.io/og/when-kernel-loses-its-mind-panics-oom-memory-mayhem.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="When the Kernel Loses Its Mind by MANISH AI"/>
+<meta property="article:published_time" content="2026-06-06T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-06-06T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="Linux Internals"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="When the Kernel Loses Its Mind: Panics, OOM Killer & Memory Mayhem"/>
+<meta name="twitter:description" content="A deep guide to Linux kernel panics, oopses, the OOM killer, soft lockups, hung tasks, and production debugging. How the kernel fails, why it fails, and how to investigate and harden systems."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/when-kernel-loses-its-mind-panics-oom-memory-mayhem.png"/>
+<meta name="twitter:image:alt" content="When the Kernel Loses Its Mind by MANISH AI"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"When the Kernel Loses Its Mind: Panics, OOM Killer & Memory Mayhem",
+  "description":"A deep guide to Linux kernel panics, oopses, the OOM killer, soft lockups, hung tasks, and production debugging. How the kernel fails, why it fails, and how to investigate and harden systems.",
+  "url":"https://manishklach.github.io/writings/when-kernel-loses-its-mind-panics-oom-memory-mayhem.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/when-kernel-loses-its-mind-panics-oom-memory-mayhem.html",
+  "datePublished":"2026-06-06",
+  "dateModified":"2026-06-06",
+  "articleSection":"Linux Internals",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+  :root {
+    --bg: #f7f8fb;
+    --surface: #ffffff;
+    --surface2: #f1f4f8;
+    --border: #d7dce5;
+    --accent: #94b000;
+    --accent2: #cc3f3f;
+    --accent3: #277ec0;
+    --text: #16181c;
+    --muted: #5f6672;
+    --code-bg: #0d1117;
+    --warn: #cc6d2c;
+  }
+  html.dark {
+    --bg: #0a0a0b;
+    --surface: #111114;
+    --surface2: #18181d;
+    --border: #2a2a35;
+    --accent: #e8ff47;
+    --accent2: #ff4747;
+    --accent3: #47b8ff;
+    --text: #e8e8e0;
+    --muted: #7a7a88;
+    --code-bg: #0d1117;
+    --warn: #ff8c42;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-size: 19px;
+    line-height: 1.75;
+    overflow-x: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+  }
+  a { color: var(--accent3); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent3) 40%, transparent); }
+  a:hover { border-bottom-color: var(--accent3); }
+  #progress-bar { position: fixed; top: 0; left: 0; height: 2px; background: linear-gradient(90deg, var(--accent), var(--accent3)); z-index: 1000; width: 0%; transition: width 0.1s linear; }
+  .topbar {
+    position: sticky; top: 0; z-index: 120;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar-inner, .header-inner, .toc-inner, main { max-width: 860px; margin: 0 auto; padding-left: 2rem; padding-right: 2rem; }
+  .topbar-inner {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 14px; padding-bottom: 14px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--text); text-decoration: none; border-bottom: none;
+  }
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+    border: 1px solid var(--border); background: color-mix(in srgb, var(--surface2) 80%, transparent); color: var(--accent);
+  }
+  .nav {
+    display: flex; align-items: center; gap: 18px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  }
+  .nav a, #theme-toggle { color: var(--muted); text-decoration: none; border-bottom: none; }
+  #theme-toggle { border: 1px solid currentColor; background: transparent; border-radius: 999px; padding: 6px 11px; font: inherit; cursor: pointer; }
+  header.article-header {
+    position: relative; z-index: 1;
+    border-bottom: 1px solid var(--border);
+    padding: 2rem 0 0;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, transparent) 0%, var(--bg) 100%);
+  }
+  .tag-line {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    text-transform: uppercase;
+    display: flex; align-items: center; gap: 0.6rem;
+    margin-bottom: 1.4rem;
+  }
+  .tag-line::before { content: '▶'; animation: blink 1.4s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(2.4rem, 6vw, 4.2rem);
+    font-weight: 800;
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 1.2rem;
+  }
+  h1 em { font-style: normal; color: var(--accent); }
+  .subtitle {
+    font-family: 'Instrument Serif', serif;
+    font-style: italic;
+    font-size: 1.25rem;
+    color: var(--muted);
+    max-width: 640px;
+    margin-bottom: 2rem;
+  }
+  .meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    display: flex; gap: 2rem; flex-wrap: wrap;
+    padding: 1.2rem 0;
+    border-top: 1px solid var(--border);
+  }
+  .meta span { display: flex; align-items: center; gap: 0.4rem; }
+  .toc {
+    position: sticky; top: 57px; z-index: 90;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto; white-space: nowrap;
+  }
+  .toc-inner { display: flex; gap: 0; }
+  .toc a {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 0.7rem 1rem;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .toc a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  main {
+    position: relative; z-index: 1;
+    padding-top: 4rem; padding-bottom: 6rem;
+  }
+  section { margin-bottom: 4.5rem; }
+  h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(1.6rem, 3.5vw, 2.2rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 1.5rem;
+    padding-top: 1rem;
+    display: flex; align-items: baseline; gap: 0.7rem;
+  }
+  h2 .sec-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent);
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    flex-shrink: 0;
+  }
+  h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--text) 88%, transparent);
+    margin: 2.2rem 0 0.8rem;
+    letter-spacing: -0.01em;
+  }
+  p { margin-bottom: 1.2rem; }
+  strong { color: var(--text); font-weight: 600; }
+  em { color: var(--warn); font-style: italic; }
+  pre, code { font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
+  code { background: var(--surface2); color: var(--accent); padding: 0.15em 0.45em; border-radius: 4px; font-size: 0.8rem; }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 1.5rem 1.8rem;
+    overflow-x: auto;
+    margin: 1.8rem 0;
+    line-height: 1.6;
+    position: relative;
+  }
+  pre code { background: none; padding: 0; font-size: 0.82rem; color: #c9d1d9; }
+  pre .comment { color: #6e7681; } pre .kw { color: #ff79c6; } pre .str { color: #f1fa8c; } pre .num { color: #bd93f9; } pre .fn { color: #50fa7b; } pre .warn-text { color: var(--accent2); font-weight: 600; } pre .ok { color: var(--accent); } pre .dim { color: var(--muted); }
+  .pre-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 0.4rem; display: block;
+  }
+  .callout {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.4rem 1.6rem;
+    margin: 2rem 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .callout::before { content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%; }
+  .callout-panic { background: color-mix(in srgb, var(--accent2) 8%, var(--surface)); border-color: color-mix(in srgb, var(--accent2) 34%, var(--border)); }
+  .callout-panic::before { background: var(--accent2); }
+  .callout-info { background: color-mix(in srgb, var(--accent3) 6%, var(--surface)); border-color: color-mix(in srgb, var(--accent3) 28%, var(--border)); }
+  .callout-info::before { background: var(--accent3); }
+  .callout-tip { background: color-mix(in srgb, var(--accent) 5%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 24%, var(--border)); }
+  .callout-tip::before { background: var(--accent); }
+  .callout-warn { background: color-mix(in srgb, var(--warn) 8%, var(--surface)); border-color: color-mix(in srgb, var(--warn) 30%, var(--border)); }
+  .callout-warn::before { background: var(--warn); }
+  .callout-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.5rem;
+  }
+  .callout-panic .callout-label { color: var(--accent2); }
+  .callout-info .callout-label { color: var(--accent3); }
+  .callout-tip .callout-label { color: var(--accent); }
+  .callout-warn .callout-label { color: var(--warn); }
+  .callout p:last-child { margin-bottom: 0; }
+  .divider {
+    display: flex; align-items: center; gap: 1.2rem;
+    margin: 3rem 0; color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; letter-spacing: 0.2em;
+  }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 2rem;
+    margin: 2rem 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 1.9;
+    color: color-mix(in srgb, var(--text) 86%, transparent);
+    overflow-x: auto;
+  }
+  .diagram .d-title {
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.5rem;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 2rem 0; font-size: 0.9rem; }
+  th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); text-align: left; padding: 0.7rem 1rem; border-bottom: 1px solid var(--border);
+  }
+  td { padding: 0.7rem 1rem; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); vertical-align: top; }
+  tr:hover td { background: color-mix(in srgb, var(--surface2) 70%, transparent); }
+  td code { font-size: 0.75rem; }
+  .pull-quote {
+    font-family: 'Instrument Serif', serif; font-style: italic; font-size: 1.5rem; line-height: 1.45; color: var(--text);
+    padding: 2rem 0 2rem 2rem; border-left: 3px solid var(--accent); margin: 2.5rem 0;
+  }
+  footer.article-footer {
+    position: relative; z-index: 1;
+    border-top: 1px solid var(--border);
+    padding: 2rem;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+  @media (max-width: 600px) {
+    body { font-size: 17px; }
+    pre { padding: 1rem; }
+    .diagram { padding: 1rem; }
+    .nav a:not(:last-of-type) { display: none; }
+  }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+  header.article-header { animation: fadeUp 0.6s ease both; }
+  main section { opacity: 0; animation: fadeUp 0.5s ease both; }
+  main section:nth-child(1) { animation-delay: 0.1s; }
+  main section:nth-child(2) { animation-delay: 0.18s; }
+  main section:nth-child(3) { animation-delay: 0.26s; }
+  main section:nth-child(4) { animation-delay: 0.32s; }
+  main section:nth-child(5) { animation-delay: 0.38s; }
+  main section:nth-child(6) { animation-delay: 0.44s; }
+  main section:nth-child(7) { animation-delay: 0.5s; }
+</style>
+</head>
+<body>
+<div id="progress-bar"></div>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/index.html" aria-label="MANISH AI home">
+      <span class="brand-mark">▣</span>
+      <span>MAN<span class="logo-i">\</span>SH AI</span>
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a href="/writings.html">Writings</a>
+      <a href="/patents.html">Patents</a>
+      <a href="/feed.xml">RSS</a>
+      <button id="theme-toggle" type="button" aria-label="Toggle light and dark mode">Theme</button>
+    </nav>
+  </div>
+</header>
+
+<header class="article-header">
+  <div class="header-inner">
+    <p class="tag-line">Linux Internals Deep Dive</p>
+    <h1>When the Kernel<br><em>Loses Its Mind</em></h1>
+    <p class="subtitle">A thorough guide to kernel panics, the OOM killer, hung tasks, soft lockups, and everything that makes a Linux system scream into the void.</p>
+    <div class="meta">
+      <span>📅 June 6, 2026</span>
+      <span>⏱ 20 min read</span>
+      <span>🐧 Linux Internals</span>
+      <span>🔧 Intermediate / Advanced</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Table of contents">
+  <div class="toc-inner">
+    <a href="#intro">Intro</a>
+    <a href="#panic">Kernel Panic</a>
+    <a href="#oops">Kernel Oops</a>
+    <a href="#vm">Virtual Memory</a>
+    <a href="#oom">OOM Killer</a>
+    <a href="#lockups">Lockups</a>
+    <a href="#debug">Debugging</a>
+    <a href="#harden">Hardening</a>
+  </div>
+</nav>
+
+<main>
+<section id="intro">
+  <h2><span class="sec-num">§ 01</span> Introduction — The Operating System's Last Resort</h2>
+  <p>Every operating system, no matter how well-engineered, has moments where it hits a wall it cannot safely recover from. On Linux these moments show up as <strong>kernel panics</strong>, <strong>OOM kills</strong>, <strong>soft lockups</strong>, and a whole taxonomy of other dramatic failures.</p>
+  <p>Understanding these events is not just academic. If you run servers, debug embedded systems, or maintain production infrastructure, these failure modes are the difference between a five-minute recovery and a three-hour war room call at 2 AM. This piece goes deep: the mechanics, the source-level logic, real log examples, and concrete mitigations.</p>
+  <div class="callout callout-info">
+    <p class="callout-label">Scope</p>
+    <p>Examples are drawn primarily from Linux kernel 5.x and 6.x on x86_64, though the concepts apply broadly. Where specific sysctls or file paths are mentioned, they refer to mainline Linux.</p>
+  </div>
+  <p>We start with the most dramatic case, the kernel panic, and work downward into softer but still dangerous failure modes. By the end, you should understand not just what happened, but why the kernel made the choice it did and how to bend that behavior toward safer production outcomes.</p>
+</section>
+
+<section id="panic">
+  <h2><span class="sec-num">§ 02</span> Kernel Panic — The Point of No Return</h2>
+  <p>A kernel panic is Linux throwing its hands up. It is the kernel's admission that continuing execution would be more dangerous than stopping entirely. Once <code>panic()</code> is invoked, the system halts or reboots, depending on configuration, and the message is sent to every console it can reach.</p>
+  <h3>What actually triggers a panic?</h3>
+  <p>The kernel calls <code>panic()</code> when continuing would risk data corruption, security boundary failure, or undefined behavior at the hardware level. Common triggers include null dereferences inside the kernel, fatal hardware exceptions, loss of PID 1, or policy decisions like <code>panic_on_oops</code> and <code>panic_on_oom</code>.</p>
+  <table>
+    <thead><tr><th>Trigger</th><th>Example scenario</th><th>Severity</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Oops with <code>panic_on_oops</code></strong></td><td>Kernel code dereferences a null pointer</td><td>Configurable</td></tr>
+      <tr><td><strong>Double fault</strong></td><td>Fault handler itself faults</td><td>Always fatal</td></tr>
+      <tr><td><strong>Machine check exception</strong></td><td>CPU detects an uncorrectable hardware error</td><td>Usually fatal</td></tr>
+      <tr><td><strong>No init process</strong></td><td>PID 1 exits or never starts</td><td>Always fatal</td></tr>
+      <tr><td><strong>OOM with <code>panic_on_oom</code></strong></td><td>System runs out of memory and policy prefers panic</td><td>Configurable</td></tr>
+      <tr><td><strong>Soft or hard lockup policy</strong></td><td>Watchdog sees CPU stuck in kernel mode</td><td>Configurable</td></tr>
+    </tbody>
+  </table>
+
+  <h3>A real panic message, annotated</h3>
+  <span class="pre-label">dmesg output — kernel panic</span>
+  <pre><code><span class="warn-text">BUG: unable to handle kernel NULL pointer dereference at 0000000000000008</span>
+Oops: 0000 [#1] SMP PTI
+CPU: 3 PID: 2847 Comm: kworker/3:2 Tainted: G           O
+RIP: 0010:<span class="fn">my_driver_handle_event+0x1f/0x60 [my_driver]</span>
+Call Trace:
+ <span class="fn">process_one_work+0x1cd/0x380</span>
+ <span class="fn">worker_thread+0x4d/0x3e0</span>
+ <span class="fn">kthread+0x12a/0x160</span>
+CR2: <span class="warn-text">0000000000000008</span>
+<span class="warn-text">Kernel panic - not syncing: Fatal exception in interrupt</span></code></pre>
+  <p>The address <code>0x8</code> is a classic clue: something was null, and the kernel tried to dereference a struct field 8 bytes in. <code>RIP</code> tells you where execution was. <code>CR2</code> confirms the faulting address. The call trace gives you the breadcrumb trail back to the source line or module.</p>
+  <h3>The <code>panic()</code> path</h3>
+  <span class="pre-label">kernel/panic.c — simplified flow</span>
+  <pre><code><span class="kw">void</span> <span class="fn">panic</span>(<span class="kw">const char</span> *fmt, ...) {
+    pr_emerg(<span class="str">"Kernel panic - not syncing: %s\n"</span>, buf);
+    preempt_disable();
+    crash_kexec(regs);
+    atomic_notifier_call_chain(&amp;panic_notifier_list, 0, buf);
+    <span class="kw">if</span> (panic_timeout &gt; <span class="num">0</span>)
+        mdelay(panic_timeout * <span class="num">1000</span>);
+    machine_restart(<span class="num">0</span>);
+}</code></pre>
+  <p>That sequence is why panic behavior matters operationally. A panic is not just a crash. It is a policy surface: crash dump, notifier chain, delay, and reboot behavior all live here.</p>
+</section>
+
+<section id="oops">
+  <h2><span class="sec-num">§ 03</span> Kernel Oops — The Warning Before the Abyss</h2>
+  <p>A kernel oops is a serious kernel fault that <em>does not necessarily</em> stop the machine immediately. Think of it as the kernel saying, “something illegal just happened, but I might limp onward.”</p>
+  <p>This makes oopses more dangerous in one sense than panics. A panic is loud and final. An oops can leave the system partially corrupted while workloads continue running. That is why many production teams prefer <code>panic_on_oops=1</code> for critical environments: if the kernel has crossed an integrity boundary, fail loudly rather than continue in an undefined state.</p>
+  <div class="callout callout-panic">
+    <p class="callout-label">Why oopses matter</p>
+    <p>An oops often means the kernel recovered <em>control flow</em>, not <em>correctness</em>. The machine may still be alive, but the assumptions you were relying on no longer hold cleanly.</p>
+  </div>
+  <p>Out-of-tree modules are a common source of oopses, and the kernel helpfully marks this in the taint flags. If you see taint plus an oops plus a custom module in the trace, start there before blaming the scheduler, VM, or filesystem.</p>
+</section>
+
+<section id="vm">
+  <h2><span class="sec-num">§ 04</span> Virtual Memory — The Ground Beneath the OOM Killer</h2>
+  <p>You cannot understand the OOM killer without understanding Linux virtual memory. Linux does not only track “free RAM.” It tracks committed memory, reclaimable memory, anonymous pages, page cache, slab usage, and the promises the system has already made to processes.</p>
+  <p>The kernel is usually willing to overcommit memory because not every process will touch every page it asked for. That policy is rational most of the time, but it means OOM events often arrive <em>later</em> than application teams expect. The system appears healthy until it suddenly is not.</p>
+  <div class="diagram">
+    <div class="d-title">Simplified memory pressure path</div>
+<pre><code>anonymous memory grows
+        ↓
+page cache reclaim starts
+        ↓
+slab and file cache pressure rises
+        ↓
+direct reclaim / compaction
+        ↓
+allocation still fails
+        ↓
+OOM killer enters the room</code></pre>
+  </div>
+  <p>This is why “free memory” in dashboards is often misleading. <code>MemAvailable</code>, reclaim behavior, swap activity, and commit ratios are much better indicators of where the machine really stands.</p>
+</section>
+
+<section id="oom">
+  <h2><span class="sec-num">§ 05</span> OOM Killer — Controlled Violence Under Memory Pressure</h2>
+  <p>The OOM killer exists because sometimes the system simply cannot satisfy a memory allocation and no amount of reclaim will save it. At that moment, Linux makes a hard choice: kill something so the machine as a whole can survive.</p>
+  <h3>How the kernel chooses a victim</h3>
+  <p>The kernel computes a badness score using process memory footprint, privilege, adjustment knobs like <code>oom_score_adj</code>, and context about the allocation domain. Large, memory-hungry, non-privileged processes are natural targets. Important daemons can protect themselves by setting lower or negative OOM adjustment values.</p>
+  <span class="pre-label">typical OOM output</span>
+  <pre><code><span class="warn-text">Out of memory: Killed process 18324 (python)</span> total-vm:24567892kB,
+anon-rss:17345012kB, file-rss:420kB, shmem-rss:0kB, UID:1000 pgtables:33124kB
+oom_score_adj:0</code></pre>
+  <p>That line is pure production gold. It tells you which task died, how much virtual memory it had, how much anonymous RSS it actually pinned, and whether it had any special OOM weighting.</p>
+  <div class="callout callout-tip">
+    <p class="callout-label">Practical ops tip</p>
+    <p>If the wrong process keeps dying, do not just “add RAM” blindly. Inspect <code>oom_score_adj</code>, memory limits, reclaim behavior, and whether one runaway worker is forcing the kernel into terrible choices.</p>
+  </div>
+</section>
+
+<section id="lockups">
+  <h2><span class="sec-num">§ 06</span> Soft Lockups, Hard Lockups, Hung Tasks</h2>
+  <p>Not every kernel crisis is a panic or OOM. Sometimes the machine is alive but one CPU is spinning forever, a task is stuck in uninterruptible sleep, or RCU grace periods never complete. These are the lockup family of failures.</p>
+  <h3>Soft lockups</h3>
+  <p>A soft lockup means a CPU stayed in kernel context too long without scheduling. Common causes include giant spinlock hold times, busy-wait loops, interrupt storms, or badly behaved driver code.</p>
+  <span class="pre-label">dmesg — soft lockup</span>
+  <pre><code><span class="warn-text">BUG: soft lockup - CPU#2 stuck for 22s! [kworker/2:1:1938]</span>
+RIP: 0010:<span class="fn">my_driver_poll+0x91/0x150 [my_driver]</span></code></pre>
+  <h3>Hard lockups</h3>
+  <p>A hard lockup is worse: the CPU cannot even service watchdog NMIs. This usually means interrupts are disabled and the core is wedged in a much deeper way.</p>
+  <h3>Hung tasks</h3>
+  <p>Hung tasks are usually D-state processes waiting on I/O or kernel locks for too long. They are often symptoms of storage stalls, dead devices, network filesystem pain, or lock chains that never resolve.</p>
+  <div class="callout callout-warn">
+    <p class="callout-label">Why D-state scares operators</p>
+    <p>A D-state task cannot be fixed with <code>SIGKILL</code>. The signal only lands when the wait completes, and the whole point is that the wait may not be completing.</p>
+  </div>
+</section>
+
+<section id="debug">
+  <h2><span class="sec-num">§ 07</span> Debugging Toolkit — From Crash Site to Root Cause</h2>
+  <h3>Magic SysRq</h3>
+  <p>SysRq is the emergency hatch when the system is half-dead but still has enough life to answer the kernel directly. It is one of the best tools for extracting forensic signal before a forced reboot.</p>
+  <span class="pre-label">sysrq via /proc/sysrq-trigger</span>
+  <pre><code><span class="fn">echo</span> t &gt; /proc/sysrq-trigger   <span class="comment"># dump task states</span>
+<span class="fn">echo</span> m &gt; /proc/sysrq-trigger   <span class="comment"># dump memory info</span>
+<span class="fn">echo</span> w &gt; /proc/sysrq-trigger   <span class="comment"># show blocked tasks</span>
+<span class="fn">echo</span> s &gt; /proc/sysrq-trigger   <span class="comment"># sync filesystems</span>
+<span class="fn">echo</span> u &gt; /proc/sysrq-trigger   <span class="comment"># remount read-only</span></code></pre>
+  <h3>KASAN, KMEMLEAK, perf, ftrace</h3>
+  <p>When debugging kernel code, sanitizers and tracing tools are how you turn folklore into evidence. KASAN catches use-after-free and bounds bugs. KMEMLEAK helps with leaks. <code>perf</code> and <code>ftrace</code> help explain recurring soft lockups and CPU stalls.</p>
+  <div class="divider">§</div>
+  <p>If the machine is so gone that SSH, SysRq, and local consoles are worthless, a serial console or crash dump path becomes the only truthful witness left. That is why boring setup like kdump and serial console wiring pays off disproportionately when something genuinely bad happens.</p>
+</section>
+
+<section id="harden">
+  <h2><span class="sec-num">§ 08</span> Production Hardening — A Practical Checklist</h2>
+  <p>Armed with the failure taxonomy, the next step is hardening. Good production posture is not about preventing every failure forever. It is about choosing sane policies, preserving evidence, and making the blast radius smaller.</p>
+  <span class="pre-label">/etc/sysctl.d/99-production-hardening.conf</span>
+  <pre><code>kernel.panic = <span class="num">30</span>
+kernel.panic_on_oops = <span class="num">1</span>
+kernel.hung_task_timeout_secs = <span class="num">120</span>
+kernel.softlockup_panic = <span class="num">0</span>
+kernel.watchdog_thresh = <span class="num">10</span>
+vm.panic_on_oom = <span class="num">0</span>
+vm.swappiness = <span class="num">10</span>
+vm.vfs_cache_pressure = <span class="num">50</span>
+kernel.nmi_watchdog = <span class="num">1</span>
+kernel.sysrq = <span class="num">176</span></code></pre>
+  <h3>What to monitor</h3>
+  <table>
+    <thead><tr><th>Metric</th><th>Why it matters</th><th>Alert idea</th></tr></thead>
+    <tbody>
+      <tr><td><code>CommittedAS</code> vs <code>CommitLimit</code></td><td>Approaching commit exhaustion</td><td>&gt;80%</td></tr>
+      <tr><td>Swap in/out</td><td>Active paging means degraded performance</td><td>&gt;0 sustained</td></tr>
+      <tr><td><code>MemAvailable</code></td><td>Better than raw free memory</td><td>&lt;10%</td></tr>
+      <tr><td><code>dmesg</code> for OOM / BUG / Oops</td><td>Direct kernel distress signal</td><td>Any occurrence</td></tr>
+      <tr><td>D-state process count</td><td>Storage or lock starvation</td><td>&gt;5 sustained</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-info">
+    <p class="callout-label">Closing thought</p>
+    <p>Kernel panics, OOM kills, and lockups are not shameful events. They are the kernel being maximally honest. A machine that crashes loudly with a vmcore is often more trustworthy than one that stays up while silently corrupting state.</p>
+  </div>
+  <p>The Linux kernel's failure philosophy is brutally useful: be explicit, be loud, preserve forensic signal. Learn to read that signal and these scary-looking messages become some of the most valuable debugging output in your stack.</p>
+</section>
+</main>
+
+<footer class="article-footer">
+  <p>Linux Internals Series · June 2026 · Test changes in non-production environments first.</p>
+</footer>
+
+<footer class="site-footer site-global-footer" aria-label="Article footer">
+  <div class="site-footer-inner">
+    <div><strong><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span></strong><br/>Technical essays on AI infrastructure and systems.</div>
+    <div><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></div>
+  </div>
+</footer>
+
+<script>
+  const bar = document.getElementById('progress-bar');
+  window.addEventListener('scroll', () => {
+    const docH = document.documentElement.scrollHeight - window.innerHeight;
+    bar.style.width = (window.scrollY / docH * 100) + '%';
+  }, { passive: true });
+
+  const sections = document.querySelectorAll('section[id]');
+  const links = document.querySelectorAll('.toc a');
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => {
+          l.style.color = '';
+          l.style.borderBottomColor = '';
+        });
+        const active = document.querySelector(`.toc a[href="#${e.target.id}"]`);
+        if (active) {
+          active.style.color = 'var(--accent)';
+          active.style.borderBottomColor = 'var(--accent)';
+        }
+      }
+    });
+  }, { rootMargin: '-40% 0px -50% 0px' });
+  sections.forEach(s => obs.observe(s));
+</script>
+</body>
+</html>
