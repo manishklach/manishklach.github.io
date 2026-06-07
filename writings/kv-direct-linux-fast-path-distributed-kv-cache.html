@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>KV-Direct: Why Distributed KV Cache Needs a Linux Fast Path | MANISH AI</title>
+<meta name="description" content="A polished systems essay on why distributed KV cache turns Linux into the next inference bottleneck, and what a batched, deadline-aware KV fast path should look like across NVMe, RDMA, DRAM, and GPU memory."/>
+<meta name="keywords" content="KV cache, distributed KV cache, Mooncake Store, Linux kernel, io_uring, NVMe, RDMA, vLLM, long-context inference, GPU memory"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f4f7fb"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/kv-direct-linux-fast-path-distributed-kv-cache.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="KV-Direct: Why Distributed KV Cache Needs a Linux Fast Path | MANISH AI"/>
+<meta property="og:description" content="Distributed KV cache solves placement. The next systems opportunity is how Linux restores fragmented KV blocks across NVMe, DRAM, RDMA, and GPU memory without wasting CPU cycles or tail latency."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/kv-direct-linux-fast-path-distributed-kv-cache.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/kv-direct-linux-fast-path-distributed-kv-cache.png"/>
+<meta property="og:image:alt" content="Preview image for KV-Direct: Why Distributed KV Cache Needs a Linux Fast Path"/>
+<meta property="article:published_time" content="2026-06-07T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-06-07T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="KV-Direct: Why Distributed KV Cache Needs a Linux Fast Path"/>
+<meta name="twitter:description" content="A systems essay on the Linux fast path that distributed KV cache now needs."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/kv-direct-linux-fast-path-distributed-kv-cache.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"KV-Direct: Why Distributed KV Cache Needs a Linux Fast Path","description":"A polished systems essay on why distributed KV cache turns Linux into the next inference bottleneck, and what a batched, deadline-aware KV fast path should look like across NVMe, RDMA, DRAM, and GPU memory.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/kv-direct-linux-fast-path-distributed-kv-cache.html","mainEntityOfPage":"https://manishklach.github.io/writings/kv-direct-linux-fast-path-distributed-kv-cache.html","datePublished":"2026-06-07","dateModified":"2026-06-07","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+  :root{
+    --bg:#f4f7fb;
+    --canvas:#eef4fb;
+    --paper:rgba(255,255,255,.94);
+    --paper-strong:#ffffff;
+    --ink:#0f172a;
+    --muted:#5b687c;
+    --line:rgba(15,23,42,.10);
+    --line-strong:rgba(15,23,42,.16);
+    --accent:#2563eb;
+    --accent-2:#0f766e;
+    --accent-3:#7c3aed;
+    --callout:#edf4ff;
+    --warn:#fff6e8;
+    --code:#0b1220;
+    --code-line:#182437;
+    --code-text:#d7e8ff;
+    --shadow:0 28px 90px rgba(15,23,42,.10);
+    --hero-grid:radial-gradient(circle at 10% 0%, rgba(37,99,235,.14), transparent 28rem),radial-gradient(circle at 90% 4%, rgba(124,58,237,.14), transparent 24rem),radial-gradient(circle at 50% 100%, rgba(15,118,110,.10), transparent 24rem),linear-gradient(180deg,#f9fbff 0%,#f4f7fb 45%,#f5f1ff 100%);
+  }
+  html.dark{
+    --bg:#08111d;
+    --canvas:#0b1525;
+    --paper:rgba(11,21,37,.92);
+    --paper-strong:#0f1c30;
+    --ink:#edf4ff;
+    --muted:#9fb0c7;
+    --line:rgba(255,255,255,.10);
+    --line-strong:rgba(255,255,255,.16);
+    --accent:#72b4ff;
+    --accent-2:#4fd1c5;
+    --accent-3:#b794f6;
+    --callout:#12223c;
+    --warn:#2b2216;
+    --code:#060d19;
+    --code-line:#1b2c45;
+    --code-text:#dcedff;
+    --shadow:0 36px 100px rgba(0,0,0,.34);
+    --hero-grid:radial-gradient(circle at 10% 0%, rgba(114,180,255,.18), transparent 28rem),radial-gradient(circle at 90% 4%, rgba(183,148,246,.18), transparent 24rem),radial-gradient(circle at 50% 100%, rgba(79,209,197,.10), transparent 24rem),linear-gradient(180deg,#07111f 0%,#08111d 45%,#0c1326 100%);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    color:var(--ink);
+    background:var(--hero-grid);
+    font-family:"Inter",system-ui,sans-serif;
+    line-height:1.7;
+  }
+  a{color:var(--accent)}
+  .shell{max-width:1180px;margin:0 auto;padding:18px 20px 0}
+  .site-tools{
+    margin:0;
+    padding:14px 18px;
+    border:1px solid var(--line);
+    border-radius:18px;
+    background:color-mix(in srgb, var(--paper-strong) 82%, transparent);
+    backdrop-filter:blur(12px);
+    box-shadow:0 12px 40px rgba(15,23,42,.06);
+  }
+  .brand{
+    font-size:12px;
+    font-weight:800;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    text-decoration:none;
+    color:var(--accent);
+  }
+  .wrapper{max-width:1180px;margin:0 auto;padding:22px 20px 68px}
+  .page{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) 300px;
+    gap:22px;
+    align-items:start;
+  }
+  .article{
+    border:1px solid var(--line);
+    border-radius:32px;
+    background:var(--paper);
+    box-shadow:var(--shadow);
+    overflow:hidden;
+  }
+  .hero{
+    padding:56px 54px 40px;
+    border-bottom:1px solid var(--line);
+    background:
+      radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--accent-3) 16%, transparent), transparent 20rem),
+      radial-gradient(circle at 0% 100%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 18rem),
+      linear-gradient(135deg, color-mix(in srgb, var(--paper-strong) 92%, transparent), color-mix(in srgb, var(--canvas) 70%, transparent));
+  }
+  .eyebrow{
+    display:inline-flex;
+    align-items:center;
+    gap:10px;
+    padding:8px 12px;
+    border:1px solid var(--line);
+    border-radius:999px;
+    background:color-mix(in srgb, var(--accent) 8%, var(--paper-strong));
+    color:var(--accent);
+    font-size:12px;
+    font-weight:800;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+  }
+  .eyebrow::before{
+    content:"";
+    width:8px;
+    height:8px;
+    border-radius:999px;
+    background:var(--accent-2);
+    box-shadow:0 0 18px color-mix(in srgb, var(--accent-2) 70%, transparent);
+  }
+  h1{
+    margin:18px 0 18px;
+    max-width:980px;
+    font-family:"Instrument Serif",Georgia,serif;
+    font-size:clamp(48px,6vw,82px);
+    line-height:.95;
+    letter-spacing:-.045em;
+  }
+  .hero-grid{
+    display:grid;
+    grid-template-columns:minmax(0,1.05fr) minmax(280px,.95fr);
+    gap:28px;
+    align-items:center;
+  }
+  .subtitle{
+    margin:0;
+    max-width:860px;
+    font-size:20px;
+    color:var(--muted);
+  }
+  .meta-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+    margin-top:24px;
+  }
+  .pill{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:8px 12px;
+    border:1px solid var(--line);
+    border-radius:999px;
+    background:color-mix(in srgb, var(--paper-strong) 90%, transparent);
+    color:var(--muted);
+    font-size:13px;
+  }
+  .hero-card,
+  .section-card,
+  .callout,
+  .toc-card,
+  .side-card,
+  .diagram-card{
+    border:1px solid var(--line);
+    border-radius:24px;
+    background:color-mix(in srgb, var(--paper-strong) 92%, transparent);
+  }
+  .hero-card{padding:22px}
+  .hero-card h2{
+    margin:0 0 10px;
+    font-size:18px;
+    line-height:1.3;
+  }
+  .stack{display:grid;gap:10px}
+  .stack .layer{
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:14px 16px;
+    background:linear-gradient(180deg, color-mix(in srgb, var(--paper-strong) 94%, transparent), color-mix(in srgb, var(--canvas) 68%, transparent));
+  }
+  .stack strong{display:block;font-size:15px;color:var(--ink)}
+  .stack span{display:block;font-size:13px;color:var(--muted);margin-top:4px}
+  .stack .arrow{text-align:center;color:var(--accent);font-weight:800}
+  main{padding:34px 54px 56px}
+  .toc-card{
+    padding:18px 20px;
+    margin-bottom:24px;
+    background:linear-gradient(180deg, color-mix(in srgb, var(--paper-strong) 94%, transparent), color-mix(in srgb, var(--canvas) 70%, transparent));
+  }
+  .toc-card strong{
+    display:block;
+    font-size:13px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--accent);
+    margin-bottom:10px;
+  }
+  .toc-card .links{display:flex;flex-wrap:wrap;gap:12px 16px}
+  .toc-card a{text-decoration:none;font-size:14px}
+  p{margin:0 0 16px;color:var(--ink);font-size:17px}
+  .lede{font-size:19px;color:color-mix(in srgb, var(--ink) 88%, var(--muted))}
+  h2{
+    margin:52px 0 14px;
+    font-size:33px;
+    line-height:1.15;
+    letter-spacing:-.03em;
+  }
+  h3{
+    margin:28px 0 10px;
+    font-size:22px;
+    line-height:1.2;
+    letter-spacing:-.02em;
+  }
+  .section-card{padding:24px 24px 8px;margin:0 0 34px;background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, var(--paper-strong)), color-mix(in srgb, var(--paper-strong) 94%, transparent))}
+  .callout{
+    padding:18px 20px;
+    margin:22px 0;
+    background:var(--callout);
+    border-left:5px solid var(--accent);
+  }
+  .callout.warn{
+    background:var(--warn);
+    border-left-color:#d97706;
+  }
+  .callout.alt{
+    border-left-color:var(--accent-2);
+  }
+  .grid-2{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:18px;
+    margin:20px 0;
+  }
+  .mini-card{
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:18px 18px 4px;
+    background:linear-gradient(180deg, color-mix(in srgb, var(--paper-strong) 94%, transparent), color-mix(in srgb, var(--canvas) 64%, transparent));
+  }
+  .mini-card .label{
+    display:inline-block;
+    margin-bottom:10px;
+    font-size:12px;
+    font-weight:800;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--accent);
+  }
+  .mini-card h3{margin-top:0;font-size:18px}
+  .inline-code{
+    font-family:"IBM Plex Mono",Consolas,monospace;
+    font-size:.92em;
+    padding:2px 6px;
+    border-radius:8px;
+    background:color-mix(in srgb, var(--accent) 8%, var(--paper-strong));
+    border:1px solid var(--line);
+  }
+  pre{
+    margin:22px 0;
+    padding:18px 20px;
+    overflow:auto;
+    border:1px solid var(--code-line);
+    border-radius:20px;
+    background:var(--code);
+    color:var(--code-text);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  code{font-family:"IBM Plex Mono",Consolas,monospace;font-size:13.5px}
+  table{
+    width:100%;
+    margin:22px 0;
+    border-collapse:separate;
+    border-spacing:0;
+    overflow:hidden;
+    border:1px solid var(--line);
+    border-radius:20px;
+    background:color-mix(in srgb, var(--paper-strong) 95%, transparent);
+  }
+  th,td{
+    padding:14px 15px;
+    vertical-align:top;
+    border-bottom:1px solid var(--line);
+    text-align:left;
+    font-size:15px;
+  }
+  th{
+    background:color-mix(in srgb, var(--canvas) 82%, transparent);
+    color:var(--ink);
+  }
+  tr:last-child td{border-bottom:0}
+  ul,ol{margin:0 0 18px 24px}
+  li{margin:0 0 10px}
+  .diagram-card{padding:18px;margin:26px 0}
+  .figcap{
+    margin-top:10px;
+    color:var(--muted);
+    font-size:14px;
+    text-align:center;
+  }
+  svg{display:block;width:100%;height:auto}
+  .quote{
+    font-size:28px;
+    line-height:1.32;
+    letter-spacing:-.03em;
+    margin:18px 0 10px;
+  }
+  .article-footer{
+    margin-top:34px;
+    padding-top:22px;
+    border-top:1px solid var(--line);
+    color:var(--muted);
+    font-size:14px;
+  }
+  aside{position:sticky;top:18px;display:grid;gap:16px}
+  .side-card{padding:20px}
+  .side-card h3{margin:0 0 10px;font-size:18px}
+  .metric{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:10px 0;
+    border-bottom:1px solid var(--line);
+    color:var(--muted);
+    font-size:14px;
+  }
+  .metric:last-child{border-bottom:0}
+  .metric strong{color:var(--ink)}
+  .side-card .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .side-card .chips span{
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:color-mix(in srgb, var(--paper-strong) 90%, transparent);
+    font-size:12px;
+    color:var(--muted);
+  }
+  .site-footer{
+    padding:0 20px 42px;
+  }
+  .site-footer .wrap{
+    max-width:1180px;
+    margin:0 auto;
+    padding:28px 18px 0;
+    border-top:1px solid var(--line);
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    color:var(--muted);
+    font-size:14px;
+  }
+  .site-footer a{color:inherit;text-decoration:none}
+  .site-footer a:hover{text-decoration:underline}
+  @media (max-width:1080px){
+    .page{grid-template-columns:1fr}
+    aside{position:static}
+    .hero-grid{grid-template-columns:1fr}
+  }
+  @media (max-width:760px){
+    .hero,main{padding-left:24px;padding-right:24px}
+    .grid-2{grid-template-columns:1fr}
+    h1{font-size:52px}
+  }
+  @media (max-width:560px){
+    .wrapper,.shell,.site-footer{padding-left:14px;padding-right:14px}
+    .hero{padding-top:42px}
+    main{padding-top:28px}
+    h1{font-size:42px}
+    .subtitle{font-size:18px}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="site-tools">
+    <a class="brand" href="/index.html">MANISH AI</a>
+    <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+      <a class="back-link" href="/writings.html">← Writings</a>
+      <a class="rss-link" href="/feed.xml">RSS</a>
+      <button id="theme-toggle" type="button" aria-label="Toggle theme">🌙</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrapper">
+  <div class="page">
+    <article class="article">
+      <header class="hero">
+        <div class="hero-grid">
+          <div>
+            <div class="eyebrow">Linux · vLLM · Mooncake · KV Cache</div>
+            <h1>KV-Direct: Why Distributed KV Cache Needs a Linux Fast Path</h1>
+            <p class="subtitle">Mooncake Store shows that KV cache is becoming cluster memory. The next bottleneck is not only where KV lives, but how efficiently Linux restores fragmented KV blocks across SSD, DRAM, RDMA, and GPU memory when decode is waiting.</p>
+            <div class="meta-row">
+              <span class="pill"><time datetime="2026-06-07">June 7, 2026</time></span>
+              <span class="pill">17 min read</span>
+              <span class="pill">Focus: io_uring / NVMe / RDMA / GPU locality</span>
+              <span class="pill">Thesis: placement is solved before movement is</span>
+            </div>
+          </div>
+          <div class="hero-card" aria-label="KV-Direct architecture summary">
+            <h2>Where the next savings hide</h2>
+            <div class="stack">
+              <div class="layer"><strong>Mooncake / vLLM</strong><span>prefix hash, placement, block reuse, prefill-decode decoupling</span></div>
+              <div class="arrow">↓</div>
+              <div class="layer"><strong>KV-Direct control hints</strong><span>deadline, locality, page-cache bypass, registered destination arena</span></div>
+              <div class="arrow">↓</div>
+              <div class="layer"><strong>Linux fast path</strong><span>batched io_uring, blk completion steering, NUMA-aware wakeups, direct storage path</span></div>
+              <div class="arrow">↓</div>
+              <div class="layer"><strong>Useful bytes in the right place</strong><span>GPU HBM or CPU DRAM ready for decode, without extra detours</span></div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main data-pagefind-body>
+        <div class="toc-card">
+          <strong>In this essay</strong>
+          <div class="links">
+            <a href="#thesis">Thesis</a>
+            <a href="#mooncake">What Mooncake gets right</a>
+            <a href="#generic-io">Why generic I/O loses</a>
+            <a href="#proposal">KV-Direct proposal</a>
+            <a href="#prototype">Prototype plan</a>
+            <a href="#measure">What to measure</a>
+          </div>
+        </div>
+
+        <section id="thesis" class="section-card">
+          <p class="lede"><strong>Distributed KV cache changes the problem shape.</strong> Once the industry stops treating KV as an ephemeral byproduct of one GPU server and starts treating it as a reusable cluster object, the next constraint is the operating system path that has to fetch, batch, steer, and land that object.</p>
+          <p>That is why this is now a Linux essay as much as a serving essay. In agentic inference, the expensive thing is often not recomputing one prompt once. It is repeatedly restoring long, fragmented prefix state under latency pressure while the model is waiting for the next useful block to become visible in the right destination arena.</p>
+          <div class="callout">
+            <strong>Core claim:</strong> distributed KV cache solves placement, naming, and reuse. The next material win is a kernel fast path that treats KV restore as a first-class inference data movement problem rather than a pile of unrelated file reads and transport completions.
+          </div>
+          <p>That distinction matters because decode does not care that an SSD completed a request in isolation. Decode cares that the useful KV range became available, on time, on the right CPU or GPU path, without extra page-cache churn, registration churn, or scheduler noise.</p>
+        </section>
+
+        <section id="mooncake">
+          <h2>1. What Mooncake Store gets right</h2>
+          <p>Mooncake Store is directionally right because it acknowledges something local KV caches hide poorly: long-context systems are no longer dominated by one request staying attached to one worker. Prefill can happen on one machine, decode on another, and future turns may revisit the same system prompt, tool trace, or retrieved corpus over and over.</p>
+          <div class="grid-2">
+            <div class="mini-card">
+              <div class="label">Reuse</div>
+              <h3>KV becomes an addressable object</h3>
+              <p>Instead of assuming every worker has to reconstruct the same prefix, Mooncake identifies blocks by content-derived identity and makes them discoverable across nodes.</p>
+            </div>
+            <div class="mini-card">
+              <div class="label">Movement</div>
+              <h3>Data no longer has to stay local</h3>
+              <p>Once KV state can live in remote DRAM, SSD, or another worker, the serving layer gets a new degree of freedom: fetch versus recompute becomes a runtime choice.</p>
+            </div>
+          </div>
+          <p>This is a big architectural change. It turns KV cache into part of the memory hierarchy. And once something becomes part of the memory hierarchy, the mundane things matter again: queue steering, completion locality, direct I/O, pinned memory lifetime, and whether the next block lands where the consumer can actually use it.</p>
+        </section>
+
+        <section id="generic-io">
+          <h2>2. Why generic file and network I/O starts to lose</h2>
+          <p>The first instinct is to say: "We already have <span class="inline-code">read()</span>, <span class="inline-code">mmap()</span>, <span class="inline-code">io_uring</span>, RDMA, and GPUDirect-style paths. Why invent another abstraction?" The answer is that all of those mechanisms are lower-level than the policy problem we now care about.</p>
+          <p>Generic Linux I/O assumes that if bytes eventually arrive, the contract is mostly satisfied. Distributed KV restore has a stricter contract:</p>
+          <ul>
+            <li>many small or medium KV blocks belong to one logical prefix restore;</li>
+            <li>some of those blocks are decode-critical while others can lag;</li>
+            <li>the destination is often a long-lived structured arena, not an arbitrary buffer;</li>
+            <li>the useful metric is not request completion but decode readiness.</li>
+          </ul>
+          <div class="diagram-card">
+            <svg viewBox="0 0 1120 410" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="KV restore critical path">
+              <rect x="20" y="20" width="1080" height="370" rx="24" fill="none" stroke="currentColor" opacity=".15"/>
+              <text x="54" y="62" font-size="24" font-weight="700" fill="currentColor">A normal I/O completion is not the same as decode readiness</text>
+              <text x="54" y="88" font-size="15" fill="currentColor" opacity=".7">KV restore pays for every handoff between media completion and consumer usability.</text>
+              <g>
+                <rect x="60" y="146" width="128" height="82" rx="18" fill="currentColor" opacity=".06" stroke="currentColor" opacity=".18"/>
+                <text x="124" y="178" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">NVMe / DRAM</text>
+                <text x="124" y="201" text-anchor="middle" font-size="12" fill="currentColor" opacity=".7">block ready</text>
+                <rect x="230" y="146" width="150" height="82" rx="18" fill="currentColor" opacity=".06" stroke="currentColor" opacity=".18"/>
+                <text x="305" y="178" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">IRQ + blk path</text>
+                <text x="305" y="201" text-anchor="middle" font-size="12" fill="currentColor" opacity=".7">which CPU sees it?</text>
+                <rect x="422" y="146" width="154" height="82" rx="18" fill="currentColor" opacity=".06" stroke="currentColor" opacity=".18"/>
+                <text x="499" y="178" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">io_uring / CQE</text>
+                <text x="499" y="201" text-anchor="middle" font-size="12" fill="currentColor" opacity=".7">when is userspace told?</text>
+                <rect x="618" y="146" width="164" height="82" rx="18" fill="currentColor" opacity=".06" stroke="currentColor" opacity=".18"/>
+                <text x="700" y="178" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">Arena landing</text>
+                <text x="700" y="201" text-anchor="middle" font-size="12" fill="currentColor" opacity=".7">right NUMA or GPU path?</text>
+                <rect x="824" y="146" width="234" height="82" rx="18" fill="currentColor" opacity=".08" stroke="currentColor" opacity=".22"/>
+                <text x="941" y="178" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">Decode can consume the useful range</text>
+                <text x="941" y="201" text-anchor="middle" font-size="12" fill="currentColor" opacity=".7">this is the event that matters</text>
+              </g>
+              <path d="M188 187 H230" stroke="currentColor" stroke-width="2.5" opacity=".45"/>
+              <path d="M380 187 H422" stroke="currentColor" stroke-width="2.5" opacity=".45"/>
+              <path d="M576 187 H618" stroke="currentColor" stroke-width="2.5" opacity=".45"/>
+              <path d="M782 187 H824" stroke="currentColor" stroke-width="2.5" opacity=".45"/>
+              <rect x="94" y="278" width="920" height="60" rx="15" fill="currentColor" opacity=".05" stroke="currentColor" opacity=".12"/>
+              <text x="122" y="314" font-size="14" font-weight="700" fill="currentColor">KV-Direct goal:</text>
+              <text x="230" y="314" font-size="14" fill="currentColor">collapse these boundaries into a batched, locality-aware path whose completions describe useful restore progress.</text>
+            </svg>
+            <div class="figcap">Figure 1. The hard part is not issuing I/O. It is preserving usefulness across the whole path.</div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Layer</th><th>Generic behavior</th><th>Why it wastes time for KV restore</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Page cache</td><td>Optimizes for broad file reuse and buffered ownership</td><td>KV is already a managed cache, so double-caching burns memory and muddies locality</td></tr>
+              <tr><td>Submission granularity</td><td>Many individual reads or messages</td><td>Prefix restore becomes descriptor-heavy and completion-heavy before devices saturate</td></tr>
+              <tr><td>Completion semantics</td><td>Request-oriented</td><td>The runtime wants "enough useful blocks are ready," not thousands of tiny unrelated done signals</td></tr>
+              <tr><td>Wakeup policy</td><td>Generic scheduler resumption</td><td>Wrong-core wakeups and remote memory ownership widen p99 restore latency</td></tr>
+              <tr><td>Registration</td><td>Often rediscovered or rebuilt at flow boundaries</td><td>Repeated pin/map work becomes real CPU cost in stable serving pipelines</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="missing-layer">
+          <h2>3. The missing layer is semantic, not just faster transport</h2>
+          <p>It is tempting to say RDMA already solved the movement problem. RDMA solved the transport mechanics beautifully. It did not solve the end-to-end restore contract above transport. That contract includes deadline hints, useful-range tracking, destination arena identity, completion steering, and a way to express that one batch of blocks belongs to one logical decode-critical restore.</p>
+          <div class="callout alt">
+            <strong>Another way to say it:</strong> the stack has enough mechanisms and not enough intent. What is missing is a place where the runtime can tell Linux what kind of movement this is.
+          </div>
+          <p>That is the gap I am calling <strong>KV-Direct</strong>. Not necessarily as a brand-new monolithic subsystem on day one, but as a kernel-facing interface shape that lets the runtime describe KV movement in a way the stack can optimize coherently.</p>
+        </section>
+
+        <section id="proposal">
+          <h2>4. Proposal: KV-Direct as a batched, deadline-aware restore path</h2>
+          <p>KV-Direct is a simple principle: make KV restore look less like thousands of tiny normal I/O operations and more like one inference restore transaction that carries enough structure for Linux to do the right thing.</p>
+          <pre><code>restore this prefix
+these blocks belong together
+these ranges are decode-critical
+this destination is a registered arena
+this work can bypass the page cache
+this completion should mean useful progress, not just byte arrival</code></pre>
+          <div class="grid-2">
+            <div class="mini-card">
+              <div class="label">Interface</div>
+              <h3>Batched object movement</h3>
+              <p>Submit one batch describing many KV blocks so the system can co-schedule, co-account, and co-complete them as one restore job.</p>
+            </div>
+            <div class="mini-card">
+              <div class="label">Memory</div>
+              <h3>Registered KV arenas</h3>
+              <p>Give the kernel stable destination handles for CPU or GPU-visible arenas so repeated restore does not re-discover layout on every turn.</p>
+            </div>
+            <div class="mini-card">
+              <div class="label">Policy</div>
+              <h3>Deadline and usefulness hints</h3>
+              <p>Differentiate decode-critical restore from background spill, speculative prefetch, and recompute-acceptable movement.</p>
+            </div>
+            <div class="mini-card">
+              <div class="label">Storage</div>
+              <h3>Page-cache bypass by default</h3>
+              <p>SSD-backed KV should usually be treated as structured backing storage for a cache, not as ordinary file data hoping to benefit from generic buffered reuse.</p>
+            </div>
+          </div>
+          <p>The important point is not that Linux needs to learn transformer math. It does not. It only needs enough semantic structure to preserve locality, reduce completion noise, and avoid generic behavior that made sense for files but not for reusable KV state.</p>
+        </section>
+
+        <section id="abi-sketch">
+          <h2>5. An interface sketch</h2>
+          <p>This is not a final ABI proposal. It is a shape sketch for what a useful restore descriptor could look like if we wanted to build the simplest possible first-class contract between inference runtimes and Linux.</p>
+          <pre><code>struct kv_move_desc {
+    __u64 kv_hash;        // prefix or block identity
+    __u64 src_handle;     // SSD extent, DRAM object, or remote memory handle
+    __u64 dst_handle;     // registered GPU/CPU arena
+    __u64 dst_offset;     // offset within the destination arena
+    __u32 len;            // bytes in this KV block
+    __u16 layer_id;       // optional layout hint
+    __u16 block_id;       // logical ordering within the prefix
+    __u32 flags;          // PREFETCH, DECODE_CRITICAL, SPILL, RECOMPUTE_OK
+    __u64 deadline_ns;    // when decode wants it
+    __u32 locality_hint;  // target NUMA or completion domain
+    __u32 batch_id;       // group completion / accounting
+};</code></pre>
+          <p>Then the runtime submits many of them together, ideally through an <span class="inline-code">io_uring</span>-compatible model so the first prototype can reuse existing infrastructure rather than waiting for an all-new subsystem.</p>
+          <pre><code>for (int i = 0; i &lt; nblocks; i++) {
+    batch[i].kv_hash       = prefix_blocks[i].hash;
+    batch[i].src_handle    = prefix_blocks[i].backing_handle;
+    batch[i].dst_handle    = gpu_kv_arena;
+    batch[i].dst_offset    = prefix_blocks[i].dst_offset;
+    batch[i].len           = prefix_blocks[i].len;
+    batch[i].layer_id      = prefix_blocks[i].layer_id;
+    batch[i].block_id      = prefix_blocks[i].block_id;
+    batch[i].flags         = KV_F_DECODE_CRITICAL | KV_F_BYPASS_PAGE_CACHE;
+    batch[i].deadline_ns   = decode_deadline_ns;
+    batch[i].locality_hint = target_cpu_or_numa;
+    batch[i].batch_id      = prefix_batch_id;
+}
+
+submit_kv_batch(ring, batch, nblocks);</code></pre>
+          <p>The first implementation could be modest:</p>
+          <ul>
+            <li>linked <span class="inline-code">io_uring</span> operations with registered buffers and direct I/O;</li>
+            <li>tracepoints that let us observe useful restore rather than just request completion;</li>
+            <li>completion steering and locality hints layered on top of existing block and scheduler plumbing.</li>
+          </ul>
+          <p>Only later, if the win is real, would it make sense to carve out a true <span class="inline-code">IORING_OP_KV_MOVE</span>-style primitive or device-specific acceleration path.</p>
+        </section>
+
+        <section id="prototype">
+          <h2>6. What a realistic first Linux prototype should include</h2>
+          <p>A lot of good systems ideas die because they jump straight to "new subsystem" before proving the bottleneck. I would start much smaller and much more ruthlessly measurable.</p>
+          <table>
+            <thead>
+              <tr><th>Prototype piece</th><th>Minimal version</th><th>Why it is enough to learn something</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Submission model</td><td>Batched descriptors above <span class="inline-code">io_uring</span></td><td>Shows whether descriptor aggregation and grouped completion already cut CPU overhead</td></tr>
+              <tr><td>Storage mode</td><td>Direct I/O into registered host buffers</td><td>Separates page-cache effects from genuine restore-path behavior</td></tr>
+              <tr><td>Completion policy</td><td>Consumer-affine CQ processing and wakeups</td><td>Tests whether locality is a first-order contributor to p99</td></tr>
+              <tr><td>Arena model</td><td>Long-lived destination handles with fixed layout metadata</td><td>Makes registration and placement reuse visible</td></tr>
+              <tr><td>Observability</td><td>Trace from device completion to userspace-ready to decode-start proxy</td><td>Lets us measure useful restore instead of admiring raw bandwidth</td></tr>
+            </tbody>
+          </table>
+          <div class="callout warn">
+            <strong>Failure mode to avoid:</strong> proving only that NVMe or RDMA can move bytes quickly in isolation. We already know that. The question is whether the full restore path gets decode-ready sooner with lower CPU cost and tighter tails.
+          </div>
+        </section>
+
+        <section id="measure">
+          <h2>7. What to measure if we actually want to prove the idea</h2>
+          <p>A convincing benchmark would restore synthetic KV objects from NVMe or remote DRAM into a registered arena and compare four modes: normal buffered file I/O, <span class="inline-code">mmap</span>, direct I/O, and a batched KV-Direct-style path.</p>
+          <table>
+            <thead>
+              <tr><th>Metric</th><th>Why it matters</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><span class="inline-code">p50/p99 useful_restore_ns</span></td><td>Measures when the needed KV range becomes usable, not just when a read completes</td></tr>
+              <tr><td><span class="inline-code">cycles_per_gb_restored</span></td><td>Shows whether the host CPU becomes the hidden bottleneck</td></tr>
+              <tr><td><span class="inline-code">completion_cpu != consumer_cpu</span> ratio</td><td>Captures locality misses that inflate wakeup and cache costs</td></tr>
+              <tr><td><span class="inline-code">descriptors_per_prefix</span></td><td>Exposes tiny-I/O amplification and completion noise</td></tr>
+              <tr><td><span class="inline-code">page_cache_bytes_polluted</span></td><td>Tests whether the system is pointlessly double-caching backing KV</td></tr>
+              <tr><td>decode-start proxy or TTFT proxy</td><td>Translates kernel wins into something the serving stack actually feels</td></tr>
+            </tbody>
+          </table>
+          <pre><code>tracepoints worth joining:
+  block_rq_issue
+  block_rq_complete
+  nvme completion hooks
+  io_uring CQE visibility
+  sched_wakeup
+  sched_switch
+  DMA / registration events when available
+  runtime-level "decode resumed" marker
+
+derived signals:
+  useful_restore_ns
+  locality_miss_rate
+  deferred_completion_rate
+  registration_churn_per_prefix
+  page_cache_side_effect_bytes</code></pre>
+          <p>That last category is important. A surprising amount of I/O work looks fine until you ask what it did to the rest of the machine. KV is already a cache. If your restore path pollutes host memory and steals locality from other work, you have only moved the pain around.</p>
+        </section>
+
+        <section id="implications">
+          <h2>8. Why this matters beyond Mooncake</h2>
+          <p>I used Mooncake because it makes the problem legible, but the argument is broader than one project. Any future where inference systems spill, prefetch, disaggregate, or remotely restore KV state will run into the same question: how many times do we force Linux to rediscover the shape of a restore that the runtime already understands?</p>
+          <p>The systems opportunity here is modest but real. We do not need a magical kernel that understands LLMs. We need a kernel path that stops pretending every restore is just one more generic file or network operation.</p>
+        </section>
+
+        <section id="close">
+          <h2>9. Closing thought</h2>
+          <p class="quote">Mooncake optimizes where KV lives. Linux can still optimize how KV moves.</p>
+          <p>That is the opportunity. Once KV cache becomes part of the distributed memory hierarchy, the OS data path matters again. The next win is not necessarily a better model or a better SSD. It may be a better restore contract between the inference runtime and Linux.</p>
+          <p>If distributed KV cache is the storage story of long-context inference, KV-Direct is the natural kernel sequel.</p>
+        </section>
+
+        <form class="subscribe" action="https://buttondown.email/api/emails/embed-subscribe/manishklach" method="post" target="_blank">
+          <label for="bd-email">Get new posts by email</label>
+          <input id="bd-email" name="email" type="email" placeholder="you@example.com" required/>
+          <input type="hidden" name="tag" value="blog"/>
+          <input type="submit" value="Subscribe"/>
+        </form>
+        <div id="webmentions" hidden></div>
+        <div class="article-footer">© 2026 <a href="/index.html">MANISH AI</a> · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></div>
+      </main>
+    </article>
+
+    <aside>
+      <div class="side-card">
+        <h3>One-line thesis</h3>
+        <p>Distributed KV cache solves placement. KV-Direct is about making the restore path worthy of that idea.</p>
+      </div>
+      <div class="side-card">
+        <h3>Kernel hooks</h3>
+        <div class="chips">
+          <span>io_uring</span>
+          <span>O_DIRECT</span>
+          <span>registered buffers</span>
+          <span>NVMe</span>
+          <span>RDMA</span>
+          <span>NUMA</span>
+          <span>blk completions</span>
+          <span>scheduler wakeups</span>
+        </div>
+      </div>
+      <div class="side-card">
+        <h3>Why it matters</h3>
+        <div class="metric"><span>Lower</span><strong>TTFT</strong></div>
+        <div class="metric"><span>Less</span><strong>CPU overhead</strong></div>
+        <div class="metric"><span>Tighter</span><strong>p99 restore</strong></div>
+        <div class="metric"><span>Fewer</span><strong>tiny I/Os</strong></div>
+        <div class="metric"><span>Better</span><strong>GPU feed continuity</strong></div>
+      </div>
+      <div class="side-card">
+        <h3>Simple X post</h3>
+        <p>Mooncake shows KV cache is becoming cluster memory. The next Linux problem is how to restore fragmented KV blocks into registered CPU/GPU arenas without page-cache pollution, completion noise, or wrong-core wakeups. Placement is only half the story.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>Long-form technical writing on AI infrastructure, memory systems, and runtime architecture.</span>
+    <span><a href="/writings.html">More essays</a> · <a href="https://github.com/manishklach">GitHub</a></span>
+  </div>
+</footer>
+</body>
+</html>
