@@ -1,0 +1,1756 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adaptive Speculative Block Sizing for XL-Persistent-Kernel | MANISH AI</title>
+<meta name="description" content="A systems essay on Adaptive Speculative Block Sizing in XL-Persistent-Kernel: how a persistent mega-kernel can tune speculative decode block size on-device using acceptance-rate feedback."/>
+<meta name="keywords" content="Adaptive Speculative Block Sizing, speculative decoding, persistent mega-kernel, XL-Persistent-Kernel, GPU systems, LLM inference, speculative block sizing"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f6f1e9"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/adaptive-speculative-block-sizing-xl-persistent-kernel.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Adaptive Speculative Block Sizing for XL-Persistent-Kernel | MANISH AI"/>
+<meta property="og:description" content="How a persistent mega-kernel can make speculative decode self-tuning on the GPU with acceptance-rate feedback and zero host round-trips."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/adaptive-speculative-block-sizing-xl-persistent-kernel.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/adaptive-speculative-block-sizing-xl-persistent-kernel.png"/>
+<meta property="og:image:alt" content="Preview image for Adaptive Speculative Block Sizing for XL-Persistent-Kernel"/>
+<meta property="article:published_time" content="2026-06-11T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-06-11T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Adaptive Speculative Block Sizing for XL-Persistent-Kernel"/>
+<meta name="twitter:description" content="A systems essay on on-device speculative decode adaptation in a persistent mega-kernel runtime."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/adaptive-speculative-block-sizing-xl-persistent-kernel.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Adaptive Speculative Block Sizing for XL-Persistent-Kernel","description":"A systems essay on Adaptive Speculative Block Sizing in XL-Persistent-Kernel: how a persistent mega-kernel can tune speculative decode block size on-device using acceptance-rate feedback.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/adaptive-speculative-block-sizing-xl-persistent-kernel.html","mainEntityOfPage":"https://manishklach.github.io/writings/adaptive-speculative-block-sizing-xl-persistent-kernel.html","datePublished":"2026-06-11","dateModified":"2026-06-11","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,300;1,8..60,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --paper: #F6F1E9;
+  --paper-dark: #EDE6D8;
+  --ink: #0D0C0A;
+  --ink-mid: #3A3730;
+  --ink-muted: #7A7468;
+  --ink-faint: #C4BFB5;
+  --amber: #D4620A;
+  --amber-light: #F2A55A;
+  --amber-pale: #FBE8D3;
+  --forest: #1A3A2A;
+  --forest-pale: #D6E8DD;
+  --rule: rgba(13,12,10,0.12);
+  --inverse-bg: #0D0C0A;
+  --inverse-bg-2: #3A3730;
+  --inverse-text: #F6F1E9;
+  --footer-ink-soft: rgba(246,241,233,0.7);
+  --footer-ink-faint: rgba(246,241,233,0.4);
+  --footer-ink-mid: rgba(246,241,233,0.5);
+  --footer-rule: rgba(246,241,233,0.12);
+  --footer-cta: rgba(246,241,233,0.8);
+  --serif: 'Playfair Display', Georgia, serif;
+  --body: 'Source Serif 4', Georgia, serif;
+  --mono: 'IBM Plex Mono', 'Courier New', monospace;
+}
+
+html.dark {
+  --paper: #0f1116;
+  --paper-dark: #171a21;
+  --ink: #f3efe8;
+  --ink-mid: #d5cdbf;
+  --ink-muted: #a69d8d;
+  --ink-faint: #4b473f;
+  --amber: #f2994a;
+  --amber-light: #f7b977;
+  --amber-pale: #2a1c0f;
+  --forest: #8ac5a2;
+  --forest-pale: #132019;
+  --rule: rgba(243,239,232,0.12);
+  --inverse-bg: #090b10;
+  --inverse-bg-2: #181b22;
+  --inverse-text: #f3efe8;
+  --footer-ink-soft: rgba(243,239,232,0.76);
+  --footer-ink-faint: rgba(243,239,232,0.42);
+  --footer-ink-mid: rgba(243,239,232,0.56);
+  --footer-rule: rgba(243,239,232,0.14);
+  --footer-cta: rgba(243,239,232,0.84);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 18px;
+  line-height: 1.8;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 18px 20px 0;
+}
+
+.site-tools {
+  margin: 0;
+  padding: 14px 18px;
+  border: 1px solid var(--rule);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.brand {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--amber);
+}
+
+/* ═══ MASTHEAD ═══════════════════════════════════════════════ */
+.masthead {
+  border-bottom: 3px solid var(--ink);
+  padding: 1.25rem 0;
+  text-align: center;
+}
+.masthead-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.masthead-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.masthead-tagline {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--ink-mid);
+}
+.masthead-github {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--amber);
+  text-decoration: none;
+  border-bottom: 1px solid var(--amber);
+  padding-bottom: 1px;
+  transition: opacity 0.2s;
+}
+.masthead-github:hover { opacity: 0.7; }
+
+/* ═══ HERO ═══════════════════════════════════════════════════ */
+.hero {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 5rem 2rem 4rem;
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 5rem;
+  align-items: start;
+  border-bottom: 1px solid var(--rule);
+}
+
+@media (max-width: 860px) {
+  .hero { grid-template-columns: 1fr; gap: 2.5rem; }
+  .hero-diagram { display: none; }
+}
+
+.hero-kicker {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hero-kicker::before {
+  content: '';
+  display: inline-block;
+  width: 24px;
+  height: 2px;
+  background: var(--amber);
+}
+
+.hero-headline {
+  font-family: var(--serif);
+  font-size: clamp(2.4rem, 5vw, 4.2rem);
+  font-weight: 900;
+  line-height: 1.05;
+  color: var(--ink);
+  margin-bottom: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.hero-headline em {
+  font-style: italic;
+  color: var(--amber);
+}
+
+.hero-deck {
+  font-family: var(--body);
+  font-size: 1.15rem;
+  line-height: 1.7;
+  color: var(--ink-mid);
+  max-width: 520px;
+  margin-bottom: 2rem;
+  font-weight: 300;
+}
+
+.hero-meta {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+.hero-meta-item {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  letter-spacing: 0.05em;
+}
+.hero-meta-item strong {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+.hero-diagram {
+  position: sticky;
+  top: 2rem;
+}
+
+/* ═══ LAYOUT WRAPPER ════════════════════════════════════════ */
+.article-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+.article-grid {
+  display: grid;
+  grid-template-columns: 1fr 240px;
+  gap: 5rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .article-grid { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+}
+
+.article-body {
+  padding: 4rem 0;
+}
+
+/* ═══ SIDEBAR ════════════════════════════════════════════════ */
+.sidebar {
+  padding: 4rem 0;
+  position: sticky;
+  top: 2rem;
+}
+
+.sidebar-block {
+  border-top: 2px solid var(--ink);
+  padding-top: 1.25rem;
+  margin-bottom: 2.5rem;
+}
+
+.sidebar-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 0.75rem;
+}
+
+.sidebar-note {
+  font-family: var(--body);
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--ink-mid);
+  font-style: italic;
+}
+
+.sidebar-note strong {
+  font-style: normal;
+  color: var(--ink);
+}
+
+.sidebar-stat {
+  font-family: var(--serif);
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: var(--amber);
+  line-height: 1;
+  margin-bottom: 0.25rem;
+}
+
+.sidebar-stat-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  letter-spacing: 0.05em;
+}
+
+/* ═══ TYPOGRAPHY ════════════════════════════════════════════ */
+.section {
+  margin-bottom: 4.5rem;
+}
+
+.section-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-label::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 2px;
+  background: var(--amber);
+}
+
+h2 {
+  font-family: var(--serif);
+  font-size: clamp(1.7rem, 3vw, 2.3rem);
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--ink);
+  margin-bottom: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+h3 {
+  font-family: var(--serif);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 2.5rem 0 0.8rem;
+  letter-spacing: -0.01em;
+}
+
+h4 {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mid);
+  margin: 2rem 0 0.6rem;
+}
+
+p {
+  color: var(--ink-mid);
+  margin-bottom: 1.2rem;
+  font-size: 17.5px;
+  font-weight: 300;
+}
+
+p strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+p em {
+  font-style: italic;
+}
+
+p:last-child { margin-bottom: 0; }
+
+.drop-cap::first-letter {
+  font-family: var(--serif);
+  font-size: 4.5rem;
+  font-weight: 900;
+  float: left;
+  line-height: 0.78;
+  margin-right: 0.1em;
+  margin-top: 0.12em;
+  color: var(--ink);
+}
+
+/* ═══ RULE ══════════════════════════════════════════════════ */
+hr.rule {
+  border: none;
+  border-top: 1px solid var(--rule);
+  margin: 3.5rem 0;
+}
+
+hr.rule-heavy {
+  border: none;
+  border-top: 2px solid var(--ink);
+  margin: 4rem 0;
+}
+
+/* ═══ PULL QUOTE ════════════════════════════════════════════ */
+.pull-quote {
+  margin: 2.5rem -1rem 2.5rem 0;
+  padding: 0 0 0 2rem;
+  border-left: 4px solid var(--amber);
+}
+
+.pull-quote p {
+  font-family: var(--serif);
+  font-size: 1.45rem;
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--ink);
+  margin: 0;
+}
+
+.pull-quote cite {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-style: normal;
+  color: var(--ink-muted);
+  margin-top: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+/* ═══ CODE BLOCKS ════════════════════════════════════════════ */
+.code-block {
+  background: var(--inverse-bg);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 2rem 0;
+  font-size: 13px;
+  box-shadow: 4px 4px 0 var(--ink-faint);
+}
+
+.code-block-header {
+  background: var(--inverse-bg-2);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.code-block-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.code-block-lang {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--amber-light);
+  letter-spacing: 0.06em;
+}
+
+pre {
+  padding: 1.25rem 1.5rem;
+  overflow-x: auto;
+  line-height: 1.7;
+}
+
+code {
+  font-family: var(--mono);
+  color: #D4CFC6;
+}
+
+.kw { color: #C792EA; }
+.fn { color: #82AAFF; }
+.st { color: #C3E88D; }
+.cm { color: #546e7a; font-style: italic; }
+.nu { color: #F78C6C; }
+.ty { color: #FFCB6B; }
+.op { color: #89DDFF; }
+.va { color: #eeffff; }
+
+code.inline {
+  font-family: var(--mono);
+  font-size: 14px;
+  background: var(--paper-dark);
+  border: 1px solid var(--ink-faint);
+  border-radius: 3px;
+  padding: 1px 6px;
+  color: var(--forest);
+}
+
+/* ═══ CALLOUT BOXES ══════════════════════════════════════════ */
+.callout {
+  background: var(--amber-pale);
+  border: 1px solid var(--amber-light);
+  border-left: 4px solid var(--amber);
+  border-radius: 3px;
+  padding: 1.25rem 1.5rem;
+  margin: 2rem 0;
+}
+
+.callout-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 0.5rem;
+}
+
+.callout p {
+  font-size: 15.5px;
+  color: var(--ink-mid);
+  margin: 0;
+  line-height: 1.65;
+}
+
+.callout p strong { color: var(--ink); }
+
+.callout-forest {
+  background: var(--forest-pale);
+  border: 1px solid rgba(26,58,42,0.2);
+  border-left: 4px solid var(--forest);
+}
+
+.callout-forest .callout-label { color: var(--forest); }
+
+/* ═══ COMPARISON TABLE ════════════════════════════════════════ */
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 13px;
+  margin: 2rem 0;
+  box-shadow: 3px 3px 0 var(--ink-faint);
+}
+
+.compare-table th {
+  text-align: left;
+  padding: 10px 14px;
+  background: var(--inverse-bg);
+  color: var(--inverse-text);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.compare-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-mid);
+  vertical-align: top;
+  line-height: 1.55;
+}
+
+.compare-table tr:last-child td { border-bottom: none; }
+.compare-table td:first-child {
+  color: var(--ink);
+  font-weight: 500;
+  background: var(--paper-dark);
+}
+
+.bad { color: #B84040; font-weight: 500; }
+.good { color: var(--forest); font-weight: 500; }
+.neutral { color: var(--ink-muted); }
+
+/* ═══ DIAGRAMS ════════════════════════════════════════════════ */
+.diagram-wrap {
+  margin: 2.5rem 0;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  overflow: hidden;
+  background: white;
+}
+
+.diagram-caption {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  text-align: center;
+  padding: 0.6rem 1rem;
+  background: var(--paper-dark);
+  border-top: 1px solid var(--rule);
+  letter-spacing: 0.05em;
+}
+
+/* ═══ EQUATION / FORMULA ══════════════════════════════════════ */
+.formula-block {
+  background: var(--paper-dark);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--ink);
+  padding: 1.25rem 1.75rem;
+  margin: 2rem 0;
+  font-family: var(--mono);
+  font-size: 15px;
+  color: var(--ink);
+  line-height: 2;
+}
+
+.formula-block .eq-comment {
+  font-family: var(--body);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--ink-muted);
+  margin-left: 1rem;
+}
+
+/* ═══ FULL-BLEED SECTION BREAK ════════════════════════════════ */
+.section-break {
+  background: var(--inverse-bg);
+  color: var(--inverse-text);
+  margin: 5rem 0;
+  padding: 4rem 2rem;
+  text-align: center;
+}
+
+.section-break-inner { max-width: 700px; margin: 0 auto; }
+
+.section-break h2 {
+  font-family: var(--serif);
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  color: var(--inverse-text);
+  margin-bottom: 1rem;
+}
+
+.section-break p {
+  color: var(--footer-ink-soft);
+  font-size: 16.5px;
+  font-weight: 300;
+}
+
+/* ═══ PHASE STEPS ══════════════════════════════════════════════ */
+.phase-steps {
+  counter-reset: step;
+  margin: 2rem 0;
+}
+
+.phase-step {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 1.25rem;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid var(--rule);
+  align-items: start;
+}
+
+.phase-step:last-child { border-bottom: none; }
+
+.phase-step-num {
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: var(--ink);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.phase-step-num.amber {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: white;
+}
+
+.phase-step-body h4 {
+  margin-top: 0;
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.phase-step-body p {
+  font-size: 15.5px;
+  margin: 0;
+  line-height: 1.65;
+}
+
+/* ═══ INLINE FIGURE ════════════════════════════════════════════ */
+.figure {
+  margin: 3rem 0;
+}
+.figure-img {
+  width: 100%;
+  border: 1px solid var(--rule);
+}
+.figure-caption {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  margin-top: 0.6rem;
+  line-height: 1.5;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--amber);
+}
+
+/* ═══ FOOTER ═══════════════════════════════════════════════════ */
+.footer {
+  background: var(--inverse-bg);
+  color: var(--inverse-text);
+  padding: 4rem 2rem;
+  margin-top: 6rem;
+}
+
+.footer-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 3rem;
+}
+
+@media (max-width: 700px) {
+  .footer-inner { grid-template-columns: 1fr; gap: 2rem; }
+}
+
+.footer-block h4 {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--footer-ink-faint);
+  margin: 0 0 1rem;
+}
+
+.footer-block p, .footer-block li {
+  font-family: var(--body);
+  font-size: 14.5px;
+  color: var(--footer-ink-soft);
+  line-height: 1.65;
+  font-weight: 300;
+}
+
+.footer-block ul { list-style: none; }
+.footer-block ul li {
+  padding: 3px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--footer-ink-mid);
+}
+.footer-block ul li::before {
+  content: '→';
+  color: var(--amber-light);
+  font-size: 10px;
+}
+
+.footer-cta {
+  max-width: 1100px;
+  margin: 3rem auto 0;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--footer-rule);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.footer-cta p {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 1.2rem;
+  color: var(--footer-cta);
+  max-width: 600px;
+  font-weight: 300;
+  margin: 0;
+}
+
+.footer-cta-link {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--amber-light);
+  text-decoration: none;
+  padding: 12px 24px;
+  border-radius: 2px;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+
+.footer-cta-link:hover { opacity: 0.85; }
+
+.post-footer {
+  color: var(--ink-muted);
+  font-size: .95rem;
+  margin: 1.5rem 0 0;
+}
+
+.post-footer a { color: inherit; }
+
+#webmentions { margin-top: 2rem; }
+#webmentions img { width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; margin-right: .4rem; }
+#webmentions h2 { font-size: 1.1rem; margin-bottom: .75rem; }
+#webmentions p { margin: .75rem 0; color: var(--ink-muted); }
+#webmentions a { color: inherit; }
+
+/* ═══ ANIMATIONS ═══════════════════════════════════════════════ */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hero-headline, .hero-deck {
+  animation: fadeInUp 0.7s ease both;
+}
+.hero-deck { animation-delay: 0.1s; }
+.hero-meta { animation: fadeInUp 0.7s ease 0.2s both; }
+
+/* ═══ RESPONSIVE ═══════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  body { font-size: 16px; }
+  .hero { padding: 3rem 1.5rem 2.5rem; }
+  .article-wrap { padding: 0 1.25rem; }
+  .code-block { font-size: 11.5px; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="site-tools">
+    <a class="brand" href="/index.html">MANISH AI</a>
+    <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+      <a class="back-link" href="/writings.html">← Writings</a>
+      <a class="rss-link" href="/feed.xml">RSS</a>
+      <button id="theme-toggle" type="button" aria-label="Toggle theme">🌙</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MASTHEAD -->
+<div class="masthead">
+  <div class="masthead-inner">
+    <div class="masthead-title">GPU Systems · LLM Inference</div>
+    <div class="masthead-tagline">Research & Engineering</div>
+    <a href="https://github.com/manishklach/XL-Persistent-Kernel" class="masthead-github" target="_blank">↗ XL-Persistent-Kernel on GitHub</a>
+  </div>
+</div>
+
+<!-- ═══════════ HERO -->
+<section class="hero">
+  <div class="hero-text">
+    <div class="hero-kicker">New Innovation Proposal · June 2026</div>
+    <h1 class="hero-headline">
+      Adaptive Speculative<br>
+      <em>Block Sizing</em><br>
+      for Persistent Mega-Kernels
+    </h1>
+    <p class="hero-deck">
+      How per-request online feedback — running entirely on the GPU, with no host involvement —
+      can make speculative decoding smarter, faster, and KV-cache-aware in persistent kernel LLM inference.
+    </p>
+    <div class="hero-meta">
+      <div class="hero-meta-item">
+        <strong>Repo</strong>
+        XL-Persistent-Kernel
+      </div>
+      <div class="hero-meta-item">
+        <strong>Phase</strong>
+        Proposed for Phase 2C
+      </div>
+      <div class="hero-meta-item">
+        <strong>Domain</strong>
+        Systems / ML Infra
+      </div>
+    </div>
+  </div>
+
+  <!-- Hero SVG: ASBS feedback loop -->
+  <div class="hero-diagram">
+    <svg viewBox="0 0 340 420" xmlns="http://www.w3.org/2000/svg" width="100%">
+      <defs>
+        <marker id="arrowAmber" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 Z" fill="#D4620A"/>
+        </marker>
+        <marker id="arrowInk" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 Z" fill="#0D0C0A"/>
+        </marker>
+        <marker id="arrowGreen" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 Z" fill="#1A3A2A"/>
+        </marker>
+      </defs>
+
+      <!-- Background -->
+      <rect width="340" height="420" fill="#F6F1E9" rx="4"/>
+      <rect x="1" y="1" width="338" height="418" fill="none" stroke="#0D0C0A" stroke-width="1.5" rx="3"/>
+
+      <!-- Title -->
+      <text x="170" y="28" font-family="'IBM Plex Mono'" font-size="9" font-weight="600" fill="#7A7468" text-anchor="middle" letter-spacing="2">ASBS FEEDBACK LOOP</text>
+      <line x1="20" y1="36" x2="320" y2="36" stroke="#0D0C0A" stroke-width="0.5"/>
+
+      <!-- Node: PROPOSE -->
+      <rect x="105" y="52" width="130" height="44" fill="#0D0C0A" rx="2"/>
+      <text x="170" y="71" font-family="'IBM Plex Mono'" font-size="10" font-weight="600" fill="#F6F1E9" text-anchor="middle">STAGE_DECODE</text>
+      <text x="170" y="86" font-family="'IBM Plex Mono'" font-size="9" fill="#FFCB6B" text-anchor="middle">propose B tokens</text>
+
+      <!-- Arrow down -->
+      <line x1="170" y1="96" x2="170" y2="126" stroke="#0D0C0A" stroke-width="1.5" marker-end="url(#arrowInk)"/>
+
+      <!-- Node: VERIFY -->
+      <rect x="90" y="126" width="160" height="54" fill="#1A3A2A" rx="2"/>
+      <text x="170" y="146" font-family="'IBM Plex Mono'" font-size="10" font-weight="600" fill="#D6E8DD" text-anchor="middle">STAGE_SPEC_VERIFY</text>
+      <text x="170" y="160" font-family="'IBM Plex Mono'" font-size="9" fill="#A8D5B8" text-anchor="middle">compute acceptance mask</text>
+      <text x="170" y="174" font-family="'IBM Plex Mono'" font-size="9" fill="#A8D5B8" text-anchor="middle">accepted_count / proposed</text>
+
+      <!-- Arrow down -->
+      <line x1="170" y1="180" x2="170" y2="208" stroke="#D4620A" stroke-width="2" marker-end="url(#arrowAmber)"/>
+
+      <!-- EMA Update Box -->
+      <rect x="70" y="208" width="200" height="64" fill="#FBE8D3" rx="2" stroke="#D4620A" stroke-width="1.5"/>
+      <text x="170" y="228" font-family="'IBM Plex Mono'" font-size="9" font-weight="600" fill="#D4620A" text-anchor="middle">UPDATE_BLOCK_SIZE_DEVICE()</text>
+      <text x="170" y="245" font-family="'IBM Plex Mono'" font-size="10" fill="#3A3730" text-anchor="middle">ε' = α·r + (1−α)·ε</text>
+      <text x="170" y="263" font-family="'IBM Plex Mono'" font-size="9" fill="#7A7468" text-anchor="middle">writes req→current_block_size</text>
+
+      <!-- Arrow down -->
+      <line x1="170" y1="272" x2="170" y2="300" stroke="#D4620A" stroke-width="2" marker-end="url(#arrowAmber)"/>
+
+      <!-- KV Pressure check -->
+      <polygon points="170,300 260,326 170,352 80,326" fill="#EDE6D8" stroke="#0D0C0A" stroke-width="1.5"/>
+      <text x="170" y="322" font-family="'IBM Plex Mono'" font-size="9" fill="#0D0C0A" text-anchor="middle">KV_PRESSURE</text>
+      <text x="170" y="336" font-family="'IBM Plex Mono'" font-size="9" fill="#7A7468" text-anchor="middle">flag set?</text>
+
+      <!-- Yes arrow (right) -->
+      <line x1="260" y1="326" x2="310" y2="326" stroke="#B84040" stroke-width="1.5" marker-end="url(#arrowAmber)"/>
+      <text x="278" y="320" font-family="'IBM Plex Mono'" font-size="8" fill="#B84040">YES</text>
+      <rect x="295" y="312" width="34" height="28" fill="#0D0C0A" rx="2"/>
+      <text x="312" y="323" font-family="'IBM Plex Mono'" font-size="8" fill="#F78C6C" text-anchor="middle">cap</text>
+      <text x="312" y="334" font-family="'IBM Plex Mono'" font-size="8" fill="#F78C6C" text-anchor="middle">B≤2</text>
+
+      <!-- No arrow (down) -->
+      <line x1="170" y1="352" x2="170" y2="378" stroke="#1A3A2A" stroke-width="1.5" marker-end="url(#arrowGreen)"/>
+      <text x="178" y="370" font-family="'IBM Plex Mono'" font-size="8" fill="#1A3A2A">NO</text>
+
+      <!-- Next iteration box -->
+      <rect x="105" y="378" width="130" height="30" fill="#0D0C0A" rx="2"/>
+      <text x="170" y="390" font-family="'IBM Plex Mono'" font-size="9" font-weight="600" fill="#C3E88D" text-anchor="middle">next iteration:</text>
+      <text x="170" y="403" font-family="'IBM Plex Mono'" font-size="9" fill="#C3E88D" text-anchor="middle">propose B' tokens</text>
+
+      <!-- Feedback arc left side -->
+      <path d="M105,393 C40,393 40,74 105,74" fill="none" stroke="#D4620A" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowAmber)"/>
+      <text x="22" y="240" font-family="'IBM Plex Mono'" font-size="8" fill="#D4620A" text-anchor="middle" transform="rotate(-90,22,240)">FEEDBACK</text>
+    </svg>
+    <div style="font-family:var(--mono);font-size:11px;color:var(--ink-muted);margin-top:0.6rem;text-align:center;">Fig. 1 — On-device ASBS feedback loop. No host involvement.</div>
+  </div>
+</section>
+
+
+<!-- ═══════════ ARTICLE -->
+<div class="article-wrap">
+<div class="article-grid">
+<article class="article-body" data-pagefind-body>
+
+<!-- ─── PART 1: THE PROBLEM -->
+<section class="section">
+  <div class="section-label">Part I · The Problem</div>
+  <h2>The Overhead Nobody Talks About</h2>
+
+  <p class="drop-cap">
+    The benchmark tables for large language model inference typically measure tokens per second, time to first token,
+    and model perplexity. What they rarely measure — because it is embarrassingly wasteful — is how much time the GPU
+    spends waiting for the CPU to tell it what to do next.
+  </p>
+
+  <p>
+    In a conventional decode loop, every single token generation cycle involves a round-trip between host and device.
+    The CPU launches a kernel. The GPU runs it. The CPU synchronizes, reads back the result, and decides what to launch
+    next. For a 256-token response, that is 256 kernel launches, 256 host synchronizations, and 256 PCIe round-trips.
+    At 5–10 microseconds per launch, the orchestration overhead alone can consume 1–2 milliseconds per response — a
+    significant fraction of total decode time in the small-batch, low-latency regime that interactive products require.
+  </p>
+
+  <div class="code-block">
+    <div class="code-block-header">
+      <span class="code-block-title">conventional host-driven decode loop</span>
+      <span class="code-block-lang">C++ / CUDA</span>
+    </div>
+    <pre><code><span class="cm">// CPU orchestrates every token. GPU waits between each launch.</span>
+<span class="kw">for</span> (<span class="ty">int</span> t = <span class="nu">0</span>; t &lt; max_tokens; t++) {
+    <span class="fn">launch_kernel</span>(attention, stream);    <span class="cm">// ~5–10 µs overhead</span>
+    <span class="fn">cudaStreamSynchronize</span>(stream);       <span class="cm">// host stalls</span>
+    <span class="fn">launch_kernel</span>(projection, stream);
+    <span class="fn">cudaStreamSynchronize</span>(stream);
+    <span class="fn">launch_kernel</span>(sample_token, stream);
+    <span class="fn">cudaStreamSynchronize</span>(stream);
+    <span class="ty">int</span> next_tok = <span class="fn">read_from_device</span>();   <span class="cm">// PCIe read</span>
+    <span class="kw">if</span> (next_tok == eos_id) <span class="kw">break</span>;
+}</code></pre>
+  </div>
+
+  <p>
+    Speculative decoding was supposed to help. The idea — propose multiple tokens with a cheap draft model, verify
+    them in parallel with the target model — dramatically reduces the number of target model calls. But the canonical
+    speculative decode implementation still operates within this host-driven loop. The draft model is launched by the
+    host. The verification kernel is launched by the host. The accepted count is read back by the host. The block size
+    for the <em>next</em> iteration is decided by the host.
+  </p>
+
+  <div class="pull-quote">
+    <p>"You replaced the per-token round-trip with a per-block round-trip. The fundamental problem — the GPU waits for the CPU — is unchanged."</p>
+  </div>
+
+  <p>
+    This is precisely the problem that the persistent mega-kernel architecture addresses — and it is the architectural
+    context in which Adaptive Speculative Block Sizing becomes not just useful but <strong>necessary</strong>.
+  </p>
+</section>
+
+<hr class="rule">
+
+<!-- ─── PART 2: MEGA-KERNEL -->
+<section class="section">
+  <div class="section-label">Part II · The Architecture</div>
+  <h2>The Persistent Mega-Kernel: One Launch to Rule Them All</h2>
+
+  <p>
+    A persistent mega-kernel launches once per batch and never returns to the host until every request in the batch
+    is complete. The token loop — prefill, decode, speculative verify, commit, repeat — executes entirely on the
+    device. The GPU owns the control flow. The CPU polls a completion flag and does nothing else.
+  </p>
+
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg" width="100%">
+      <rect width="680" height="200" fill="white"/>
+      <defs>
+        <marker id="arr2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L7,3 Z" fill="#0D0C0A"/>
+        </marker>
+        <marker id="arrA2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L7,3 Z" fill="#D4620A"/>
+        </marker>
+      </defs>
+
+      <!-- BASELINE ROW -->
+      <text x="14" y="42" font-family="'IBM Plex Mono'" font-size="9" font-weight="600" fill="#7A7468" letter-spacing="1">BASELINE (HOST-LAUNCHED)</text>
+      <!-- lots of small launches -->
+      <rect x="14" y="52" width="32" height="26" fill="#0D0C0A" rx="1"/>
+      <text x="30" y="68" font-family="'IBM Plex Mono'" font-size="7" fill="#C3E88D" text-anchor="middle">t₀</text>
+      <line x1="46" y1="65" x2="58" y2="65" stroke="#B84040" stroke-width="1.2" stroke-dasharray="2,2"/>
+      <rect x="58" y="52" width="32" height="26" fill="#0D0C0A" rx="1"/>
+      <text x="74" y="68" font-family="'IBM Plex Mono'" font-size="7" fill="#C3E88D" text-anchor="middle">t₁</text>
+      <line x1="90" y1="65" x2="102" y2="65" stroke="#B84040" stroke-width="1.2" stroke-dasharray="2,2"/>
+      <rect x="102" y="52" width="32" height="26" fill="#0D0C0A" rx="1"/>
+      <text x="118" y="68" font-family="'IBM Plex Mono'" font-size="7" fill="#C3E88D" text-anchor="middle">t₂</text>
+      <line x1="134" y1="65" x2="146" y2="65" stroke="#B84040" stroke-width="1.2" stroke-dasharray="2,2"/>
+      <rect x="146" y="52" width="32" height="26" fill="#0D0C0A" rx="1"/>
+      <text x="162" y="68" font-family="'IBM Plex Mono'" font-size="7" fill="#C3E88D" text-anchor="middle">t₃</text>
+      <line x1="178" y1="65" x2="190" y2="65" stroke="#B84040" stroke-width="1.2" stroke-dasharray="2,2"/>
+      <rect x="190" y="52" width="32" height="26" fill="#0D0C0A" rx="1"/>
+      <text x="206" y="68" font-family="'IBM Plex Mono'" font-size="7" fill="#C3E88D" text-anchor="middle">t₄</text>
+      <text x="236" y="68" font-family="'IBM Plex Mono'" font-size="11" fill="#7A7468" text-anchor="middle">···</text>
+      <rect x="256" y="52" width="32" height="26" fill="#0D0C0A" rx="1"/>
+      <text x="272" y="68" font-family="'IBM Plex Mono'" font-size="7" fill="#C3E88D" text-anchor="middle">tₙ</text>
+
+      <!-- sync markers -->
+      <line x1="30" y1="78" x2="30" y2="90" stroke="#B84040" stroke-width="1"/>
+      <line x1="74" y1="78" x2="74" y2="90" stroke="#B84040" stroke-width="1"/>
+      <line x1="118" y1="78" x2="118" y2="90" stroke="#B84040" stroke-width="1"/>
+      <line x1="162" y1="78" x2="162" y2="90" stroke="#B84040" stroke-width="1"/>
+      <line x1="206" y1="78" x2="206" y2="90" stroke="#B84040" stroke-width="1"/>
+      <line x1="272" y1="78" x2="272" y2="90" stroke="#B84040" stroke-width="1"/>
+      <text x="14" y="100" font-family="'IBM Plex Mono'" font-size="8" fill="#B84040">↑sync ↑sync ↑sync ↑sync ↑sync ··· ↑sync</text>
+
+      <!-- label -->
+      <text x="340" y="72" font-family="'IBM Plex Mono'" font-size="9" fill="#B84040">N kernel launches</text>
+      <text x="340" y="86" font-family="'IBM Plex Mono'" font-size="9" fill="#B84040">N synchronizations</text>
+
+      <!-- MEGA-KERNEL ROW -->
+      <text x="14" y="134" font-family="'IBM Plex Mono'" font-size="9" font-weight="600" fill="#7A7468" letter-spacing="1">PERSISTENT MEGA-KERNEL</text>
+      <!-- one huge block -->
+      <rect x="14" y="144" width="286" height="36" fill="#1A3A2A" rx="2"/>
+      <text x="157" y="158" font-family="'IBM Plex Mono'" font-size="9" font-weight="600" fill="#D6E8DD" text-anchor="middle">xl_persistent_megakernel &lt;&lt;&lt;N, block&gt;&gt;&gt;</text>
+      <text x="157" y="173" font-family="'IBM Plex Mono'" font-size="8" fill="#A8D5B8" text-anchor="middle">t₀  t₁  t₂  t₃  t₄  ···  tₙ  — all on-device</text>
+      <!-- one sync -->
+      <line x1="157" y1="180" x2="157" y2="192" stroke="#D4620A" stroke-width="1.5"/>
+      <text x="157" y="199" font-family="'IBM Plex Mono'" font-size="8" fill="#D4620A" text-anchor="middle">↑ 1 sync</text>
+
+      <text x="340" y="162" font-family="'IBM Plex Mono'" font-size="9" fill="#1A3A2A" font-weight="600">1 kernel launch</text>
+      <text x="340" y="176" font-family="'IBM Plex Mono'" font-size="9" fill="#1A3A2A">1 synchronization</text>
+    </svg>
+    <div class="diagram-caption">Fig. 2 — Baseline vs persistent mega-kernel. Launch count: O(tokens) → 1.</div>
+  </div>
+
+  <p>
+    The <a href="https://github.com/manishklach/XL-Persistent-Kernel" target="_blank">XL-Persistent-Kernel</a>
+    project implements this architecture as a correctness-first scaffold. The kernel — <code class="inline">xl_persistent_megakernel.cu</code> — launches with one block per request. Inside each block, a device loop calls six inline stage helpers:
+  </p>
+
+  <div class="code-block">
+    <div class="code-block-header">
+      <span class="code-block-title">xl_persistent_megakernel.cu — device resident loop</span>
+      <span class="code-block-lang">CUDA C++</span>
+    </div>
+    <pre><code><span class="kw">__global__</span> <span class="ty">void</span> <span class="fn">xl_persistent_megakernel</span>(
+    <span class="ty">RequestDescriptor</span>* requests, <span class="ty">int</span> num_requests,
+    <span class="ty">KVPageTable</span> kv_table, <span class="ty">int</span>* draft_tokens,
+    <span class="ty">int</span>* shutdown_flag, <span class="ty">int</span> max_iterations, <span class="ty">int</span> block_size
+) {
+    <span class="ty">RequestDescriptor</span>* req = &requests[blockIdx.x];
+
+    <span class="kw">for</span> (<span class="ty">int</span> iter = <span class="nu">0</span>; !(*shutdown_flag) && iter &lt; max_iterations; iter++) {
+        <span class="kw">if</span> (!req->is_done()) {
+            <span class="fn">stage_prefill</span>(req, &kv_table);        <span class="cm">// PREFILL_READY → DECODE_READY</span>
+            <span class="fn">stage_decode</span>(req, draft_tokens, block_size); <span class="cm">// propose B tokens</span>
+            <span class="fn">stage_spec_verify</span>(req, draft_tokens);  <span class="cm">// accept prefix</span>
+            <span class="fn">stage_commit</span>(req, &kv_table);          <span class="cm">// commit accepted</span>
+        }
+        <span class="cm">// block 0 polls all-done; sets *shutdown_flag</span>
+    }
+}</code></pre>
+  </div>
+
+  <p>
+    The stage helpers are <code class="inline">__forceinline__ __device__</code> functions — they compile directly into the mega-kernel body, not as separate launches. <code class="inline">stage_prefill</code>, <code class="inline">stage_decode</code>, <code class="inline">stage_spec_verify</code>, <code class="inline">stage_commit</code>, <code class="inline">stage_kv</code>, and <code class="inline">stage_scheduler</code> all live in the device loop. This is a single resident kernel that carries the full inference pipeline.
+  </p>
+
+  <h3>Token Parallelization Within the Mega-Kernel</h3>
+
+  <p>
+    The mega-kernel architecture enables a form of token-level parallelization that host-launched approaches simply
+    cannot achieve. In the baseline path, requests are processed one token step at a time, sequentially controlled by
+    the host. In the persistent kernel, <strong>N blocks execute simultaneously</strong> — one per request — and their
+    decode iterations are fully parallel. Requests that finish prefill early begin decoding while others are still being
+    filled. There is no rendezvous at the host boundary.
+  </p>
+
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 660 220" xmlns="http://www.w3.org/2000/svg" width="100%">
+      <rect width="660" height="220" fill="white"/>
+
+      <!-- Header -->
+      <text x="20" y="22" font-family="'IBM Plex Mono'" font-size="9" font-weight="600" fill="#7A7468" letter-spacing="1">INTRA-BATCH TOKEN PARALLELISM INSIDE THE PERSISTENT KERNEL</text>
+      <line x1="20" y1="28" x2="640" y2="28" stroke="#0D0C0A" stroke-width="0.5"/>
+
+      <!-- Time axis -->
+      <line x1="110" y1="210" x2="640" y2="210" stroke="#0D0C0A" stroke-width="1"/>
+      <text x="640" y="208" font-family="'IBM Plex Mono'" font-size="8" fill="#7A7468">time →</text>
+
+      <!-- Request rows -->
+      <!-- Req 0 -->
+      <text x="100" y="64" font-family="'IBM Plex Mono'" font-size="9" fill="#3A3730" text-anchor="end">REQ 0</text>
+      <rect x="110" y="50" width="60" height="22" fill="#1A3A2A" rx="1"/>
+      <text x="140" y="63" font-family="'IBM Plex Mono'" font-size="7" fill="#D6E8DD" text-anchor="middle">PREFILL</text>
+      <rect x="172" y="50" width="40" height="22" fill="#D4620A" rx="1"/>
+      <text x="192" y="63" font-family="'IBM Plex Mono'" font-size="7" fill="white" text-anchor="middle">B=8</text>
+      <rect x="214" y="50" width="24" height="22" fill="#D4620A" opacity="0.7" rx="1"/>
+      <text x="226" y="63" font-family="'IBM Plex Mono'" font-size="7" fill="white" text-anchor="middle">B=8</text>
+      <rect x="240" y="50" width="28" height="22" fill="#D4620A" opacity="0.5" rx="1"/>
+      <text x="254" y="63" font-family="'IBM Plex Mono'" font-size="7" fill="white" text-anchor="middle">B=4</text>
+      <rect x="270" y="50" width="18" height="22" fill="#D4620A" opacity="0.4" rx="1"/>
+      <rect x="290" y="50" width="20" height="22" fill="#7A7468" opacity="0.6" rx="1"/>
+      <text x="300" y="63" font-family="'IBM Plex Mono'" font-size="7" fill="white" text-anchor="middle">done</text>
+
+      <!-- Req 1 -->
+      <text x="100" y="106" font-family="'IBM Plex Mono'" font-size="9" fill="#3A3730" text-anchor="end">REQ 1</text>
+      <rect x="110" y="92" width="90" height="22" fill="#1A3A2A" rx="1"/>
+      <text x="155" y="105" font-family="'IBM Plex Mono'" font-size="7" fill="#D6E8DD" text-anchor="middle">PREFILL (longer)</text>
+      <rect x="202" y="92" width="34" height="22" fill="#D4620A" rx="1"/>
+      <text x="219" y="105" font-family="'IBM Plex Mono'" font-size="7" fill="white" text-anchor="middle">B=8</text>
+      <rect x="238" y="92" width="34" height="22" fill="#D4620A" opacity="0.7" rx="1"/>
+      <text x="255" y="105" font-family="'IBM Plex Mono'" font-size="7" fill="white" text-anchor="middle">B=6</text>
+      <rect x="274" y="92" width="28" height="22" fill="#D4620A" opacity="0.5" rx="1"/>
+      <text x="288" y="105" font-family="'IBM Plex Mono'" font-size="7" fill="white" text-anchor="middle">B=4</text>
+      <rect x="304" y="92" width="22" height="22" fill="#D4620A" opacity="0.4" rx="1"/>
+      <rect x="328" y="92" width="20" height="22" fill="#7A7468" opacity="0.6" rx="1"/>
+      <text x="338" y="105" font-family="'IBM Plex Mono'" font-size="7" fill="white" text-anchor="middle">done</text>
+
+      <!-- Req 2 (KV pressure) -->
+      <text x="100" y="148" font-family="'IBM Plex Mono'" font-size="9" fill="#3A3730" text-anchor="end">REQ 2</text>
+      <rect x="110" y="134" width="50" height="22" fill="#1A3A2A" rx="1"/>
+      <text x="135" y="147" font-family="'IBM Plex Mono'" font-size="7" fill="#D6E8DD" text-anchor="middle">PREFILL</text>
+      <rect x="162" y="134" width="34" height="22" fill="#D4620A" rx="1"/>
+      <text x="179" y="147" font-family="'IBM Plex Mono'" font-size="7" fill="white" text-anchor="middle">B=8</text>
+      <!-- KV pressure kicks in: block size drops -->
+      <rect x="198" y="134" width="14" height="22" fill="#B84040" rx="1"/>
+      <text x="205" y="147" font-family="'IBM Plex Mono'" font-size="7" fill="white" text-anchor="middle">2</text>
+      <rect x="214" y="134" width="14" height="22" fill="#B84040" opacity="0.8" rx="1"/>
+      <rect x="230" y="134" width="14" height="22" fill="#B84040" opacity="0.6" rx="1"/>
+      <rect x="246" y="134" width="14" height="22" fill="#B84040" opacity="0.5" rx="1"/>
+      <rect x="262" y="134" width="14" height="22" fill="#B84040" opacity="0.4" rx="1"/>
+      <text x="205" y="167" font-family="'IBM Plex Mono'" font-size="7" fill="#B84040">← KV pressure: B capped at 2</text>
+      <rect x="280" y="134" width="20" height="22" fill="#7A7468" opacity="0.6" rx="1"/>
+      <text x="290" y="147" font-family="'IBM Plex Mono'" font-size="7" fill="white" text-anchor="middle">done</text>
+
+      <!-- Req 3 -->
+      <text x="100" y="196" font-family="'IBM Plex Mono'" font-size="9" fill="#3A3730" text-anchor="end">REQ 3</text>
+      <rect x="110" y="182" width="70" height="22" fill="#1A3A2A" rx="1"/>
+      <text x="145" y="195" font-family="'IBM Plex Mono'" font-size="7" fill="#D6E8DD" text-anchor="middle">PREFILL</text>
+      <rect x="182" y="182" width="40" height="22" fill="#D4620A" rx="1"/>
+      <text x="202" y="195" font-family="'IBM Plex Mono'" font-size="7" fill="white" text-anchor="middle">B=8</text>
+      <rect x="224" y="182" width="40" height="22" fill="#D4620A" opacity="0.7" rx="1"/>
+      <rect x="266" y="182" width="36" height="22" fill="#D4620A" opacity="0.5" rx="1"/>
+      <rect x="304" y="182" width="20" height="22" fill="#D4620A" opacity="0.4" rx="1"/>
+      <rect x="326" y="182" width="20" height="22" fill="#7A7468" opacity="0.6" rx="1"/>
+      <text x="336" y="195" font-family="'IBM Plex Mono'" font-size="7" fill="white" text-anchor="middle">done</text>
+
+      <!-- Legend -->
+      <rect x="440" y="50" width="14" height="10" fill="#1A3A2A" rx="1"/>
+      <text x="458" y="59" font-family="'IBM Plex Mono'" font-size="8" fill="#3A3730">prefill</text>
+      <rect x="440" y="66" width="14" height="10" fill="#D4620A" rx="1"/>
+      <text x="458" y="75" font-family="'IBM Plex Mono'" font-size="8" fill="#3A3730">speculative decode (block B)</text>
+      <rect x="440" y="82" width="14" height="10" fill="#B84040" rx="1"/>
+      <text x="458" y="91" font-family="'IBM Plex Mono'" font-size="8" fill="#3A3730">KV-pressure capped (B≤2)</text>
+      <rect x="440" y="98" width="14" height="10" fill="#7A7468" opacity="0.6" rx="1"/>
+      <text x="458" y="107" font-family="'IBM Plex Mono'" font-size="8" fill="#3A3730">complete</text>
+    </svg>
+    <div class="diagram-caption">Fig. 3 — All 4 requests execute in parallel inside the mega-kernel. Each block independently adapts its speculative block size. REQ 2 hits KV pressure and caps at B=2 while others continue at B=8.</div>
+  </div>
+
+  <p>
+    Each CUDA block executing a request is <strong>fully independent</strong>. Block 0 running request 0 never waits
+    for block 1 running request 1 — they interleave on the GPU's SM scheduler freely. A request that finishes prefill
+    early immediately begins speculative decode. A request under KV pressure silently reduces its block size. None of
+    this requires any host-side coordination.
+  </p>
+
+  <p>
+    This independence is the key architectural property that makes ASBS not just possible but <em>natural</em> inside
+    a mega-kernel. In a host-driven loop, the host picks a single block size for the batch. In a mega-kernel, each
+    request can adapt independently on every iteration.
+  </p>
+</section>
+
+<div class="section-break">
+  <div class="section-break-inner">
+    <h2>Why Fixed Block Sizes Are Leaving Performance on the Table</h2>
+    <p>
+      In a persistent mega-kernel, the GPU never reports back to the host between decode iterations.
+      This means any intelligence about block sizing must live on the device.
+      Fixed block sizes are the absence of that intelligence.
+    </p>
+  </div>
+</div>
+
+<!-- ─── PART 3: ASBS -->
+<section class="section">
+  <div class="section-label">Part III · The Innovation</div>
+  <h2>Adaptive Speculative Block Sizing</h2>
+
+  <p>
+    The observation is straightforward: speculative decoding acceptance rate is not constant across a request's lifetime,
+    not constant across requests in a batch, and not constant under varying memory conditions. A fixed block size
+    optimized for one condition is suboptimal in all others.
+  </p>
+
+  <h3>What changes across a request's lifetime</h3>
+
+  <p>
+    Consider a typical chat completion request. After a structured system prompt, the model's distribution is strongly
+    peaked — the next several tokens are nearly deterministic, and a draft model will predict them with high accuracy.
+    Acceptance rates of 80–90% are common in this regime. Proposing 8 tokens at once costs almost nothing and
+    commits almost all of them.
+  </p>
+
+  <p>
+    As the response becomes more creative — narrative, opinion, code — the distribution flattens. The draft model
+    begins making choices the target model disagrees with. Acceptance rates drop toward 50–60%. A block of 8 proposed
+    tokens now yields 4–5 committed tokens on average, but the cost of the verify pass is the same. And critically,
+    the KV cache has to hold draft pages for all 8 proposed tokens until verification completes — 8 pages that are
+    likely to be wasted.
+  </p>
+
+  <p>
+    Near the end of generation — trailing punctuation, EOS approach — acceptance rates can drop further still.
+    Proposing a large block here burns KV pages and verify compute for tokens that will almost never be accepted.
+  </p>
+
+  <h3>What changes across requests in a batch</h3>
+
+  <p>
+    In a continuous batching scenario, different requests have completely different acceptance rate profiles at any
+    given moment. Request A may be in its high-acceptance structured zone while Request B is in a low-acceptance
+    creative zone. A single batch-level block size is a compromise that serves neither well.
+  </p>
+
+  <h3>What changes under KV pressure</h3>
+
+  <p>
+    The XL-Persistent-Kernel KV cache distinguishes between committed pages (finalized token data, protected from
+    eviction) and draft pages (speculative, discardable on rejection). The flag <code class="inline">REQUEST_FLAG_KV_PRESSURE</code>
+    is already defined in <code class="inline">kernel_status.h</code>. When the cache is near capacity, every draft
+    page allocated for a speculative block is a page that cannot hold committed data for another request. Under
+    pressure, a block of 8 draft tokens occupies 8 × (layer_count × bytes_per_kv_token) bytes of cache that may
+    yield nothing if the block is rejected.
+  </p>
+
+  <div class="callout">
+    <div class="callout-label">The Core Insight</div>
+    <p>
+      In a host-launched system, the host could inspect acceptance rates between rounds and adjust block size.
+      In a persistent mega-kernel, <strong>the host never sees per-token results during decode.</strong>
+      Any adaptive policy must be computed <em>on the device, inline, during the verify stage</em>.
+      ASBS is the natural first inference optimization that is <em>only possible</em> inside a persistent kernel.
+    </p>
+  </div>
+
+  <h3>The EMA model</h3>
+
+  <p>
+    ASBS tracks a per-request exponential moving average of the observed acceptance rate. After each verify pass,
+    the EMA is updated inline in <code class="inline">stage_spec_verify.cuh</code> before the kernel's next iteration.
+    The EMA-smoothed estimate drives the block size for the next proposal.
+  </p>
+
+  <div class="formula-block">
+    ε' = α · r + (1 − α) · ε
+    <span class="eq-comment">where r = accepted_count / proposed_count, α = 0.2, ε = current EMA</span>
+    <br><br>
+    B_next = max_block &nbsp;&nbsp;&nbsp; <span class="eq-comment">if ε' ≥ 0.80</span><br>
+    B_next = mid_block &nbsp;&nbsp;&nbsp; <span class="eq-comment">if 0.50 ≤ ε' &lt; 0.80</span><br>
+    B_next = min_block &nbsp;&nbsp;&nbsp; <span class="eq-comment">if ε' &lt; 0.50</span><br>
+    B_next = min(B_next, 2) <span class="eq-comment">if KV_PRESSURE flag is set</span>
+  </div>
+
+  <p>
+    The EMA smoothing factor of 0.2 was chosen to give meaningful responsiveness — a single bad iteration moves
+    the estimate by 20% of the gap — while avoiding overreaction to transient noise. A single rejection after
+    ten acceptances should not immediately collapse block size to 1; the EMA absorbs the shock.
+  </p>
+
+  <h3>The CUDA implementation</h3>
+
+  <p>
+    On the CUDA side, the change touches three files. Two fields are added to <code class="inline">RequestDescriptor</code>:
+  </p>
+
+  <div class="code-block">
+    <div class="code-block-header">
+      <span class="code-block-title">request_desc.h — two new fields</span>
+      <span class="code-block-lang">CUDA C++</span>
+    </div>
+    <pre><code><span class="kw">struct</span> <span class="ty">RequestDescriptor</span> {
+    <span class="cm">// ... existing fields ...</span>
+    <span class="ty">float</span>  ema_acceptance_rate;   <span class="cm">// initialized to 0.8f (optimistic)</span>
+    <span class="ty">int</span>    current_block_size;    <span class="cm">// initialized to launch-time block_size</span>
+};</code></pre>
+  </div>
+
+  <p>
+    Then <code class="inline">stage_spec_verify.cuh</code> gains an inline update after it computes <code class="inline">accepted_prefix_len</code>:
+  </p>
+
+  <div class="code-block">
+    <div class="code-block-header">
+      <span class="code-block-title">stage_spec_verify.cuh — inline ASBS update</span>
+      <span class="code-block-lang">CUDA C++</span>
+    </div>
+    <pre><code><span class="kw">__device__</span> <span class="kw">__forceinline__</span> <span class="ty">void</span> <span class="fn">update_block_size_device</span>(
+    <span class="ty">RequestDescriptor</span>* req, <span class="ty">int</span> accepted, <span class="ty">int</span> proposed,
+    <span class="ty">int</span> min_block, <span class="ty">int</span> max_block, <span class="ty">int</span> mid_block
+) {
+    <span class="ty">float</span> r = (proposed > <span class="nu">0</span>) ? (<span class="ty">float</span>)accepted / (<span class="ty">float</span>)proposed : <span class="nu">0.0f</span>;
+    <span class="ty">constexpr</span> <span class="ty">float</span> alpha = <span class="nu">0.2f</span>;
+    req->ema_acceptance_rate = alpha * r + (<span class="nu">1.0f</span> - alpha) * req->ema_acceptance_rate;
+
+    <span class="ty">int</span> next_b;
+    <span class="kw">if</span>      (req->ema_acceptance_rate >= <span class="nu">0.80f</span>) next_b = max_block;
+    <span class="kw">else if</span> (req->ema_acceptance_rate >= <span class="nu">0.50f</span>) next_b = mid_block;
+    <span class="kw">else</span>                                          next_b = min_block;
+
+    <span class="cm">// Cap under KV pressure — protect committed pages</span>
+    <span class="kw">if</span> (req->has_flag(REQUEST_FLAG_KV_PRESSURE))
+        next_b = min(next_b, <span class="nu">2</span>);
+
+    req->current_block_size = next_b;
+}
+
+<span class="cm">// Called at the end of stage_spec_verify, before returning:</span>
+<span class="fn">update_block_size_device</span>(req, req->accepted_prefix_len, req->draft_len,
+                          <span class="nu">1</span>, <span class="nu">8</span>, <span class="nu">4</span>);
+req->set_state(REQUEST_COMMIT_READY);</code></pre>
+  </div>
+
+  <p>
+    Finally, <code class="inline">stage_decode.cuh</code> uses <code class="inline">req->current_block_size</code>
+    instead of the kernel parameter, and the <code class="inline">block_size</code> parameter is removed from the
+    mega-kernel signature — replaced by per-request initialization at launch time.
+  </p>
+
+  <h3>The Python specification</h3>
+
+  <p>
+    The Python simulator in <code class="inline">src/megakernel_lab/</code> is the correctness reference for the CUDA
+    layer. ASBS maps cleanly into it. <code class="inline">RequestState</code> gains
+    <code class="inline">ema_acceptance_rate</code> and <code class="inline">current_block_size</code> fields.
+    An <code class="inline">AdaptiveBlockPolicy</code> dataclass captures the EMA parameters.
+    The <code class="inline">update_block_size()</code> function runs in <code class="inline">DecodeWorker.process()</code>
+    after each verify step, reading <code class="inline">KVCache.is_under_pressure()</code> to check the pressure flag.
+    Crucially, the Python implementation uses <strong>identical thresholds</strong> (0.80 / 0.50 / α = 0.2) as the
+    CUDA implementation, preserving the simulator-as-specification guarantee.
+  </p>
+</section>
+
+<hr class="rule">
+
+<!-- ─── PART 4: WHAT THIS UNLOCKS -->
+<section class="section">
+  <div class="section-label">Part IV · Impact</div>
+  <h2>What ASBS Unlocks — and What to Measure</h2>
+
+  <h3>KV cache efficiency</h3>
+
+  <p>
+    The most immediate win is KV page utilization. Under a fixed block size of 8, a request with 40% acceptance rate
+    allocates 8 draft pages per iteration but commits only 3. Five pages are allocated, touch the LRU order, and are
+    then discarded — forcing real committed pages of other requests out of the cache. With ASBS, the same request
+    drops to block size 1 once its EMA falls below 0.50, allocating only 1 draft page per iteration. Cache
+    fragmentation decreases. The <code class="inline">fragmentation_ratio</code> metric already exposed by
+    <code class="inline">kv_cache.residency_report()</code> is the direct measurement.
+  </p>
+
+  <h3>Verify pass efficiency</h3>
+
+  <p>
+    The speculative verify pass has O(block_size) cost in the CUDA stub (it loops over <code class="inline">draft_len</code>).
+    With real transformer math in Phase 3, verification involves a forward pass over the proposed tokens — cost
+    proportional to block length. ASBS reduces the average verify cost for struggling requests without touching
+    high-acceptance requests, where the large block size is well-justified.
+  </p>
+
+  <h3>What to measure in the benchmark harness</h3>
+
+  <p>
+    The existing <code class="inline">BenchmarkRunner</code> in <code class="inline">bench.py</code> already tracks
+    TTFT, inter-token latency percentiles (p50/p95/p99), acceptance rate, and KV hit rate. ASBS adds two new observables:
+  </p>
+
+  <table class="compare-table">
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th>Expected with fixed B</th>
+        <th>Expected with ASBS</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>mean_block_size (high-accept request)</td>
+        <td class="neutral">fixed at 4 or 8</td>
+        <td class="good">converges to max_block (8)</td>
+      </tr>
+      <tr>
+        <td>mean_block_size (low-accept request)</td>
+        <td class="bad">wasteful at 8</td>
+        <td class="good">converges to min_block (1–2)</td>
+      </tr>
+      <tr>
+        <td>KV fragmentation_ratio</td>
+        <td class="bad">high under low acceptance</td>
+        <td class="good">reduced — fewer wasted drafts</td>
+      </tr>
+      <tr>
+        <td>kv_hit_rate under pressure</td>
+        <td class="bad">degrades as draft pages evict committed</td>
+        <td class="good">stabilizes — B capped at 2</td>
+      </tr>
+      <tr>
+        <td>p95 inter-token latency</td>
+        <td class="neutral">dominated by rejected blocks</td>
+        <td class="good">smoothed by adaptive sizing</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    The <code class="inline">block_size_history: list[int]</code> field added to <code class="inline">DecodeStepTrace</code>
+    captures the per-iteration block size trajectory. Plot it for a batch of requests with varied acceptance profiles:
+    the expected signature is a high block-size plateau early, potential mid-decode dip for creative content,
+    and a sharp collapse to minimum near generation end and under pressure events. That signature, visible in the
+    Python simulator before a single CUDA line changes, validates the policy.
+  </p>
+
+  <div class="callout callout-forest">
+    <div class="callout-label">Why This Only Works in a Mega-Kernel</div>
+    <p>
+      In a host-launched design, acceptance rates <em>are</em> available to the host — it reads them back after
+      each verify pass. But that readback costs a PCIe round-trip, and computing the EMA and choosing the next
+      block size adds CPU-side latency. More critically, the decision happens <em>between</em> launches, which
+      means the GPU is idle while the CPU decides. In a mega-kernel, the EMA update and block size decision
+      execute in a handful of arithmetic instructions at the end of <code class="inline">stage_spec_verify</code>,
+      with the GPU never pausing. <strong>ASBS has zero overhead in a mega-kernel and non-trivial overhead
+      in a host-launched loop.</strong>
+    </p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ─── PART 5: IMPLEMENTATION ROADMAP -->
+<section class="section">
+  <div class="section-label">Part V · Implementation</div>
+  <h2>How to Build It</h2>
+
+  <p>
+    ASBS slots into the XL-Persistent-Kernel roadmap between Phase 2B (measurement harness) and Phase 3 (real kernels).
+    It is entirely a control-flow and state change — no real math required. The Python simulator validates it; the
+    CUDA scaffold carries it to hardware.
+  </p>
+
+  <div class="phase-steps">
+    <div class="phase-step">
+      <div class="phase-step-num amber">1</div>
+      <div class="phase-step-body">
+        <h4>Extend RequestState in state.py</h4>
+        <p>Add <code class="inline">ema_acceptance_rate: float = 0.8</code>, <code class="inline">current_block_size: int</code>, and <code class="inline">block_size_history: list[int]</code>. Initialize <code class="inline">current_block_size</code> from the runtime config's <code class="inline">block_size</code>. No other state changes needed.</p>
+      </div>
+    </div>
+    <div class="phase-step">
+      <div class="phase-step-num">2</div>
+      <div class="phase-step-body">
+        <h4>Add AdaptiveBlockPolicy and update_block_size() to spec_decode.py</h4>
+        <p>Separate from <code class="inline">AcceptancePolicy</code> — they control different things. The update function must be pure (no side effects beyond mutating request) so it can be called directly in tests. Implement the EMA formula and three-tier mapping exactly.</p>
+      </div>
+    </div>
+    <div class="phase-step">
+      <div class="phase-step-num">3</div>
+      <div class="phase-step-body">
+        <h4>Wire update_block_size into DecodeWorker.process()</h4>
+        <p>Call after the verify step (and fallback serial step if triggered). Add <code class="inline">is_under_pressure()</code> to <code class="inline">KVCache</code> — returns True if live pages exceed 85% of <code class="inline">max_pages</code>. Replace the fixed <code class="inline">block_size=self.block_size</code> arg in <code class="inline">propose()</code> with <code class="inline">request.current_block_size</code>.</p>
+      </div>
+    </div>
+    <div class="phase-step">
+      <div class="phase-step-num">4</div>
+      <div class="phase-step-body">
+        <h4>Add request_desc.h fields and update_block_size_device()</h4>
+        <p>Two new fields in <code class="inline">RequestDescriptor</code>. One new <code class="inline">__device__ __forceinline__</code> function in <code class="inline">stage_spec_verify.cuh</code>. Change <code class="inline">stage_decode.cuh</code> to read <code class="inline">req->current_block_size</code>. Remove <code class="inline">block_size</code> from the mega-kernel signature.</p>
+      </div>
+    </div>
+    <div class="phase-step">
+      <div class="phase-step-num">5</div>
+      <div class="phase-step-body">
+        <h4>Write four targeted tests</h4>
+        <p>Test: EMA rises on sustained acceptance. Test: EMA falls on rejection, block size reaches min_block. Test: KV pressure cap is enforced and never exceeded. Test: single rejection after 10 acceptances does not immediately collapse block size (EMA smoothing).</p>
+      </div>
+    </div>
+    <div class="phase-step">
+      <div class="phase-step-num">6</div>
+      <div class="phase-step-body">
+        <h4>Update BenchmarkRunner and visualize block_size_history</h4>
+        <p>Add <code class="inline">mean_block_size</code> and <code class="inline">block_size_variance</code> to benchmark output. Plot per-request block size over decode time for a mixed-profile batch. The convergence curves are the key validation artifact for the policy before Phase 3.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule-heavy">
+
+<!-- ─── PART 6: BIGGER PICTURE -->
+<section class="section">
+  <div class="section-label">Part VI · Bigger Picture</div>
+  <h2>ASBS as the Foundation for On-Device Inference Intelligence</h2>
+
+  <p>
+    ASBS is the first in a family of innovations that become possible when inference control flow moves to the device.
+    The EMA acceptance rate is a per-request signal that the device now owns continuously. What else can be built on it?
+  </p>
+
+  <h3>Priority-Aware KV Eviction</h3>
+
+  <p>
+    The KV cache already has priority fields. The eviction policy is currently pure LRU. A request with low EMA
+    acceptance rate is a worse cache citizen than one with high acceptance — its draft pages are more likely to be
+    discarded. Sorting eviction candidates by <code class="inline">(priority ASC, ema_acceptance_rate ASC, lru_order)</code>
+    makes the eviction policy speculative-decode-aware with one additional field read per eviction candidate.
+  </p>
+
+  <h3>Request Grafting</h3>
+
+  <p>
+    Multiple requests sharing a long system prompt can share KV pages for that prefix instead of independently
+    re-computing it. A new <code class="inline">graft_source_id</code> field in <code class="inline">RequestDescriptor</code>
+    causes <code class="inline">stage_prefill</code> to skip the shared prefix and borrow the source request's pages
+    directly. Reference-counting on top of the existing pinning mechanism prevents eviction of borrowed pages until
+    all borrowers complete. This reduces prefill latency and cache pressure for the common system-prompt-heavy workload.
+  </p>
+
+  <h3>The Trajectory</h3>
+
+  <p>
+    Each of these innovations follows the same pattern as ASBS: a small on-device state addition, an inline update
+    in one stage helper, and a corresponding Python change that preserves the simulator-as-specification guarantee.
+    The architecture XL-Persistent-Kernel is building — clean stage helpers, explicit request descriptors, typed
+    Python↔CUDA interface — is designed to absorb exactly these kinds of incremental innovations without
+    architectural surgery.
+  </p>
+
+  <div class="pull-quote">
+    <p>
+      "The persistent mega-kernel doesn't just eliminate launch overhead. It creates a new surface for inference
+      intelligence — signals and decisions that previously required host round-trips now execute in nanoseconds,
+      inline, on the device that is doing the work."
+    </p>
+  </div>
+
+  <p>
+    ASBS is the proof of concept for that surface. It costs a float and an int per request descriptor, a handful
+    of arithmetic instructions per verify pass, and zero host overhead. In return, it makes the speculative decode
+    loop self-tuning for the first time — adapting to the statistical reality of each individual request as it
+    unfolds, entirely on the GPU, at the speed of computation rather than the speed of PCIe.
+  </p>
+</section>
+
+</article>
+
+<!-- ═══ SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-block">
+    <div class="sidebar-label">Key Numbers</div>
+    <div class="sidebar-stat">1×</div>
+    <div class="sidebar-stat-label">kernel launches per batch<br>(vs O(tokens) baseline)</div>
+  </div>
+
+  <div class="sidebar-block">
+    <div class="sidebar-label">ASBS Fields Added</div>
+    <div class="sidebar-note">
+      <strong>ema_acceptance_rate</strong> (float) and
+      <strong>current_block_size</strong> (int) in RequestDescriptor.
+      Two fields. Zero new kernels. Zero new launches.
+    </div>
+  </div>
+
+  <div class="sidebar-block">
+    <div class="sidebar-label">EMA Formula</div>
+    <div class="sidebar-note" style="font-family:var(--mono);font-style:normal;font-size:13px;line-height:1.8;">
+      ε' = 0.2·r + 0.8·ε<br>
+      α = 0.2<br>
+      B_max at ε≥0.80<br>
+      B_min at ε&lt;0.50<br>
+      B≤2 under pressure
+    </div>
+  </div>
+
+  <div class="sidebar-block">
+    <div class="sidebar-label">Why only in mega-kernels?</div>
+    <div class="sidebar-note">
+      Host-launched loops can read acceptance rates too — but the readback costs a PCIe round-trip.
+      In a mega-kernel, the EMA update is
+      <strong>inline arithmetic in stage_spec_verify.cuh</strong>,
+      executing in nanoseconds with the GPU never pausing.
+    </div>
+  </div>
+
+  <div class="sidebar-block">
+    <div class="sidebar-label">Repo</div>
+    <div class="sidebar-note">
+      <a href="https://github.com/manishklach/XL-Persistent-Kernel" target="_blank" style="color:var(--amber);text-decoration:none;font-family:var(--mono);font-size:12px;border-bottom:1px solid var(--amber);">
+        ↗ XL-Persistent-Kernel
+      </a><br><br>
+      Phase 2A/2B in progress.<br>ASBS proposed for Phase 2C.
+    </div>
+  </div>
+</aside>
+
+</div>
+</div>
+
+<div class="article-wrap" style="padding-top:0;padding-bottom:0;">
+  <form action="https://buttondown.email/api/emails/embed-subscribe/manishklach" class="subscribe" method="post" target="_blank">
+    <label for="bd-email">Get new posts by email</label>
+    <input id="bd-email" name="email" placeholder="you@example.com" required type="email"/>
+    <input name="tag" type="hidden" value="blog"/>
+    <input type="submit" value="Subscribe"/>
+  </form>
+  <div id="webmentions" hidden></div>
+  <footer class="post-footer">© 2026 <a href="/index.html">MANISH AI</a> · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer>
+</div>
+
+<!-- ═══════════ FOOTER -->
+<footer class="footer">
+  <div style="max-width:1100px;margin:0 auto;padding:0 0 3rem;">
+    <div style="font-family:var(--serif);font-size:clamp(1.5rem,3vw,2.2rem);font-weight:900;font-style:italic;color:var(--paper);max-width:680px;line-height:1.2;">
+      Adaptive Speculative Block Sizing is proposed for Phase 2C of XL-Persistent-Kernel.
+    </div>
+  </div>
+  <div class="footer-inner">
+    <div class="footer-block">
+      <h4>About the Repo</h4>
+      <p>XL-Persistent-Kernel is an open-source project building the control-flow skeleton for a production-class persistent mega-kernel LLM inference runtime. Phase 1 (Python simulator) is complete. Phase 2A/2B (CUDA scaffold and measurement) are in progress.</p>
+    </div>
+    <div class="footer-block">
+      <h4>Key Source Files</h4>
+      <ul>
+        <li>src/megakernel_lab/spec_decode.py</li>
+        <li>src/megakernel_lab/runtime.py</li>
+        <li>src/megakernel_lab/kv_cache.py</li>
+        <li>cuda/src/xl_persistent_megakernel.cu</li>
+        <li>cuda/include/stage_spec_verify.cuh</li>
+        <li>cuda/include/stage_decode.cuh</li>
+        <li>cuda/include/request_desc.h</li>
+        <li>cuda/include/kernel_status.h</li>
+      </ul>
+    </div>
+    <div class="footer-block">
+      <h4>Topics</h4>
+      <ul>
+        <li>adaptive-speculative-decode</li>
+        <li>persistent-mega-kernel</li>
+        <li>llm-inference</li>
+        <li>kv-cache</li>
+        <li>on-device-intelligence</li>
+        <li>ema-acceptance-rate</li>
+        <li>token-parallelism</li>
+        <li>gpu-systems</li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-cta">
+    <p>Star the repo, open an issue, or fork it to implement Phase 2C — the ASBS implementation is fully specified and ready to build.</p>
+    <a href="https://github.com/manishklach/XL-Persistent-Kernel" class="footer-cta-link" target="_blank">↗ View on GitHub</a>
+  </div>
+</footer>
+
+</body>
+</html>
