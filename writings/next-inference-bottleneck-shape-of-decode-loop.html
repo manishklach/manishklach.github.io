@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Next Inference Bottleneck Is Not FLOPs. It Is the Shape of the Decode Loop. | MANISH AI</title>
+<meta name="description" content="A systems essay on why the next inference bottleneck is the structure of the decode loop itself, spanning FP4, MoE, speculative decoding, SWA, and persistent kernels."/>
+<meta name="keywords" content="LLM inference, decode loop, FP4, NVFP4, MoE, speculative decoding, SWA, persistent kernels, GPU systems, FlashInfer"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f5f7fb"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/next-inference-bottleneck-shape-of-decode-loop.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="The Next Inference Bottleneck Is Not FLOPs. It Is the Shape of the Decode Loop. | MANISH AI"/>
+<meta property="og:description" content="Why the real opportunity isn't another SRAM chip but co-designing models, runtimes, and kernels around the shape of the decode loop."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/next-inference-bottleneck-shape-of-decode-loop.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/next-inference-bottleneck-shape-of-decode-loop.png"/>
+<meta property="og:image:alt" content="Preview image for The Next Inference Bottleneck Is Not FLOPs"/>
+<meta property="article:published_time" content="2026-06-13T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-06-13T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="The Next Inference Bottleneck Is Not FLOPs. It Is the Shape of the Decode Loop."/>
+<meta name="twitter:description" content="A systems essay on the decode-loop bottleneck spanning FP4, MoE, speculative decoding, and persistent kernels."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/next-inference-bottleneck-shape-of-decode-loop.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"The Next Inference Bottleneck Is Not FLOPs. It Is the Shape of the Decode Loop.","description":"A systems essay on why the next inference bottleneck is the structure of the decode loop itself, spanning FP4, MoE, speculative decoding, SWA, and persistent kernels.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/next-inference-bottleneck-shape-of-decode-loop.html","mainEntityOfPage":"https://manishklach.github.io/writings/next-inference-bottleneck-shape-of-decode-loop.html","datePublished":"2026-06-13","dateModified":"2026-06-13","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+  :root {
+    --bg: #f5f7fb;
+    --bg2: #edf1f8;
+    --bg3: #e3e8f3;
+    --surface: #ffffff;
+    --border: #d8dfeb;
+    --border-bright: #c0cade;
+    --text: #131723;
+    --text-muted: #5e6a84;
+    --text-faint: #8290aa;
+    --accent: #7c6aff;
+    --accent2: #c084fc;
+    --accent3: #38bdf8;
+    --accent-glow: rgba(124, 106, 255, 0.15);
+    --accent-glow2: rgba(192, 132, 252, 0.08);
+    --gold: #f0b866;
+    --green: #4ade80;
+    --red: #f87171;
+    --inverse-bg: #0d0d14;
+    --inverse-text: #a8a8c8;
+  }
+
+  html.dark {
+    --bg: #0a0a0f;
+    --bg2: #111118;
+    --bg3: #181820;
+    --surface: #1e1e28;
+    --border: #2a2a38;
+    --border-bright: #3a3a50;
+    --text: #e8e8f0;
+    --text-muted: #8888aa;
+    --text-faint: #4a4a62;
+    --inverse-bg: #0d0d14;
+    --inverse-text: #a8a8c8;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html {
+    scroll-behavior: smooth;
+    font-size: 16px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    font-weight: 300;
+    line-height: 1.75;
+    overflow-x: hidden;
+  }
+
+  .shell {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 18px 20px 0;
+    position: relative;
+    z-index: 2;
+  }
+
+  .site-tools {
+    margin: 0;
+    padding: 14px 18px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(12px);
+  }
+
+  .brand {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: var(--accent);
+  }
+
+  /* ─── NOISE OVERLAY ─── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.6;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0 0 80px 0;
+    overflow: hidden;
+  }
+
+  .header-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: 0.3;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 80%);
+  }
+
+  .header-glow {
+    position: absolute;
+    width: 900px;
+    height: 600px;
+    top: -100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse, rgba(124,106,255,0.18) 0%, rgba(192,132,252,0.06) 50%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .header-orb {
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    top: 10%;
+    right: 8%;
+    background: radial-gradient(circle, rgba(56,189,248,0.12) 0%, transparent 70%);
+    border-radius: 50%;
+    animation: float 8s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px) scale(1); }
+    50% { transform: translateY(-20px) scale(1.04); }
+  }
+
+  .header-inner {
+    position: relative;
+    z-index: 2;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 40px;
+    width: 100%;
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    background: rgba(124,106,255,0.1);
+    border: 1px solid rgba(124,106,255,0.3);
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 36px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .tag::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(2.4rem, 5vw, 4rem);
+    line-height: 1.1;
+    font-weight: 400;
+    color: var(--text);
+    margin-bottom: 28px;
+    max-width: 760px;
+    letter-spacing: -0.02em;
+  }
+
+  h1 em {
+    font-style: italic;
+    color: var(--accent2);
+  }
+
+  .subtitle {
+    font-size: 1.15rem;
+    color: var(--text-muted);
+    max-width: 600px;
+    line-height: 1.65;
+    margin-bottom: 40px;
+  }
+
+  .meta {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .meta-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--border-bright);
+  }
+
+  /* ─── TOC ─── */
+  .toc-strip {
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    backdrop-filter: blur(12px);
+    background: rgba(10,10,15,0.85);
+  }
+
+  .toc-inner {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 40px;
+  }
+
+  .toc-label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    font-family: 'DM Mono', monospace;
+    margin-right: 12px;
+    flex-shrink: 0;
+  }
+
+  .toc-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: all 0.2s;
+    font-family: 'DM Mono', monospace;
+    flex-shrink: 0;
+  }
+
+  .toc-link:hover {
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  .toc-link .num {
+    font-size: 10px;
+    color: var(--accent);
+  }
+
+  /* ─── MAIN CONTENT ─── */
+  main {
+    position: relative;
+    z-index: 1;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 80px 40px 120px;
+  }
+
+  /* ─── LEAD / INTRO ─── */
+  .lead {
+    font-size: 1.2rem;
+    line-height: 1.85;
+    color: color-mix(in srgb, var(--text) 85%, var(--text-muted));
+    border-left: 3px solid var(--accent);
+    padding-left: 28px;
+    margin-bottom: 64px;
+    font-family: 'Instrument Serif', serif;
+    font-style: italic;
+  }
+
+  /* ─── SECTIONS ─── */
+  .section {
+    margin-bottom: 80px;
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+
+  .section.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .section-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 32px;
+  }
+
+  .layer-badge {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding-top: 4px;
+  }
+
+  .layer-num {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--accent);
+  }
+
+  .layer-line {
+    width: 1px;
+    height: 100%;
+    background: linear-gradient(to bottom, var(--border), transparent);
+    min-height: 40px;
+  }
+
+  h2 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(1.5rem, 3vw, 2.1rem);
+    font-weight: 400;
+    line-height: 1.2;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+
+  h2 .layer-title-sub {
+    display: block;
+    font-size: 0.8em;
+    color: var(--accent2);
+    font-style: italic;
+    margin-top: 4px;
+    font-family: 'Outfit', sans-serif;
+    font-style: normal;
+    font-weight: 300;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-faint);
+  }
+
+  h3 {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.3rem;
+    font-weight: 400;
+    color: var(--text);
+    margin: 32px 0 16px;
+  }
+
+  p {
+    margin-bottom: 20px;
+    font-size: 1.02rem;
+    color: color-mix(in srgb, var(--text) 82%, var(--text-muted));
+    line-height: 1.8;
+  }
+
+  p strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  /* ─── CALLOUT BOXES ─── */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 12px 12px 0;
+    padding: 24px 28px;
+    margin: 32px 0;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .callout::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, var(--accent-glow), transparent 60%);
+    pointer-events: none;
+  }
+
+  .callout-label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-family: 'DM Mono', monospace;
+    margin-bottom: 10px;
+  }
+
+  .callout p {
+    color: var(--text);
+    font-size: 1.05rem;
+    margin-bottom: 0;
+    line-height: 1.7;
+  }
+
+  .callout.gold {
+    border-left-color: var(--gold);
+  }
+  .callout.gold::before {
+    background: linear-gradient(135deg, rgba(240,184,102,0.08), transparent 60%);
+  }
+  .callout.gold .callout-label { color: var(--gold); }
+
+  .callout.green {
+    border-left-color: var(--green);
+  }
+  .callout.green::before {
+    background: linear-gradient(135deg, rgba(74,222,128,0.06), transparent 60%);
+  }
+  .callout.green .callout-label { color: var(--green); }
+
+  /* ─── STAT CARDS ─── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin: 36px 0;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 24px;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+
+  .stat-card:hover {
+    border-color: var(--border-bright);
+    transform: translateY(-2px);
+  }
+
+  .stat-number {
+    font-family: 'DM Mono', monospace;
+    font-size: 2rem;
+    font-weight: 500;
+    line-height: 1;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 8px;
+  }
+
+  .stat-number.gold {
+    background: linear-gradient(135deg, var(--gold), #ffdc80);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  .stat-number.green {
+    background: linear-gradient(135deg, var(--green), #86efac);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  .stat-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  /* ─── STACK DIAGRAM ─── */
+  .stack-diagram {
+    margin: 48px 0;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .stack-diagram-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .stack-row {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.2s;
+  }
+
+  .stack-row:last-child { border-bottom: none; }
+
+  .stack-row:hover { background: rgba(124,106,255,0.04); }
+
+  .stack-num-col {
+    width: 56px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid var(--border);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .stack-content {
+    flex: 1;
+    padding: 18px 24px;
+  }
+
+  .stack-title {
+    font-weight: 500;
+    color: var(--text);
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+  }
+
+  .stack-desc {
+    font-size: 0.83rem;
+    color: var(--text-muted);
+    font-family: 'DM Mono', monospace;
+    line-height: 1.4;
+  }
+
+  .stack-badge-col {
+    width: 140px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 16px;
+    border-left: 1px solid var(--border);
+  }
+
+  .stack-badge {
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.06em;
+    padding: 4px 10px;
+    border-radius: 4px;
+    text-align: center;
+  }
+
+  .badge-bandwidth { background: rgba(124,106,255,0.12); color: var(--accent); border: 1px solid rgba(124,106,255,0.3); }
+  .badge-sparse { background: rgba(192,132,252,0.1); color: var(--accent2); border: 1px solid rgba(192,132,252,0.25); }
+  .badge-memory { background: rgba(56,189,248,0.08); color: var(--accent3); border: 1px solid rgba(56,189,248,0.25); }
+  .badge-throughput { background: rgba(74,222,128,0.08); color: var(--green); border: 1px solid rgba(74,222,128,0.25); }
+  .badge-latency { background: rgba(240,184,102,0.08); color: var(--gold); border: 1px solid rgba(240,184,102,0.25); }
+
+  /* ─── CODE BLOCK ─── */
+  .code-block {
+    background: var(--inverse-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px 28px;
+    margin: 28px 0;
+    overflow-x: auto;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.82rem;
+    line-height: 1.75;
+    color: var(--inverse-text);
+  }
+
+  .code-block .comment { color: var(--text-faint); }
+  .code-block .step { color: var(--accent3); }
+  .code-block .emphasis { color: var(--accent2); font-weight: 500; }
+  .code-block .good { color: var(--green); }
+  .code-block .bad { color: var(--red); }
+
+  /* ─── DIVIDER ─── */
+  .divider {
+    border: none;
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), transparent);
+    margin: 64px 0;
+  }
+
+  /* ─── REFERENCES ─── */
+  .references {
+    margin-top: 80px;
+    padding-top: 48px;
+    border-top: 1px solid var(--border);
+  }
+
+  .ref-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 32px;
+  }
+
+  .ref-grid {
+    display: grid;
+    gap: 12px;
+  }
+
+  .ref-item {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    gap: 16px;
+    align-items: start;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    text-decoration: none;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .ref-item:hover {
+    border-color: var(--accent);
+    background: var(--bg3);
+  }
+
+  .ref-num {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 500;
+    padding-top: 2px;
+  }
+
+  .ref-content {}
+
+  .ref-name {
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 400;
+    line-height: 1.4;
+    margin-bottom: 4px;
+  }
+
+  .ref-meta {
+    font-size: 12px;
+    color: var(--text-faint);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .ref-url {
+    font-size: 11px;
+    color: var(--accent3);
+    font-family: 'DM Mono', monospace;
+    opacity: 0.7;
+    word-break: break-all;
+    margin-top: 4px;
+  }
+
+  /* ─── FOOTER ─── */
+  footer {
+    padding: 48px 40px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    background: var(--bg2);
+    position: relative;
+    z-index: 1;
+  }
+
+  .footer-text {
+    font-size: 13px;
+    color: var(--text-faint);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .meta-footer {
+    color: var(--text-faint);
+    font-size: .95rem;
+    margin: 2rem 0 0;
+    text-align: center;
+  }
+
+  .meta-footer a { color: inherit; }
+
+  #webmentions { margin-top: 2rem; }
+  #webmentions img { width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; margin-right: .4rem; }
+  #webmentions h2 { font-size: 1.1rem; margin-bottom: .75rem; }
+  #webmentions p { margin: .75rem 0; color: var(--text-faint); }
+  #webmentions a { color: inherit; }
+
+  /* ─── SCROLLBAR ─── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
+
+  /* ─── ANIMATIONS ─── */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(32px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-in {
+    animation: fadeInUp 0.8s ease forwards;
+  }
+
+  .delay-1 { animation-delay: 0.1s; opacity: 0; }
+  .delay-2 { animation-delay: 0.25s; opacity: 0; }
+  .delay-3 { animation-delay: 0.4s; opacity: 0; }
+  .delay-4 { animation-delay: 0.55s; opacity: 0; }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 680px) {
+    main { padding: 48px 20px 80px; }
+    .header-inner { padding: 0 20px; }
+    .toc-inner { padding: 0 20px; }
+    .stack-badge-col { display: none; }
+    footer { padding: 32px 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="site-tools">
+    <a class="brand" href="/index.html">MANISH AI</a>
+    <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+      <a class="back-link" href="/writings.html">← Writings</a>
+      <a class="rss-link" href="/feed.xml">RSS</a>
+      <button id="theme-toggle" type="button" aria-label="Toggle theme">🌙</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<header>
+  <div class="header-grid"></div>
+  <div class="header-glow"></div>
+  <div class="header-orb"></div>
+
+  <div class="header-inner">
+    <div class="tag animate-in delay-1">Deep Dive · Systems ML · 2025–2026</div>
+
+    <h1 class="animate-in delay-2">
+      The Next Inference Bottleneck Is <em>Not</em> FLOPs.<br>
+      It Is the Shape of the Decode Loop.
+    </h1>
+
+    <p class="subtitle animate-in delay-3">
+      Why the real opportunity isn't another SRAM chip — it's co-designing models, runtimes, and GPU kernels to use the memory hierarchy you already have.
+    </p>
+
+    <div class="meta animate-in delay-4">
+      <span class="meta-item">June 2026</span>
+      <span class="meta-dot"></span>
+      <span class="meta-item">~18 min read</span>
+      <span class="meta-dot"></span>
+      <span class="meta-item">FP4 · MoE · SWA · Speculative Decoding · Persistent Kernels</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════ TOC STRIP ═══════════════ -->
+<nav class="toc-strip" aria-label="Table of contents">
+  <div class="toc-inner">
+    <span class="toc-label">Contents</span>
+    <a class="toc-link" href="#framing"><span class="num">00</span> Framing</a>
+    <a class="toc-link" href="#fp4"><span class="num">01</span> FP4 / NVFP4</a>
+    <a class="toc-link" href="#moe"><span class="num">02</span> MoE</a>
+    <a class="toc-link" href="#swa"><span class="num">03</span> SWA</a>
+    <a class="toc-link" href="#parallel"><span class="num">04</span> Parallel Decode</a>
+    <a class="toc-link" href="#kernels"><span class="num">05</span> Persistent Kernels</a>
+    <a class="toc-link" href="#stack"><span class="num">06</span> The Full Stack</a>
+    <a class="toc-link" href="#refs"><span class="num">07</span> References</a>
+  </div>
+</nav>
+
+<!-- ═══════════════ MAIN ═══════════════ -->
+<main data-pagefind-body>
+
+  <p class="lead">
+    Every few months, someone asks a fair question: why do we need yet another SRAM hardware idea for inference? The answer is: we may not. The more interesting thesis is that modern inference needs to use the SRAM already inside GPUs and accelerators far more intelligently — through a tight co-design of model architecture, quantization, runtime scheduling, and GPU kernels.
+  </p>
+
+  <!-- 00 ─ FRAMING -->
+  <section class="section" id="framing">
+    <div class="section-header">
+      <div class="layer-badge">
+        <div class="layer-num">00</div>
+        <div class="layer-line"></div>
+      </div>
+      <div>
+        <h2>
+          The Real Bottleneck
+          <span class="layer-title-sub">Why FLOPs are the wrong metric</span>
+        </h2>
+      </div>
+    </div>
+
+    <p>
+      Once inference moves toward real-time token rates, the bottleneck stops being raw compute. What takes over is <strong>data movement</strong>, orchestration overhead, decode serialization, KV movement, and tiny idle gaps between GPU work. The GPU may be fast, but the system around it keeps creating bubbles.
+    </p>
+
+    <p>
+      SRAM is already inside the GPU — it exists in the form of fast on-chip staging structures: registers, shared memory, L1-level paths, and cache-local execution resources around the SMs. The goal isn't necessarily to add a new SRAM chip next to the GPU. The goal is to make the inference loop <em>use</em> existing on-chip SRAM better.
+    </p>
+
+    <div class="callout gold">
+      <div class="callout-label">Core Thesis</div>
+      <p>SRAM is the GPU's fast local workspace. The real win is keeping the hot inference loop <em>close to compute</em>, instead of constantly moving data through slower memory and relaunching work from the CPU. That changes the framing from a hardware question to a model + quantization + runtime + GPU kernel question.</p>
+    </div>
+
+    <p>
+      The issue isn't whether we have enough FLOPs. The issue is whether the hot inference loop is <strong>tiled, quantized, sparse, parallel, and resident close to compute</strong>.
+    </p>
+
+    <!-- Stack overview diagram -->
+    <div class="stack-diagram">
+      <div class="stack-diagram-header">The Five Layers of Modern Inference Optimization</div>
+      <div class="stack-row">
+        <div class="stack-num-col">L1</div>
+        <div class="stack-content">
+          <div class="stack-title">FP4 / NVFP4 Quantization</div>
+          <div class="stack-desc">Shrink weight bandwidth — fewer bits moved per tile</div>
+        </div>
+        <div class="stack-badge-col"><span class="stack-badge badge-bandwidth">Bandwidth</span></div>
+      </div>
+      <div class="stack-row">
+        <div class="stack-num-col">L2</div>
+        <div class="stack-content">
+          <div class="stack-title">Mixture of Experts (MoE)</div>
+          <div class="stack-desc">Reduce active parameters per token — sparse activation</div>
+        </div>
+        <div class="stack-badge-col"><span class="stack-badge badge-sparse">Sparsity</span></div>
+      </div>
+      <div class="stack-row">
+        <div class="stack-num-col">L3</div>
+        <div class="stack-content">
+          <div class="stack-title">Sliding Window Attention (SWA)</div>
+          <div class="stack-desc">Bound KV cache growth — controlled memory footprint</div>
+        </div>
+        <div class="stack-badge-col"><span class="stack-badge badge-memory">Memory</span></div>
+      </div>
+      <div class="stack-row">
+        <div class="stack-num-col">L4</div>
+        <div class="stack-content">
+          <div class="stack-title">Parallel / Block Decoding</div>
+          <div class="stack-desc">Widen the decode loop — draft, verify, commit multiple tokens</div>
+        </div>
+        <div class="stack-badge-col"><span class="stack-badge badge-throughput">Throughput</span></div>
+      </div>
+      <div class="stack-row">
+        <div class="stack-num-col">L5</div>
+        <div class="stack-content">
+          <div class="stack-title">GPU-Resident Persistent Kernels</div>
+          <div class="stack-desc">Keep the hot loop on-device — eliminate CPU orchestration gaps</div>
+        </div>
+        <div class="stack-badge-col"><span class="stack-badge badge-latency">Latency</span></div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- 01 ─ FP4 / NVFP4 -->
+  <section class="section" id="fp4">
+    <div class="section-header">
+      <div class="layer-badge">
+        <div class="layer-num">L1</div>
+        <div class="layer-line"></div>
+      </div>
+      <div>
+        <h2>
+          FP4 / NVFP4 Quantization
+          <span class="layer-title-sub">Layer 1 — Shrink Weight Bandwidth</span>
+        </h2>
+      </div>
+    </div>
+
+    <p>
+      Large models are not just compute-heavy — they are <strong>movement-heavy</strong>. Every layer has to move weight tiles through the memory hierarchy: from HBM, through cache, into the compute-side local staging path where tensor cores can consume them. FP4 and NVFP4-style quantization reduce the number of bits moved per weight and activation tile, directly reducing pressure on the memory hierarchy.
+    </p>
+
+    <p>
+      NVIDIA's Blackwell architecture introduced native FP4 support in its 5th-generation Tensor Cores. NVFP4 — NVIDIA's custom FP4 format — uses <strong>block-wise micro-scaling</strong>: values are grouped into blocks of 16, each sharing a high-precision FP8 (E4M3) scaling factor, plus an additional per-tensor FP32 scale. This two-level scheme preserves dynamic range and reduces quantization error while keeping the data compact.
+    </p>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-number">4.5</div>
+        <div class="stat-label">Effective bits per value (4-bit value + FP8 scale overhead)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number gold">2–3×</div>
+        <div class="stat-label">Arithmetic throughput boost vs FP8 on Blackwell</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number green">&lt;1%</div>
+        <div class="stat-label">Accuracy degradation on DeepSeek-R1-0528 (PTQ, AIME 2024)</div>
+      </div>
+    </div>
+
+    <p>
+      NVIDIA TensorRT Model Optimizer and LLM Compressor both offer streamlined workflows for quantizing models to NVFP4 via post-training quantization (PTQ). As of early 2025, NVFP4-quantized versions of DeepSeek-R1, Llama 3.3 70B, and Llama 3.1 405B are available on Hugging Face.
+    </p>
+
+    <div class="callout">
+      <div class="callout-label">Key Insight</div>
+      <p>FP4/NVFP4 is not just a model compression trick. It is a <em>bandwidth-shaping trick</em>. It reduces pressure on the memory hierarchy and makes it easier to keep the GPU fed. For a 1T-class model, this is essential — without aggressive compression, the amount of weight movement per decode step is brutal.</p>
+    </div>
+
+    <p>
+      Research into Quantization-Aware Distillation (QAD) for NVFP4 has also emerged to recover accuracy in smaller models where PTQ alone shows larger degradation. Approaches like RaZeR (Redundant Zero Remapping) and ARCQuant further push NVFP4 accuracy by optimizing the quantization grid itself. The format's fine-grained block-wise isolation prevents high-magnitude outliers from inflating scaling factors across entire tensors — a key advantage over coarse-grained integer quantization.
+    </p>
+  </section>
+
+  <hr class="divider">
+
+  <!-- 02 ─ MoE -->
+  <section class="section" id="moe">
+    <div class="section-header">
+      <div class="layer-badge">
+        <div class="layer-num">L2</div>
+        <div class="layer-line"></div>
+      </div>
+      <div>
+        <h2>
+          Mixture of Experts
+          <span class="layer-title-sub">Layer 2 — Reduce Active Parameters Per Token</span>
+        </h2>
+      </div>
+    </div>
+
+    <p>
+      A trillion-parameter model doesn't have to activate all trillion parameters for every token. That's the whole power of MoE. The model can preserve large total capacity while routing each token through only a subset of experts — changing the problem from "run the whole trillion-parameter model per token" to "route each token through the right small subset of total capacity."
+    </p>
+
+    <p>
+      The concrete scale of this efficiency gain is striking: <strong>DeepSeek-V3</strong> has 671 billion total parameters but activates only 37 billion during inference, achieving GPT-4 level performance at a fraction of the compute cost. Mixtral-8x7B has 46.7 billion total parameters but only 13 billion active during inference — matching LLaMA-2-70B while running six times faster.
+    </p>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-number">60%+</div>
+        <div class="stat-label">of open-source AI model releases in 2025 used MoE architecture</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number gold">37B</div>
+        <div class="stat-label">Active params per token in DeepSeek-V3 (vs 671B total)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number green">10×</div>
+        <div class="stat-label">Performance per-GPU for MoE inference on NVIDIA GB200 NVL72 vs H200</div>
+      </div>
+    </div>
+
+    <p>
+      Since early 2025, nearly all leading frontier models use MoE designs — DeepSeek-R1, Kimi K2, Mistral Large 3, Llama 4, and Qwen3 all rely on sparse activation. The architecture has moved decisively from research prototype to production backbone.
+    </p>
+
+    <div class="callout">
+      <div class="callout-label">The MoE Runtime Challenge</div>
+      <p>MoE reduces active compute and active memory movement per token — but it also <em>increases the need for smarter runtime scheduling</em>. Now the system must route tokens, load or stage expert tiles, handle irregularity, and avoid letting expert routing destroy locality. vLLM and TensorRT-LLM have both added native MoE optimizations, and expert parallelism across GPUs is becoming standard for frontier deployment.</p>
+    </div>
+
+    <p>
+      The memory constraint is real: full DeepSeek-R1 requires roughly 13,719 GB/s of memory bandwidth at scale — achievable only on data-center systems. At batch size 1, requirements drop to ~1,040 GB/s. This is why inference-optimal MoE scaling (balancing expert count against serving efficiency) is an active research area — models with fewer, larger experts can be more serving-efficient even if they require more training compute.
+    </p>
+  </section>
+
+  <hr class="divider">
+
+  <!-- 03 ─ SWA -->
+  <section class="section" id="swa">
+    <div class="section-header">
+      <div class="layer-badge">
+        <div class="layer-num">L3</div>
+        <div class="layer-line"></div>
+      </div>
+      <div>
+        <h2>
+          Sliding Window Attention
+          <span class="layer-title-sub">Layer 3 — Bound KV Cache Growth</span>
+        </h2>
+      </div>
+    </div>
+
+    <p>
+      In classic full attention, the KV cache grows with context length: O(N) memory complexity means that as the context becomes longer, both the storage and movement costs of KV data keep increasing. Sliding-window attention changes this to O(C) — constant rather than growing — by restricting each token's attention to a fixed local window of size C.
+    </p>
+
+    <p>
+      This matters enormously during decode. The model might be quantized, the active expert set might be sparse, but if the KV path keeps growing without bound, the memory system still gets crushed at long context. SWA is the layer that says: <em>do not let context length turn every decode step into an ever-growing memory problem.</em>
+    </p>
+
+    <div class="code-block">
+<span class="comment">// Standard attention: O(N) KV cache — grows with every token</span>
+<span class="bad">// At 128K context: ~13GB KV cache for a 70B model</span>
+
+<span class="comment">// Sliding window attention: O(window_size) KV cache — constant</span>
+<span class="good">// At window=4096: bounded, predictable memory footprint</span>
+
+<span class="comment">// Gemma 3 approach: interleave local + global layers</span>
+<span class="step">local_layers  → sliding window (sw=1024), tiny KV cache</span>
+<span class="step">global_layers → full attention, 1 per N local layers</span>
+<span class="emphasis">Result: 60% → &lt;15% KV memory overhead at 32K context</span>
+    </div>
+
+    <p>
+      Gemma 3's technical report shows that a 1:3 global-to-local ratio with a sliding window of 1024 tokens reduces KV cache memory overhead from 60% (global-only baseline) to under 15% at 32K context. Mistral-7B pioneered this approach with a 4096-token window, storing only a rolling buffer of recent KV pairs rather than the full history.
+    </p>
+
+    <p>
+      The dominant practical pattern in 2025 is <strong>hybrid attention</strong>: most layers use local/sliding-window attention for efficiency, while a smaller subset of layers use global attention to maintain long-range coherence. This lets models have large theoretical context windows while keeping actual KV memory manageable during decode.
+    </p>
+
+    <div class="callout green">
+      <div class="callout-label">SWA in practice</div>
+      <p>SWA alone doesn't replace global attention — long-range dependencies still need a path. The engineering insight is that <em>most</em> layers don't need full context most of the time. Restricting attention locally where possible, globally where necessary, makes the KV working set bounded and predictable — a prerequisite for sustainable high-throughput decode.</p>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- 04 ─ PARALLEL DECODE -->
+  <section class="section" id="parallel">
+    <div class="section-header">
+      <div class="layer-badge">
+        <div class="layer-num">L4</div>
+        <div class="layer-line"></div>
+      </div>
+      <div>
+        <h2>
+          Parallel Token / Block Decoding
+          <span class="layer-title-sub">Layer 4 — The Most Important Layer for Throughput</span>
+        </h2>
+      </div>
+    </div>
+
+    <p>
+      Classic autoregressive decoding is painfully serial: generate token 1, then token 2, then token 3. Each step depends on the previous. This creates a <em>narrow workload</em>. Modern GPUs are enormous parallel machines — if the runtime only gives the GPU one thin token path at a time, compute sits underutilized even when the model is large.
+    </p>
+
+    <p>
+      Parallel token or block decoding makes decoding <strong>wider</strong>. Instead of producing exactly one next token per step, the runtime creates a larger unit of token work. Approaches include speculative decoding, multi-token prediction (MTP), blockwise decoding, parallel candidate branches, and diffusion-style token blocks.
+    </p>
+
+    <h3>Speculative Decoding</h3>
+    <p>
+      The core idea: a smaller, faster <em>draft model</em> proposes several future tokens cheaply and in parallel; a larger <em>target model</em> verifies them all in a single forward pass. If the draft tokens match what the target would have generated, you get multiple tokens for the latency cost of one. The output is mathematically identical to standard autoregressive decoding — it is a lossless speedup.
+    </p>
+
+    <p>
+      Speculative decoding has achieved <strong>2–3× speedups</strong> in production settings. A 2025 paper at ICLR 2026 demonstrated up to 2.37× speedup even at batch size 256, challenging the conventional wisdom that speculative decoding only works in small-batch settings. The key finding: memory bandwidth, not compute, remains the dominant bottleneck even in large-batch inference.
+    </p>
+
+    <h3>Multi-Token Prediction (MTP) — Gemma 4's Approach</h3>
+    <p>
+      On May 5, 2026, Google released MTP drafter models for the entire Gemma 4 family: the 31B dense flagship, the 26B A4B Mixture-of-Experts model, and the on-device E2B/E4B edge models. Using speculative decoding powered by MTP, the drafters deliver <strong>up to 3× faster inference</strong> with zero degradation in output quality. The Gemma 4 MTP drafter is not independent — it shares the input embedding table with the target model and builds directly on its last-layer activations.
+    </p>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-number">3×</div>
+        <div class="stat-label">Gemma 4 MTP drafter speedup (dense variants) — zero quality regression</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number gold">2.2×</div>
+        <div class="stat-label">Gemma 4 26B MoE drafter on Apple Silicon at batch sizes 4–8</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number green">2.37×</div>
+        <div class="stat-label">Speculative decoding speedup at batch size 256 (ICLR 2026 paper)</div>
+      </div>
+    </div>
+
+    <p>
+      MoE models present an interesting nuance: because different tokens may activate different experts, verifying drafted tokens can require loading additional expert weights from memory, partially offsetting drafting gains at batch size 1. At larger batch sizes, there is more overlap in activated experts across sequences, improving reuse.
+    </p>
+
+    <div class="callout">
+      <div class="callout-label">Why This Layer Matters Most</div>
+      <p>FP4 reduces weight bandwidth. MoE reduces active parameters. SWA bounds KV growth. But <em>parallel token/block decoding creates enough simultaneous token work to chase very high throughput</em>. Without this layer, a persistent kernel just makes a serial loop more efficient. With this layer, a persistent kernel has a real pipeline to run: draft tokens, route experts, run attention, verify candidates, commit tokens, update KV/state, prefetch the next tiles.</p>
+    </div>
+
+    <p>
+      The field is rapidly developing variants: Medusa adds multiple MLP heads to reuse last hidden states; EAGLE builds on both last hidden state and preceding tokens for autoregressive drafting; FastMTP uses a shared-weight MTP head with language-aware vocabulary compression. The meta-pattern is clear — <em>do not only optimize one-token-at-a-time decoding, make decoding wider</em>.
+    </p>
+  </section>
+
+  <hr class="divider">
+
+  <!-- 05 ─ PERSISTENT KERNELS -->
+  <section class="section" id="kernels">
+    <div class="section-header">
+      <div class="layer-badge">
+        <div class="layer-num">L5</div>
+        <div class="layer-line"></div>
+      </div>
+      <div>
+        <h2>
+          GPU-Resident Persistent Mega-Kernels
+          <span class="layer-title-sub">Layer 5 — Remove Orchestration Gaps</span>
+        </h2>
+      </div>
+    </div>
+
+    <p>
+      A normal inference runtime involves repeated CPU-to-GPU orchestration: launch kernel → wait → sync → launch next kernel → wait → update state → launch again. At very high token rates, these gaps compound. The GPU may be fast, but the system around it keeps creating small stalls.
+    </p>
+
+    <p>
+      A GPU-resident persistent mega-kernel tries to keep the hot loop on the device. Instead of the CPU orchestrating every decode step, the GPU owns more of the loop continuously:
+    </p>
+
+    <div class="code-block">
+<span class="comment">// CPU-orchestrated inference (old model)</span>
+<span class="bad">cpu: launch kernel → wait → sync → launch kernel → wait → ...</span>
+<span class="bad">     ↑ small bubbles between every step at high token rates</span>
+
+<span class="comment">// GPU-resident persistent kernel (new model)</span>
+<span class="good">gpu: load next tile → dequantize (FP4) → route experts (MoE)</span>
+<span class="good">     → run attention (SWA) → verify draft tokens (MTP/Spec)</span>
+<span class="good">     → commit accepted tokens → update KV/state</span>
+<span class="good">     → prefetch next block → [loop without CPU round-trip]</span>
+    </div>
+
+    <p>
+      This matters because the goal is not just high average throughput — it's avoiding tiny stalls in the inner inference loop. Once the model is quantized, sparse, and block-parallel, the runtime must not keep bouncing through CPU orchestration on every decode step.
+    </p>
+
+    <h3>FlashInfer — The Current State of the Art</h3>
+    <p>
+      FlashInfer, which won best paper at MLSys 2025, is a library and kernel generator for LLM serving that provides high-performance GPU kernels for attention, GEMM, and MoE operations. NVIDIA is now actively releasing its most performant TensorRT-LLM kernels into FlashInfer for easy integration into vLLM, SGLang, and custom inference engines.
+    </p>
+
+    <p>
+      FlashInfer's JIT system builds on CUDA/Cutlass templates derived from FlashAttention-2/3, injecting user-defined transformations directly into templates before compilation to produce fused attention kernels specialized for the specific variant and cache layout. After the initial compilation, kernels run in the microsecond launch latency range. Its load-balanced scheduling decouples plan and run stages, alleviating the load imbalance issue that arises from variable-length inputs in heterogeneous batches.
+    </p>
+
+    <div class="callout green">
+      <div class="callout-label">The Synthesis</div>
+      <p>Persistent kernel execution is where all the other layers pay off. A kernel that stays GPU-resident can pipeline weight dequantization, expert routing, attention over bounded windows, multi-token draft verification, and KV cache updates — all without round-tripping to the CPU. The on-chip SRAM becomes what it should be: the fast local workspace that keeps the inference pipeline close to compute.</p>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- 06 ─ THE FULL STACK -->
+  <section class="section" id="stack">
+    <div class="section-header">
+      <div class="layer-badge">
+        <div class="layer-num">06</div>
+        <div class="layer-line"></div>
+      </div>
+      <div>
+        <h2>
+          The Better Framing
+          <span class="layer-title-sub">Deterministic, Tiled, Sparse, Quantized, Parallel, GPU-Resident</span>
+        </h2>
+      </div>
+    </div>
+
+    <p>
+      When someone asks "why build yet another SRAM hardware system for inference?" the answer is:
+    </p>
+    <p>
+      We may not need another chip. We need better use of the chips we already have.
+    </p>
+    <p>
+      The path to extremely high token throughput is not only about adding memory — it's about changing the <em>shape</em> of inference. Each layer of the stack addresses a different bottleneck, and they compound:
+    </p>
+
+    <div class="stack-diagram">
+      <div class="stack-diagram-header">How the Layers Stack — What Each Removes</div>
+      <div class="stack-row">
+        <div class="stack-num-col">L1</div>
+        <div class="stack-content">
+          <div class="stack-title">FP4 / NVFP4</div>
+          <div class="stack-desc">Removes: weight bandwidth pressure. Moves 2× fewer bits per tile on Blackwell hardware.</div>
+        </div>
+        <div class="stack-badge-col"><span class="stack-badge badge-bandwidth">Bandwidth ↓</span></div>
+      </div>
+      <div class="stack-row">
+        <div class="stack-num-col">L2</div>
+        <div class="stack-content">
+          <div class="stack-title">Mixture of Experts</div>
+          <div class="stack-desc">Removes: dense activation cost. Activates ~5% of total parameters per token in frontier models.</div>
+        </div>
+        <div class="stack-badge-col"><span class="stack-badge badge-sparse">Active Params ↓</span></div>
+      </div>
+      <div class="stack-row">
+        <div class="stack-num-col">L3</div>
+        <div class="stack-content">
+          <div class="stack-title">Sliding Window Attention</div>
+          <div class="stack-desc">Removes: unbounded KV cache growth. Constant O(window) memory regardless of context length.</div>
+        </div>
+        <div class="stack-badge-col"><span class="stack-badge badge-memory">KV Memory ↓</span></div>
+      </div>
+      <div class="stack-row">
+        <div class="stack-num-col">L4</div>
+        <div class="stack-content">
+          <div class="stack-title">Parallel Decoding / MTP</div>
+          <div class="stack-desc">Removes: serial decode bottleneck. 2–3× tokens per elapsed second via speculative commit.</div>
+        </div>
+        <div class="stack-badge-col"><span class="stack-badge badge-throughput">Tokens/s ↑</span></div>
+      </div>
+      <div class="stack-row">
+        <div class="stack-num-col">L5</div>
+        <div class="stack-content">
+          <div class="stack-title">Persistent GPU Kernels</div>
+          <div class="stack-desc">Removes: CPU orchestration latency. The inner loop never leaves the device.</div>
+        </div>
+        <div class="stack-badge-col"><span class="stack-badge badge-latency">Stalls ↓</span></div>
+      </div>
+    </div>
+
+    <p>
+      SRAM in this framing is not necessarily a new chip. It is the on-chip staging layer that makes the loop fast when the runtime is designed correctly. The real thesis is not "SRAM as a separate hardware religion." The real thesis is <strong>deterministic, tiled, sparse, quantized, parallel, GPU-resident inference</strong>.
+    </p>
+
+    <div class="callout gold">
+      <div class="callout-label">The Takeaway</div>
+      <p>Make weights smaller. Make active parameters sparse. Make attention bounded. Make decoding parallel. Make the hot loop GPU-resident. When those five things are true simultaneously, SRAM becomes the fast local workspace it was designed to be — and the inference pipeline runs close to the theoretical limit of the hardware.</p>
+    </div>
+  </section>
+
+  <!-- REFERENCES -->
+  <div class="references" id="refs">
+    <div class="ref-title">References &amp; Sources</div>
+    <div class="ref-grid">
+
+      <a class="ref-item" href="https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/" target="_blank" rel="noopener">
+        <div class="ref-num">01</div>
+        <div class="ref-content">
+          <div class="ref-name">Introducing NVFP4 for Efficient and Accurate Low-Precision Inference</div>
+          <div class="ref-meta">NVIDIA Developer Blog · Alvarez et al. · 2025</div>
+          <div class="ref-url">developer.nvidia.com/blog/introducing-nvfp4...</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://github.com/NVIDIA/Model-Optimizer" target="_blank" rel="noopener">
+        <div class="ref-num">02</div>
+        <div class="ref-content">
+          <div class="ref-name">NVIDIA Model Optimizer — NVFP4 PTQ Workflows for TensorRT-LLM &amp; vLLM</div>
+          <div class="ref-meta">GitHub · NVIDIA · 2025</div>
+          <div class="ref-url">github.com/NVIDIA/Model-Optimizer</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://arxiv.org/pdf/2601.20088" target="_blank" rel="noopener">
+        <div class="ref-num">03</div>
+        <div class="ref-content">
+          <div class="ref-name">Quantization-Aware Distillation for NVFP4 Inference Accuracy Recovery</div>
+          <div class="ref-meta">NVIDIA Research · arXiv:2601.20088 · 2026</div>
+          <div class="ref-url">arxiv.org/pdf/2601.20088</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://arxiv.org/pdf/2501.04052" target="_blank" rel="noopener">
+        <div class="ref-num">04</div>
+        <div class="ref-content">
+          <div class="ref-name">RaZeR: Pushing the Limits of NVFP4 Quantization with Redundant Zero Remapping</div>
+          <div class="ref-meta">arXiv:2501.04052 · 2025</div>
+          <div class="ref-url">arxiv.org/pdf/2501.04052</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://arxiv.org/pdf/2601.07475" target="_blank" rel="noopener">
+        <div class="ref-num">05</div>
+        <div class="ref-content">
+          <div class="ref-name">ARCQuant: Boosting NVFP4 Quantization with Augmented Residual Channels for LLMs</div>
+          <div class="ref-meta">arXiv:2601.07475 · 2026</div>
+          <div class="ref-url">arxiv.org/pdf/2601.07475</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://arxiv.org/abs/2412.19437" target="_blank" rel="noopener">
+        <div class="ref-num">06</div>
+        <div class="ref-content">
+          <div class="ref-name">DeepSeek-V3 Technical Report</div>
+          <div class="ref-meta">DeepSeek-AI · arXiv:2412.19437 · 2024</div>
+          <div class="ref-url">arxiv.org/abs/2412.19437</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://blogs.nvidia.com/blog/mixture-of-experts-frontier-models/" target="_blank" rel="noopener">
+        <div class="ref-num">07</div>
+        <div class="ref-content">
+          <div class="ref-name">Mixture of Experts Powers the Most Intelligent Frontier AI Models — 10x Faster on Blackwell NVL72</div>
+          <div class="ref-meta">NVIDIA Developer Blog · March 2026</div>
+          <div class="ref-url">blogs.nvidia.com/blog/mixture-of-experts-frontier-models/</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://arxiv.org/pdf/2404.02852" target="_blank" rel="noopener">
+        <div class="ref-num">08</div>
+        <div class="ref-content">
+          <div class="ref-name">Toward Inference-Optimal Mixture-of-Expert Large Language Models</div>
+          <div class="ref-meta">arXiv:2404.02852 · 2024</div>
+          <div class="ref-url">arxiv.org/pdf/2404.02852</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://arxiv.org/pdf/2503.19786" target="_blank" rel="noopener">
+        <div class="ref-num">09</div>
+        <div class="ref-content">
+          <div class="ref-name">Gemma 3 Technical Report — Sliding Window Attention &amp; KV Cache Analysis</div>
+          <div class="ref-meta">Google DeepMind · arXiv:2503.19786 · 2025</div>
+          <div class="ref-url">arxiv.org/pdf/2503.19786</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://arxiv.org/pdf/2405.05254" target="_blank" rel="noopener">
+        <div class="ref-num">10</div>
+        <div class="ref-content">
+          <div class="ref-name">You Only Cache Once (YOCO) — Sliding-Window Attention O(C) KV Complexity</div>
+          <div class="ref-meta">arXiv:2405.05254 · 2024</div>
+          <div class="ref-url">arxiv.org/pdf/2405.05254</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://blog.google/innovation-and-ai/technology/developers-tools/multi-token-prediction-gemma-4/" target="_blank" rel="noopener">
+        <div class="ref-num">11</div>
+        <div class="ref-content">
+          <div class="ref-name">Accelerating Gemma 4: Faster Inference with Multi-Token Prediction Drafters</div>
+          <div class="ref-meta">Google DeepMind Blog · May 5, 2026</div>
+          <div class="ref-url">blog.google/...multi-token-prediction-gemma-4/</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://ai.google.dev/gemma/docs/mtp/overview" target="_blank" rel="noopener">
+        <div class="ref-num">12</div>
+        <div class="ref-content">
+          <div class="ref-name">Speed-up Gemma 4 with Multi-Token Prediction — Official Documentation</div>
+          <div class="ref-meta">Google AI for Developers · 2026</div>
+          <div class="ref-url">ai.google.dev/gemma/docs/mtp/overview</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://arxiv.org/pdf/2404.19737" target="_blank" rel="noopener">
+        <div class="ref-num">13</div>
+        <div class="ref-content">
+          <div class="ref-name">Better &amp; Faster Large Language Models via Multi-Token Prediction</div>
+          <div class="ref-meta">Gloeckle et al. (Meta FAIR) · arXiv:2404.19737 · 2024</div>
+          <div class="ref-url">arxiv.org/pdf/2404.19737</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://openreview.net/forum?id=59OJOgKLzN" target="_blank" rel="noopener">
+        <div class="ref-num">14</div>
+        <div class="ref-content">
+          <div class="ref-name">Rethinking High-Throughput LLM Inference: An Opportunity for Speculative Decoding</div>
+          <div class="ref-meta">ICLR 2026 · 2.37× speedup at batch size 256</div>
+          <div class="ref-url">openreview.net/forum?id=59OJOgKLzN</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://arxiv.org/abs/2501.01005" target="_blank" rel="noopener">
+        <div class="ref-num">15</div>
+        <div class="ref-content">
+          <div class="ref-name">FlashInfer: Efficient and Customizable Attention Engine for LLM Inference Serving</div>
+          <div class="ref-meta">Ye et al. · Best Paper MLSys 2025 · arXiv:2501.01005</div>
+          <div class="ref-url">arxiv.org/abs/2501.01005</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://developer.nvidia.com/blog/run-high-performance-llm-inference-kernels-from-nvidia-using-flashinfer/" target="_blank" rel="noopener">
+        <div class="ref-num">16</div>
+        <div class="ref-content">
+          <div class="ref-name">Run High-Performance LLM Inference Kernels from NVIDIA Using FlashInfer</div>
+          <div class="ref-meta">NVIDIA Technical Blog · June 2025</div>
+          <div class="ref-url">developer.nvidia.com/blog/...flashinfer/</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://arxiv.org/pdf/2509.18362" target="_blank" rel="noopener">
+        <div class="ref-num">17</div>
+        <div class="ref-content">
+          <div class="ref-name">FastMTP: Accelerating LLM Inference with Enhanced Multi-Token Prediction</div>
+          <div class="ref-meta">arXiv:2509.18362 · 2025</div>
+          <div class="ref-url">arxiv.org/pdf/2509.18362</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://www.edge-ai-vision.com/2025/10/nvidia-blackwell-the-impact-of-nvfp4-for-llm-inference/" target="_blank" rel="noopener">
+        <div class="ref-num">18</div>
+        <div class="ref-content">
+          <div class="ref-name">NVIDIA Blackwell: The Impact of NVFP4 For LLM Inference</div>
+          <div class="ref-meta">Edge AI and Vision Alliance · October 2025</div>
+          <div class="ref-url">edge-ai-vision.com/...nvfp4-for-llm-inference/</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://introl.com/blog/mixture-of-experts-moe-infrastructure-scaling-sparse-models-guide" target="_blank" rel="noopener">
+        <div class="ref-num">19</div>
+        <div class="ref-content">
+          <div class="ref-name">Mixture of Experts Infrastructure — Scaling Sparse Models Guide</div>
+          <div class="ref-meta">Introl Blog · Updated February 2026</div>
+          <div class="ref-url">introl.com/blog/mixture-of-experts-moe-infrastructure...</div>
+        </div>
+      </a>
+
+      <a class="ref-item" href="https://arxiv.org/html/2508.17467v1" target="_blank" rel="noopener">
+        <div class="ref-num">20</div>
+        <div class="ref-content">
+          <div class="ref-name">MoE-Inference-Bench: Performance Evaluation of Mixture of Expert LLMs &amp; VLMs</div>
+          <div class="ref-meta">arXiv:2508.17467 · August 2025</div>
+          <div class="ref-url">arxiv.org/html/2508.17467v1</div>
+        </div>
+      </a>
+
+    </div>
+  </div>
+
+</main>
+
+<div style="max-width:900px;margin:0 auto;padding:0 40px 48px;position:relative;z-index:1;">
+  <form action="https://buttondown.email/api/emails/embed-subscribe/manishklach" class="subscribe" method="post" target="_blank">
+    <label for="bd-email">Get new posts by email</label>
+    <input id="bd-email" name="email" placeholder="you@example.com" required type="email"/>
+    <input name="tag" type="hidden" value="blog"/>
+    <input type="submit" value="Subscribe"/>
+  </form>
+  <div id="webmentions" hidden></div>
+  <footer class="meta-footer">© 2026 <a href="/index.html">MANISH AI</a> · <a class="rss-link" href="/feed.xml">RSS</a> · <a href="https://github.com/manishklach">GitHub</a></footer>
+</div>
+
+<!-- ═══════════════ FOOTER ═══════════════ -->
+<footer>
+  <p class="footer-text">
+    Written June 2026 · Sources verified against primary literature &amp; official documentation ·
+    FP4 · MoE · SWA · Speculative Decoding · Persistent Kernels
+  </p>
+</footer>
+
+<!-- ═══════════════ JS ═══════════════ -->
+<script>
+  // Intersection observer for section fade-in
+  const sections = document.querySelectorAll('.section');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -60px 0px' });
+
+  sections.forEach(s => observer.observe(s));
+
+  // Active TOC link highlighting
+  const tocLinks = document.querySelectorAll('.toc-link');
+  const sectionIds = ['framing','fp4','moe','swa','parallel','kernels','stack','refs'];
+
+  const sectObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.id;
+        tocLinks.forEach(l => {
+          l.style.color = l.getAttribute('href') === `#${id}` ? 'var(--accent)' : '';
+        });
+      }
+    });
+  }, { threshold: 0.3 });
+
+  sectionIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) sectObserver.observe(el);
+  });
+</script>
+</body>
+</html>
