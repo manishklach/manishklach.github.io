@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>From 1,000 Tokens per Second to Decisions per Second | MANISH AI</title>
+<meta name="description" content="A systems essay on what MiMo's 1,000-token-per-second milestone changes, and why the next frontier is optimizing for decisions per second rather than raw token throughput."/>
+<meta name="keywords" content="MiMo, tokens per second, decisions per second, AI inference, speculative decoding, precision routing, KV cache, AI systems"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f5f7fb"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/from-1000-tokens-per-second-to-decisions-per-second.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="From 1,000 Tokens per Second to Decisions per Second | MANISH AI"/>
+<meta property="og:description" content="Why MiMo's speed milestone matters, and why the real next metric is decisions per second across routing, caching, precision, and evaluation."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/from-1000-tokens-per-second-to-decisions-per-second.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/from-1000-tokens-per-second-to-decisions-per-second.png"/>
+<meta property="og:image:alt" content="Preview image for From 1,000 Tokens per Second to Decisions per Second"/>
+<meta property="article:published_time" content="2026-06-14T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-06-14T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="From 1,000 Tokens per Second to Decisions per Second"/>
+<meta name="twitter:description" content="A systems essay on moving from token throughput to decisions per second as the real frontier in AI serving."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/from-1000-tokens-per-second-to-decisions-per-second.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"From 1,000 Tokens per Second to Decisions per Second","description":"A systems essay on what MiMo's 1,000-token-per-second milestone changes, and why the next frontier is optimizing for decisions per second rather than raw token throughput.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/from-1000-tokens-per-second-to-decisions-per-second.html","mainEntityOfPage":"https://manishklach.github.io/writings/from-1000-tokens-per-second-to-decisions-per-second.html","datePublished":"2026-06-14","dateModified":"2026-06-14","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+:root {
+  --bg: #f5f7fb;
+  --bg2: #edf1f5;
+  --bg3: #e4ebf2;
+  --border: rgba(17,24,39,0.1);
+  --border2: rgba(17,24,39,0.16);
+  --text: #151821;
+  --muted: #627086;
+  --accent: #b88912;
+  --accent2: #8e67f2;
+  --teal: #3ecfaa;
+  --coral: #f07355;
+  --purple: #a89cf7;
+  --blue: #5ba4f5;
+  --serif: 'Instrument Serif', Georgia, serif;
+  --sans: 'Syne', sans-serif;
+  --mono: 'DM Mono', monospace;
+  --inverse-bg: #101014;
+  --inverse-text: #d7def0;
+}
+
+html.dark {
+  --bg: #0a0a08;
+  --bg2: #111110;
+  --bg3: #1a1a17;
+  --border: rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.14);
+  --text: #e8e6df;
+  --muted: #8a8880;
+  --accent: #e8c547;
+  --accent2: #c4a832;
+  --inverse-bg: #101014;
+  --inverse-text: #d7def0;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.75;
+  overflow-x: hidden;
+}
+
+::selection { background: var(--accent); color: #000; }
+
+/* NOISE TEXTURE */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.6;
+}
+
+/* HEADER / HERO */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 clamp(1.5rem, 8vw, 8rem) clamp(4rem, 8vh, 7rem);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.hero-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(232,197,71,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232,197,71,0.04) 1px, transparent 1px);
+  background-size: 80px 80px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 0%, transparent 100%);
+}
+
+.hero-glow {
+  position: absolute;
+  top: -20%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 700px;
+  height: 700px;
+  background: radial-gradient(ellipse, rgba(232,197,71,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.hero-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 2rem;
+  opacity: 0;
+  animation: fadeUp 0.8s 0.2s ease forwards;
+}
+
+.hero h1 {
+  font-family: var(--serif);
+  font-size: clamp(2.8rem, 6vw, 5.5rem);
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  max-width: 820px;
+  opacity: 0;
+  animation: fadeUp 0.9s 0.4s ease forwards;
+}
+
+.hero h1 em {
+  font-style: italic;
+  color: var(--accent);
+}
+
+.hero-meta {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 2.5rem;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  opacity: 0;
+  animation: fadeUp 0.9s 0.6s ease forwards;
+}
+
+.hero-meta span { display: flex; align-items: center; gap: 0.5rem; }
+.hero-meta span::before { content: '—'; }
+
+.hero-scroll {
+  position: absolute;
+  bottom: 2.5rem;
+  right: clamp(1.5rem, 8vw, 8rem);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  animation: fadeUp 1s 1s ease forwards;
+}
+
+.hero-scroll::after {
+  content: '';
+  display: block;
+  width: 1px;
+  height: 60px;
+  background: linear-gradient(to bottom, var(--muted), transparent);
+  animation: scrollLine 2s 1.5s ease infinite;
+}
+
+@keyframes scrollLine {
+  0%,100%{height:60px;opacity:1}
+  50%{height:30px;opacity:0.4}
+}
+
+/* LAYOUT */
+.container {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 clamp(1.5rem, 5vw, 2rem);
+}
+
+.container-wide {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 clamp(1.5rem, 5vw, 2rem);
+}
+
+/* SECTIONS */
+section { padding: clamp(4rem, 8vh, 7rem) 0; }
+
+section + section { border-top: 1px solid var(--border); }
+
+/* SECTION LABELS */
+.section-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.section-label::before {
+  content: '';
+  display: block;
+  width: 24px;
+  height: 1px;
+  background: var(--accent);
+}
+
+/* TYPOGRAPHY */
+h2 {
+  font-family: var(--serif);
+  font-size: clamp(2rem, 3.5vw, 3rem);
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin-bottom: 1.5rem;
+}
+
+h2 em { font-style: italic; color: var(--accent); }
+
+h3 {
+  font-family: var(--sans);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 2.5rem 0 0.75rem;
+}
+
+p { margin-bottom: 1.25rem; color: var(--text); }
+p:last-child { margin-bottom: 0; }
+
+a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(232,197,71,0.3); transition: border-color 0.2s; }
+a:hover { border-color: var(--accent); }
+
+strong { font-weight: 500; color: var(--text); }
+
+/* LEAD / INTRO */
+.lead {
+  font-size: clamp(1.15rem, 2vw, 1.3rem);
+  color: var(--text);
+  line-height: 1.7;
+  margin-bottom: 2rem;
+}
+
+/* PULLQUOTE */
+.pullquote {
+  border-left: 2px solid var(--accent);
+  margin: 2.5rem 0;
+  padding: 1rem 0 1rem 2rem;
+}
+.pullquote p {
+  font-size: clamp(1.2rem, 2.2vw, 1.5rem);
+  font-style: italic;
+  color: var(--text);
+  line-height: 1.5;
+  margin: 0;
+}
+.pullquote cite {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-style: normal;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-top: 0.75rem;
+  text-transform: uppercase;
+}
+
+/* CALLOUT */
+.callout {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  padding: 1.5rem 2rem;
+  margin: 2.5rem 0;
+  position: relative;
+  overflow: hidden;
+}
+.callout::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+}
+.callout-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.75rem;
+}
+.callout p { font-size: 15px; color: var(--muted); margin: 0; }
+.callout strong { color: var(--text); }
+
+/* CODE */
+code {
+  font-family: var(--mono);
+  font-size: 0.82em;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.15em 0.45em;
+  color: var(--teal);
+}
+
+pre {
+  background: var(--inverse-bg);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 1.5rem;
+  overflow-x: auto;
+  margin: 2rem 0;
+  position: relative;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--teal), transparent 60%);
+}
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--inverse-text);
+}
+.kw { color: var(--purple); }
+.fn { color: var(--teal); }
+.st { color: var(--accent); }
+.cm { color: var(--muted); font-style: italic; }
+.num { color: var(--coral); }
+
+/* INNOVATION CARDS */
+.innovations {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  margin: 3rem 0;
+}
+.inno-card {
+  background: var(--bg);
+  padding: 2rem;
+  position: relative;
+  transition: background 0.25s;
+}
+.inno-card:hover { background: var(--bg2); }
+.inno-num {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+.inno-icon {
+  font-size: 1.8rem;
+  margin-bottom: 0.75rem;
+  line-height: 1;
+}
+.inno-title {
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.6rem;
+  letter-spacing: 0.01em;
+}
+.inno-desc {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0;
+}
+.inno-tag {
+  display: inline-block;
+  margin-top: 1rem;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 3px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+.tag-teal { background: rgba(62,207,170,0.1); color: var(--teal); border: 1px solid rgba(62,207,170,0.2); }
+.tag-amber { background: rgba(232,197,71,0.1); color: var(--accent); border: 1px solid rgba(232,197,71,0.2); }
+.tag-purple { background: rgba(168,156,247,0.1); color: var(--purple); border: 1px solid rgba(168,156,247,0.2); }
+.tag-coral { background: rgba(240,115,85,0.1); color: var(--coral); border: 1px solid rgba(240,115,85,0.2); }
+.tag-blue { background: rgba(91,164,245,0.1); color: var(--blue); border: 1px solid rgba(91,164,245,0.2); }
+
+/* PIPELINE DIAGRAM */
+.pipeline-wrap {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 16px;
+  padding: 2.5rem;
+  margin: 3rem 0;
+  overflow-x: auto;
+}
+.pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 400px;
+}
+.pipe-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+.pipe-box {
+  flex: 1;
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  position: relative;
+  background: var(--bg3);
+  transition: border-color 0.2s, background 0.2s;
+}
+.pipe-box:hover { border-color: var(--accent2); background: color-mix(in srgb, var(--bg3) 85%, var(--accent) 15%); }
+.pipe-box-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.pipe-box-title {
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.pipe-box-sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.pipe-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0;
+  color: var(--muted);
+  font-size: 18px;
+}
+.pipe-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 1.15rem;
+  margin-right: 1rem;
+}
+
+/* STATS ROW */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  margin: 3rem 0;
+}
+.stat {
+  background: var(--bg);
+  padding: 1.75rem;
+}
+.stat-num {
+  font-family: var(--sans);
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: 0.4rem;
+}
+.stat-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* REPO CARD */
+.repo-card {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 16px;
+  padding: 2.5rem;
+  margin: 3rem 0;
+  position: relative;
+  overflow: hidden;
+  text-decoration: none;
+  display: block;
+  border-bottom: none;
+  transition: border-color 0.25s, background 0.25s;
+}
+.repo-card:hover { border-color: var(--accent2); background: var(--bg3); }
+.repo-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--teal), transparent);
+}
+.repo-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.repo-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+.repo-arrow {
+  font-family: var(--mono);
+  font-size: 20px;
+  color: var(--accent);
+  transition: transform 0.2s;
+}
+.repo-card:hover .repo-arrow { transform: translate(4px, -4px); }
+.repo-card-title {
+  font-family: var(--sans);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.4rem;
+}
+.repo-card-desc {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0 0 1.25rem;
+}
+.repo-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.repo-file {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 8px;
+  color: var(--teal);
+}
+
+/* TIMELINE */
+.timeline {
+  position: relative;
+  margin: 3rem 0;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: linear-gradient(to bottom, var(--accent), var(--teal), var(--purple), var(--coral));
+}
+.tl-item {
+  display: flex;
+  gap: 1.75rem;
+  margin-bottom: 2.5rem;
+}
+.tl-item:last-child { margin-bottom: 0; }
+.tl-dot {
+  width: 25px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 4px;
+}
+.tl-dot-inner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid;
+  background: var(--bg);
+  margin-left: 8px;
+}
+.tl-content {}
+.tl-phase {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.tl-title {
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.tl-desc {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* FOOTER */
+footer {
+  border-top: 1px solid var(--border);
+  padding: clamp(3rem, 6vh, 5rem) 0;
+}
+.footer-inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+.footer-brand {
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  color: var(--text);
+}
+.footer-brand span {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+.footer-links {
+  display: flex;
+  gap: 1.5rem;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+.footer-links a { border: none; color: var(--muted); }
+.footer-links a:hover { color: var(--accent); }
+
+/* ANIMATIONS */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* NAV */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  padding: 1.2rem clamp(1.5rem, 8vw, 8rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-brand {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: none;
+}
+.nav-links {
+  display: flex;
+  gap: 1rem;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  align-items: center;
+}
+.nav-links a { color: var(--muted); border: none; transition: color 0.2s; }
+.nav-links a:hover { color: var(--text); }
+.nav-links .rss-link,
+.nav-links .back-link {
+  color: var(--muted);
+}
+.meta-footer {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+.meta-footer p {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/* SCROLLBAR */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* RESPONSIVE */
+@media (max-width: 640px) {
+  .innovations { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: 1fr 1fr; }
+  .footer-inner { flex-direction: column; }
+  .nav-links a[href^="#"],
+  .nav-links .rss-link { display: none; }
+  .hero { padding-left: 1.5rem; padding-right: 1.5rem; }
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-brand" href="/">MANISH AI</a>
+  <div class="nav-links">
+    <a class="back-link" href="/writings.html">All writings</a>
+    <a class="rss-link" href="/feed.xml">RSS</a>
+    <a href="#review">Review</a>
+    <a href="#innovations">Innovations</a>
+    <a href="#pipeline">Pipeline</a>
+    <a href="#repo">Repo</a>
+    <a href="#roadmap">Roadmap</a>
+    <button id="theme-toggle" type="button" aria-label="Toggle color theme">Toggle</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<main data-pagefind-body>
+<header class="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-glow"></div>
+  <div class="hero-tag">Research · Systems · Implementation · June 2026</div>
+  <h1>From <em>1,000 tokens</em><br>per second to<br><em>decisions</em> per second</h1>
+  <div class="hero-meta">
+    <span>Built on Xiaomi MiMo-V2.5-Pro</span>
+    <span>5 frontier innovations</span>
+    <span>Full implementation in Python</span>
+  </div>
+  <div class="hero-scroll">Scroll</div>
+</header>
+
+<!-- INTRO / REVIEW -->
+<section id="review">
+  <div class="container">
+    <div class="section-label reveal">01 — The MiMo Moment</div>
+    <h2 class="reveal">What Xiaomi <em>actually</em> achieved</h2>
+    <p class="lead reveal">Xiaomi's MiMo-V2.5-Pro-UltraSpeed blog post quietly announced something remarkable: for the first time, a 1-trillion-parameter model runs at over 1,000 tokens per second on commodity 8-GPU hardware. No exotic chips required.</p>
+
+    <div class="stats reveal">
+      <div class="stat">
+        <div class="stat-num">1T</div>
+        <div class="stat-label">Parameters</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">1000+</div>
+        <div class="stat-label">Tokens / sec</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">6.3</div>
+        <div class="stat-label">Accepted tokens (DFlash)</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">8</div>
+        <div class="stat-label">Commodity GPUs</div>
+      </div>
+    </div>
+
+    <p class="reveal">Three breakthroughs converged to make this possible. First, <strong>selective FP4 quantization</strong> — only the MoE expert weights are quantized to MXFP4, while attention and other modules retain higher precision. Second, <strong>DFlash speculative decoding</strong> — a block-level masked parallel prediction scheme that fills an entire block of draft tokens in one forward pass, eliminating the serial bottleneck of standard autoregressive decoding. Third, <strong>TileRT persistent kernels</strong> — an execution model that keeps the entire compute pipeline permanently resident inside the GPU, enabling continuous prefetching that fully overlaps data movement with computation.</p>
+
+    <div class="pullquote reveal">
+      <p>"Speed itself begins to transmute into intelligence — enabling Best-of-N sampling, tree search, and real-time agent loops that were previously computationally infeasible."</p>
+      <cite>— Xiaomi MiMo team, June 2026</cite>
+    </div>
+
+    <p class="reveal">That last sentence is the most important thing in the blog. It points beyond raw throughput toward a different kind of capability: not faster text, but qualitatively richer reasoning. The question we set out to answer: what exactly does that transmutation look like in practice, and can we build it?</p>
+  </div>
+</section>
+
+<!-- INNOVATIONS -->
+<section id="innovations">
+  <div class="container-wide">
+    <div class="container">
+      <div class="section-label reveal">02 — The Five Frontiers</div>
+      <h2 class="reveal">What comes <em>next</em></h2>
+      <p class="reveal">Thinking as AI researchers, we identified five distinct innovation trajectories that MiMo's breakthrough makes tractable — each attacking a different layer of the stack, from hardware to evaluation.</p>
+    </div>
+
+    <div class="innovations reveal">
+      <div class="inno-card">
+        <div class="inno-num">Innovation 01</div>
+        <div class="inno-icon">⬡</div>
+        <div class="inno-title">Real-time multi-agent orchestration</div>
+        <p class="inno-desc">At 1000 TPS, you can run N parallel agents simultaneously, let them fork competing reasoning branches, and merge via weighted consensus — all within a single interactive response window.</p>
+        <span class="inno-tag tag-blue">Agent layer</span>
+      </div>
+      <div class="inno-card">
+        <div class="inno-num">Innovation 02</div>
+        <div class="inno-icon">⟁</div>
+        <div class="inno-title">Speculative reasoning</div>
+        <p class="inno-desc">DFlash accelerates token prediction. The next leap is predicting entire reasoning steps — multi-step chains drafted by a small model, verified in one batched call to the 1T oracle.</p>
+        <span class="inno-tag tag-purple">Reasoning layer</span>
+      </div>
+      <div class="inno-card">
+        <div class="inno-num">Innovation 03</div>
+        <div class="inno-icon">◈</div>
+        <div class="inno-title">Dynamic precision routing</div>
+        <p class="inno-desc">FP4 for all MoE experts is a fixed decision. The frontier is adaptive bit-width — FP4, FP8, or BF16 chosen per-token, per-layer based on entropy signals from the routing distribution.</p>
+        <span class="inno-tag tag-amber">Inference layer</span>
+      </div>
+      <div class="inno-card">
+        <div class="inno-num">Innovation 04</div>
+        <div class="inno-icon">◫</div>
+        <div class="inno-title">Memory hierarchy codesign</div>
+        <p class="inno-desc">TileRT makes memory a runtime concern. The next step is making it a model design variable — attention patterns, MoE routing, and KV-cache eviction co-designed with GPU NUMA topology.</p>
+        <span class="inno-tag tag-teal">Memory layer</span>
+      </div>
+      <div class="inno-card">
+        <div class="inno-num">Innovation 05</div>
+        <div class="inno-icon">◎</div>
+        <div class="inno-title">Decisions per second</div>
+        <p class="inno-desc">The real metric isn't tokens per second. It's correct, verifiable, difficulty-weighted decisions per wall-clock second — a benchmark that only becomes measurable at MiMo's throughput ceiling.</p>
+        <span class="inno-tag tag-coral">Evaluation layer</span>
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="callout reveal">
+        <div class="callout-label">Key insight</div>
+        <p>These aren't independent research directions. They form a <strong>vertical stack</strong>: dynamic precision feeds the inference layer, tiered KV-cache feeds the memory layer, speculative reasoning feeds the agent layer, and D/s measures the whole thing. Build them in order and you get compounding gains.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- IMPLEMENTATION -->
+<section id="pipeline">
+  <div class="container">
+    <div class="section-label reveal">03 — The Implementation</div>
+    <h2 class="reveal">Five components, <em>one pipeline</em></h2>
+    <p class="reveal">We built each innovation as a standalone Python module, then wired them into a unified pipeline. Every component was generated using Codex CLI with detailed task prompts — a meta-demonstration that high-speed LLM inference enables faster software development too.</p>
+
+    <div class="pipeline-wrap reveal">
+      <div class="pipeline">
+        <div class="pipe-row">
+          <div class="pipe-box" style="border-left: 2px solid #e8c547;">
+            <div class="pipe-box-label">Entry</div>
+            <div class="pipe-box-title">Task input</div>
+            <div class="pipe-box-sub">math · coding · triage</div>
+          </div>
+        </div>
+        <div class="pipe-arrow">↓</div>
+        <div class="pipe-row">
+          <div class="pipe-box" style="border-left: 2px solid #EF9F27;">
+            <div class="pipe-box-label">Innovation 3 · precision-router/</div>
+            <div class="pipe-box-title">Dynamic precision router</div>
+            <div class="pipe-box-sub">FP4 · FP8 · BF16 per token via entropy signal</div>
+          </div>
+        </div>
+        <div class="pipe-arrow">↓</div>
+        <div class="pipe-row">
+          <div class="pipe-box" style="border-left: 2px solid #3ecfaa;">
+            <div class="pipe-box-label">Innovation 4 · tiered-kv-cache/</div>
+            <div class="pipe-box-title">3-tier KV-cache</div>
+            <div class="pipe-box-sub">HBM → CPU DRAM → NVMe SSD</div>
+          </div>
+        </div>
+        <div class="pipe-arrow">↓</div>
+        <div class="pipe-row">
+          <div class="pipe-box" style="border-left: 2px solid #a89cf7;">
+            <div class="pipe-box-label">Innovation 2 · spec-reasoner/</div>
+            <div class="pipe-box-title">Speculative reasoner</div>
+            <div class="pipe-box-sub">Draft → batch verify → select chain</div>
+          </div>
+        </div>
+        <div class="pipe-arrow">↓</div>
+        <div class="pipe-row">
+          <div class="pipe-box" style="border-left: 2px solid #5ba4f5;">
+            <div class="pipe-box-label">Innovation 1 · multi-agent-orchestrator/</div>
+            <div class="pipe-box-title">Multi-agent orchestrator</div>
+            <div class="pipe-box-sub">N parallel agents → consensus vote</div>
+          </div>
+        </div>
+        <div class="pipe-arrow">↓</div>
+        <div class="pipe-row">
+          <div class="pipe-box" style="border-left: 2px solid #f07355;">
+            <div class="pipe-box-label">Innovation 5 · ds-benchmark/</div>
+            <div class="pipe-box-title">D/s benchmark harness</div>
+            <div class="pipe-box-sub">Verify · weight by difficulty · score · compare</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="reveal">The D/s formula</h3>
+    <p class="reveal">The core contribution is formalising a new evaluation metric. Unlike tokens per second — which measures output volume — Decisions per Second measures verified, difficulty-weighted correct outputs per wall-clock second.</p>
+
+    <pre class="reveal"><code><span class="cm"># Decisions per Second — the core scoring formula</span>
+
+<span class="kw">def</span> <span class="fn">compute_ds</span>(results, difficulties, wall_time_s):
+    weighted = <span class="num">0</span>
+    <span class="kw">for</span> result, difficulty <span class="kw">in</span> <span class="fn">zip</span>(results, difficulties):
+        <span class="cm"># False confidence is penalised harder than a wrong answer</span>
+        penalty = <span class="num">2.0</span> <span class="kw">if</span> (<span class="kw">not</span> result.correct
+                       <span class="kw">and</span> result.confidence > <span class="num">0.8</span>) <span class="kw">else</span> <span class="num">0.0</span>
+        weighted += difficulty * result.correct * <span class="fn">max</span>(<span class="num">0</span>, <span class="num">1</span> - penalty)
+
+    <span class="kw">return</span> weighted / wall_time_s  <span class="cm"># D/s score</span></code></pre>
+
+    <p class="reveal">This formula has three important properties. Difficulty weighting means an easy arithmetic problem contributes less than a complex coding task. The false-confidence penalty of 2× means a system that is wrong and certain is worse than one that is simply wrong. And normalising by wall time means you cannot game it by being slow and careful — speed genuinely matters.</p>
+
+    <h3 class="reveal">The ablation structure</h3>
+    <p class="reveal">Five configurations are tested automatically — disabling one component at a time — so you can isolate each innovation's marginal contribution to D/s. The component whose removal causes the largest D/s drop is your actual paper contribution.</p>
+
+    <div class="callout reveal">
+      <div class="callout-label">Hypothesis going in</div>
+      <p>The <strong>speculative reasoner</strong> contributes most to D/s (better answer quality), while the <strong>precision router</strong> contributes most to raw speed. The ablation will confirm or refute this — and the gap between TPS gain and D/s gain is where the interesting science lives.</p>
+    </div>
+  </div>
+</section>
+
+<!-- REPO -->
+<section id="repo">
+  <div class="container">
+    <div class="section-label reveal">04 — The Repository</div>
+    <h2 class="reveal">Everything is <em>open</em></h2>
+    <p class="reveal">The full implementation — all five components, the unified pipeline, and the benchmark harness — is structured for immediate use. Each module is independently importable and testable. The stack requires no proprietary hardware, consistent with MiMo's philosophy of running frontier models on commodity nodes.</p>
+
+    <div class="repo-card reveal">
+      <div class="repo-card-top">
+        <div class="repo-icon">⬡</div>
+        <div class="repo-arrow">↗</div>
+      </div>
+      <div class="repo-card-title">mimo-pipeline</div>
+      <p class="repo-card-desc">A suggested repository layout for a five-component AI pipeline built on MiMo-V2.5-Pro, from dynamic precision routing to D/s evaluation.</p>
+      <div class="repo-files">
+        <span class="repo-file">unified-pipeline/</span>
+        <span class="repo-file">multi-agent-orchestrator/</span>
+        <span class="repo-file">spec-reasoner/</span>
+        <span class="repo-file">precision-router/</span>
+        <span class="repo-file">tiered-kv-cache/</span>
+        <span class="repo-file">ds-benchmark/</span>
+        <span class="repo-file">benchmark_suite.py</span>
+        <span class="repo-file">compare_runs.py</span>
+      </div>
+    </div>
+
+    <h3 class="reveal">Five-command quickstart</h3>
+    <pre class="reveal"><code><span class="cm"># 1. Clone and install</span>
+git clone &lt;your-repo-url&gt;
+<span class="fn">cd</span> mimo-pipeline && pip install -r requirements.txt
+
+<span class="cm"># 2. Configure</span>
+<span class="fn">cp</span> .env.example .env
+<span class="cm"># → set MIMO_API_KEY and MIMO_BASE_URL</span>
+
+<span class="cm"># 3. Quick smoke test</span>
+python unified-pipeline/run_pipeline.py --task <span class="st">"What is 12 * 8?"</span> --domain math
+
+<span class="cm"># 4. Run full D/s benchmark</span>
+python unified-pipeline/run_benchmark.py --n <span class="num">30</span> --domains math coding triage
+
+<span class="cm"># 5. Compare two runs</span>
+python unified-pipeline/compare_benchmarks.py results_v1.json results_v2.json</code></pre>
+  </div>
+</section>
+
+<!-- ROADMAP -->
+<section id="roadmap">
+  <div class="container">
+    <div class="section-label reveal">05 — What's Next</div>
+    <h2 class="reveal">The path to <em>publication</em></h2>
+    <p class="reveal">This codebase is a research prototype. With the benchmark harness running, you have everything needed for a NeurIPS systems track or MLSys submission. The roadmap runs in four phases.</p>
+
+    <div class="timeline reveal">
+      <div class="tl-item">
+        <div class="tl-dot">
+          <div class="tl-dot-inner" style="border-color: var(--teal); background: rgba(62,207,170,0.15);"></div>
+        </div>
+        <div class="tl-content">
+          <div class="tl-phase" style="color: var(--teal);">Now · this week</div>
+          <div class="tl-title">Read and interpret the ablation results</div>
+          <div class="tl-desc">The component impact table tells you which innovation drives D/s most. That single finding shapes your paper's contribution statement. If D/s is below 1.0, identify the bottleneck before moving on.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot">
+          <div class="tl-dot-inner" style="border-color: var(--purple); background: rgba(168,156,247,0.15);"></div>
+        </div>
+        <div class="tl-content">
+          <div class="tl-phase" style="color: var(--purple);">Soon · 2 weeks</div>
+          <div class="tl-title">Harden and scale</div>
+          <div class="tl-desc">Add resilience (retries, circuit breakers), observability (Prometheus + Grafana), containerisation (single docker-compose up), and a clean REST API with SSE streaming. Make it shareable.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot">
+          <div class="tl-dot-inner" style="border-color: var(--accent); background: rgba(232,197,71,0.15);"></div>
+        </div>
+        <div class="tl-content">
+          <div class="tl-phase" style="color: var(--accent);">Month 2</div>
+          <div class="tl-title">Pick a domain and go deep</div>
+          <div class="tl-desc">Specialise the pipeline for coding (SWE-bench), finance (trade signal generation), or medical triage (ICD-10 verified decisions). A domain-specific result is a stronger paper than a generic one.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot">
+          <div class="tl-dot-inner" style="border-color: var(--coral); background: rgba(240,115,85,0.15);"></div>
+        </div>
+        <div class="tl-content">
+          <div class="tl-phase" style="color: var(--coral);">Month 3</div>
+          <div class="tl-title">Submit and open-source</div>
+          <div class="tl-desc">Draft the NeurIPS systems track abstract — you have a novel benchmark (D/s), a novel pipeline (5-component codesign), and ablation results. Package as a PyPI library. Publish the blog post.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pullquote reveal">
+      <p>The gap between tokens per second and decisions per second is where the next decade of AI research lives. MiMo showed us the ceiling on speed. Now we find out what intelligence costs above it.</p>
+    </div>
+  </div>
+</section>
+<section>
+  <div class="container">
+    <form class="subscribe" action="https://buttondown.email/api/emails/embed-subscribe/manish-ai" method="post" target="popupwindow" onsubmit="window.open('https://buttondown.email/manish-ai', 'popupwindow')">
+      <label for="bd-email">Get new essays by email</label>
+      <input id="bd-email" type="email" name="email" placeholder="you@example.com" required/>
+      <input type="hidden" value="1" name="embed"/>
+      <input type="submit" value="Subscribe"/>
+    </form>
+    <div id="webmentions" hidden></div>
+    <div class="meta-footer">
+      <p>Published June 14, 2026 on MANISH AI. This essay frames MiMo's 1,000 TPS milestone as the start of a broader systems shift toward decision-centric inference metrics.</p>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        From MiMo to D/s
+        <span>A research implementation · June 2026</span>
+      </div>
+      <div class="footer-links">
+        <a href="https://mimo.xiaomi.com/blog/mimo-tilert-1000tps" target="_blank">MiMo blog</a>
+        <a href="https://github.com/manishklach" target="_blank">GitHub</a>
+        <a href="https://arxiv.org/abs/2602.06036" target="_blank">DFlash paper</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
