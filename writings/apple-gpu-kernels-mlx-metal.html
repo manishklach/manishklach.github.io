@@ -1,0 +1,1815 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Writing GPU Kernels for Apple Silicon with MLX | MANISH AI</title>
+<meta name="description" content="A deep technical guide to writing GPU kernels for Apple Silicon with MLX and Metal, covering MSL, thread hierarchy, MLX runtime internals, fused kernels, GEMM, and performance tuning."/>
+<meta name="keywords" content="Apple Silicon, MLX, Metal, Metal Shading Language, MSL, GPU kernels, Apple GPU, unified memory, ML inference, kernel engineering"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f5f7fb"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/apple-gpu-kernels-mlx-metal.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Writing GPU Kernels for Apple Silicon with MLX | MANISH AI"/>
+<meta property="og:description" content="A deep dive into MLX, Metal, and how to write high-performance Apple GPU kernels for modern ML workloads on M-series chips."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/apple-gpu-kernels-mlx-metal.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/apple-gpu-kernels-mlx-metal.png"/>
+<meta property="og:image:alt" content="Preview image for Writing GPU Kernels for Apple Silicon with MLX"/>
+<meta property="article:published_time" content="2026-06-15T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-06-15T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Writing GPU Kernels for Apple Silicon with MLX"/>
+<meta name="twitter:description" content="A technical guide to MLX, Metal, and Apple GPU kernel engineering on M-series chips."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/apple-gpu-kernels-mlx-metal.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Writing GPU Kernels for Apple Silicon with MLX","description":"A deep technical guide to writing GPU kernels for Apple Silicon with MLX and Metal, covering MSL, thread hierarchy, MLX runtime internals, fused kernels, GEMM, and performance tuning.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/apple-gpu-kernels-mlx-metal.html","mainEntityOfPage":"https://manishklach.github.io/writings/apple-gpu-kernels-mlx-metal.html","datePublished":"2026-06-15","dateModified":"2026-06-15","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+  :root {
+    --bg: #f5f7fb;
+    --bg2: #eef2f8;
+    --bg3: #e4ebf5;
+    --accent: #6f62f6;
+    --accent2: #8b7bff;
+    --accent3: #6a5acd;
+    --gold: #f59e0b;
+    --teal: #2dd4bf;
+    --coral: #f87171;
+    --text: #161923;
+    --text2: #546076;
+    --text3: #7b87a0;
+    --border: rgba(111,98,246,0.16);
+    --border2: rgba(111,98,246,0.09);
+    --inverse-bg: #0d0d14;
+    --inverse-text: #c8c6d8;
+    --mono: 'JetBrains Mono', monospace;
+    --serif: 'DM Serif Display', serif;
+    --sans: 'Sora', sans-serif;
+  }
+
+  html.dark {
+    --bg: #0a0a0f;
+    --bg2: #111118;
+    --bg3: #1a1a24;
+    --accent: #7c6dfc;
+    --accent2: #a78bfa;
+    --accent3: #c4b5fd;
+    --text: #e8e6f0;
+    --text2: #9f9db8;
+    --text3: #6b6988;
+    --border: rgba(124,109,252,0.15);
+    --border2: rgba(124,109,252,0.08);
+    --inverse-bg: #0d0d14;
+    --inverse-text: #c8c6d8;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.8;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 18px 2rem 0;
+  }
+
+  .site-tools {
+    margin: 0;
+    padding: 14px 18px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: blur(14px);
+  }
+
+  .brand {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: var(--accent);
+  }
+
+  .noise {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  }
+
+  .glow-orb {
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+    filter: blur(120px);
+    opacity: 0.12;
+  }
+  .glow-orb-1 { width: 600px; height: 600px; background: var(--accent); top: -200px; left: -200px; }
+  .glow-orb-2 { width: 400px; height: 400px; background: var(--teal); bottom: 200px; right: -100px; }
+
+  .wrapper {
+    position: relative;
+    z-index: 1;
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  /* HERO */
+  .hero {
+    padding: 5rem 0 4rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4rem;
+  }
+
+  .hero-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent2);
+    background: rgba(124,109,252,0.1);
+    border: 1px solid rgba(124,109,252,0.25);
+    padding: 5px 12px;
+    border-radius: 100px;
+    margin-bottom: 2rem;
+  }
+
+  .hero-tag::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(2.4rem, 5vw, 3.6rem);
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    margin-bottom: 1.5rem;
+  }
+
+  h1 em {
+    font-style: italic;
+    color: var(--accent2);
+  }
+
+  .hero-sub {
+    font-size: 1.15rem;
+    color: var(--text2);
+    line-height: 1.7;
+    max-width: 660px;
+    margin-bottom: 2rem;
+  }
+
+  .hero-meta {
+    display: flex;
+    gap: 2rem;
+    font-size: 13px;
+    color: var(--text3);
+  }
+
+  .hero-meta span { display: flex; align-items: center; gap: 6px; }
+
+  /* SECTION HEADINGS */
+  h2 {
+    font-family: var(--serif);
+    font-size: 2rem;
+    color: var(--text);
+    margin: 4rem 0 1.5rem;
+    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  h2::before {
+    content: attr(data-n);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-style: normal;
+    color: var(--accent2);
+    background: rgba(124,109,252,0.12);
+    border: 1px solid rgba(124,109,252,0.2);
+    padding: 3px 9px;
+    border-radius: 6px;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  h3 {
+    font-family: var(--sans);
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--accent3);
+    margin: 2.5rem 0 0.75rem;
+    letter-spacing: -0.01em;
+  }
+
+  p { margin-bottom: 1.25rem; color: var(--text); }
+  p:last-child { margin-bottom: 0; }
+
+  /* INLINE CODE */
+  code {
+    font-family: var(--mono);
+    font-size: 0.82em;
+    background: rgba(124,109,252,0.1);
+    color: var(--accent3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(124,109,252,0.15);
+  }
+
+  /* CODE BLOCKS */
+  .code-block {
+    margin: 2rem 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--inverse-bg);
+  }
+
+  .code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid var(--border2);
+  }
+
+  .code-lang {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .lang-msl { color: #7c6dfc; }
+  .lang-python { color: #2dd4bf; }
+  .lang-cpp { color: #f59e0b; }
+  .lang-text { color: #9f9db8; }
+  .lang-bash { color: #4ade80; }
+
+  .code-dots { display: flex; gap: 6px; }
+  .code-dots span {
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+  .code-dots span:nth-child(1) { background: #ff5f57; }
+  .code-dots span:nth-child(2) { background: #febc2e; }
+  .code-dots span:nth-child(3) { background: #28c840; }
+
+  pre {
+    padding: 1.5rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--inverse-text);
+    tab-size: 2;
+  }
+
+  /* Syntax highlighting */
+  .kw { color: #a78bfa; font-weight: 500; }
+  .ty { color: #67e8f9; }
+  .fn { color: #86efac; }
+  .cm { color: #555572; font-style: italic; }
+  .st { color: #fde68a; }
+  .num { color: #fb923c; }
+  .at { color: #f472b6; }
+  .py { color: #2dd4bf; }
+  .op { color: #9ca3af; }
+
+  /* COMPARISON TABLE */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 2rem 0;
+    font-size: 14px;
+  }
+
+  .compare-table th {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    color: var(--text3);
+  }
+
+  .compare-table th:first-child { color: var(--coral); }
+  .compare-table th:nth-child(2) { color: var(--accent2); }
+
+  .compare-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border2);
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text2);
+  }
+
+  .compare-table tr:last-child td { border-bottom: none; }
+
+  .compare-table td:first-child { color: var(--coral); }
+  .compare-table td:nth-child(2) { color: var(--accent2); }
+
+  /* CALLOUT */
+  .callout {
+    margin: 2rem 0;
+    padding: 1.25rem 1.5rem;
+    border-radius: 10px;
+    border-left: 3px solid;
+    background: rgba(255,255,255,0.02);
+  }
+
+  .callout-info { border-color: var(--teal); }
+  .callout-warn { border-color: var(--gold); }
+  .callout-tip { border-color: var(--accent); }
+
+  .callout-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .callout-info .callout-label { color: var(--teal); }
+  .callout-warn .callout-label { color: var(--gold); }
+  .callout-tip .callout-label { color: var(--accent2); }
+
+  .callout p { font-size: 15px; color: var(--text2); margin: 0; }
+
+  /* STACK DIAGRAM */
+  .stack-diagram {
+    margin: 2rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-width: 380px;
+  }
+
+  .stack-layer {
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    position: relative;
+  }
+
+  .stack-arrow {
+    text-align: center;
+    color: var(--text3);
+    font-size: 18px;
+    line-height: 1.2;
+    padding: 2px 0;
+  }
+
+  .sl-py { background: rgba(45,212,191,0.1); color: var(--teal); border: 1px solid rgba(45,212,191,0.2); }
+  .sl-cpp { background: rgba(245,158,11,0.1); color: var(--gold); border: 1px solid rgba(245,158,11,0.2); }
+  .sl-metal { background: rgba(124,109,252,0.15); color: var(--accent2); border: 1px solid rgba(124,109,252,0.3); }
+  .sl-msl { background: rgba(248,113,113,0.1); color: var(--coral); border: 1px solid rgba(248,113,113,0.2); }
+  .sl-gpu { background: color-mix(in srgb, var(--bg3) 88%, transparent); color: var(--text); border: 1px solid color-mix(in srgb, var(--border) 80%, transparent); }
+
+  /* KEY POINTS */
+  .key-points {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 2rem 0;
+  }
+
+  .key-point {
+    padding: 1.25rem;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border2);
+  }
+
+  .key-point-icon {
+    font-size: 1.4rem;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .key-point h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent3);
+    margin-bottom: 6px;
+  }
+
+  .key-point p {
+    font-size: 13.5px;
+    color: var(--text2);
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  /* DIVIDER */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 3rem 0;
+  }
+
+  /* RATIO BAR */
+  .ratio-section {
+    margin: 2rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .ratio-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .ratio-label {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text3);
+    min-width: 70px;
+    letter-spacing: 0.05em;
+  }
+
+  .ratio-bar-bg {
+    flex: 1;
+    height: 8px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .ratio-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+
+  .ratio-pct {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    min-width: 40px;
+    text-align: right;
+  }
+
+  /* HIGHLIGHT BOX */
+  .highlight-box {
+    padding: 2rem;
+    border-radius: 12px;
+    background: rgba(124,109,252,0.06);
+    border: 1px solid rgba(124,109,252,0.2);
+    margin: 2rem 0;
+  }
+
+  .highlight-box p { color: var(--text2); font-size: 15.5px; margin-bottom: 1rem; }
+  .highlight-box p:last-child { margin-bottom: 0; }
+
+  /* PIPELINE VIZ */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 2rem 0;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .pipe-node {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .pipe-arrow {
+    color: var(--text3);
+    font-size: 20px;
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+
+  /* TOC */
+  .toc {
+    padding: 1.5rem;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border2);
+    margin-bottom: 4rem;
+  }
+
+  .toc-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 1rem;
+  }
+
+  .toc ol {
+    list-style: none;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 2rem;
+  }
+
+  .toc li {
+    font-size: 14px;
+    color: var(--text2);
+    counter-increment: toc;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .toc li::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    flex-shrink: 0;
+  }
+
+  /* FOOTER */
+  .post-footer {
+    margin-top: 5rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border2);
+    text-align: center;
+    color: var(--text3);
+    font-size: 13px;
+  }
+
+  .meta-footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border2);
+  }
+
+  .meta-footer p {
+    color: var(--text2);
+    font-size: 0.95rem;
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 600px) {
+    .key-points { grid-template-columns: 1fr; }
+    .toc ol { grid-template-columns: 1fr; }
+    h2 { font-size: 1.6rem; }
+    .shell { padding-left: 1rem; padding-right: 1rem; }
+  }
+
+  ul, ol { padding-left: 1.5rem; margin-bottom: 1.25rem; }
+  li { color: var(--text2); margin-bottom: 0.4rem; font-size: 16px; }
+  li code { font-size: 12px; }
+
+  strong { color: var(--text); font-weight: 600; }
+
+  blockquote {
+    border-left: 2px solid var(--accent);
+    padding-left: 1.25rem;
+    margin: 1.5rem 0;
+    color: var(--text2);
+    font-size: 1.05rem;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="site-tools">
+    <a class="brand" href="/">MANISH AI</a>
+    <div class="site-tools-actions">
+      <a class="back-link" href="/writings.html">All writings</a>
+      <a class="rss-link" href="/feed.xml">RSS</a>
+      <button id="theme-toggle" type="button" aria-label="Toggle color theme">Toggle</button>
+    </div>
+  </div>
+</div>
+
+<div class="noise"></div>
+<div class="glow-orb glow-orb-1"></div>
+<div class="glow-orb glow-orb-2"></div>
+
+<main class="wrapper" data-pagefind-body>
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-tag">Deep Dive · Apple Silicon GPUs</div>
+    <h1>Writing <em>GPU Kernels</em><br>for Apple Silicon with MLX</h1>
+    <p class="hero-sub">
+      A comprehensive guide to Metal Shading Language, Apple's GPU architecture, and how MLX lets you write high-performance compute kernels that run natively on M-series chips — no CUDA required.
+    </p>
+    <div class="hero-meta">
+      <span>⏱ 25 min read</span>
+      <span>⚙ MLX · Metal · MSL · C++</span>
+      <span>🍎 M1 / M2 / M3 / M4</span>
+    </div>
+  </header>
+
+  <!-- TOC -->
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li>Why Apple GPUs Are Different</li>
+      <li>The MLX Software Stack</li>
+      <li>Metal Shading Language Basics</li>
+      <li>Thread Hierarchy & Memory Model</li>
+      <li>Your First GPU Kernel</li>
+      <li>NVIDIA vs Apple Mapping</li>
+      <li>Elementwise & Reduction Kernels</li>
+      <li>Matrix Operations & GEMM</li>
+      <li>Fused Attention Kernels</li>
+      <li>C++ Runtime & Dispatch</li>
+      <li>Performance Tuning</li>
+      <li>The MLX Engineer's Workflow</li>
+    </ol>
+  </div>
+
+
+  <!-- SECTION 1 -->
+  <h2 data-n="01">Why Apple GPUs Are Different</h2>
+
+  <p>
+    If you've worked with NVIDIA's CUDA ecosystem, you're accustomed to a clean separation: the CPU lives on one side of a PCIe bus, the GPU on the other, and data constantly ferries between them via expensive DMA transfers. Apple blew that model up.
+  </p>
+
+  <p>
+    On M-series chips, the CPU, GPU, Neural Engine, and memory subsystem all share the same physical die. There is no discrete memory pool. There is no bus to cross. The GPU reads from the same LPDDR5X pool that the CPU uses — and does so at extraordinarily high bandwidth (up to 400 GB/s on M3 Ultra). This single architectural decision changes everything about how you write kernels.
+  </p>
+
+  <div class="key-points">
+    <div class="key-point">
+      <span class="key-point-icon">🏗</span>
+      <h4>Tile-Based Deferred Rendering</h4>
+      <p>Apple GPUs use TBDR architecture. The screen (or compute output) is divided into tiles processed entirely on-chip before being written back to memory, minimizing bandwidth.</p>
+    </div>
+    <div class="key-point">
+      <span class="key-point-icon">🧠</span>
+      <h4>Unified Memory Architecture</h4>
+      <p>CPU and GPU share the same physical memory. Zero-copy tensor sharing is possible — <code>mx.array</code> lives in memory accessible to both without explicit transfers.</p>
+    </div>
+    <div class="key-point">
+      <span class="key-point-icon">⚡</span>
+      <h4>SIMD Groups</h4>
+      <p>Apple's equivalent of CUDA warps. Groups of 32 threads execute in lockstep and can share data via SIMD-group instructions without touching threadgroup memory.</p>
+    </div>
+    <div class="key-point">
+      <span class="key-point-icon">💾</span>
+      <h4>Threadgroup Memory</h4>
+      <p>On-chip scratchpad local to a threadgroup. Fast, software-managed, analogous to CUDA shared memory. Finite size — spill to device memory and latency skyrockets.</p>
+    </div>
+  </div>
+
+  <div class="callout callout-info">
+    <div class="callout-label">Architecture note</div>
+    <p>Apple Silicon uses a <strong>harvested GPU die</strong> integrated directly with the CPU fabric. M1 has up to 8 GPU cores; M3 Max reaches 40; M2 Ultra pushes 76. Each GPU core contains multiple SIMD engines, each running 32 lanes wide — the Apple equivalent of a streaming multiprocessor (SM) in NVIDIA terms.</p>
+  </div>
+
+
+  <!-- SECTION 2 -->
+  <h2 data-n="02">The MLX Software Stack</h2>
+
+  <p>
+    MLX is Apple's open-source array framework for machine learning on Apple Silicon. It is not a thin wrapper around PyTorch. It is a ground-up reimplementation with lazy evaluation, a functional transformation system, and its own GPU backend built directly on Metal. Understanding the layers helps you know exactly where your kernel code lives.
+  </p>
+
+  <div class="stack-diagram">
+    <div class="stack-layer sl-py">Python API (mlx.core)</div>
+    <div class="stack-arrow">↓</div>
+    <div class="stack-layer sl-cpp">C++ Runtime (Primitives, Graph, Dispatch)</div>
+    <div class="stack-arrow">↓</div>
+    <div class="stack-layer sl-metal">Metal API (Command Queues, Buffers, Pipelines)</div>
+    <div class="stack-arrow">↓</div>
+    <div class="stack-layer sl-msl">MSL Kernels (.metal source files)</div>
+    <div class="stack-arrow">↓</div>
+    <div class="stack-layer sl-gpu">Apple GPU (Silicon)</div>
+  </div>
+
+  <h3>The Python Layer</h3>
+  <p>Users write high-level array operations. MLX builds a computation graph lazily — nothing executes until a value is actually needed.</p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-python">Python</div>
+    </div>
+    <pre><span class="kw">import</span> <span class="py">mlx.core</span> <span class="kw">as</span> mx
+
+<span class="cm"># Lazy — no GPU work yet</span>
+a = mx.ones((1024, 1024), dtype=mx.float16)
+b = mx.ones((1024, 1024), dtype=mx.float16)
+c = mx.matmul(a, b)          <span class="cm"># Graph node created</span>
+
+<span class="cm"># Evaluation triggers GPU dispatch</span>
+mx.eval(c)
+<span class="kw">print</span>(c.shape)               <span class="cm"># (1024, 1024)</span></pre>
+  </div>
+
+  <h3>The C++ Runtime</h3>
+  <p>
+    The majority of MLX — perhaps 60–70% by line count — is C++. The runtime manages tensor lifetimes, constructs and optimises the computation graph, fuses operations into single kernel launches where profitable, and ultimately calls into Metal to dispatch work to the GPU.
+  </p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-cpp">C++ — Primitive</div>
+    </div>
+    <pre><span class="cm">// Simplified version of how MLX defines a primitive operation</span>
+<span class="kw">class</span> <span class="ty">MatMul</span> : <span class="kw">public</span> <span class="ty">Primitive</span> {
+<span class="kw">public</span>:
+  <span class="fn">MatMul</span>(<span class="ty">Stream</span> stream) : <span class="ty">Primitive</span>(stream) {}
+
+  <span class="cm">// Forward pass — schedules the Metal kernel</span>
+  <span class="ty">void</span> <span class="fn">eval_gpu</span>(
+      <span class="kw">const</span> std::vector&lt;<span class="ty">array</span>&gt;&amp; inputs,
+      std::vector&lt;<span class="ty">array</span>&gt;&amp; outputs
+  ) <span class="kw">override</span>;
+
+  <span class="cm">// VJP for automatic differentiation</span>
+  std::vector&lt;<span class="ty">array</span>&gt; <span class="fn">vjp</span>(
+      <span class="kw">const</span> std::vector&lt;<span class="ty">array</span>&gt;&amp; primals,
+      <span class="kw">const</span> std::vector&lt;<span class="ty">array</span>&gt;&amp; cotangents,
+      <span class="kw">const</span> std::vector&lt;<span class="int">int</span>&gt;&amp; argnums,
+      <span class="kw">const</span> std::vector&lt;<span class="ty">array</span>&gt;&amp; outputs
+  ) <span class="kw">override</span>;
+};</pre>
+  </div>
+
+  <h3>Metal API & Pipelines</h3>
+  <p>
+    Metal is Apple's low-level GPU API — analogous to Vulkan Compute or CUDA Runtime. Kernels are compiled from Metal Shading Language (MSL) source either ahead-of-time (packaged into a <code>.metallib</code> file) or at runtime. Each kernel function is wrapped in a <strong>MTLComputePipelineState</strong>, set up with its arguments, and then encoded into a <strong>MTLCommandBuffer</strong> which is committed to a <strong>MTLCommandQueue</strong> for execution.
+  </p>
+
+  <div class="callout callout-tip">
+    <div class="callout-label">MLX tip</div>
+    <p>MLX pre-compiles all its built-in Metal kernels into a metallib at build time. When you call <code>mx.matmul()</code>, the C++ runtime looks up the correct pipeline state for the given dtypes and dispatches it immediately — no JIT compilation delay during training.</p>
+  </div>
+
+
+  <!-- SECTION 3 -->
+  <h2 data-n="03">Metal Shading Language Basics</h2>
+
+  <p>
+    Metal Shading Language (MSL) is a C++14-derived language with Apple-specific extensions for GPU programming. If you know CUDA C++, you'll feel at home within minutes. The core concepts translate almost 1:1, though the syntax differs.
+  </p>
+
+  <h3>Address Spaces</h3>
+  <p>
+    MSL has explicit address space qualifiers that tell the compiler — and you — where data lives in the memory hierarchy. Understanding these is non-negotiable for writing correct kernels.
+  </p>
+
+  <ul>
+    <li><code>device</code> — Global GPU memory (analogous to CUDA's default pointer address space). Largest, slowest, accessible by all threads.</li>
+    <li><code>threadgroup</code> — On-chip shared memory local to a threadgroup. Fast, limited size (typically 32 KB per threadgroup).</li>
+    <li><code>constant</code> — Read-only data cached for uniform access. Ideal for kernel parameters and lookup tables.</li>
+    <li><code>thread</code> — Private to a single thread. Register-class storage; essentially free.</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-msl">MSL — Address Space Demo</div>
+    </div>
+    <pre><span class="kw">kernel void</span> <span class="fn">memory_spaces_demo</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* global_input   <span class="at">[[buffer(0)]]</span>,
+    <span class="at">device</span> <span class="ty">float</span>*       global_output  <span class="at">[[buffer(1)]]</span>,
+    <span class="at">constant</span> <span class="ty">float</span>&amp;     scale          <span class="at">[[buffer(2)]]</span>,
+    <span class="at">threadgroup</span> <span class="ty">float</span>*  shared_tile    <span class="at">[[threadgroup(0)]]</span>,
+    <span class="ty">uint</span> gid <span class="at">[[thread_position_in_grid]]</span>,
+    <span class="ty">uint</span> lid <span class="at">[[thread_position_in_threadgroup]]</span>
+) {
+    <span class="cm">// Thread-private register</span>
+    <span class="ty">float</span> val = global_input[gid] * scale;
+
+    <span class="cm">// Write into on-chip threadgroup memory</span>
+    shared_tile[lid] = val;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    <span class="cm">// All threads in group have written; safe to read</span>
+    global_output[gid] = shared_tile[lid];
+}</pre>
+  </div>
+
+  <h3>Built-In Variables</h3>
+  <p>
+    MSL uses attribute syntax <code>[[...]]</code> to inject hardware-provided values into kernel arguments. These tell each thread exactly where it sits in the execution hierarchy.
+  </p>
+
+  <ul>
+    <li><code>[[thread_position_in_grid]]</code> — Absolute position of this thread in the full dispatch grid. The most common index variable.</li>
+    <li><code>[[thread_position_in_threadgroup]]</code> — Position within the thread's own threadgroup (local index, like <code>threadIdx</code> in CUDA).</li>
+    <li><code>[[threadgroup_position_in_grid]]</code> — Which threadgroup this thread belongs to (like <code>blockIdx</code>).</li>
+    <li><code>[[threads_per_threadgroup]]</code> — The size of the threadgroup in each dimension.</li>
+    <li><code>[[threads_per_simdgroup]]</code> — Always 32 on current Apple GPUs.</li>
+    <li><code>[[simdgroup_index_in_threadgroup]]</code> — Which SIMD group within the threadgroup.</li>
+    <li><code>[[thread_index_in_simdgroup]]</code> — Lane index within the SIMD group (0–31).</li>
+  </ul>
+
+
+  <!-- SECTION 4 -->
+  <h2 data-n="04">Thread Hierarchy & Memory Model</h2>
+
+  <p>
+    Apple GPUs execute threads in a three-level hierarchy that directly mirrors NVIDIA's grid / block / warp model — with different names and slightly different semantics.
+  </p>
+
+  <table class="compare-table">
+    <thead>
+      <tr>
+        <th>NVIDIA CUDA</th>
+        <th>Apple Metal</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Grid</td>
+        <td>Grid</td>
+        <td>The entire dispatch space</td>
+      </tr>
+      <tr>
+        <td>Thread Block</td>
+        <td>Threadgroup</td>
+        <td>Cooperative group with shared on-chip memory</td>
+      </tr>
+      <tr>
+        <td>Warp (32 threads)</td>
+        <td>SIMD Group (32 threads)</td>
+        <td>Smallest lockstep execution unit</td>
+      </tr>
+      <tr>
+        <td>Shared Memory</td>
+        <td>Threadgroup Memory</td>
+        <td>On-chip scratchpad local to a threadgroup</td>
+      </tr>
+      <tr>
+        <td>L1/L2 Cache</td>
+        <td>GPU Cache</td>
+        <td>Hardware-managed, transparent</td>
+      </tr>
+      <tr>
+        <td>Global Memory</td>
+        <td>Device Memory (Unified)</td>
+        <td>Main memory pool, shared with CPU</td>
+      </tr>
+      <tr>
+        <td>Constant Memory</td>
+        <td>Constant Buffer</td>
+        <td>Read-only, broadcast-cached</td>
+      </tr>
+      <tr>
+        <td>__syncthreads()</td>
+        <td>threadgroup_barrier()</td>
+        <td>Synchronisation within a group</td>
+      </tr>
+      <tr>
+        <td>Warp shuffle</td>
+        <td>SIMD-group functions</td>
+        <td>Cross-lane data exchange without memory</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>SIMD-Group Intrinsics</h3>
+  <p>
+    One area where MSL genuinely excels over basic CUDA is its rich set of SIMD-group operations built directly into the language spec. These allow data exchange between the 32 lanes of a SIMD group without touching threadgroup memory at all, saving precious bandwidth.
+  </p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-msl">MSL — SIMD-Group Intrinsics</div>
+    </div>
+    <pre><span class="kw">kernel void</span> <span class="fn">simd_reduce_sum</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* input  <span class="at">[[buffer(0)]]</span>,
+    <span class="at">device</span> <span class="ty">float</span>*       output <span class="at">[[buffer(1)]]</span>,
+    <span class="ty">uint</span> gid  <span class="at">[[thread_position_in_grid]]</span>,
+    <span class="ty">uint</span> lane <span class="at">[[thread_index_in_simdgroup]]</span>,
+    <span class="ty">uint</span> sg   <span class="at">[[simdgroup_index_in_threadgroup]]</span>
+) {
+    <span class="ty">float</span> val = input[gid];
+
+    <span class="cm">// Sum across all 32 lanes — no threadgroup memory needed!</span>
+    val = simd_sum(val);
+
+    <span class="cm">// Only lane 0 of each SIMD group writes the result</span>
+    <span class="kw">if</span> (lane == <span class="num">0</span>) {
+        output[sg] = val;
+    }
+}</pre>
+  </div>
+
+  <p>Key SIMD-group functions available in MSL:</p>
+  <ul>
+    <li><code>simd_sum(val)</code> — Reduces all 32 lanes' values to their sum</li>
+    <li><code>simd_max(val)</code> / <code>simd_min(val)</code> — Max/min reduction across the SIMD group</li>
+    <li><code>simd_shuffle(val, lane)</code> — Broadcast a specific lane's value to all lanes</li>
+    <li><code>simd_shuffle_up(val, delta)</code> / <code>simd_shuffle_down(val, delta)</code> — Shift values by delta lanes</li>
+    <li><code>simd_prefix_inclusive_sum(val)</code> — Prefix scan across the group</li>
+    <li><code>simd_broadcast(val, lane)</code> — Broadcast from lane to all</li>
+  </ul>
+
+
+  <!-- SECTION 5 -->
+  <h2 data-n="05">Your First GPU Kernel</h2>
+
+  <p>
+    Let's start with the canonical example — element-wise vector addition — and then build progressively more sophisticated kernels. Every kernel author should be able to write this in their sleep.
+  </p>
+
+  <h3>Element-Wise Addition</h3>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-msl">MSL — vector_add.metal</div>
+    </div>
+    <pre><span class="cm">// The 'kernel' qualifier marks this as a compute kernel entry point</span>
+<span class="cm">// (as opposed to 'vertex' or 'fragment' for graphics)</span>
+<span class="kw">kernel void</span> <span class="fn">vector_add</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* a   <span class="at">[[buffer(0)]]</span>,
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* b   <span class="at">[[buffer(1)]]</span>,
+    <span class="at">device</span>       <span class="ty">float</span>* out <span class="at">[[buffer(2)]]</span>,
+    <span class="ty">uint</span> id <span class="at">[[thread_position_in_grid]]</span>
+) {
+    out[id] = a[id] + b[id];
+}
+
+<span class="cm">// Half-precision variant — important for ML workloads</span>
+<span class="kw">kernel void</span> <span class="fn">vector_add_half</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half</span>* a   <span class="at">[[buffer(0)]]</span>,
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half</span>* b   <span class="at">[[buffer(1)]]</span>,
+    <span class="at">device</span>       <span class="ty">half</span>* out <span class="at">[[buffer(2)]]</span>,
+    <span class="ty">uint</span> id <span class="at">[[thread_position_in_grid]]</span>
+) {
+    out[id] = a[id] + b[id];
+}</pre>
+  </div>
+
+  <p>Notice the key differences from CUDA immediately:</p>
+  <ul>
+    <li><code>kernel</code> instead of <code>__global__</code></li>
+    <li><code>device</code> pointer qualifier instead of bare pointer</li>
+    <li><code>[[buffer(N)]]</code> attribute to bind to Metal buffer slots</li>
+    <li><code>[[thread_position_in_grid]]</code> instead of <code>blockIdx.x * blockDim.x + threadIdx.x</code></li>
+    <li>No explicit <code>N</code> parameter needed — Metal handles bounds automatically if you dispatch correctly</li>
+  </ul>
+
+  <h3>Dispatching from C++</h3>
+  <p>
+    The kernel file is just the compute shader. You still need C++ to compile the pipeline state and dispatch work. Here is a minimal, self-contained example using the raw Metal API — in MLX, the framework handles this for you, but understanding it is essential for writing custom ops.
+  </p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-cpp">C++ — Metal Dispatch</div>
+    </div>
+    <pre><span class="cm">// Objective-C++ or C++ with Metal framework headers</span>
+#include <Metal/Metal.hpp>
+
+<span class="ty">void</span> <span class="fn">launch_vector_add</span>(
+    <span class="ty">MTL::Device</span>* device,
+    <span class="ty">float</span>* a_host, <span class="ty">float</span>* b_host, <span class="ty">float</span>* out_host,
+    <span class="ty">size_t</span> n
+) {
+    <span class="cm">// 1. Create Metal buffers (zero-copy on Apple Silicon!)</span>
+    <span class="kw">auto</span>* a_buf   = device-><span class="fn">newBuffer</span>(a_host, n * <span class="kw">sizeof</span>(<span class="ty">float</span>),
+                         MTL::ResourceStorageModeShared);
+    <span class="kw">auto</span>* b_buf   = device-><span class="fn">newBuffer</span>(b_host, n * <span class="kw">sizeof</span>(<span class="ty">float</span>),
+                         MTL::ResourceStorageModeShared);
+    <span class="kw">auto</span>* out_buf = device-><span class="fn">newBuffer</span>(n * <span class="kw">sizeof</span>(<span class="ty">float</span>),
+                         MTL::ResourceStorageModeShared);
+
+    <span class="cm">// 2. Load compiled .metallib and get the function</span>
+    <span class="kw">auto</span>* library = device-><span class="fn">newDefaultLibrary</span>();
+    <span class="kw">auto</span>* fn      = library-><span class="fn">newFunction</span>(
+                         NS::String::<span class="fn">string</span>(<span class="st">"vector_add"</span>,
+                         NS::UTF8StringEncoding));
+
+    <span class="cm">// 3. Build pipeline state (cached; do this once at startup)</span>
+    NS::Error* err = <span class="kw">nullptr</span>;
+    <span class="kw">auto</span>* pso = device-><span class="fn">newComputePipelineState</span>(fn, &amp;err);
+
+    <span class="cm">// 4. Create command buffer and encoder</span>
+    <span class="kw">auto</span>* queue   = device-><span class="fn">newCommandQueue</span>();
+    <span class="kw">auto</span>* cmdbuf  = queue-><span class="fn">commandBuffer</span>();
+    <span class="kw">auto</span>* encoder = cmdbuf-><span class="fn">computeCommandEncoder</span>();
+
+    <span class="cm">// 5. Bind resources and dispatch</span>
+    encoder-><span class="fn">setComputePipelineState</span>(pso);
+    encoder-><span class="fn">setBuffer</span>(a_buf,   <span class="num">0</span>, <span class="num">0</span>);
+    encoder-><span class="fn">setBuffer</span>(b_buf,   <span class="num">0</span>, <span class="num">1</span>);
+    encoder-><span class="fn">setBuffer</span>(out_buf, <span class="num">0</span>, <span class="num">2</span>);
+
+    MTL::Size threads_per_tg = MTL::Size(<span class="num">256</span>, <span class="num">1</span>, <span class="num">1</span>);
+    MTL::Size num_tgs = MTL::Size((n + <span class="num">255</span>) / <span class="num">256</span>, <span class="num">1</span>, <span class="num">1</span>);
+    encoder-><span class="fn">dispatchThreadgroups</span>(num_tgs, threads_per_tg);
+
+    encoder-><span class="fn">endEncoding</span>();
+    cmdbuf-><span class="fn">commit</span>();
+    cmdbuf-><span class="fn">waitUntilCompleted</span>();  <span class="cm">// or use completion handlers</span>
+}</pre>
+  </div>
+
+  <div class="callout callout-warn">
+    <div class="callout-label">Performance note</div>
+    <p>The pipeline state object (<code>MTLComputePipelineState</code>) is expensive to create. Always create it once at initialization and cache it. MLX does this via its internal kernel registry which maps operation signatures to pre-built pipeline states.</p>
+  </div>
+
+
+  <!-- SECTION 6 -->
+  <h2 data-n="06">NVIDIA vs Apple: Side-by-Side</h2>
+
+  <p>
+    For anyone migrating from CUDA, here is a direct side-by-side comparison of the same softmax kernel written in both CUDA C++ and Metal Shading Language. The algorithmic logic is identical; only the vocabulary changes.
+  </p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-cpp">CUDA C++ — softmax (NVIDIA)</div>
+    </div>
+    <pre>__global__ <span class="ty">void</span> <span class="fn">softmax_kernel</span>(
+    <span class="kw">const</span> <span class="ty">float</span>* __restrict__ input,
+    <span class="ty">float</span>* __restrict__ output,
+    <span class="ty">int</span> n
+) {
+    __shared__ <span class="ty">float</span> shmem[<span class="num">256</span>];
+
+    <span class="ty">int</span> tid = blockIdx.x * blockDim.x + threadIdx.x;
+    <span class="ty">int</span> lid = threadIdx.x;
+
+    <span class="ty">float</span> val = (tid &lt; n) ? input[tid] : -<span class="num">INFINITY</span>;
+    shmem[lid] = val;
+    __syncthreads();
+
+    <span class="cm">// Warp-level max reduction</span>
+    <span class="kw">for</span> (<span class="ty">int</span> s = blockDim.x / <span class="num">2</span>; s &gt; <span class="num">0</span>; s &gt;&gt;= <span class="num">1</span>) {
+        <span class="kw">if</span> (lid &lt; s) shmem[lid] = max(shmem[lid], shmem[lid+s]);
+        __syncthreads();
+    }
+    <span class="ty">float</span> row_max = shmem[<span class="num">0</span>];
+
+    <span class="ty">float</span> exp_val = __expf(val - row_max);
+    shmem[lid] = exp_val;
+    __syncthreads();
+
+    <span class="kw">for</span> (<span class="ty">int</span> s = blockDim.x / <span class="num">2</span>; s &gt; <span class="num">0</span>; s &gt;&gt;= <span class="num">1</span>) {
+        <span class="kw">if</span> (lid &lt; s) shmem[lid] += shmem[lid+s];
+        __syncthreads();
+    }
+    <span class="ty">float</span> row_sum = shmem[<span class="num">0</span>];
+
+    <span class="kw">if</span> (tid &lt; n) output[tid] = exp_val / row_sum;
+}</pre>
+  </div>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-msl">MSL — softmax (Apple)</div>
+    </div>
+    <pre><span class="kw">kernel void</span> <span class="fn">softmax_kernel</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* input        <span class="at">[[buffer(0)]]</span>,
+    <span class="at">device</span>       <span class="ty">float</span>* output       <span class="at">[[buffer(1)]]</span>,
+    <span class="at">constant</span> <span class="ty">uint</span>&amp;  n               <span class="at">[[buffer(2)]]</span>,
+    <span class="at">threadgroup</span> <span class="ty">float</span>* shmem        <span class="at">[[threadgroup(0)]]</span>,
+    <span class="ty">uint</span> gid  <span class="at">[[thread_position_in_grid]]</span>,
+    <span class="ty">uint</span> lid  <span class="at">[[thread_position_in_threadgroup]]</span>,
+    <span class="ty">uint</span> lane <span class="at">[[thread_index_in_simdgroup]]</span>
+) {
+    <span class="ty">float</span> val = (gid &lt; n) ? input[gid] : -INFINITY;
+    shmem[lid] = val;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    <span class="cm">// Threadgroup-level reduction via SIMD intrinsics</span>
+    <span class="ty">float</span> row_max = simd_max(val);   <span class="cm">// Faster than manual loop!</span>
+
+    <span class="cm">// For multi-SIMD-group threadgroups, do a second pass in shmem</span>
+    <span class="kw">if</span> (lane == <span class="num">0</span>) shmem[lid / <span class="num">32</span>] = row_max;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    <span class="kw">if</span> (lid == <span class="num">0</span>) {
+        <span class="kw">for</span> (<span class="ty">uint</span> i = <span class="num">1</span>; i &lt; <span class="num">8</span>; ++i) shmem[<span class="num">0</span>] = max(shmem[<span class="num">0</span>], shmem[i]);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    row_max = shmem[<span class="num">0</span>];
+
+    <span class="ty">float</span> exp_val = exp(val - row_max);
+
+    <span class="ty">float</span> row_sum = simd_sum(exp_val);
+    <span class="kw">if</span> (lane == <span class="num">0</span>) shmem[lid / <span class="num">32</span>] = row_sum;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    <span class="kw">if</span> (lid == <span class="num">0</span>) {
+        <span class="kw">for</span> (<span class="ty">uint</span> i = <span class="num">1</span>; i &lt; <span class="num">8</span>; ++i) shmem[<span class="num">0</span>] += shmem[i];
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    row_sum = shmem[<span class="num">0</span>];
+
+    <span class="kw">if</span> (gid &lt; n) output[gid] = exp_val / row_sum;
+}</pre>
+  </div>
+
+  <p>
+    The SIMD-group intrinsics (<code>simd_max</code>, <code>simd_sum</code>) replace the inner warp-reduction loops entirely, making the MSL code more expressive at this level. Apple's compiler maps these to efficient hardware instructions on SIMD engines.
+  </p>
+
+
+  <!-- SECTION 7 -->
+  <h2 data-n="07">Elementwise & Reduction Kernels</h2>
+
+  <h3>Template-Based Elementwise Kernels</h3>
+  <p>
+    MLX uses C++ templates extensively to avoid duplicating kernel code for every dtype. The pattern is: write one templated MSL kernel, instantiate it for every type combination you need.
+  </p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-msl">MSL — Templated Elementwise Op</div>
+    </div>
+    <pre><span class="cm">// Generic elementwise binary op template</span>
+<span class="kw">template</span> &lt;<span class="kw">typename</span> <span class="ty">T</span>, <span class="kw">typename</span> <span class="ty">Op</span>&gt;
+<span class="kw">kernel void</span> <span class="fn">binary_op</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">T</span>* a   <span class="at">[[buffer(0)]]</span>,
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">T</span>* b   <span class="at">[[buffer(1)]]</span>,
+    <span class="at">device</span>       <span class="ty">T</span>* out <span class="at">[[buffer(2)]]</span>,
+    <span class="ty">uint</span> id <span class="at">[[thread_position_in_grid]]</span>
+) {
+    out[id] = <span class="ty">Op</span>{}(a[id], b[id]);
+}
+
+<span class="cm">// Operation structs — inlined at compile time</span>
+<span class="kw">struct</span> <span class="ty">Add</span>    { <span class="kw">template</span>&lt;<span class="kw">typename</span> T&gt; T <span class="kw">operator</span>()(T x, T y) { <span class="kw">return</span> x + y; } };
+<span class="kw">struct</span> <span class="ty">Mul</span>    { <span class="kw">template</span>&lt;<span class="kw">typename</span> T&gt; T <span class="kw">operator</span>()(T x, T y) { <span class="kw">return</span> x * y; } };
+<span class="kw">struct</span> <span class="ty">Sub</span>    { <span class="kw">template</span>&lt;<span class="kw">typename</span> T&gt; T <span class="kw">operator</span>()(T x, T y) { <span class="kw">return</span> x - y; } };
+<span class="kw">struct</span> <span class="ty">Divide</span> { <span class="kw">template</span>&lt;<span class="kw">typename</span> T&gt; T <span class="kw">operator</span>()(T x, T y) { <span class="kw">return</span> x / y; } };
+<span class="kw">struct</span> <span class="ty">Maximum</span>{ <span class="kw">template</span>&lt;<span class="kw">typename</span> T&gt; T <span class="kw">operator</span>()(T x, T y) { <span class="kw">return</span> max(x, y); } };
+
+<span class="cm">// Explicit instantiations for the metallib</span>
+<span class="kw">template</span> [[host_name(<span class="st">"binary_add_f32"</span>)]]
+<span class="kw">kernel void</span> binary_op&lt;<span class="ty">float</span>,  <span class="ty">Add</span>&gt;(<span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* , <span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* , <span class="at">device</span> <span class="ty">float</span>* , <span class="ty">uint</span>);
+<span class="kw">template</span> [[host_name(<span class="st">"binary_add_f16"</span>)]]
+<span class="kw">kernel void</span> binary_op&lt;<span class="ty">half</span>,   <span class="ty">Add</span>&gt;(<span class="at">device</span> <span class="kw">const</span> <span class="ty">half</span>*  , <span class="at">device</span> <span class="kw">const</span> <span class="ty">half</span>*  , <span class="at">device</span> <span class="ty">half</span>*  , <span class="ty">uint</span>);
+<span class="kw">template</span> [[host_name(<span class="st">"binary_mul_f32"</span>)]]
+<span class="kw">kernel void</span> binary_op&lt;<span class="ty">float</span>,  <span class="ty">Mul</span>&gt;(<span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* , <span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* , <span class="at">device</span> <span class="ty">float</span>* , <span class="ty">uint</span>);</pre>
+  </div>
+
+  <h3>Vectorised Loads</h3>
+  <p>
+    Apple GPUs support 128-bit vector loads. Processing 4 floats (or 8 halfs) in a single instruction dramatically increases memory throughput. This is critical for memory-bandwidth-bound kernels.
+  </p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-msl">MSL — Vectorised float4 Load</div>
+    </div>
+    <pre><span class="kw">kernel void</span> <span class="fn">add_f32_vec4</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">float4</span>* a   <span class="at">[[buffer(0)]]</span>,
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">float4</span>* b   <span class="at">[[buffer(1)]]</span>,
+    <span class="at">device</span>       <span class="ty">float4</span>* out <span class="at">[[buffer(2)]]</span>,
+    <span class="ty">uint</span> id <span class="at">[[thread_position_in_grid]]</span>
+) {
+    <span class="cm">// Each thread processes 4 floats in one 128-bit load</span>
+    out[id] = a[id] + b[id];   <span class="cm">// SIMD vector arithmetic</span>
+}
+
+<span class="cm">// For half-precision: 8 elements per thread with float4-equivalent</span>
+<span class="kw">kernel void</span> <span class="fn">add_f16_vec8</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half8</span>* a   <span class="at">[[buffer(0)]]</span>,
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half8</span>* b   <span class="at">[[buffer(1)]]</span>,
+    <span class="at">device</span>       <span class="ty">half8</span>* out <span class="at">[[buffer(2)]]</span>,
+    <span class="ty">uint</span> id <span class="at">[[thread_position_in_grid]]</span>
+) {
+    out[id] = a[id] + b[id];
+}</pre>
+  </div>
+
+
+  <!-- SECTION 8 -->
+  <h2 data-n="08">Matrix Operations & Tiled GEMM</h2>
+
+  <p>
+    General matrix multiplication (GEMM) is the backbone of every deep learning model. A naïve implementation that reads directly from device memory is bandwidth-limited and catastrophically slow. The solution is <strong>tiled GEMM</strong>: load sub-matrices into fast threadgroup memory, compute a tile of the output, and accumulate.
+  </p>
+
+  <div class="callout callout-info">
+    <div class="callout-label">Memory hierarchy</div>
+    <p>Device memory bandwidth on M3 Max is around 300 GB/s. Threadgroup memory sits on-chip and is effectively unlimited bandwidth within a threadgroup. A well-tiled GEMM can achieve 15–25× more effective throughput than the naïve version by maximising data reuse in threadgroup memory.</p>
+  </div>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-msl">MSL — Tiled GEMM Kernel</div>
+    </div>
+    <pre><span class="at">constant</span> <span class="ty">uint</span> TILE_SIZE = <span class="num">16</span>;
+
+<span class="kw">kernel void</span> <span class="fn">matmul_tiled</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* A       <span class="at">[[buffer(0)]]</span>,  <span class="cm">// [M, K]</span>
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* B       <span class="at">[[buffer(1)]]</span>,  <span class="cm">// [K, N]</span>
+    <span class="at">device</span>       <span class="ty">float</span>* C       <span class="at">[[buffer(2)]]</span>,  <span class="cm">// [M, N]</span>
+    <span class="at">constant</span> <span class="ty">uint</span>&amp; M           <span class="at">[[buffer(3)]]</span>,
+    <span class="at">constant</span> <span class="ty">uint</span>&amp; N           <span class="at">[[buffer(4)]]</span>,
+    <span class="at">constant</span> <span class="ty">uint</span>&amp; K           <span class="at">[[buffer(5)]]</span>,
+    <span class="at">threadgroup</span> <span class="ty">float</span>* tileA   <span class="at">[[threadgroup(0)]]</span>,  <span class="cm">// TILE x TILE</span>
+    <span class="at">threadgroup</span> <span class="ty">float</span>* tileB   <span class="at">[[threadgroup(1)]]</span>,  <span class="cm">// TILE x TILE</span>
+    <span class="ty">uint2</span> tgid <span class="at">[[threadgroup_position_in_grid]]</span>,
+    <span class="ty">uint2</span> lid  <span class="at">[[thread_position_in_threadgroup]]</span>
+) {
+    <span class="ty">uint</span> row = tgid.y * TILE_SIZE + lid.y;
+    <span class="ty">uint</span> col = tgid.x * TILE_SIZE + lid.x;
+
+    <span class="ty">float</span> acc = <span class="num">0.0f</span>;
+
+    <span class="cm">// Iterate over tiles along the K dimension</span>
+    <span class="kw">for</span> (<span class="ty">uint</span> t = <span class="num">0</span>; t &lt; (K + TILE_SIZE - <span class="num">1</span>) / TILE_SIZE; ++t) {
+
+        <span class="cm">// Cooperatively load a tile of A into threadgroup memory</span>
+        <span class="ty">uint</span> aRow = row;
+        <span class="ty">uint</span> aCol = t * TILE_SIZE + lid.x;
+        tileA[lid.y * TILE_SIZE + lid.x] =
+            (aRow &lt; M &amp;&amp; aCol &lt; K) ? A[aRow * K + aCol] : <span class="num">0.0f</span>;
+
+        <span class="cm">// Cooperatively load a tile of B</span>
+        <span class="ty">uint</span> bRow = t * TILE_SIZE + lid.y;
+        <span class="ty">uint</span> bCol = col;
+        tileB[lid.y * TILE_SIZE + lid.x] =
+            (bRow &lt; K &amp;&amp; bCol &lt; N) ? B[bRow * N + bCol] : <span class="num">0.0f</span>;
+
+        <span class="cm">// Synchronise: all threads must finish loading before compute</span>
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        <span class="cm">// Compute dot product of this tile — all reads from fast shmem</span>
+        <span class="kw">for</span> (<span class="ty">uint</span> k = <span class="num">0</span>; k &lt; TILE_SIZE; ++k) {
+            acc += tileA[lid.y * TILE_SIZE + k] *
+                   tileB[k * TILE_SIZE + lid.x];
+        }
+
+        <span class="cm">// Synchronise again before next tile load overwrites shmem</span>
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    <span class="kw">if</span> (row &lt; M &amp;&amp; col &lt; N) C[row * N + col] = acc;
+}</pre>
+  </div>
+
+  <h3>SIMD Matrix Operations (simdgroup_matrix)</h3>
+  <p>
+    For even higher throughput, MSL exposes hardware matrix multiply-accumulate (MMA) units via <code>simdgroup_matrix</code>. These are Apple's equivalent of CUDA's tensor cores — purpose-built for small matrix FMAs that run at much higher throughput than scalar ALU chains.
+  </p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-msl">MSL — simdgroup_matrix MMA</div>
+    </div>
+    <pre><span class="cm">// Using Apple's simdgroup_matrix for tensor-core-equivalent throughput
+// Operates on 8x8 tiles; each SIMD group (32 threads) handles one tile</span>
+<span class="kw">kernel void</span> <span class="fn">matmul_simdgroup</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half</span>*  A   <span class="at">[[buffer(0)]]</span>,
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half</span>*  B   <span class="at">[[buffer(1)]]</span>,
+    <span class="at">device</span>       <span class="ty">float</span>* C   <span class="at">[[buffer(2)]]</span>,
+    <span class="at">constant</span> <span class="ty">uint</span>&amp; M       <span class="at">[[buffer(3)]]</span>,
+    <span class="at">constant</span> <span class="ty">uint</span>&amp; N       <span class="at">[[buffer(4)]]</span>,
+    <span class="at">constant</span> <span class="ty">uint</span>&amp; K       <span class="at">[[buffer(5)]]</span>,
+    <span class="ty">uint2</span> tgid <span class="at">[[threadgroup_position_in_grid]]</span>
+) {
+    <span class="cm">// Accumulator in float32 (mixed precision)</span>
+    simdgroup_matrix&lt;<span class="ty">float</span>, <span class="num">8</span>, <span class="num">8</span>&gt; acc;
+    simdgroup_matrix_initialize(<span class="num">0</span>, acc);
+
+    simdgroup_matrix&lt;<span class="ty">half</span>, <span class="num">8</span>, <span class="num">8</span>&gt; matA;
+    simdgroup_matrix&lt;<span class="ty">half</span>, <span class="num">8</span>, <span class="num">8</span>&gt; matB;
+
+    <span class="ty">ulong2</span> origin_A = ulong2(<span class="num">0</span>, tgid.y * <span class="num">8</span>);
+    <span class="ty">ulong2</span> origin_B = ulong2(tgid.x * <span class="num">8</span>, <span class="num">0</span>);
+
+    <span class="kw">for</span> (<span class="ty">uint</span> k = <span class="num">0</span>; k &lt; K; k += <span class="num">8</span>) {
+        <span class="cm">// Load 8x8 tile of A from device memory directly</span>
+        simdgroup_load(matA, A, N, ulong2(k, tgid.y * <span class="num">8</span>));
+        simdgroup_load(matB, B, N, ulong2(tgid.x * <span class="num">8</span>, k));
+
+        <span class="cm">// Hardware MMA: acc += matA * matB</span>
+        simdgroup_multiply_accumulate(acc, matA, matB, acc);
+    }
+
+    <span class="cm">// Store 8x8 result tile</span>
+    simdgroup_store(acc, C, N, ulong2(tgid.x * <span class="num">8</span>, tgid.y * <span class="num">8</span>));
+}</pre>
+  </div>
+
+
+  <!-- SECTION 9 -->
+  <h2 data-n="09">Fused Attention Kernels</h2>
+
+  <p>
+    Flash Attention — the technique of computing multi-head attention without materialising the full N×N attention score matrix in device memory — is the most important fused kernel in modern LLM inference. Here is how you implement it in MSL for Apple GPUs.
+  </p>
+
+  <p>
+    The key insight: by processing the sequence in blocks and accumulating a running softmax (tracking the max and sum incrementally), we only ever need to hold one block of Q, K, V in threadgroup memory at a time. Memory usage drops from O(N²) to O(N).
+  </p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-msl">MSL — Flash Attention (Simplified)</div>
+    </div>
+    <pre><span class="cm">// Flash Attention forward pass — O(N) memory, tiled over sequence</span>
+<span class="at">constant</span> <span class="ty">uint</span> BLOCK_SIZE = <span class="num">64</span>;   <span class="cm">// KV block size (tune for your hardware)</span>
+
+<span class="kw">kernel void</span> <span class="fn">flash_attention</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half</span>* Q        <span class="at">[[buffer(0)]]</span>,  <span class="cm">// [B, H, N, D]</span>
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half</span>* K        <span class="at">[[buffer(1)]]</span>,  <span class="cm">// [B, H, N, D]</span>
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half</span>* V        <span class="at">[[buffer(2)]]</span>,  <span class="cm">// [B, H, N, D]</span>
+    <span class="at">device</span>       <span class="ty">half</span>* Out      <span class="at">[[buffer(3)]]</span>,
+    <span class="at">constant</span> <span class="ty">uint</span>&amp;  N           <span class="at">[[buffer(4)]]</span>,  <span class="cm">// seq length</span>
+    <span class="at">constant</span> <span class="ty">uint</span>&amp;  D           <span class="at">[[buffer(5)]]</span>,  <span class="cm">// head dim</span>
+    <span class="at">constant</span> <span class="ty">float</span>&amp; scale       <span class="at">[[buffer(6)]]</span>,  <span class="cm">// 1/sqrt(D)</span>
+    <span class="at">threadgroup</span> <span class="ty">half</span>*  kv_tile  <span class="at">[[threadgroup(0)]]</span>,
+    <span class="ty">uint</span> q_idx <span class="at">[[thread_position_in_grid]]</span>,
+    <span class="ty">uint</span> lane  <span class="at">[[thread_index_in_simdgroup]]</span>
+) {
+    <span class="kw">if</span> (q_idx >= N) <span class="kw">return</span>;
+
+    <span class="cm">// Load query vector for this thread's position</span>
+    <span class="ty">float</span> q[<span class="num">64</span>];  <span class="cm">// D ≤ 64 head dim (stored in registers)</span>
+    <span class="kw">for</span> (<span class="ty">uint</span> d = <span class="num">0</span>; d &lt; D; ++d)
+        q[d] = (<span class="ty">float</span>)Q[q_idx * D + d];
+
+    <span class="cm">// Online softmax accumulators (Dao et al. 2022 trick)</span>
+    <span class="ty">float</span> m = -INFINITY;  <span class="cm">// running max of attention logits</span>
+    <span class="ty">float</span> s = <span class="num">0.0f</span>;       <span class="cm">// running denominator</span>
+    <span class="ty">float</span> o[<span class="num">64</span>] = {<span class="num">0</span>};    <span class="cm">// running output accumulator</span>
+
+    <span class="cm">// Iterate over KV blocks</span>
+    <span class="kw">for</span> (<span class="ty">uint</span> kv_start = <span class="num">0</span>; kv_start &lt; N; kv_start += BLOCK_SIZE) {
+        <span class="ty">uint</span> kv_end = min(kv_start + BLOCK_SIZE, N);
+
+        <span class="cm">// Load this KV block into threadgroup memory cooperatively</span>
+        <span class="kw">for</span> (<span class="ty">uint</span> i = lane; i &lt; (kv_end - kv_start) * D; i += <span class="num">32</span>)
+            kv_tile[i] = K[(kv_start + i/D) * D + i%D];
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        <span class="cm">// Compute Q·K^T for this block</span>
+        <span class="kw">for</span> (<span class="ty">uint</span> j = kv_start; j &lt; kv_end; ++j) {
+            <span class="ty">float</span> score = <span class="num">0.0f</span>;
+            <span class="kw">for</span> (<span class="ty">uint</span> d = <span class="num">0</span>; d &lt; D; ++d)
+                score += q[d] * (<span class="ty">float</span>)kv_tile[(j-kv_start)*D + d];
+            score *= scale;
+
+            <span class="cm">// Online softmax update</span>
+            <span class="ty">float</span> m_new = max(m, score);
+            <span class="ty">float</span> exp_s = exp(score - m_new);
+            <span class="ty">float</span> correction = exp(m - m_new);
+            s = correction * s + exp_s;
+            <span class="kw">for</span> (<span class="ty">uint</span> d = <span class="num">0</span>; d &lt; D; ++d)
+                o[d] = correction * o[d] +
+                       exp_s * (<span class="ty">float</span>)kv_tile[(j-kv_start)*D + d];
+            m = m_new;
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    <span class="cm">// Normalise and write output</span>
+    <span class="kw">for</span> (<span class="ty">uint</span> d = <span class="num">0</span>; d &lt; D; ++d)
+        Out[q_idx * D + d] = (<span class="ty">half</span>)(o[d] / s);
+}</pre>
+  </div>
+
+  <div class="callout callout-tip">
+    <div class="callout-label">MLX implementation</div>
+    <p>MLX implements <code>mx.fast.scaled_dot_product_attention()</code> using exactly this pattern. The actual MLX kernel adds support for GQA (grouped-query attention), masking, and BF16, and uses <code>simdgroup_matrix</code> operations for the inner GEMM — but the online softmax structure is identical.</p>
+  </div>
+
+
+  <!-- SECTION 10 -->
+  <h2 data-n="10">C++ Runtime & Custom Ops</h2>
+
+  <p>
+    If you want to expose a custom Metal kernel to Python via MLX, you need to write the C++ glue: a <code>Primitive</code> subclass that tells the framework how to evaluate your op on the GPU, how to differentiate through it, and how to fuse it with adjacent ops.
+  </p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-cpp">C++ — Custom MLX Primitive</div>
+    </div>
+    <pre><span class="cm">// custom_op.h</span>
+#include &lt;mlx/mlx.h&gt;
+
+<span class="kw">class</span> <span class="ty">ScaledELU</span> : <span class="kw">public</span> mlx::<span class="ty">Primitive</span> {
+<span class="kw">public</span>:
+  <span class="kw">explicit</span> <span class="fn">ScaledELU</span>(<span class="ty">float</span> alpha, mlx::<span class="ty">Stream</span> s)
+      : mlx::<span class="ty">Primitive</span>(s), alpha_(alpha) {}
+
+  <span class="ty">void</span> <span class="fn">eval_cpu</span>(
+      <span class="kw">const</span> std::vector&lt;mlx::<span class="ty">array</span>&gt;&amp; inputs,
+      std::vector&lt;mlx::<span class="ty">array</span>&gt;&amp; outputs
+  ) <span class="kw">override</span>;
+
+  <span class="ty">void</span> <span class="fn">eval_gpu</span>(
+      <span class="kw">const</span> std::vector&lt;mlx::<span class="ty">array</span>&gt;&amp; inputs,
+      std::vector&lt;mlx::<span class="ty">array</span>&gt;&amp; outputs
+  ) <span class="kw">override</span>;
+
+  <span class="cm">// VJP for autograd support</span>
+  std::vector&lt;mlx::<span class="ty">array</span>&gt; <span class="fn">vjp</span>(
+      <span class="kw">const</span> std::vector&lt;mlx::<span class="ty">array</span>&gt;&amp; primals,
+      <span class="kw">const</span> std::vector&lt;mlx::<span class="ty">array</span>&gt;&amp; cotangents,
+      <span class="kw">const</span> std::vector&lt;<span class="ty">int</span>&gt;&amp; argnums,
+      <span class="kw">const</span> std::vector&lt;mlx::<span class="ty">array</span>&gt;&amp; outputs
+  ) <span class="kw">override</span>;
+
+<span class="kw">private</span>:
+  <span class="ty">float</span> alpha_;
+};
+
+<span class="cm">// The Python-visible entry point</span>
+mlx::<span class="ty">array</span> <span class="fn">scaled_elu</span>(mlx::<span class="ty">array</span> x, <span class="ty">float</span> alpha);
+
+<span class="cm">// custom_op.cpp — GPU evaluation</span>
+<span class="ty">void</span> ScaledELU::<span class="fn">eval_gpu</span>(
+    <span class="kw">const</span> std::vector&lt;mlx::<span class="ty">array</span>&gt;&amp; inputs,
+    std::vector&lt;mlx::<span class="ty">array</span>&gt;&amp; outputs
+) {
+    <span class="kw">auto</span>&amp; x   = inputs[<span class="num">0</span>];
+    <span class="kw">auto</span>&amp; out = outputs[<span class="num">0</span>];
+    out.<span class="fn">set_data</span>(mlx::<span class="fn">allocator</span>().<span class="fn">malloc_or_wait</span>(out.<span class="fn">nbytes</span>()));
+
+    <span class="cm">// Get the Metal compute encoder from the MLX stream</span>
+    <span class="kw">auto</span>&amp; s = metal::<span class="fn">device</span>(stream());
+    <span class="kw">auto</span> kernel = s.<span class="fn">get_kernel</span>(<span class="st">"scaled_elu_f32"</span>);  <span class="cm">// cached PSO</span>
+    <span class="kw">auto</span> encoder = s.<span class="fn">get_command_encoder</span>(stream().<span class="fn">index</span>);
+
+    encoder-><span class="fn">setComputePipelineState</span>(kernel);
+    encoder-><span class="fn">setBuffer</span>(x.<span class="fn">buffer</span>(),   x.<span class="fn">data_offset</span>() * x.<span class="fn">itemsize</span>(),   <span class="num">0</span>);
+    encoder-><span class="fn">setBuffer</span>(out.<span class="fn">buffer</span>(), out.<span class="fn">data_offset</span>() * out.<span class="fn">itemsize</span>(), <span class="num">1</span>);
+    encoder-><span class="fn">setBytes</span>(&amp;alpha_, <span class="kw">sizeof</span>(<span class="ty">float</span>), <span class="num">2</span>);
+
+    <span class="ty">size_t</span> n = x.<span class="fn">size</span>();
+    encoder-><span class="fn">dispatchThreads</span>(
+        MTL::Size(n, <span class="num">1</span>, <span class="num">1</span>),
+        MTL::Size(std::min(n, (<span class="ty">size_t</span>)<span class="num">1024</span>), <span class="num">1</span>, <span class="num">1</span>)
+    );
+}</pre>
+  </div>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-msl">MSL — scaled_elu.metal</div>
+    </div>
+    <pre><span class="kw">kernel void</span> <span class="fn">scaled_elu_f32</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* x      <span class="at">[[buffer(0)]]</span>,
+    <span class="at">device</span>       <span class="ty">float</span>* out    <span class="at">[[buffer(1)]]</span>,
+    <span class="at">constant</span> <span class="ty">float</span>&amp; alpha     <span class="at">[[buffer(2)]]</span>,
+    <span class="ty">uint</span> id <span class="at">[[thread_position_in_grid]]</span>
+) {
+    <span class="ty">float</span> val = x[id];
+    out[id] = (val &gt; <span class="num">0.0f</span>) ? val : alpha * (exp(val) - <span class="num">1.0f</span>);
+}
+
+<span class="cm">// Also instantiate for half precision</span>
+<span class="kw">kernel void</span> <span class="fn">scaled_elu_f16</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half</span>* x     <span class="at">[[buffer(0)]]</span>,
+    <span class="at">device</span>       <span class="ty">half</span>* out   <span class="at">[[buffer(1)]]</span>,
+    <span class="at">constant</span> <span class="ty">float</span>&amp; alpha    <span class="at">[[buffer(2)]]</span>,
+    <span class="ty">uint</span> id <span class="at">[[thread_position_in_grid]]</span>
+) {
+    <span class="ty">float</span> val = (<span class="ty">float</span>)x[id];
+    out[id]   = (<span class="ty">half</span>)((val &gt; <span class="num">0.0f</span>) ? val : alpha * (exp(val) - <span class="num">1.0f</span>));
+}</pre>
+  </div>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-python">Python — Using the Custom Op</div>
+    </div>
+    <pre><span class="kw">import</span> mlx.core <span class="kw">as</span> mx
+<span class="kw">from</span> my_custom_ops <span class="kw">import</span> scaled_elu  <span class="cm"># pybind11 module</span>
+
+x = mx.array([-<span class="num">2.0</span>, -<span class="num">1.0</span>, <span class="num">0.0</span>, <span class="num">1.0</span>, <span class="num">2.0</span>])
+
+<span class="cm"># Runs your Metal kernel transparently</span>
+y = <span class="fn">scaled_elu</span>(x, alpha=<span class="num">1.0</span>)
+mx.<span class="fn">eval</span>(y)
+<span class="kw">print</span>(y)   <span class="cm"># [-0.865, -0.632, 0.0, 1.0, 2.0]</span>
+
+<span class="cm"># Autograd works via the vjp() you implemented</span>
+grad_fn = mx.<span class="fn">grad</span>(<span class="kw">lambda</span> x: mx.<span class="fn">sum</span>(<span class="fn">scaled_elu</span>(x, alpha=<span class="num">1.0</span>)))
+dx = <span class="fn">grad_fn</span>(x)
+mx.<span class="fn">eval</span>(dx)
+<span class="kw">print</span>(dx)  <span class="cm"># [0.135, 0.368, 1.0, 1.0, 1.0]</span></pre>
+  </div>
+
+
+  <!-- SECTION 11 -->
+  <h2 data-n="11">Performance Tuning</h2>
+
+  <p>
+    Getting correct output from your kernel is step one. Getting maximum performance on Apple Silicon requires understanding the hardware bottlenecks and tuning accordingly.
+  </p>
+
+  <h3>Occupancy & Threadgroup Size</h3>
+  <p>
+    Occupancy is the ratio of active threadgroups to the maximum a GPU core can hold simultaneously. Higher occupancy lets the GPU hide memory latency by switching between ready threadgroups. The right threadgroup size balances register pressure against the desire for more concurrent threadgroups.
+  </p>
+
+  <ul>
+    <li>Start with 256 threads per threadgroup — a safe default that divides evenly into SIMD groups of 32</li>
+    <li>For memory-bound kernels, try 128 or even 64 to increase occupancy and latency hiding</li>
+    <li>For compute-bound kernels with large register files, 512 may be better</li>
+    <li>Use <code>MTLComputePipelineState.maxTotalThreadsPerThreadgroup</code> to query the hardware limit</li>
+  </ul>
+
+  <h3>Memory Access Patterns</h3>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-msl">MSL — Coalesced vs Strided Access</div>
+    </div>
+    <pre><span class="cm">// BAD: Strided access — threads in a SIMD group read non-contiguous addresses
+// Thread 0 reads [0], Thread 1 reads [N], Thread 2 reads [2*N], ...
+// This generates N separate cache line loads for one SIMD group</span>
+<span class="kw">kernel void</span> <span class="fn">column_access_bad</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* mat <span class="at">[[buffer(0)]]</span>,
+    <span class="at">constant</span> <span class="ty">uint</span>&amp; N       <span class="at">[[buffer(1)]]</span>,
+    <span class="ty">uint</span> id <span class="at">[[thread_position_in_grid]]</span>
+) {
+    <span class="ty">float</span> val = mat[id * N];  <span class="cm">// Column-major — terrible for row-major storage!</span>
+}
+
+<span class="cm">// GOOD: Coalesced access — threads read consecutive addresses
+// Thread 0 reads [0], Thread 1 reads [1], Thread 2 reads [2], ...
+// All 32 threads in a SIMD group satisfied by 1-2 cache line loads</span>
+<span class="kw">kernel void</span> <span class="fn">row_access_good</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* mat <span class="at">[[buffer(0)]]</span>,
+    <span class="ty">uint</span> id <span class="at">[[thread_position_in_grid]]</span>
+) {
+    <span class="ty">float</span> val = mat[id];  <span class="cm">// Sequential — one cache line serves 8+ threads</span>
+}
+
+<span class="cm">// FIX strided access: transpose into threadgroup memory first</span>
+<span class="kw">kernel void</span> <span class="fn">column_via_transpose</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">float</span>* mat      <span class="at">[[buffer(0)]]</span>,
+    <span class="at">device</span>       <span class="ty">float</span>* out      <span class="at">[[buffer(1)]]</span>,
+    <span class="at">constant</span> <span class="ty">uint</span>&amp; N             <span class="at">[[buffer(2)]]</span>,
+    <span class="at">threadgroup</span> <span class="ty">float</span> tile[<span class="num">32</span>][<span class="num">33</span>] <span class="at">[[threadgroup(0)]]</span>,  <span class="cm">// +1 avoids bank conflict</span>
+    <span class="ty">uint2</span> lid  <span class="at">[[thread_position_in_threadgroup]]</span>,
+    <span class="ty">uint2</span> tgid <span class="at">[[threadgroup_position_in_grid]]</span>
+) {
+    <span class="cm">// Load row of matrix into tile (coalesced)</span>
+    tile[lid.y][lid.x] = mat[(tgid.y * <span class="num">32</span> + lid.y) * N + tgid.x * <span class="num">32</span> + lid.x];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    <span class="cm">// Write column of tile to output (coalesced after transpose)</span>
+    out[(tgid.x * <span class="num">32</span> + lid.y) * N + tgid.y * <span class="num">32</span> + lid.x] = tile[lid.x][lid.y];
+}</pre>
+  </div>
+
+  <h3>Instruction-Level Tricks</h3>
+  <ul>
+    <li>Use <code>fma(a, b, c)</code> (fused multiply-add) explicitly — it is a single instruction and avoids rounding between the multiply and add</li>
+    <li>Prefer <code>half</code> over <code>float</code> wherever precision allows — Apple GPUs can process twice as many half-precision operations per clock</li>
+    <li>Use <code>precise::sin()</code>, <code>precise::exp()</code> only when you need IEEE accuracy; the default approximations are faster</li>
+    <li>Unroll small inner loops with <code>[[unroll]]</code> attribute — the compiler will keep values in registers instead of re-reading memory</li>
+    <li>Annotate read-only input pointers with <code>const</code> — enables additional optimisations</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-msl">MSL — Optimisation Attributes</div>
+    </div>
+    <pre><span class="cm">// Explicit FMA, unrolled loop, and fast math</span>
+<span class="kw">kernel void</span> <span class="fn">optimised_dot</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half4</span>* a <span class="at">[[buffer(0)]]</span>,
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half4</span>* b <span class="at">[[buffer(1)]]</span>,
+    <span class="at">device</span>       <span class="ty">float</span>* c <span class="at">[[buffer(2)]]</span>,
+    <span class="at">constant</span> <span class="ty">uint</span>&amp; len   <span class="at">[[buffer(3)]]</span>,
+    <span class="ty">uint</span> id <span class="at">[[thread_position_in_grid]]</span>
+) {
+    <span class="ty">uint</span> base = id * <span class="num">8</span>;   <span class="cm">// 8 halfs per thread (two half4 loads)</span>
+    <span class="ty">float</span> acc = <span class="num">0.0f</span>;
+
+    <span class="cm">// Unrolled: compiler keeps a[] and b[] in registers</span>
+    [[unroll]] <span class="kw">for</span> (<span class="ty">uint</span> i = <span class="num">0</span>; i &lt; <span class="num">2</span>; ++i) {
+        <span class="ty">half4</span> av = a[(base/<span class="num">4</span>) + i];
+        <span class="ty">half4</span> bv = b[(base/<span class="num">4</span>) + i];
+        <span class="cm">// float4 FMA: 4 ops fused into hardware instruction</span>
+        acc = <span class="fn">fma</span>((<span class="ty">float</span>)av.x, (<span class="ty">float</span>)bv.x, acc);
+        acc = <span class="fn">fma</span>((<span class="ty">float</span>)av.y, (<span class="ty">float</span>)bv.y, acc);
+        acc = <span class="fn">fma</span>((<span class="ty">float</span>)av.z, (<span class="ty">float</span>)bv.z, acc);
+        acc = <span class="fn">fma</span>((<span class="ty">float</span>)av.w, (<span class="ty">float</span>)bv.w, acc);
+    }
+    <span class="cm">// Cross-SIMD-group reduction</span>
+    c[id] = simd_sum(acc);
+}</pre>
+  </div>
+
+  <h3>Profiling with Metal Debugger</h3>
+  <p>Apple's Xcode instruments (specifically the Metal Debugger and GPU Timeline) are the primary tools for profiling kernel performance. Key metrics to watch:</p>
+  <ul>
+    <li><strong>ALU Utilisation</strong> — are you compute-bound? If below 80%, you're losing cycles to memory stalls</li>
+    <li><strong>Threadgroup Memory Read/Write bandwidth</strong> — high numbers indicate heavy on-chip traffic (good for GEMM, watch for conflicts)</li>
+    <li><strong>Device Memory Bandwidth</strong> — compare against theoretical peak to measure roofline efficiency</li>
+    <li><strong>Kernel Duration</strong> — track per-kernel timing across model iterations to identify regressions</li>
+  </ul>
+
+
+  <!-- SECTION 12 -->
+  <h2 data-n="12">The MLX Engineer's Workflow</h2>
+
+  <p>
+    Putting it all together: what does a typical day look like for someone writing MLX kernels? The work is distributed across three layers, and understanding the ratio tells you where to focus your energy.
+  </p>
+
+  <div class="ratio-section">
+    <div class="ratio-row">
+      <span class="ratio-label">C++</span>
+      <div class="ratio-bar-bg">
+        <div class="ratio-bar-fill" style="width: 55%; background: #f59e0b;"></div>
+      </div>
+      <span class="ratio-pct">~55%</span>
+    </div>
+    <div class="ratio-row">
+      <span class="ratio-label">MSL</span>
+      <div class="ratio-bar-bg">
+        <div class="ratio-bar-fill" style="width: 35%; background: #7c6dfc;"></div>
+      </div>
+      <span class="ratio-pct">~35%</span>
+    </div>
+    <div class="ratio-row">
+      <span class="ratio-label">Python</span>
+      <div class="ratio-bar-bg">
+        <div class="ratio-bar-fill" style="width: 10%; background: #2dd4bf;"></div>
+      </div>
+      <span class="ratio-pct">~10%</span>
+    </div>
+  </div>
+
+  <h3>The Deep MLX Pipeline</h3>
+  <p>
+    The most intellectually interesting work in MLX sits in the graph optimisation and kernel fusion passes — the equivalent of what Triton's autotuner and torch.compile's Inductor do on the NVIDIA side:
+  </p>
+
+  <div class="pipeline">
+    <div class="pipe-node" style="background: rgba(45,212,191,0.1); color: var(--teal); border: 1px solid rgba(45,212,191,0.2);">MLX Graph</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node" style="background: rgba(124,109,252,0.1); color: var(--accent2); border: 1px solid rgba(124,109,252,0.2);">Fusion Pass</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node" style="background: rgba(245,158,11,0.1); color: var(--gold); border: 1px solid rgba(245,158,11,0.2);">Kernel Gen</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node" style="background: rgba(248,113,113,0.1); color: var(--coral); border: 1px solid rgba(248,113,113,0.2);">Metal Runtime</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node" style="background: color-mix(in srgb, var(--bg3) 88%, transparent); color: var(--text); border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);">Apple GPU</div>
+  </div>
+
+  <h3>Example: Writing a Custom Fused Kernel</h3>
+  <p>
+    Suppose you profile a Llama-style model and discover that two adjacent operations — a <code>silu</code> activation applied to a gate, then an elementwise multiplication with the up-projection — account for disproportionate time due to two separate kernel launches and the associated device memory round-trips. You can fuse them:
+  </p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-msl">MSL — Fused SiLU Gate (Llama MLP)</div>
+    </div>
+    <pre><span class="cm">// Fuses: out = gate * silu(up) into one kernel, one device memory read per array</span>
+<span class="kw">kernel void</span> <span class="fn">silu_gate_fused</span>(
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half</span>* gate <span class="at">[[buffer(0)]]</span>,   <span class="cm">// W_gate * x</span>
+    <span class="at">device</span> <span class="kw">const</span> <span class="ty">half</span>* up   <span class="at">[[buffer(1)]]</span>,   <span class="cm">// W_up * x</span>
+    <span class="at">device</span>       <span class="ty">half</span>* out  <span class="at">[[buffer(2)]]</span>,
+    <span class="ty">uint4</span> id <span class="at">[[thread_position_in_grid]]</span>        <span class="cm">// process 4 elements per thread</span>
+) {
+    <span class="ty">uint</span> base = id.x * <span class="num">4</span>;
+
+    <span class="cm">// Load 4 halfs using a single 64-bit load</span>
+    <span class="ty">half4</span> g = *(<span class="at">device</span> <span class="kw">const</span> <span class="ty">half4</span>*)(gate + base);
+    <span class="ty">half4</span> u = *(<span class="at">device</span> <span class="kw">const</span> <span class="ty">half4</span>*)(up   + base);
+
+    <span class="cm">// SiLU: x * sigmoid(x) = x / (1 + exp(-x))</span>
+    <span class="ty">float4</span> gf = (<span class="ty">float4</span>)g;
+    <span class="ty">float4</span> uf = (<span class="ty">float4</span>)u;
+    <span class="ty">float4</span> silu_u = uf * (<span class="num">1.0f</span> / (<span class="num">1.0f</span> + exp(-uf)));
+
+    <span class="cm">// Fused gate multiply</span>
+    *(<span class="at">device</span> <span class="ty">half4</span>*)(out + base) = (<span class="ty">half4</span>)(gf * silu_u);
+}</pre>
+  </div>
+
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <div class="code-lang lang-python">Python — Using the Fused Op in a Model</div>
+    </div>
+    <pre><span class="kw">import</span> mlx.core <span class="kw">as</span> mx
+<span class="kw">import</span> mlx.nn <span class="kw">as</span> nn
+<span class="kw">from</span> my_kernels <span class="kw">import</span> silu_gate_fused
+
+<span class="kw">class</span> <span class="ty">LlamaMLP</span>(nn.<span class="ty">Module</span>):
+    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="kw">self</span>, dim: <span class="ty">int</span>, hidden: <span class="ty">int</span>):
+        <span class="kw">super</span>().<span class="fn">__init__</span>()
+        <span class="kw">self</span>.gate_proj = nn.<span class="ty">Linear</span>(dim, hidden, bias=<span class="kw">False</span>)
+        <span class="kw">self</span>.up_proj   = nn.<span class="ty">Linear</span>(dim, hidden, bias=<span class="kw">False</span>)
+        <span class="kw">self</span>.down_proj = nn.<span class="ty">Linear</span>(hidden, dim, bias=<span class="kw">False</span>)
+
+    <span class="kw">def</span> <span class="fn">__call__</span>(<span class="kw">self</span>, x):
+        gate = <span class="kw">self</span>.<span class="fn">gate_proj</span>(x)
+        up   = <span class="kw">self</span>.<span class="fn">up_proj</span>(x)
+        <span class="cm"># One fused Metal kernel instead of two separate launches</span>
+        hidden = <span class="fn">silu_gate_fused</span>(gate, up)
+        <span class="kw">return</span> <span class="kw">self</span>.<span class="fn">down_proj</span>(hidden)</pre>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="highlight-box">
+    <p>
+      <strong>The bottom line:</strong> Writing GPU kernels for Apple Silicon means mastering Metal Shading Language as your primary compute shading language, C++ as your runtime glue, and understanding Apple's unified memory model as your performance superpower. The absence of PCIe latency and the presence of insane memory bandwidth create opportunities for kernel designs that simply aren't possible on discrete NVIDIA GPUs.
+    </p>
+    <p>
+      SIMD-group intrinsics let you do warp-level reductions without touching shared memory. Unified memory lets you build zero-copy data pipelines between CPU preprocessing and GPU inference. And the tile-based GPU architecture rewards blocking patterns that keep working sets on-chip.
+    </p>
+    <p>
+      As LLM inference increasingly moves to personal devices and Apple's silicon continues to close the gap with discrete GPUs, MLX and MSL kernels are becoming essential knowledge for any serious ML systems engineer working in the Apple ecosystem. The conceptual skills transfer cleanly from CUDA — only the vocabulary changes.
+    </p>
+  </div>
+
+  <div class="post-footer">
+    <p>Written with precision for engineers crossing the CUDA → Metal divide.</p>
+    <p style="margin-top: 8px;">MLX · Metal Shading Language · Apple M-Series · Unified Memory Architecture</p>
+  </div>
+
+  <form class="subscribe" action="https://buttondown.email/api/emails/embed-subscribe/manish-ai" method="post" target="popupwindow" onsubmit="window.open('https://buttondown.email/manish-ai', 'popupwindow')">
+    <label for="bd-email">Get new essays by email</label>
+    <input id="bd-email" type="email" name="email" placeholder="you@example.com" required>
+    <input type="hidden" value="1" name="embed">
+    <input type="submit" value="Subscribe">
+  </form>
+  <div id="webmentions" hidden></div>
+  <div class="meta-footer">
+    <p>Published June 15, 2026 on MANISH AI. A deep technical guide for engineers moving from CUDA mental models into Apple's MLX and Metal stack.</p>
+  </div>
+</main>
+</body>
+</html>
