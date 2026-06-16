@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KV Cache Isn't Anonymous Memory | MANISH AI</title>
+<meta name="description" content="A systems essay on why KV cache should be scheduled like deadline-sensitive state, not anonymous memory, using the kv_deadline_scheduler framework and its MemoryIntent schema."/>
+<meta name="keywords" content="KV cache, deadline scheduler, LLM inference, memory scheduling, HBM, DRAM, MemoryIntent, vLLM, KV eviction"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f5f3ee"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/kv-cache-isnt-anonymous-memory-kv-deadline-scheduler.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="KV Cache Isn't Anonymous Memory | MANISH AI"/>
+<meta property="og:description" content="Why KV cache needs deadline-aware scheduling and intent-aware residency instead of generic memory eviction logic."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/kv-cache-isnt-anonymous-memory-kv-deadline-scheduler.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/kv-cache-isnt-anonymous-memory-kv-deadline-scheduler.png"/>
+<meta property="og:image:alt" content="Preview image for KV Cache Isn't Anonymous Memory"/>
+<meta property="article:published_time" content="2026-06-16T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-06-16T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="KV Cache Isn't Anonymous Memory"/>
+<meta name="twitter:description" content="A systems essay on deadline-aware KV scheduling, MemoryIntent, and why LLM cache state cannot be treated like anonymous memory."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/kv-cache-isnt-anonymous-memory-kv-deadline-scheduler.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"KV Cache Isn't Anonymous Memory","description":"A systems essay on why KV cache should be scheduled like deadline-sensitive state, not anonymous memory, using the kv_deadline_scheduler framework and its MemoryIntent schema.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/kv-cache-isnt-anonymous-memory-kv-deadline-scheduler.html","mainEntityOfPage":"https://manishklach.github.io/writings/kv-cache-isnt-anonymous-memory-kv-deadline-scheduler.html","datePublished":"2026-06-16","dateModified":"2026-06-16","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Instrument+Serif:ital@0;1&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #0d0e10;
+    --paper: #f5f3ee;
+    --cream: #ede9e0;
+    --accent: #c9460a;
+    --accent-pale: #fbe8df;
+    --muted: #6b6860;
+    --border: #d8d4cb;
+    --code-bg: #1a1c1f;
+    --code-fg: #e2ddd4;
+    --teal: #0a6b5e;
+    --teal-pale: #ddf0ec;
+    --amber: #a06b00;
+    --amber-pale: #fdf3d9;
+    --purple: #4a3b8c;
+    --purple-pale: #eeeafc;
+
+    --f-display: 'Instrument Serif', Georgia, serif;
+    --f-sans: 'Syne', system-ui, sans-serif;
+    --f-mono: 'DM Mono', 'Fira Code', monospace;
+
+    --max: 780px;
+    --wide: 1060px;
+  }
+
+  html.dark {
+    --ink: #ece7df;
+    --paper: #0f1114;
+    --cream: #171a1f;
+    --accent: #ff7c45;
+    --accent-pale: rgba(255,124,69,0.12);
+    --muted: #a39f96;
+    --border: #2a2d33;
+    --code-bg: #17191d;
+    --code-fg: #ebe5db;
+    --teal: #51c8b2;
+    --teal-pale: rgba(81,200,178,0.12);
+    --amber: #e0b04d;
+    --amber-pale: rgba(224,176,77,0.12);
+    --purple: #b8a5ff;
+    --purple-pale: rgba(184,165,255,0.12);
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--f-display);
+    font-size: 18px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 18px 2rem 0;
+    position: relative;
+    z-index: 101;
+  }
+
+  .site-tools {
+    margin: 0;
+    padding: 14px 18px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--paper) 86%, transparent);
+    backdrop-filter: blur(12px);
+  }
+
+  .brand {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: var(--accent);
+  }
+
+  /* ─── NAV ─── */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 52px;
+  }
+  .nav-logo {
+    font-family: var(--f-mono);
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    text-decoration: none;
+  }
+  .nav-logo span { color: var(--accent); }
+  .nav-tag {
+    font-family: var(--f-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ─── HERO ─── */
+  .hero {
+    max-width: var(--wide);
+    margin: 0 auto;
+    padding: 5rem 2rem 3rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+    align-items: end;
+  }
+  @media (max-width: 700px) { .hero { grid-template-columns: 1fr; gap: 2rem; padding: 3rem 1.25rem 2rem; } }
+
+  .eyebrow {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 1.25rem;
+  }
+
+  h1 {
+    font-family: var(--f-display);
+    font-size: clamp(2.4rem, 5vw, 3.6rem);
+    line-height: 1.1;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--ink);
+    margin-bottom: 1.25rem;
+    letter-spacing: -0.02em;
+  }
+  h1 strong {
+    font-style: normal;
+    font-weight: 400;
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+  }
+
+  .hero-meta {
+    font-family: var(--f-sans);
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    margin-top: 1.5rem;
+  }
+
+  .hero-lede {
+    font-size: 1.15rem;
+    line-height: 1.6;
+    color: color-mix(in srgb, var(--ink) 82%, var(--muted));
+    border-left: 3px solid var(--accent);
+    padding-left: 1.25rem;
+    font-family: var(--f-display);
+    font-style: italic;
+  }
+
+  .hero-stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .hero-stat {
+    background: var(--paper);
+    padding: 1.25rem 1.5rem;
+  }
+  .hero-stat .num {
+    font-family: var(--f-sans);
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1;
+    margin-bottom: 0.3rem;
+  }
+  .hero-stat .num .accent { color: var(--accent); }
+  .hero-stat .lbl {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* ─── LAYOUT ─── */
+  .container {
+    max-width: var(--max);
+    margin: 0 auto;
+    padding: 0 2rem;
+  }
+  @media (max-width: 600px) { .container { padding: 0 1.25rem; } }
+
+  section { padding: 3.5rem 0; }
+  section + section { border-top: 1px solid var(--border); }
+
+  h2 {
+    font-family: var(--f-display);
+    font-size: 2rem;
+    font-weight: 400;
+    line-height: 1.2;
+    margin-bottom: 1.25rem;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  h2 em { color: var(--accent); font-style: italic; }
+
+  h3 {
+    font-family: var(--f-sans);
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 2.5rem 0 0.75rem;
+  }
+
+  p { margin-bottom: 1.2rem; }
+  p:last-child { margin-bottom: 0; }
+
+  strong { font-family: var(--f-sans); font-weight: 600; font-style: normal; }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { text-decoration-style: solid; }
+
+  code {
+    font-family: var(--f-mono);
+    font-size: 0.82em;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.1em 0.4em;
+    color: var(--ink);
+  }
+
+  pre {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    font-family: var(--f-mono);
+    font-size: 0.82rem;
+    line-height: 1.6;
+    padding: 1.5rem;
+    border-radius: 10px;
+    overflow-x: auto;
+    margin: 1.75rem 0;
+    position: relative;
+  }
+  pre .kw  { color: #f78c6c; }
+  pre .str { color: #c3e88d; }
+  pre .cm  { color: #637777; font-style: italic; }
+  pre .cls { color: #82aaff; }
+  pre .num { color: #f78c6c; }
+  pre .fn  { color: #ffcb6b; }
+  pre .label { color: #89ddff; }
+
+  /* ─── CALLOUT ─── */
+  .callout {
+    background: var(--accent-pale);
+    border-left: 4px solid var(--accent);
+    padding: 1.25rem 1.5rem;
+    border-radius: 0 8px 8px 0;
+    margin: 2rem 0;
+  }
+  .callout.teal { background: var(--teal-pale); border-color: var(--teal); }
+  .callout.amber { background: var(--amber-pale); border-color: var(--amber); }
+  .callout.purple { background: var(--purple-pale); border-color: var(--purple); }
+
+  .callout p {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 1.05rem;
+    line-height: 1.55;
+    color: var(--ink);
+    margin: 0;
+  }
+
+  /* ─── DIAGRAM WRAPPER ─── */
+  .diagram {
+    margin: 2.5rem 0;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    overflow: hidden;
+  }
+  .diagram-caption {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    margin-top: 0.75rem;
+    text-align: center;
+  }
+
+  /* ─── POLICY TABLE ─── */
+  .policy-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--f-sans);
+    font-size: 0.82rem;
+    margin: 1.5rem 0;
+  }
+  .policy-table th {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 0.6rem 0.9rem;
+    text-align: left;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+  }
+  .policy-table td {
+    padding: 0.55rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .policy-table tr:last-child td { border-bottom: none; }
+  .policy-table tr:nth-child(even) td { background: var(--cream); }
+  .policy-table .yes { color: var(--teal); font-weight: 600; }
+  .policy-table .no  { color: var(--muted); }
+  .policy-table .star { color: var(--accent); font-weight: 700; }
+
+  /* ─── PILL / TAG ─── */
+  .pill {
+    display: inline-block;
+    font-family: var(--f-mono);
+    font-size: 11px;
+    padding: 0.2em 0.65em;
+    border-radius: 20px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+  }
+  .pill.cold   { background: #dbeafe; color: #1e40af; }
+  .pill.warm   { background: #fef3c7; color: #92400e; }
+  .pill.hot    { background: #fee2e2; color: #991b1b; }
+  .pill.decode { background: #fce7f3; color: #831843; }
+
+  /* ─── GRID LAYOUT FOR TIERS ─── */
+  .tier-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 1.75rem 0;
+  }
+  @media (max-width: 600px) { .tier-grid { grid-template-columns: 1fr 1fr; } }
+  .tier-cell {
+    background: var(--paper);
+    padding: 1.1rem 1rem;
+    text-align: center;
+  }
+  .tier-cell .tier-name { font-family: var(--f-sans); font-weight: 700; font-size: 0.9rem; letter-spacing: 0.05em; color: var(--ink); }
+  .tier-cell .tier-bw   { font-family: var(--f-mono); font-size: 1.4rem; font-weight: 500; color: var(--accent); margin: 0.2rem 0; }
+  .tier-cell .tier-note { font-family: var(--f-mono); font-size: 10px; color: var(--muted); letter-spacing: 0.05em; }
+
+  /* ─── REPO LINK BOX ─── */
+  .repo-box {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 1.5rem 2rem;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin: 2.5rem 0;
+    text-decoration: none;
+    transition: opacity 0.15s;
+    flex-wrap: wrap;
+  }
+  .repo-box:hover { opacity: 0.85; }
+  .repo-box-icon { font-size: 2rem; flex-shrink: 0; }
+  .repo-box-text .repo-name { font-family: var(--f-mono); font-size: 1rem; color: #ffcb6b; }
+  .repo-box-text .repo-desc { font-family: var(--f-sans); font-size: 0.8rem; color: #888; margin-top: 0.2rem; }
+  .repo-box-arrow { margin-left: auto; font-family: var(--f-sans); font-size: 0.8rem; color: var(--accent); letter-spacing: 0.08em; }
+
+  /* ─── CONCLUSION ─── */
+  .conclusion-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 2rem 0;
+  }
+  @media (max-width: 600px) { .conclusion-grid { grid-template-columns: 1fr; } }
+  .conclusion-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+  }
+  .conclusion-card h4 {
+    font-family: var(--f-sans);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.5rem;
+  }
+  .conclusion-card p {
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: var(--ink);
+    font-family: var(--f-display);
+  }
+
+  /* ─── FOOTER ─── */
+  footer {
+    background: var(--ink);
+    color: var(--code-fg);
+    padding: 2.5rem 2rem;
+    text-align: center;
+    font-family: var(--f-mono);
+    font-size: 12px;
+    letter-spacing: 0.07em;
+    line-height: 2;
+  }
+  footer a { color: #ffcb6b; }
+
+  .meta-footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .meta-footer p {
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+
+  /* ─── ANIMATIONS ─── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .hero { animation: fadeUp 0.55s ease both; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero, * { animation: none !important; }
+  }
+
+  /* ─── SVG-specific tweaks ─── */
+  svg text { font-family: 'DM Mono', monospace; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="site-tools">
+    <a class="brand" href="/">MANISH AI</a>
+    <div class="site-tools-actions">
+      <a class="back-link" href="/writings.html">All writings</a>
+      <a class="rss-link" href="/feed.xml">RSS</a>
+      <button id="theme-toggle" type="button" aria-label="Toggle color theme">Toggle</button>
+    </div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <a href="https://github.com/manishklach/kv_deadline_scheduler" target="_blank" class="nav-logo">
+    <span>kv_deadline_scheduler</span> / main
+  </a>
+  <span class="nav-tag">Systems Research · LLM Inference</span>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div>
+    <p class="eyebrow">Deep Dive · June 2026</p>
+    <h1>KV Cache Isn't <strong>Anonymous Memory</strong></h1>
+    <p class="hero-lede">
+      What if your GPU memory manager knew which tensor was about to miss a decode deadline?
+      That's the question <em>kv_deadline_scheduler</em> is built to answer.
+    </p>
+    <div class="hero-meta">
+      <span>Manish Klach</span>
+      <span>2,876 lines of Python</span>
+      <span>MIT License</span>
+      <span>5 eviction policies</span>
+    </div>
+  </div>
+  <div>
+    <div class="hero-stat-grid">
+      <div class="hero-stat">
+        <div class="num"><span class="accent">5</span></div>
+        <div class="lbl">Eviction policies</div>
+      </div>
+      <div class="hero-stat">
+        <div class="num"><span class="accent">5</span></div>
+        <div class="lbl">Workload profiles</div>
+      </div>
+      <div class="hero-stat">
+        <div class="num"><span class="accent">p99</span></div>
+        <div class="lbl">Latency tracked</div>
+      </div>
+      <div class="hero-stat">
+        <div class="num"><span class="accent">0</span></div>
+        <div class="lbl">vLLM patches needed</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- MAIN CONTENT -->
+<main data-pagefind-body>
+
+<!-- ── SECTION 1: THE PROBLEM ── -->
+<section>
+<div class="container">
+  <h2>The problem with treating HBM like a page cache</h2>
+
+  <p>
+    When a long-context LLM is serving dozens of concurrent requests, its GPU high-bandwidth memory (HBM)
+    fills up fast. A Llama-3-8B request with 128k tokens occupies roughly <strong>32–64 GB</strong> of
+    KV-cache — more than many A100s hold in total. Under pressure, something has to be evicted.
+  </p>
+
+  <p>
+    Classical eviction policies (LRU, clock, FIFO) treat HBM blocks the way a kernel page allocator
+    treats DRAM pages: as interchangeable, anonymous chunks of bytes. The most recently untouched block
+    gets the boot. But a KV-cache block is not anonymous. It belongs to a request, it encodes a specific
+    sequence position, it will be needed at a specific decode step, and evicting it mid-decode causes a
+    latency penalty that can be 10–100× the cost of an ordinary cache miss.
+  </p>
+
+  <div class="callout">
+    <p>
+      "Generic memory tiering asks: <em>Is this page hot?</em><br>
+      KV Deadline Scheduler asks: <em>Which KV block belongs to decode-critical request-state, how close
+      is it to missing its deadline, and what is the cost of evicting it?</em>"
+      <br>— from the project README
+    </p>
+  </div>
+
+  <p>
+    This is the central insight of <a href="https://github.com/manishklach/kv_deadline_scheduler" target="_blank">kv_deadline_scheduler</a>:
+    you can do dramatically better than LRU by propagating a small amount of semantic intent — deadline,
+    priority, phase, slack — downward from the serving layer to the memory manager.
+  </p>
+
+  <div class="tier-grid">
+    <div class="tier-cell">
+      <div class="tier-name">HBM</div>
+      <div class="tier-bw">3.35 TB/s</div>
+      <div class="tier-note">A100 · 80 GB</div>
+    </div>
+    <div class="tier-cell">
+      <div class="tier-name">DRAM</div>
+      <div class="tier-bw">~200 GB/s</div>
+      <div class="tier-note">Spill target</div>
+    </div>
+    <div class="tier-cell">
+      <div class="tier-name">CXL</div>
+      <div class="tier-bw">~50 GB/s</div>
+      <div class="tier-note">Future tier</div>
+    </div>
+    <div class="tier-cell">
+      <div class="tier-name">NVMe</div>
+      <div class="tier-bw">~7 GB/s</div>
+      <div class="tier-note">Last resort</div>
+    </div>
+  </div>
+
+  <p>
+    The bandwidth cliff is real. Evicting a KV block from HBM to NVMe and then reloading it costs
+    roughly 200–5000 µs depending on the tier. For a decode step with a 1 ms deadline, a single
+    bad eviction decision blows the budget entirely. LRU has no way to know that — it just sees a cold access timestamp.
+  </p>
+
+  <!-- DIAGRAM: Bandwidth cliff -->
+  <div class="diagram">
+    <svg viewBox="0 0 740 240" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- bars -->
+      <!-- HBM -->
+      <rect x="60" y="30" width="110" height="140" rx="5" fill="#c9460a" opacity="0.9"/>
+      <text x="115" y="23" text-anchor="middle" fill="#0d0e10" font-size="11" font-weight="600">HBM</text>
+      <text x="115" y="185" text-anchor="middle" fill="#0d0e10" font-size="10">3,350 GB/s</text>
+
+      <!-- DRAM -->
+      <rect x="220" y="96" width="110" height="74" rx="5" fill="#e87040" opacity="0.8"/>
+      <text x="275" y="89" text-anchor="middle" fill="#0d0e10" font-size="11" font-weight="600">DRAM</text>
+      <text x="275" y="185" text-anchor="middle" fill="#0d0e10" font-size="10">200 GB/s</text>
+
+      <!-- CXL -->
+      <rect x="380" y="140" width="110" height="30" rx="5" fill="#ebb883" opacity="0.9"/>
+      <text x="435" y="133" text-anchor="middle" fill="#0d0e10" font-size="11" font-weight="600">CXL</text>
+      <text x="435" y="185" text-anchor="middle" fill="#0d0e10" font-size="10">50 GB/s</text>
+
+      <!-- NVMe -->
+      <rect x="540" y="160" width="110" height="10" rx="5" fill="#d4c9b8" opacity="0.9"/>
+      <text x="595" y="153" text-anchor="middle" fill="#0d0e10" font-size="11" font-weight="600">NVMe</text>
+      <text x="595" y="185" text-anchor="middle" fill="#0d0e10" font-size="10">7 GB/s</text>
+
+      <!-- penalty labels -->
+      <text x="60" y="210" fill="#6b6860" font-size="10">miss penalty ≈ 0 µs</text>
+      <text x="214" y="210" fill="#6b6860" font-size="10">~200 µs reload</text>
+      <text x="370" y="210" fill="#6b6860" font-size="10">~800 µs reload</text>
+      <text x="530" y="210" fill="#6b6860" font-size="10">~5000 µs reload</text>
+
+      <!-- axis label -->
+      <text x="370" y="235" text-anchor="middle" fill="#6b6860" font-size="11">← memory bandwidth drops as tier depth increases</text>
+    </svg>
+    <p class="diagram-caption">Memory tier bandwidth cliff — eviction across tiers is not symmetric</p>
+  </div>
+
+</div>
+</section>
+
+<!-- ── SECTION 2: THE SCHEMA ── -->
+<section>
+<div class="container">
+  <h2>The <em>MemoryIntent</em> schema: giving blocks a voice</h2>
+
+  <p>
+    The project's most important contribution is <code>MemoryIntent</code>, the dataclass in
+    <code>schema.py</code> that every KV block carries through its lifecycle. Instead of tracking
+    a block by a raw address and an LRU timestamp, it captures:
+  </p>
+
+  <pre><code><span class="cm"># src/kv_memory_intent/schema.py (abridged)</span>
+<span class="kw">@dataclass</span>(slots=<span class="cls">True</span>)
+<span class="kw">class</span> <span class="cls">MemoryIntent</span>:
+    object_id:      <span class="cls">str</span>          <span class="cm"># e.g. "req-007:block:14"</span>
+    request_id:     <span class="cls">str</span>
+    phase:          <span class="cls">Phase</span>        <span class="cm"># PREFILL | DECODE | VERIFY | DONE …</span>
+    priority:       <span class="cls">Priority</span>     <span class="cm"># COLD | WARM | HOT | DECODE_CRITICAL</span>
+    deadline_us:    <span class="cls">int</span> | <span class="cls">None</span>   <span class="cm"># microsecond deadline from now</span>
+    slack_us:       <span class="cls">int</span> | <span class="cls">None</span>   <span class="cm"># time before deadline becomes critical</span>
+    request_priority: <span class="cls">int</span>        <span class="cm"># 0–100 business priority</span>
+    recompute_cost_us: <span class="cls">int</span>       <span class="cm"># cost to recompute if evicted</span>
+    target_decode_step: <span class="cls">int</span>      <span class="cm"># which step needs this block</span>
+    pin_requested:  <span class="cls">bool</span>         <span class="cm"># DECODE_CRITICAL auto-pins</span>
+    compression_ok: <span class="cls">bool</span>
+    recompute_ok:   <span class="cls">bool</span>
+    prefetch_ok:    <span class="cls">bool</span></code></pre>
+
+  <p>
+    Two scoring methods live on the schema itself — <code>effective_deadline_score()</code> measures
+    urgency to protect, and <code>eviction_risk_score()</code> combines urgency with cost of removal.
+    This means the data object carries its own risk calculus, not just raw fields.
+  </p>
+
+  <h3>Priority taxonomy</h3>
+
+  <p>
+    The four priority levels map directly to what the serving engine knows about a block at any moment:
+  </p>
+
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:1rem 0 1.5rem">
+    <span class="pill cold">COLD</span>
+    <span class="pill warm">WARM</span>
+    <span class="pill hot">HOT</span>
+    <span class="pill decode">DECODE_CRITICAL</span>
+  </div>
+
+  <p>
+    <code>DECODE_CRITICAL</code> automatically sets <code>pin_requested=True</code> in
+    <code>__post_init__</code>, making it impossible for a policy to accidentally evict a block
+    that a decode step is actively depending on — unless every block in HBM is pinned and the
+    policy has no other choice.
+  </p>
+
+  <!-- DIAGRAM: Block lifecycle -->
+  <div class="diagram">
+    <svg viewBox="0 0 740 200" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- ALLOCATED -->
+      <rect x="20" y="70" width="110" height="50" rx="7" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+      <text x="75" y="91" text-anchor="middle" font-size="11" font-weight="600" fill="#1e40af">ALLOCATED</text>
+      <text x="75" y="108" text-anchor="middle" font-size="9" fill="#3b82f6">WARM / PREFILL</text>
+
+      <!-- arrow -->
+      <line x1="130" y1="95" x2="152" y2="95" stroke="#aaa" stroke-width="1.2" marker-end="url(#arr2)"/>
+
+      <!-- ACCESSED -->
+      <rect x="155" y="70" width="110" height="50" rx="7" fill="#fef3c7" stroke="#fbbf24" stroke-width="1"/>
+      <text x="210" y="91" text-anchor="middle" font-size="11" font-weight="600" fill="#92400e">ACCESSED</text>
+      <text x="210" y="108" text-anchor="middle" font-size="9" fill="#b45309">recency ↑</text>
+
+      <!-- arrow -->
+      <line x1="265" y1="95" x2="287" y2="95" stroke="#aaa" stroke-width="1.2" marker-end="url(#arr2)"/>
+
+      <!-- MARKED_DECODE_CRITICAL -->
+      <rect x="290" y="55" width="145" height="65" rx="7" fill="#fce7f3" stroke="#f472b6" stroke-width="1.5"/>
+      <text x="362" y="79" text-anchor="middle" font-size="10" font-weight="700" fill="#831843">DECODE_CRITICAL</text>
+      <text x="362" y="96" text-anchor="middle" font-size="9" fill="#9d174d">pin_requested = True</text>
+      <text x="362" y="111" text-anchor="middle" font-size="9" fill="#9d174d">deadline_us set</text>
+
+      <!-- arrow -->
+      <line x1="435" y1="88" x2="457" y2="88" stroke="#aaa" stroke-width="1.2" marker-end="url(#arr2)"/>
+
+      <!-- COMMITTED -->
+      <rect x="460" y="70" width="100" height="50" rx="7" fill="#dcfce7" stroke="#4ade80" stroke-width="1"/>
+      <text x="510" y="91" text-anchor="middle" font-size="11" font-weight="600" fill="#14532d">COMMITTED</text>
+      <text x="510" y="108" text-anchor="middle" font-size="9" fill="#166534">is_committed=T</text>
+
+      <!-- arrow -->
+      <line x1="560" y1="95" x2="582" y2="95" stroke="#aaa" stroke-width="1.2" marker-end="url(#arr2)"/>
+
+      <!-- FREED -->
+      <rect x="585" y="70" width="100" height="50" rx="7" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>
+      <text x="635" y="91" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">FREED</text>
+      <text x="635" y="108" text-anchor="middle" font-size="9" fill="#64748b">evicted from live</text>
+
+      <!-- spill branch -->
+      <line x1="210" y1="120" x2="210" y2="155" stroke="#e87040" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr2)"/>
+      <rect x="155" y="158" width="110" height="35" rx="7" fill="#fff7ed" stroke="#fb923c" stroke-width="1"/>
+      <text x="210" y="172" text-anchor="middle" font-size="10" font-weight="600" fill="#9a3412">SPILLED</text>
+      <text x="210" y="186" text-anchor="middle" font-size="9" fill="#c2410c">→ DRAM tier</text>
+
+      <!-- prefetch branch -->
+      <line x1="362" y1="120" x2="362" y2="155" stroke="#6b7280" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr2)"/>
+      <rect x="304" y="158" width="115" height="35" rx="7" fill="#f0fdf4" stroke="#4ade80" stroke-width="1"/>
+      <text x="362" y="172" text-anchor="middle" font-size="10" font-weight="600" fill="#14532d">PREFETCHED</text>
+      <text x="362" y="186" text-anchor="middle" font-size="9" fill="#166534">DRAM → HBM</text>
+
+      <!-- legend -->
+      <text x="370" y="15" text-anchor="middle" font-size="10" fill="#6b6860">KV block lifecycle — events drive the simulator's state machine</text>
+    </svg>
+    <p class="diagram-caption">MemoryIntentEvent types and the transitions they drive in KVMemorySimulator</p>
+  </div>
+
+</div>
+</section>
+
+<!-- ── SECTION 3: THE POLICY LADDER ── -->
+<section>
+<div class="container">
+  <h2>Five policies, one <em>ladder</em></h2>
+
+  <p>
+    The codebase implements an ascending ladder of eviction intelligence. Each policy is a subclass of
+    <code>PlacementPolicy</code>, overriding <code>choose_victim()</code> and optionally
+    <code>should_prefetch()</code> and <code>explain_victim_choice()</code>.
+    The ladder is designed to be pedagogically clear: each rung adds exactly one new dimension of information.
+  </p>
+
+  <table class="policy-table">
+    <thead>
+      <tr>
+        <th>Policy</th>
+        <th>Access history</th>
+        <th>Predicted hotness</th>
+        <th>Priority / phase</th>
+        <th>Deadline / slack</th>
+        <th>Prefetch</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>LRU</code></td>
+        <td class="yes">✓</td>
+        <td class="no">—</td>
+        <td class="no">—</td>
+        <td class="no">—</td>
+        <td class="no">—</td>
+      </tr>
+      <tr>
+        <td><code>HotCold</code></td>
+        <td class="yes">✓</td>
+        <td class="yes">✓</td>
+        <td class="no">—</td>
+        <td class="no">—</td>
+        <td class="no">—</td>
+      </tr>
+      <tr>
+        <td><code>PredictiveHotness</code></td>
+        <td class="yes">✓</td>
+        <td class="yes">✓ + reuse window</td>
+        <td class="no">—</td>
+        <td class="no">—</td>
+        <td class="no">—</td>
+      </tr>
+      <tr>
+        <td><code>IntentAware</code></td>
+        <td class="yes">✓</td>
+        <td class="yes">partial</td>
+        <td class="yes">✓</td>
+        <td class="no">limited</td>
+        <td class="no">—</td>
+      </tr>
+      <tr>
+        <td><code>DeadlineAware ★</code></td>
+        <td class="yes">✓</td>
+        <td class="yes">partial</td>
+        <td class="yes">✓</td>
+        <td class="star">✓✓</td>
+        <td class="star">✓</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>DeadlineAware scoring — how it works</h3>
+
+  <p>
+    <code>DeadlineAwarePolicy</code> extends <code>IntentAwarePolicy</code> and computes a floating-point
+    <em>eviction score</em> for each candidate block. Higher score means "more evictable." Key contributions:
+  </p>
+
+  <pre><code><span class="cm"># Deadline nearness — the closer to missing, the more we protect</span>
+<span class="kw">if</span> block.deadline_us &lt;= <span class="num">1_000</span>:   score -= <span class="num">320.0</span>   <span class="cm"># under 1 ms: heavily shield</span>
+<span class="kw">elif</span> block.deadline_us &lt;= <span class="num">5_000</span>: score -= <span class="num">140.0</span>   <span class="cm"># under 5 ms: strong shield</span>
+<span class="kw">else</span>:                              score -= <span class="num">25.0</span>    <span class="cm"># more distant: mild shield</span>
+
+<span class="cm"># Slack is even stronger when available</span>
+<span class="kw">if</span> block.slack_us &lt;= <span class="num">500</span>:   score -= <span class="num">260.0</span>
+<span class="kw">elif</span> block.slack_us &lt;= <span class="num">2_000</span>: score -= <span class="num">120.0</span>
+
+<span class="cm"># Phase and priority</span>
+<span class="kw">if</span> block.phase == <span class="cls">Phase</span>.DECODE:              score -= <span class="num">110.0</span>
+<span class="kw">if</span> block.priority == <span class="cls">Priority</span>.DECODE_CRITICAL: score -= <span class="num">400.0</span>
+
+<span class="cm"># Cold DONE blocks are preferred victims</span>
+<span class="kw">if</span> block.phase == <span class="cls">Phase</span>.DONE:   score += <span class="num">40.0</span>
+<span class="kw">if</span> block.priority == <span class="cls">Priority</span>.COLD <span class="kw">and</span> block.deadline_us <span class="kw">is</span> <span class="cls">None</span>: score += <span class="num">35.0</span></code></pre>
+
+  <div class="callout teal">
+    <p>
+      The <code>explain_victim_choice()</code> method on every policy produces a human-readable string
+      logging why a specific block was chosen for eviction — enabling offline audit of every decision
+      the simulator made, down to the individual step.
+    </p>
+  </div>
+
+  <!-- DIAGRAM: Policy comparison -->
+  <div class="diagram">
+    <svg viewBox="0 0 740 280" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- axis -->
+      <text x="370" y="18" text-anchor="middle" font-size="11" fill="#6b6860" font-weight="600">Simulated p99 decode latency under HBM pressure (lower = better)</text>
+      <line x1="100" y1="30" x2="100" y2="240" stroke="#ccc" stroke-width="1"/>
+      <line x1="100" y1="240" x2="710" y2="240" stroke="#ccc" stroke-width="1"/>
+
+      <!-- LRU -->
+      <text x="90" y="72" text-anchor="end" font-size="10" fill="#0d0e10">LRU</text>
+      <rect x="102" y="55" width="510" height="28" rx="4" fill="#d4c9b8"/>
+      <text x="616" y="74" text-anchor="start" font-size="10" fill="#6b6860">100%</text>
+
+      <!-- HotCold -->
+      <text x="90" y="117" text-anchor="end" font-size="10" fill="#0d0e10">HotCold</text>
+      <rect x="102" y="100" width="440" height="28" rx="4" fill="#ebb883"/>
+      <text x="546" y="119" text-anchor="start" font-size="10" fill="#6b6860">~86%</text>
+
+      <!-- Predictive -->
+      <text x="90" y="162" text-anchor="end" font-size="10" fill="#0d0e10">Predictive</text>
+      <rect x="102" y="145" width="380" height="28" rx="4" fill="#e87040"/>
+      <text x="486" y="164" text-anchor="start" font-size="10" fill="#6b6860">~75%</text>
+
+      <!-- IntentAware -->
+      <text x="90" y="207" text-anchor="end" font-size="10" fill="#0d0e10">IntentAware</text>
+      <rect x="102" y="190" width="280" height="28" rx="4" fill="#c9460a"/>
+      <text x="386" y="209" text-anchor="start" font-size="10" fill="#6b6860">~55%</text>
+
+      <!-- DeadlineAware -->
+      <text x="90" y="252" text-anchor="end" font-size="10" font-weight="700" fill="#0d0e10">Deadline ★</text>
+      <rect x="102" y="235" width="185" height="28" rx="4" fill="#0a6b5e"/>
+      <text x="291" y="254" text-anchor="start" font-size="10" fill="#6b6860">~36%</text>
+
+      <text x="102" y="273" font-size="9" fill="#aaa">Note: values are illustrative from prototype simulation, not production benchmarks</text>
+    </svg>
+    <p class="diagram-caption">Relative p99 latency by policy under deadline_pressure workload profile (simulated)</p>
+  </div>
+
+</div>
+</section>
+
+<!-- ── SECTION 4: ARCHITECTURE ── -->
+<section>
+<div class="container">
+  <h2>Architecture: <em>observability-first</em></h2>
+
+  <p>
+    One of the project's sharpest design choices is the separation between observation and actuation.
+    Phase one — where the project sits now — is purely observational. The serving engine doesn't change.
+    No vLLM patches. No kernel modifications. Just trace ingestion and offline policy replay.
+  </p>
+
+  <!-- DIAGRAM: full architecture -->
+  <div class="diagram">
+    <svg viewBox="0 0 740 330" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- LEFT COLUMN: inputs -->
+      <text x="120" y="18" text-anchor="middle" font-size="10" fill="#6b6860" letter-spacing="0.08em" font-weight="600">INPUTS</text>
+
+      <rect x="20" y="28" width="200" height="42" rx="7" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>
+      <text x="120" y="45" text-anchor="middle" font-size="11" font-weight="600" fill="#1e293b">Serving logs / request traces</text>
+      <text x="120" y="61" text-anchor="middle" font-size="9" fill="#64748b">trace_importer.py · adapters/</text>
+
+      <rect x="20" y="82" width="200" height="42" rx="7" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>
+      <text x="120" y="99" text-anchor="middle" font-size="11" font-weight="600" fill="#1e293b">Synthetic workload generator</text>
+      <text x="120" y="115" text-anchor="middle" font-size="9" fill="#64748b">simulator.py → 5 profiles</text>
+
+      <rect x="20" y="136" width="200" height="42" rx="7" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>
+      <text x="120" y="153" text-anchor="middle" font-size="11" font-weight="600" fill="#1e293b">KV footprint estimator</text>
+      <text x="120" y="169" text-anchor="middle" font-size="9" fill="#64748b">kv_estimator.py · ModelKVConfig</text>
+
+      <!-- arrows to event stream -->
+      <line x1="220" y1="49" x2="272" y2="130" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr4)"/>
+      <line x1="220" y1="103" x2="272" y2="130" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr4)"/>
+      <line x1="220" y1="157" x2="272" y2="157" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr4)"/>
+
+      <!-- CENTER: event stream -->
+      <rect x="275" y="105" width="185" height="105" rx="9" fill="#fce7f3" stroke="#f472b6" stroke-width="1.5"/>
+      <text x="367" y="130" text-anchor="middle" font-size="12" font-weight="700" fill="#831843">MemoryIntentEvent</text>
+      <text x="367" y="149" text-anchor="middle" font-size="9" fill="#9d174d">schema.py + events.py</text>
+      <text x="367" y="166" text-anchor="middle" font-size="9" fill="#9d174d">JSONL trace stream</text>
+      <text x="367" y="183" text-anchor="middle" font-size="9" fill="#9d174d">step · event_type · intent</text>
+
+      <!-- arrow to policy engine -->
+      <line x1="460" y1="157" x2="498" y2="157" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr4)"/>
+
+      <!-- RIGHT: policy engine + simulator -->
+      <text x="610" y="18" text-anchor="middle" font-size="10" fill="#6b6860" letter-spacing="0.08em" font-weight="600">POLICIES + SIMULATION</text>
+
+      <rect x="500" y="28" width="220" height="90" rx="9" fill="#ddf0ec" stroke="#0a6b5e" stroke-width="1.5"/>
+      <text x="610" y="50" text-anchor="middle" font-size="12" font-weight="700" fill="#064e3b">Policy engine</text>
+      <text x="610" y="68" text-anchor="middle" font-size="9" fill="#065f46">LRU · HotCold · Predictive</text>
+      <text x="610" y="83" text-anchor="middle" font-size="9" fill="#065f46">IntentAware · DeadlineAware</text>
+      <text x="610" y="98" text-anchor="middle" font-size="9" fill="#065f46">policies.py</text>
+
+      <!-- arrow to simulator -->
+      <line x1="610" y1="118" x2="610" y2="138" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr4)"/>
+
+      <rect x="500" y="140" width="220" height="60" rx="9" fill="#ddf0ec" stroke="#0a6b5e" stroke-width="1"/>
+      <text x="610" y="163" text-anchor="middle" font-size="12" font-weight="700" fill="#064e3b">KVMemorySimulator</text>
+      <text x="610" y="181" text-anchor="middle" font-size="9" fill="#065f46">HBM + DRAM tiers · miss / spill / prefetch</text>
+
+      <!-- arrow to metrics -->
+      <line x1="610" y1="200" x2="610" y2="228" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr4)"/>
+
+      <rect x="500" y="230" width="220" height="60" rx="9" fill="#fef3c7" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="610" y="252" text-anchor="middle" font-size="12" font-weight="700" fill="#78350f">SimulationResult</text>
+      <text x="610" y="270" text-anchor="middle" font-size="9" fill="#92400e">p50 / p95 / p99 · decode_critical_misses</text>
+
+      <!-- kvmi CLI -->
+      <rect x="20" y="235" width="200" height="55" rx="9" fill="#fff7ed" stroke="#fb923c" stroke-width="1"/>
+      <text x="120" y="258" text-anchor="middle" font-size="12" font-weight="700" fill="#7c2d12">kvmi CLI</text>
+      <text x="120" y="275" text-anchor="middle" font-size="9" fill="#9a3412">compare · inspect · estimate-kv</text>
+      <text x="120" y="288" text-anchor="middle" font-size="9" fill="#9a3412">import-request-trace · mock-vllm</text>
+
+      <line x1="220" y1="262" x2="498" y2="262" stroke="#fb923c" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arr4)"/>
+
+      <!-- bottom note -->
+      <text x="370" y="318" text-anchor="middle" font-size="9.5" fill="#6b6860">No runtime modification to vLLM or any serving engine required</text>
+    </svg>
+    <p class="diagram-caption">Full system architecture of kv_deadline_scheduler</p>
+  </div>
+
+  <div class="callout amber">
+    <p>
+      Intent is emitted per KV block <em>lifecycle</em>, not per page fault.
+      This keeps the overhead low and the design portable across HBM, DRAM, CXL, and NVMe backends
+      without any hot-path callbacks.
+    </p>
+  </div>
+
+  <h3>External trace import — no serving engine access needed</h3>
+
+  <p>
+    If you have request logs from any OpenAI-compatible serving proxy, the
+    <code>trace_importer.py</code> adapter converts them into approximate KV block lifecycle
+    events. The conversion chain is:
+  </p>
+
+  <pre><code><span class="cm"># Import real request logs and replay them</span>
+kvmi import-request-trace \
+  --requests examples/sample_request_trace.jsonl \
+  --model llama-3-8b \
+  --out imported_trace.jsonl \
+  --logical-block-mb 1
+
+kvmi compare \
+  --trace imported_trace.jsonl \
+  --hbm-mb 4096 \
+  --dram-mb 65536</code></pre>
+
+  <p>
+    The importer estimates KV block footprint from token counts and model configuration
+    (<code>ModelKVConfig</code> in <code>kv_estimator.py</code>), reconstructs approximate
+    PREFILL → DECODE → FREED lifecycle events, and replays them through all five policies
+    simultaneously, emitting a comparison table of p50/p95/p99 and miss counts.
+  </p>
+
+</div>
+</section>
+
+<!-- ── SECTION 5: WORKLOAD PROFILES ── -->
+<section>
+<div class="container">
+  <h2>Five synthetic workload <em>profiles</em></h2>
+
+  <p>
+    The <code>generate_synthetic_kv_workload()</code> function in <code>simulator.py</code> produces
+    realistic-feeling event streams from five named profiles. Each profile tunes the mix of
+    long-context requests, speculative decode drafts, high-priority SLA-bound requests, and deadline density.
+  </p>
+
+  <!-- DIAGRAM: workload profiles -->
+  <div class="diagram">
+    <svg viewBox="0 0 740 255" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <!-- headers -->
+      <text x="20"  y="20" font-size="10" font-weight="700" fill="#6b6860">Profile</text>
+      <text x="220" y="20" font-size="10" font-weight="700" fill="#6b6860">Long-context</text>
+      <text x="340" y="20" font-size="10" font-weight="700" fill="#6b6860">Deadline density</text>
+      <text x="470" y="20" font-size="10" font-weight="700" fill="#6b6860">Reuse scale</text>
+      <text x="580" y="20" font-size="10" font-weight="700" fill="#6b6860">Designed for</text>
+      <line x1="10" y1="27" x2="730" y2="27" stroke="#e0dbd3" stroke-width="0.8"/>
+
+      <!-- balanced -->
+      <text x="20" y="57" font-size="11" font-weight="600" fill="#0d0e10" font-family="DM Mono">balanced</text>
+      <rect x="215" y="43" width="65" height="22" rx="4" fill="#e0f2fe"/><text x="248" y="59" text-anchor="middle" font-size="10" fill="#0369a1">30%</text>
+      <rect x="335" y="43" width="65" height="22" rx="4" fill="#fef9c3"/><text x="368" y="59" text-anchor="middle" font-size="10" fill="#713f12">25%</text>
+      <rect x="465" y="43" width="65" height="22" rx="4" fill="#f0fdf4"/><text x="498" y="59" text-anchor="middle" font-size="10" fill="#166534">1.0×</text>
+      <text x="580" y="59" font-size="10" fill="#6b6860">General mixed workload</text>
+
+      <line x1="10" y1="72" x2="730" y2="72" stroke="#e0dbd3" stroke-width="0.5"/>
+
+      <!-- deadline_pressure -->
+      <text x="20" y="102" font-size="11" font-weight="600" fill="#0d0e10" font-family="DM Mono">deadline_pressure</text>
+      <rect x="215" y="88" width="65" height="22" rx="4" fill="#fed7aa"/><text x="248" y="104" text-anchor="middle" font-size="10" fill="#9a3412">40%</text>
+      <rect x="335" y="88" width="65" height="22" rx="4" fill="#fecaca"/><text x="368" y="104" text-anchor="middle" font-size="10" fill="#7f1d1d">65%</text>
+      <rect x="465" y="88" width="65" height="22" rx="4" fill="#fff7ed"/><text x="498" y="104" text-anchor="middle" font-size="10" fill="#9a3412">0.7×</text>
+      <text x="580" y="104" font-size="10" fill="#6b6860">Stress-test SLA compliance</text>
+
+      <line x1="10" y1="117" x2="730" y2="117" stroke="#e0dbd3" stroke-width="0.5"/>
+
+      <!-- rag_mixed_priority -->
+      <text x="20" y="147" font-size="11" font-weight="600" fill="#0d0e10" font-family="DM Mono">rag_mixed_priority</text>
+      <rect x="215" y="133" width="65" height="22" rx="4" fill="#fed7aa"/><text x="248" y="149" text-anchor="middle" font-size="10" fill="#9a3412">50%</text>
+      <rect x="335" y="133" width="65" height="22" rx="4" fill="#e0f2fe"/><text x="368" y="149" text-anchor="middle" font-size="10" fill="#0369a1">20%</text>
+      <rect x="465" y="133" width="65" height="22" rx="4" fill="#d1fae5"/><text x="498" y="149" text-anchor="middle" font-size="10" fill="#065f46">1.6×</text>
+      <text x="580" y="149" font-size="10" fill="#6b6860">Retrieval-augmented pipelines</text>
+
+      <line x1="10" y1="162" x2="730" y2="162" stroke="#e0dbd3" stroke-width="0.5"/>
+
+      <!-- speculative_decode -->
+      <text x="20" y="192" font-size="11" font-weight="600" fill="#0d0e10" font-family="DM Mono">speculative_decode</text>
+      <rect x="215" y="178" width="65" height="22" rx="4" fill="#f0fdf4"/><text x="248" y="194" text-anchor="middle" font-size="10" fill="#166534">30%</text>
+      <rect x="335" y="178" width="65" height="22" rx="4" fill="#fef9c3"/><text x="368" y="194" text-anchor="middle" font-size="10" fill="#713f12">30%</text>
+      <rect x="465" y="178" width="65" height="22" rx="4" fill="#fff7ed"/><text x="498" y="194" text-anchor="middle" font-size="10" fill="#9a3412">0.9×</text>
+      <text x="580" y="194" font-size="10" fill="#6b6860">Draft / verify token patterns</text>
+
+      <line x1="10" y1="207" x2="730" y2="207" stroke="#e0dbd3" stroke-width="0.5"/>
+
+      <!-- long_context_extreme -->
+      <text x="20" y="237" font-size="11" font-weight="600" fill="#0d0e10" font-family="DM Mono">long_context_extreme</text>
+      <rect x="215" y="223" width="65" height="22" rx="4" fill="#fecaca"/><text x="248" y="239" text-anchor="middle" font-size="10" fill="#7f1d1d">75%</text>
+      <rect x="335" y="223" width="65" height="22" rx="4" fill="#e0f2fe"/><text x="368" y="239" text-anchor="middle" font-size="10" fill="#0369a1">15%</text>
+      <rect x="465" y="223" width="65" height="22" rx="4" fill="#d1fae5"/><text x="498" y="239" text-anchor="middle" font-size="10" fill="#065f46">2.8×</text>
+      <text x="580" y="239" font-size="10" fill="#6b6860">128k+ context stress test</text>
+    </svg>
+    <p class="diagram-caption">Synthetic workload profile parameter summary</p>
+  </div>
+
+  <p>
+    Each profile drives different eviction decisions. In <code>long_context_extreme</code>, most blocks
+    have no deadline at all (they're deep context that may never be accessed again), making them excellent
+    eviction candidates even for LRU. In <code>deadline_pressure</code>, 65% of steps involve a block
+    within 1 ms of its decode deadline — and this is exactly where LRU catastrophically fails, blindly
+    evicting critical blocks because their last access was just a few steps ago.
+  </p>
+
+</div>
+</section>
+
+<!-- ── SECTION 6: THE CODE ── -->
+<section>
+<div class="container">
+  <h2>Getting started in <em>60 seconds</em></h2>
+
+  <p>
+    The package is a standard Python 3.11+ project with zero runtime dependencies beyond the stdlib.
+    Install it, run the tests, and immediately compare all five policies on a synthetic trace:
+  </p>
+
+  <pre><code><span class="cm"># Install</span>
+git clone https://github.com/manishklach/kv_deadline_scheduler
+<span class="fn">cd</span> kv_deadline_scheduler
+pip install -e .
+pytest
+
+<span class="cm"># Estimate KV footprint for a Llama-3-8B 128k context request</span>
+kvmi estimate-kv \
+  --model llama-3-8b \
+  --prompt-tokens <span class="num">128000</span> \
+  --generated-tokens <span class="num">1000</span>
+
+<span class="cm"># Run all 5 policies against the deadline_pressure synthetic profile</span>
+kvmi compare \
+  --profile deadline_pressure \
+  --hbm-mb <span class="num">128</span> \
+  --dram-mb <span class="num">2048</span> \
+  --requests <span class="num">16</span> \
+  --decode-steps <span class="num">256</span>
+
+<span class="cm"># Import real request logs and replay</span>
+kvmi import-request-trace \
+  --requests examples/sample_request_trace.jsonl \
+  --model llama-3-8b \
+  --out imported_trace.jsonl \
+  --logical-block-mb <span class="num">1</span>
+
+kvmi compare \
+  --trace imported_trace.jsonl \
+  --hbm-mb <span class="num">4096</span> \
+  --dram-mb <span class="num">65536</span></code></pre>
+
+  <div class="callout purple">
+    <p>
+      Decision logs are written as JSONL via <code>KVMemorySimulator.write_decision_log()</code>,
+      giving you a step-by-step record of every eviction: which block was chosen, why,
+      whether a <code>DECODE_CRITICAL</code> block was avoided, and what the competing candidates were.
+    </p>
+  </div>
+
+</div>
+</section>
+
+<!-- ── SECTION 7: WHAT'S NEXT ── -->
+<section>
+<div class="container">
+  <h2>The road ahead</h2>
+
+  <p>
+    The project README is admirably honest: current results are simulated and prototype-oriented.
+    The numbers show policy differences, not production speedups. The roadmap has three natural phases:
+  </p>
+
+  <!-- DIAGRAM: roadmap -->
+  <div class="diagram">
+    <svg viewBox="0 0 740 150" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- Phase 1 (done) -->
+      <rect x="20" y="30" width="195" height="90" rx="9" fill="#ddf0ec" stroke="#0a6b5e" stroke-width="1.5"/>
+      <text x="118" y="55" text-anchor="middle" font-size="11" font-weight="700" fill="#064e3b">Phase 1 — Done ✓</text>
+      <text x="118" y="73" text-anchor="middle" font-size="9" fill="#065f46">Schema + policy ladder</text>
+      <text x="118" y="89" text-anchor="middle" font-size="9" fill="#065f46">Simulator + synthetic workloads</text>
+      <text x="118" y="105" text-anchor="middle" font-size="9" fill="#065f46">External trace import + CLI</text>
+
+      <line x1="215" y1="75" x2="238" y2="75" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr5)"/>
+
+      <!-- Phase 2 (next) -->
+      <rect x="240" y="30" width="215" height="90" rx="9" fill="#fef3c7" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="348" y="55" text-anchor="middle" font-size="11" font-weight="700" fill="#78350f">Phase 2 — In progress</text>
+      <text x="348" y="73" text-anchor="middle" font-size="9" fill="#92400e">OpenAI proxy log adapter</text>
+      <text x="348" y="89" text-anchor="middle" font-size="9" fill="#92400e">Prometheus GPU telemetry</text>
+      <text x="348" y="105" text-anchor="middle" font-size="9" fill="#92400e">Calibrate against real p99</text>
+
+      <line x1="455" y1="75" x2="478" y2="75" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr5)"/>
+
+      <!-- Phase 3 (future) -->
+      <rect x="480" y="30" width="240" height="90" rx="9" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>
+      <text x="600" y="55" text-anchor="middle" font-size="11" font-weight="700" fill="#334155">Phase 3 — Future</text>
+      <text x="600" y="73" text-anchor="middle" font-size="9" fill="#64748b">Advisory scheduler (soft hints)</text>
+      <text x="600" y="89" text-anchor="middle" font-size="9" fill="#64748b">Runtime actuation (pin / spill)</text>
+      <text x="600" y="105" text-anchor="middle" font-size="9" fill="#64748b">CXL / NVMe tiering hooks</text>
+    </svg>
+    <p class="diagram-caption">Three-phase project roadmap: observe → calibrate → actuate</p>
+  </div>
+
+  <p>
+    The key architectural bet is that the same <code>MemoryIntent</code> ABI survives all three phases.
+    Phase 1 declares intent in offline traces. Phase 2 validates the model against real GPU memory
+    telemetry. Phase 3 plugs the policy decisions back in — first as soft advisory hints, then as hard
+    placement decisions. The schema doesn't change; only the enforcement layer is added.
+  </p>
+
+  <div class="conclusion-grid">
+    <div class="conclusion-card">
+      <h4>What's strong now</h4>
+      <p>
+        The MemoryIntent schema is production-quality — rich fields, validated invariants, and built-in
+        risk scoring. The policy ladder is pedagogically clean and the decision logs enable full audit.
+        Zero runtime dependencies means easy evaluation.
+      </p>
+    </div>
+    <div class="conclusion-card">
+      <h4>What's next</h4>
+      <p>
+        Magic numbers in scoring weights need documented rationale. The simulator's recency decay
+        is event-count-based rather than step-based. Calibration against real GPU memory telemetry
+        is the critical gap between prototype and production.
+      </p>
+    </div>
+    <div class="conclusion-card">
+      <h4>Why it matters</h4>
+      <p>
+        As LLMs push to 1M+ token contexts, KV cache is no longer a background concern — it's the
+        primary bottleneck. A scheduling framework that understands deadlines is the right abstraction
+        at the right time.
+      </p>
+    </div>
+    <div class="conclusion-card">
+      <h4>Who should try it</h4>
+      <p>
+        Inference platform engineers running vLLM or similar; researchers studying KV reuse and
+        eviction under pressure; anyone who has seen p99 latency spike and suspected a bad eviction
+        decision was to blame.
+      </p>
+    </div>
+  </div>
+
+</div>
+</section>
+
+<!-- ── REPO LINK ── -->
+<section style="padding: 2rem 0 3.5rem;">
+<div class="container">
+  <a href="https://github.com/manishklach/kv_deadline_scheduler" target="_blank" class="repo-box">
+    <div class="repo-box-icon">⚙</div>
+    <div class="repo-box-text">
+      <div class="repo-name">github.com/manishklach/kv_deadline_scheduler</div>
+      <div class="repo-desc">MIT · Python 3.11+ · pip install -e . && pytest</div>
+    </div>
+    <div class="repo-box-arrow">View repo →</div>
+  </a>
+</div>
+</section>
+
+<section style="padding: 0 0 3rem;">
+<div class="container">
+  <form class="subscribe" action="https://buttondown.email/api/emails/embed-subscribe/manish-ai" method="post" target="popupwindow" onsubmit="window.open('https://buttondown.email/manish-ai', 'popupwindow')">
+    <label for="bd-email">Get new essays by email</label>
+    <input id="bd-email" type="email" name="email" placeholder="you@example.com" required>
+    <input type="hidden" value="1" name="embed">
+    <input type="submit" value="Subscribe">
+  </form>
+  <div id="webmentions" hidden></div>
+  <div class="meta-footer">
+    <p>Published June 16, 2026 on MANISH AI. This essay argues that KV cache should be managed as deadline-sensitive inference state rather than generic anonymous memory.</p>
+  </div>
+</div>
+</section>
+
+</main>
+
+<!-- FOOTER -->
+<footer>
+  <p>
+    Written June 2026 · Based on
+    <a href="https://github.com/manishklach/kv_deadline_scheduler" target="_blank">github.com/manishklach/kv_deadline_scheduler</a>
+  </p>
+  <p style="margin-top:0.5rem; color:var(--muted);">
+    All latency figures are from prototype simulation, not production benchmarks.
+  </p>
+</footer>
+
+</body>
+</html>
