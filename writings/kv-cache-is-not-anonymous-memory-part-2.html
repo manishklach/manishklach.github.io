@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Part 2: KV Cache Is Not Anonymous Memory | MANISH AI</title>
+<meta name="description" content="Part 2 of the KV scheduler series: a revised systems essay on deadline-aware KV scheduling, MemoryIntent, kernel integration, and why KV cache should be managed as latency-sensitive state instead of anonymous memory."/>
+<meta name="keywords" content="KV cache, deadline scheduler, MemoryIntent, LLM inference, vLLM, kernel scheduling, HBM, memory eviction"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f5f3ee"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/kv-cache-is-not-anonymous-memory-part-2.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Part 2: KV Cache Is Not Anonymous Memory | MANISH AI"/>
+<meta property="og:description" content="Part 2 of the KV scheduler series: kernel-facing architecture, trace adapters, and intent-aware KV scheduling beyond generic anonymous-memory heuristics."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/kv-cache-is-not-anonymous-memory-part-2.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/kv-cache-is-not-anonymous-memory-part-2.png"/>
+<meta property="og:image:alt" content="Preview image for Part 2: KV Cache Is Not Anonymous Memory"/>
+<meta property="article:published_time" content="2026-06-17T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-06-17T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Part 2: KV Cache Is Not Anonymous Memory"/>
+<meta name="twitter:description" content="Part 2 of the KV scheduler series on deadline-aware KV scheduling, kernel integration, and inference cache state."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/kv-cache-is-not-anonymous-memory-part-2.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Part 2: KV Cache Is Not Anonymous Memory","description":"Part 2 of the KV scheduler series: a revised systems essay on deadline-aware KV scheduling, MemoryIntent, kernel integration, and why KV cache should be managed as latency-sensitive state instead of anonymous memory.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/kv-cache-is-not-anonymous-memory-part-2.html","mainEntityOfPage":"https://manishklach.github.io/writings/kv-cache-is-not-anonymous-memory-part-2.html","datePublished":"2026-06-17","dateModified":"2026-06-17","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,300;1,9..144,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --black:#f5f3ee;
+  --white:#111317;
+  --cream:#e8e4dc;
+  --red:#d63031;
+  --red-dim:#8b1c1c;
+  --green:#008f74;
+  --green-dim:#00655a;
+  --amber:#c65f2f;
+  --muted:#6f6962;
+  --border:#d9d3ca;
+  --code-bg:#111215;
+  --code-fg:#dfe4ea;
+  --f-display:'Bebas Neue',Impact,sans-serif;
+  --f-body:'Fraunces',Georgia,serif;
+  --f-mono:'IBM Plex Mono','Fira Code',monospace;
+  --max:760px;
+  --wide:1100px;
+}
+
+html.dark{
+  --black:#08090a;
+  --white:#f0ede8;
+  --cream:#16181b;
+  --red:#ff6b5f;
+  --red-dim:#8b1c1c;
+  --green:#34d7b0;
+  --green-dim:#00655a;
+  --amber:#ff9a76;
+  --muted:#7a7570;
+  --border:#2a2b2d;
+  --code-bg:#111215;
+  --code-fg:#dfe4ea;
+}
+
+html{scroll-behavior:smooth;background:var(--black)}
+body{
+  background:var(--black);
+  color:var(--white);
+  font-family:var(--f-body);
+  font-size:18px;
+  line-height:1.72;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+
+.shell{
+  max-width:1120px;
+  margin:0 auto;
+  padding:18px 2rem 0;
+  position:relative;
+  z-index:101;
+}
+.site-tools{
+  margin:0;
+  padding:14px 18px;
+  border:1px solid var(--border);
+  border-radius:18px;
+  background:color-mix(in srgb, var(--black) 86%, transparent);
+  backdrop-filter:blur(12px);
+}
+.brand{
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  text-decoration:none;
+  color:var(--red);
+}
+
+/* ── GRAIN OVERLAY ── */
+body::before{
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events:none;
+  z-index:1000;
+  opacity:.5;
+}
+
+/* ── NAV ── */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  background:color-mix(in srgb, var(--black) 88%, transparent);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 2rem;height:50px;
+}
+.nav-id{font-family:var(--f-mono);font-size:12px;color:var(--muted);letter-spacing:.08em}
+.nav-id span{color:var(--red)}
+.nav-cta{
+  font-family:var(--f-mono);font-size:11px;
+  background:var(--red);color:#fff;
+  border:none;padding:.35em 1em;border-radius:3px;
+  cursor:pointer;letter-spacing:.06em;text-decoration:none;
+  transition:background .15s;
+}
+.nav-cta:hover{background:#b52828}
+
+/* ── HERO ── */
+.hero{
+  min-height:100vh;
+  display:flex;flex-direction:column;justify-content:flex-end;
+  padding:0 2rem 5rem;
+  position:relative;
+  overflow:hidden;
+}
+.hero-bg{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 80% 60% at 70% 30%, rgba(214,48,49,.08) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 10% 80%, rgba(0,184,148,.05) 0%, transparent 50%);
+}
+.hero-grid{
+  position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
+  background-size:60px 60px;
+  mask-image:linear-gradient(to bottom, transparent 0%, black 30%, black 70%, transparent 100%);
+}
+.hero-eyebrow{
+  font-family:var(--f-mono);font-size:11px;
+  color:var(--red);letter-spacing:.2em;text-transform:uppercase;
+  margin-bottom:1.5rem;
+}
+.hero h1{
+  font-family:var(--f-display);
+  font-size:clamp(4rem,12vw,10rem);
+  line-height:.92;letter-spacing:.02em;
+  color:var(--white);
+  margin-bottom:2.5rem;
+  max-width:900px;
+}
+.hero h1 .accent{color:var(--red)}
+.hero-sub{
+  font-family:var(--f-body);font-style:italic;
+  font-size:clamp(1.1rem,2vw,1.35rem);
+  color:color-mix(in srgb, var(--white) 72%, var(--muted));
+  max-width:560px;line-height:1.5;
+  margin-bottom:3rem;
+}
+.hero-stats{
+  display:flex;gap:3rem;flex-wrap:wrap;
+}
+.hero-stat .n{
+  font-family:var(--f-display);font-size:3.5rem;
+  color:var(--red);line-height:1;
+}
+.hero-stat .l{
+  font-family:var(--f-mono);font-size:10px;
+  color:var(--muted);letter-spacing:.1em;text-transform:uppercase;
+  margin-top:.25rem;
+}
+
+/* ── CONTENT ── */
+.container{max-width:var(--max);margin:0 auto;padding:0 2rem}
+@media(max-width:600px){.container{padding:0 1.25rem}}
+
+section{padding:5rem 0}
+section+section{border-top:1px solid var(--border)}
+
+h2{
+  font-family:var(--f-display);
+  font-size:clamp(2.8rem,6vw,5rem);
+  line-height:.95;letter-spacing:.03em;
+  color:var(--white);
+  margin-bottom:1.5rem;
+}
+h2 .r{color:var(--red)}
+h2 .g{color:var(--green)}
+
+h3{
+  font-family:var(--f-mono);font-size:.78rem;
+  letter-spacing:.16em;text-transform:uppercase;
+  color:var(--muted);margin:2.5rem 0 .75rem;
+}
+
+p{margin-bottom:1.25rem;color:color-mix(in srgb, var(--white) 88%, transparent)}
+p:last-child{margin-bottom:0}
+strong{color:var(--white);font-weight:600}
+em{color:color-mix(in srgb, var(--white) 75%, transparent);font-style:italic}
+
+a{color:var(--red);text-decoration:none;border-bottom:1px solid rgba(214,48,49,.3);transition:border-color .15s}
+a:hover{border-color:var(--red)}
+
+code{
+  font-family:var(--f-mono);font-size:.8em;
+  background:color-mix(in srgb, var(--cream) 78%, transparent);border:1px solid var(--border);
+  border-radius:3px;padding:.1em .4em;color:var(--white);
+}
+
+pre{
+  background:var(--code-bg);
+  border:1px solid var(--border);border-radius:8px;
+  padding:1.5rem;overflow-x:auto;
+  font-family:var(--f-mono);font-size:.8rem;line-height:1.65;
+  color:#c9d1d9;margin:2rem 0;
+}
+pre .kw{color:#ff7b72}
+pre .cm{color:#6e7681;font-style:italic}
+pre .st{color:#a5d6ff}
+pre .nu{color:#f2cc60}
+pre .fn{color:#d2a8ff}
+pre .cl{color:#79c0ff}
+
+/* ── CALLOUT ── */
+.callout{
+  border-left:3px solid var(--red);
+  padding:1.25rem 1.5rem;
+  margin:2rem 0;
+  background:rgba(214,48,49,.06);
+  border-radius:0 6px 6px 0;
+}
+.callout.green{border-color:var(--green);background:rgba(0,184,148,.06)}
+.callout.amber{border-color:var(--amber);background:rgba(225,112,85,.06)}
+.callout p{color:color-mix(in srgb, var(--white) 90%, transparent);font-style:italic;font-size:1.05rem;margin:0}
+
+/* ── DIAGRAM ── */
+.diagram{
+  background:#0c0d0f;border:1px solid var(--border);
+  border-radius:10px;padding:1.5rem;overflow:hidden;
+  margin:2.5rem 0;
+}
+.diagram-cap{
+  font-family:var(--f-mono);font-size:10px;
+  color:var(--muted);letter-spacing:.08em;
+  text-transform:uppercase;text-align:center;
+  margin-top:.75rem;
+}
+
+/* ── RESULT TABLE ── */
+.rtable{width:100%;border-collapse:collapse;font-family:var(--f-mono);font-size:.78rem;margin:1.5rem 0}
+.rtable th{
+  background:rgba(255,255,255,.05);color:var(--muted);
+  padding:.6rem .8rem;text-align:left;
+  font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;
+  border-bottom:1px solid var(--border);
+}
+.rtable td{padding:.55rem .8rem;border-bottom:1px solid rgba(42,43,45,.6);vertical-align:middle}
+.rtable tr:last-child td{border-bottom:none}
+.rtable .red{color:var(--red);font-weight:600}
+.rtable .green{color:var(--green);font-weight:600}
+.rtable .dim{color:var(--muted)}
+.rtable .star{color:var(--amber)}
+
+/* ── METRIC CARD GRID ── */
+.metric-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);
+  gap:1px;background:var(--border);
+  border:1px solid var(--border);border-radius:8px;
+  overflow:hidden;margin:2rem 0;
+}
+@media(max-width:600px){.metric-grid{grid-template-columns:1fr 1fr}}
+.metric-card{background:var(--code-bg);padding:1.25rem 1rem;text-align:center}
+.metric-card .mn{
+  font-family:var(--f-display);font-size:2.8rem;
+  line-height:1;margin-bottom:.25rem;
+}
+.metric-card .ml{font-family:var(--f-mono);font-size:9px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.r-text{color:var(--red)}.g-text{color:var(--green)}.a-text{color:var(--amber)}
+
+/* ── KERNEL TRACK GRID ── */
+.track-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:2rem 0}
+@media(max-width:600px){.track-grid{grid-template-columns:1fr}}
+.track-card{
+  background:#0c0d0f;border:1px solid var(--border);
+  border-radius:8px;padding:1.25rem;
+  position:relative;overflow:hidden;
+}
+.track-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:var(--track-color,var(--red));
+}
+.track-card .tc-tag{
+  font-family:var(--f-mono);font-size:9px;
+  color:var(--track-color,var(--red));letter-spacing:.14em;
+  text-transform:uppercase;margin-bottom:.5rem;
+}
+.track-card .tc-title{
+  font-family:var(--f-body);font-weight:600;font-size:1rem;
+  color:var(--white);margin-bottom:.4rem;
+}
+.track-card .tc-desc{
+  font-family:var(--f-mono);font-size:.75rem;
+  color:var(--muted);line-height:1.5;
+}
+
+/* ── REPO BOX ── */
+.repo-box{
+  display:flex;align-items:center;gap:1.5rem;
+  background:var(--code-bg);border:1px solid var(--border);
+  border-radius:10px;padding:1.5rem 2rem;
+  text-decoration:none;border-bottom:none;
+  transition:border-color .2s;margin:2.5rem 0;
+  flex-wrap:wrap;
+}
+.repo-box:hover{border-color:var(--red)}
+.repo-box .rb-icon{font-size:2rem;flex-shrink:0}
+.repo-box .rb-name{font-family:var(--f-mono);font-size:.95rem;color:var(--amber)}
+.repo-box .rb-desc{font-family:var(--f-mono);font-size:.75rem;color:var(--muted);margin-top:.2rem}
+.repo-box .rb-arr{margin-left:auto;font-family:var(--f-mono);font-size:.8rem;color:var(--red)}
+
+/* ── PATCH SERIES ── */
+.patch-list{margin:1.5rem 0}
+.patch-item{
+  display:flex;gap:1rem;align-items:flex-start;
+  padding:1rem 0;border-bottom:1px solid var(--border);
+}
+.patch-item:last-child{border-bottom:none}
+.patch-num{
+  font-family:var(--f-display);font-size:2.5rem;
+  color:rgba(214,48,49,.25);line-height:1;flex-shrink:0;width:3rem;
+  text-align:right;
+}
+.patch-body .pt{font-family:var(--f-mono);font-size:.82rem;color:var(--white);font-weight:600;margin-bottom:.2rem}
+.patch-body .pd{font-family:var(--f-mono);font-size:.72rem;color:var(--muted);line-height:1.5}
+
+/* ── CONCLUSION ── */
+.conclusion-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:2rem 0}
+@media(max-width:600px){.conclusion-grid{grid-template-columns:1fr}}
+.conclusion-card{background:color-mix(in srgb, var(--cream) 76%, transparent);border:1px solid var(--border);border-radius:8px;padding:1.25rem}
+.conclusion-card h4{font-family:var(--f-mono);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:.5rem}
+.conclusion-card p{font-size:.92rem;color:color-mix(in srgb, var(--white) 80%, transparent);margin:0}
+
+/* ── FOOTER ── */
+footer{
+  background:var(--code-bg);border-top:1px solid var(--border);
+  padding:3rem 2rem;text-align:center;
+  font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;
+  color:var(--muted);line-height:2;
+}
+footer a{color:var(--muted);border-color:transparent}
+
+.meta-footer{
+  margin-top:3rem;
+  padding-top:1.5rem;
+  border-top:1px solid var(--border);
+}
+.meta-footer p{
+  color:var(--muted);
+  font-size:.95rem;
+}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+.hero-eyebrow{animation:fadeUp .5s .1s both}
+.hero h1{animation:fadeUp .6s .2s both}
+.hero-sub{animation:fadeUp .6s .35s both}
+.hero-stats{animation:fadeUp .6s .5s both}
+@media(prefers-reduced-motion:reduce){*{animation:none!important}}
+
+/* scrollbar */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:var(--black)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="site-tools">
+    <a class="brand" href="/">MANISH AI</a>
+    <div class="site-tools-actions">
+      <a class="back-link" href="/writings.html">All writings</a>
+      <a class="rss-link" href="/feed.xml">RSS</a>
+      <button id="theme-toggle" type="button" aria-label="Toggle color theme">Toggle</button>
+    </div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <span class="nav-id"><span>kv_deadline_scheduler</span> / v0.6.0</span>
+  <a href="https://github.com/manishklach/kv_deadline_scheduler" target="_blank" class="nav-cta">VIEW REPO →</a>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-grid"></div>
+  <div style="position:relative;z-index:2">
+    <p class="hero-eyebrow">Part 2 · Systems Research · LLM Inference · Linux Kernel</p>
+    <h1>PART 2: KV CACHE IS NOT <span class="accent">ANONY&shy;MOUS</span> MEMORY</h1>
+    <p class="hero-sub">
+      LRU doesn't know which tensor is about to miss a decode deadline.
+      A new approach — from Python policy simulator to Linux kernel RFC patches — that does.
+    </p>
+    <div class="hero-stats">
+      <div class="hero-stat"><div class="n">21×</div><div class="l">p99 improvement</div></div>
+      <div class="hero-stat"><div class="n">0%</div><div class="l">decode-critical miss rate</div></div>
+      <div class="hero-stat"><div class="n">4</div><div class="l">kernel RFC patches</div></div>
+      <div class="hero-stat"><div class="n">53</div><div class="l">tests, all green</div></div>
+    </div>
+  </div>
+</header>
+
+<main data-pagefind-body>
+
+<!-- ── SECTION 1: THE PROBLEM ── -->
+<section>
+<div class="container">
+  <h2>THE PROBLEM <span class="r">LRU</span> CANNOT SOLVE</h2>
+
+  <p>
+    Long-context LLM inference is a memory scheduling problem wearing a machine learning costume.
+    A single Llama-3-8B request at 128k tokens occupies <strong>32–64 GB of KV cache</strong> —
+    more than most A100s hold in total. When dozens of concurrent requests compete for that HBM,
+    something gets evicted.
+  </p>
+
+  <p>
+    The classical answer is LRU. Evict the least recently used block. It's simple, it's fast,
+    and it is <em>completely wrong</em> for this workload.
+  </p>
+
+  <div class="callout">
+    <p>
+      "A KV-cache block is not a page. It belongs to a specific request,
+      encodes a specific sequence position, and will be needed at a specific decode step —
+      usually within the next 1–5 milliseconds. LRU has no way to know any of this."
+    </p>
+  </div>
+
+  <p>
+    The result: LRU evicts a block that is needed in 800µs, incurs a 5ms reload penalty
+    from DRAM, and blows the decode deadline entirely. Multiply this by thousands of requests
+    per second and you have a p99 latency disaster hiding inside what looks like a memory
+    capacity problem.
+  </p>
+
+  <!-- DIAGRAM: bandwidth cliff -->
+  <div class="diagram">
+    <svg viewBox="0 0 700 210" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="hbmg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#d63031"/>
+          <stop offset="100%" stop-color="#8b1c1c"/>
+        </linearGradient>
+      </defs>
+      <text x="350" y="16" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#7a7570" letter-spacing="0.1em">MEMORY BANDWIDTH CLIFF — EVICTION COST RISES EXPONENTIALLY WITH TIER DEPTH</text>
+
+      <!-- HBM bar -->
+      <rect x="40" y="30" width="120" height="140" rx="4" fill="url(#hbmg)" opacity=".9"/>
+      <text x="100" y="22" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#f0ede8" font-weight="600">HBM</text>
+      <text x="100" y="108" text-anchor="middle" font-family="IBM Plex Mono" font-size="18" fill="#fff" font-weight="600">3.35</text>
+      <text x="100" y="124" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="rgba(255,255,255,.6)">TB/s</text>
+      <text x="100" y="185" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#7a7570">miss ≈ 0µs</text>
+
+      <!-- DRAM bar -->
+      <rect x="210" y="95" width="120" height="75" rx="4" fill="#d63031" opacity=".55"/>
+      <text x="270" y="87" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#f0ede8" font-weight="600">DRAM</text>
+      <text x="270" y="138" text-anchor="middle" font-family="IBM Plex Mono" font-size="18" fill="#fff" font-weight="600">200</text>
+      <text x="270" y="154" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="rgba(255,255,255,.6)">GB/s</text>
+      <text x="270" y="185" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#7a7570">reload ~200µs</text>
+
+      <!-- CXL bar -->
+      <rect x="380" y="148" width="120" height="22" rx="4" fill="#d63031" opacity=".3"/>
+      <text x="440" y="140" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#f0ede8" font-weight="600">CXL</text>
+      <text x="440" y="163" text-anchor="middle" font-family="IBM Plex Mono" font-size="11" fill="#fff">50 GB/s</text>
+      <text x="440" y="185" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#7a7570">reload ~800µs</text>
+
+      <!-- NVMe bar -->
+      <rect x="550" y="162" width="120" height="8" rx="4" fill="#d63031" opacity=".2"/>
+      <text x="610" y="154" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#f0ede8" font-weight="600">NVMe</text>
+      <text x="610" y="174" text-anchor="middle" font-family="IBM Plex Mono" font-size="11" fill="#7a7570">7 GB/s</text>
+      <text x="610" y="185" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#7a7570">reload ~5000µs</text>
+    </svg>
+    <p class="diagram-cap">The bandwidth cliff — a 5ms NVMe reload vs a decode deadline of 1ms is not recoverable</p>
+  </div>
+
+</div>
+</section>
+
+<!-- ── SECTION 2: THE IDEA ── -->
+<section>
+<div class="container">
+  <h2>THE <span class="g">IDEA</span></h2>
+
+  <p>
+    The serving engine already knows which blocks have deadlines. It knows which request is in
+    decode phase, which blocks will be needed in the next step, how much it would cost to
+    recompute evicted state, and whether a block is part of speculative decoding that might
+    be discarded entirely.
+  </p>
+
+  <p>
+    <strong>The memory manager knows none of this.</strong> It sees pages. Timestamps.
+    Access counts. It has no idea that the block it just evicted was scheduled to serve
+    a decode step in 400µs.
+  </p>
+
+  <p>
+    The fix is to propagate that intent downward — from the serving layer to the memory manager.
+    Not as a vague hint, but as a structured, versioned schema that every component in the
+    stack can read and act on.
+  </p>
+
+  <div class="callout green">
+    <p>
+      "Generic memory tiering asks: <em>Is this page hot?</em>
+      KV Deadline Scheduler asks: <em>Which block belongs to decode-critical request-state,
+      how close is it to missing its deadline, and what is the cost of evicting it?</em>"
+    </p>
+  </div>
+
+  <p>
+    This is <a href="https://github.com/manishklach/kv_deadline_scheduler" target="_blank">kv_deadline_scheduler</a>:
+    a full-stack research system that tests this idea at every layer of the software stack,
+    from Python simulation through Linux kernel RFC patches.
+  </p>
+
+</div>
+</section>
+
+<!-- ── SECTION 3: MEMORYINTENT SCHEMA ── -->
+<section>
+<div class="container">
+  <h2>THE <span class="r">SCHEMA</span></h2>
+
+  <p>
+    The core contribution is <code>MemoryIntent</code> — a dataclass that every KV block
+    carries through its lifecycle. It turns a anonymous page into a first-class scheduling object.
+  </p>
+
+<pre><code><span class="cm"># Every KV block carries this. Anonymous pages carry nothing.</span>
+<span class="kw">@dataclass</span>(slots=<span class="cl">True</span>)
+<span class="kw">class</span> <span class="cl">MemoryIntent</span>:
+    object_id:      <span class="cl">str</span>       <span class="cm"># "req-007:block:14"</span>
+    phase:          <span class="cl">Phase</span>     <span class="cm"># PREFILL | DECODE | VERIFY | DONE</span>
+    priority:       <span class="cl">Priority</span>  <span class="cm"># COLD | WARM | HOT | DECODE_CRITICAL</span>
+    deadline_us:    <span class="cl">int</span>       <span class="cm"># µs until this block is needed</span>
+    slack_us:       <span class="cl">int</span>       <span class="cm"># µs before deadline becomes critical</span>
+    recompute_cost_us: <span class="cl">int</span>    <span class="cm"># cost to regenerate if evicted</span>
+    pin_requested:  <span class="cl">bool</span>      <span class="cm"># DECODE_CRITICAL auto-pins (invariant)</span>
+
+    <span class="kw">def</span> <span class="fn">eviction_risk_score</span>(self) -> <span class="cl">float</span>:
+        <span class="cm"># higher = more dangerous to evict</span>
+        <span class="kw">return</span> self.effective_deadline_score() * self.recompute_cost_us
+</code></pre>
+
+  <p>
+    The <code>__post_init__</code> invariant is the key safety property:
+    <code>DECODE_CRITICAL</code> blocks automatically set <code>pin_requested=True</code>,
+    making it impossible for any policy to accidentally evict a block that a decode step
+    is actively depending on.
+  </p>
+
+  <!-- LIFECYCLE DIAGRAM -->
+  <div class="diagram">
+    <svg viewBox="0 0 700 170" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#7a7570" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+        <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#d63031" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- ALLOCATED -->
+      <rect x="10" y="55" width="105" height="44" rx="5" fill="rgba(255,255,255,.04)" stroke="#2a2b2d" stroke-width="1"/>
+      <text x="62" y="74" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#a5d6ff" font-weight="600">ALLOCATED</text>
+      <text x="62" y="89" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">WARM / PREFILL</text>
+
+      <line x1="115" y1="77" x2="137" y2="77" stroke="#7a7570" stroke-width="1" marker-end="url(#a)"/>
+
+      <!-- ACCESSED -->
+      <rect x="140" y="55" width="105" height="44" rx="5" fill="rgba(255,255,255,.04)" stroke="#2a2b2d" stroke-width="1"/>
+      <text x="192" y="74" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#f2cc60" font-weight="600">ACCESSED</text>
+      <text x="192" y="89" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">recency ↑</text>
+
+      <line x1="245" y1="77" x2="267" y2="77" stroke="#7a7570" stroke-width="1" marker-end="url(#a)"/>
+
+      <!-- DECODE_CRITICAL -->
+      <rect x="270" y="42" width="135" height="60" rx="5" fill="rgba(214,48,49,.08)" stroke="#d63031" stroke-width="1.5"/>
+      <text x="337" y="66" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#d63031" font-weight="700">DECODE_CRITICAL</text>
+      <text x="337" y="81" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">pin_requested = true</text>
+      <text x="337" y="94" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">deadline_us set</text>
+
+      <line x1="405" y1="72" x2="427" y2="72" stroke="#7a7570" stroke-width="1" marker-end="url(#a)"/>
+
+      <!-- COMMITTED -->
+      <rect x="430" y="55" width="105" height="44" rx="5" fill="rgba(255,255,255,.04)" stroke="#2a2b2d" stroke-width="1"/>
+      <text x="482" y="74" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#7ee787" font-weight="600">COMMITTED</text>
+      <text x="482" y="89" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">is_committed=T</text>
+
+      <line x1="535" y1="77" x2="557" y2="77" stroke="#7a7570" stroke-width="1" marker-end="url(#a)"/>
+
+      <!-- FREED -->
+      <rect x="560" y="55" width="105" height="44" rx="5" fill="rgba(255,255,255,.04)" stroke="#2a2b2d" stroke-width="1"/>
+      <text x="612" y="74" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#7a7570" font-weight="600">FREED</text>
+      <text x="612" y="89" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">evicted / done</text>
+
+      <!-- SPILL branch -->
+      <line x1="192" y1="99" x2="192" y2="130" stroke="#d63031" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#ar)"/>
+      <rect x="140" y="133" width="105" height="30" rx="5" fill="rgba(214,48,49,.06)" stroke="rgba(214,48,49,.3)" stroke-width="1"/>
+      <text x="192" y="152" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#d63031">SPILLED → DRAM</text>
+
+      <!-- PREFETCH -->
+      <line x1="337" y1="102" x2="337" y2="130" stroke="#00b894" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#ar)"/>
+      <rect x="270" y="133" width="135" height="30" rx="5" fill="rgba(0,184,148,.06)" stroke="rgba(0,184,148,.3)" stroke-width="1"/>
+      <text x="337" y="152" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#00b894">PREFETCHED ← DRAM</text>
+
+      <text x="350" y="14" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#7a7570" letter-spacing="0.06em">KV BLOCK LIFECYCLE — EVENTS DRIVE THE STATE MACHINE</text>
+    </svg>
+    <p class="diagram-cap">Each lifecycle event is a MemoryIntentEvent fed into the simulator's event loop</p>
+  </div>
+
+</div>
+</section>
+
+<!-- ── SECTION 4: THE RESULTS ── -->
+<section>
+<div class="container">
+  <h2>THE <span class="g">RESULTS</span></h2>
+
+  <p>
+    All five policies were benchmarked across all five workload profiles at
+    <strong>12× HBM pressure</strong> (1,536 MB workload vs 128 MB HBM).
+    The headline number from the <code>deadline_pressure</code> profile:
+  </p>
+
+  <div class="metric-grid">
+    <div class="metric-card">
+      <div class="mn r-text">4.5%</div>
+      <div class="ml">LRU decode-critical miss rate</div>
+    </div>
+    <div class="metric-card">
+      <div class="mn g-text">0.28%</div>
+      <div class="ml">DeadlineAware miss rate</div>
+    </div>
+    <div class="metric-card">
+      <div class="mn a-text">21×</div>
+      <div class="ml">p99 latency improvement</div>
+    </div>
+  </div>
+
+  <table class="rtable">
+    <thead>
+      <tr>
+        <th>Profile</th>
+        <th>Policy</th>
+        <th>p99 latency</th>
+        <th>dc_miss_rate</th>
+        <th>Evictions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="dim" rowspan="2" style="border-right:1px solid #2a2b2d">deadline_pressure</td><td class="red">lru</td><td class="red">5.25ms</td><td class="red">0.04494</td><td class="dim">2,104</td></tr>
+      <tr><td class="green">deadline ★</td><td class="green">0.25ms</td><td class="green">0.00281</td><td class="dim">2,020</td></tr>
+      <tr><td class="dim" rowspan="2" style="border-right:1px solid #2a2b2d">long_context_extreme</td><td class="red">lru</td><td class="red">5.25ms</td><td class="red">0.01823</td><td class="dim">3,782</td></tr>
+      <tr><td class="green">intent ★</td><td class="green">0.25ms</td><td class="green">0.00104</td><td class="dim">3,716</td></tr>
+      <tr><td class="dim" rowspan="2" style="border-right:1px solid #2a2b2d">rag_mixed_priority</td><td class="red">lru</td><td class="red">5.25ms</td><td class="red">0.03168</td><td class="dim">2,249</td></tr>
+      <tr><td class="green">deadline ★</td><td class="green">0.25ms</td><td class="green">0.00347</td><td class="dim">2,186</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout amber">
+    <p>
+      These are simulation results, not production GPU benchmarks.
+      The mechanism is real; the magnitudes are illustrative.
+      Real HBM numbers require a vLLM integration with live telemetry — which is the next step.
+    </p>
+  </div>
+
+  <!-- POLICY BAR CHART -->
+  <div class="diagram">
+    <svg viewBox="0 0 700 220" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <text x="350" y="18" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#7a7570" letter-spacing=".08em">DECODE-CRITICAL MISS RATE — deadline_pressure PROFILE — LOWER IS BETTER</text>
+
+      <!-- LRU -->
+      <text x="88" y="48" text-anchor="end" font-family="IBM Plex Mono" font-size="9" fill="#f0ede8">LRU</text>
+      <rect x="95" y="34" width="490" height="24" rx="3" fill="#d63031" opacity=".8"/>
+      <text x="590" y="51" font-family="IBM Plex Mono" font-size="9" fill="#7a7570">4.49%</text>
+
+      <!-- HotCold -->
+      <text x="88" y="90" text-anchor="end" font-family="IBM Plex Mono" font-size="9" fill="#f0ede8">HotCold</text>
+      <rect x="95" y="76" width="490" height="24" rx="3" fill="#d63031" opacity=".65"/>
+      <text x="590" y="93" font-family="IBM Plex Mono" font-size="9" fill="#7a7570">4.49%</text>
+
+      <!-- Predictive -->
+      <text x="88" y="132" text-anchor="end" font-family="IBM Plex Mono" font-size="9" fill="#f0ede8">Predictive</text>
+      <rect x="95" y="118" width="490" height="24" rx="3" fill="#d63031" opacity=".5"/>
+      <text x="590" y="135" font-family="IBM Plex Mono" font-size="9" fill="#7a7570">4.49%</text>
+
+      <!-- IntentAware -->
+      <text x="88" y="174" text-anchor="end" font-family="IBM Plex Mono" font-size="9" fill="#f0ede8">IntentAware</text>
+      <rect x="95" y="160" width="31" height="24" rx="3" fill="#00b894" opacity=".9"/>
+      <text x="132" y="177" font-family="IBM Plex Mono" font-size="9" fill="#7a7570">0.28%</text>
+
+      <!-- DeadlineAware -->
+      <text x="88" y="213" text-anchor="end" font-family="IBM Plex Mono" font-size="9" fill="#f0ede8" font-weight="600">Deadline ★</text>
+      <rect x="95" y="199" width="31" height="24" rx="3" fill="#00b894" opacity=".9"/>
+      <text x="132" y="215" font-family="IBM Plex Mono" font-size="9" fill="#7a7570">0.28%</text>
+    </svg>
+    <p class="diagram-cap">LRU, HotCold and PredictiveHotness are blind to decode deadlines — IntentAware and DeadlineAware protect decode-critical blocks</p>
+  </div>
+
+</div>
+</section>
+
+<!-- ── SECTION 5: KERNEL ── -->
+<section>
+<div class="container">
+  <h2>ALL THE WAY <span class="r">DOWN TO THE KERNEL</span></h2>
+
+  <p>
+    The simulator validates the idea. The kernel work makes it real.
+    Five distinct kernel experiment tracks, all running on Linux 6.18,
+    producing committed result files.
+  </p>
+
+  <h3>Real hardware measurements</h3>
+
+  <div class="metric-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="metric-card">
+      <div class="mn r-text">47%</div>
+      <div class="ml">cache miss rate — KV-random access pattern<br><span style="font-size:8px;color:#7a7570">(vs 2% sequential)</span></div>
+    </div>
+    <div class="metric-card">
+      <div class="mn g-text">46%</div>
+      <div class="ml">sequential throughput gain with THP<br><span style="font-size:8px;color:#7a7570">7,517 → 11,005 MB/s</span></div>
+    </div>
+    <div class="metric-card">
+      <div class="mn a-text">512×</div>
+      <div class="ml">TLB pressure reduction with 2MB huge pages<br><span style="font-size:8px;color:#7a7570">2048 → 4 TLB entries / 128k request</span></div>
+    </div>
+  </div>
+
+  <div class="track-grid">
+    <div class="track-card" style="--track-color:#d63031">
+      <div class="tc-tag">Track A</div>
+      <div class="tc-title">DAMON Hotness Monitor</div>
+      <div class="tc-desc">Live KV hotness via DAMON sysfs. HOT regions → nr_accesses≥10. COLD regions → nr_accesses=0. Feeds directly into kvmi compare --trace.</div>
+    </div>
+    <div class="track-card" style="--track-color:#e17055">
+      <div class="tc-tag">Track B</div>
+      <div class="tc-title">userfaultfd Migration</div>
+      <div class="tc-desc">HBM→DRAM migration emulation via uffd. Fault handler measures p50/p95/p99 migration latency — directly calibrates miss_penalty_us in the simulator.</div>
+    </div>
+    <div class="track-card" style="--track-color:#00b894">
+      <div class="tc-tag">Track C</div>
+      <div class="tc-title">io_uring Async Prefetch</div>
+      <div class="tc-desc">Raw io_uring syscall (no liburing). Submission queue, completion queue, SQE array — all via ctypes. Async KV block prefetch with p50/p95/p99 tracking.</div>
+    </div>
+    <div class="track-card" style="--track-color:#fdcb6e">
+      <div class="tc-tag">Track D</div>
+      <div class="tc-title">THP Huge-Page Allocation</div>
+      <div class="tc-desc">madvise(MADV_HUGEPAGE) on KV regions. 2MB pages: 11,005 MB/s seq, 13.27 MPPS random. 4KB pages: 7,517 MB/s, 8.22 MPPS. Confirmed on Linux 6.18 WSL.</div>
+    </div>
+    <div class="track-card" style="--track-color:#a29bfe">
+      <div class="tc-tag">Track E</div>
+      <div class="tc-title">perf_event_open Counters</div>
+      <div class="tc-desc">Hardware cache counters via perf_event_open. KV-random access: 47.4% miss rate. Evicted KV: 42.0% miss rate. Validates simulator's miss penalty model.</div>
+    </div>
+    <div class="track-card" style="--track-color:#fd79a8">
+      <div class="tc-tag">Track F</div>
+      <div class="tc-title">ioprio Linux I/O Priority</div>
+      <div class="tc-desc">ioprio_set via syscall 251. Decode-critical blocks → IOPRIO_CLASS_RT. Background spill → IOPRIO_CLASS_BE. Max latency 15.5% lower under separation.</div>
+    </div>
+  </div>
+
+  <h3>RFC patch series — mm/vmscan.c</h3>
+
+  <div class="patch-list">
+    <div class="patch-item">
+      <div class="patch-num">01</div>
+      <div class="patch-body">
+        <div class="pt">mm: add experimental memory intent debugfs registry</div>
+        <div class="pd">mm/memory_intent.c · include/linux/memory_intent.h · mm/Kconfig<br>Adds /sys/kernel/debug/mm_intent/{register,dump,clear} — observability only, zero reclaim change</div>
+      </div>
+    </div>
+    <div class="patch-item">
+      <div class="patch-num">02</div>
+      <div class="patch-body">
+        <div class="pt">mm: proc: expose memory intent for monitored regions</div>
+        <div class="pd">/proc observability for registered intent regions · research-only ABI</div>
+      </div>
+    </div>
+    <div class="patch-item">
+      <div class="patch-num">03</div>
+      <div class="patch-body">
+        <div class="pt">mm: damon: report memory intent alongside access frequency</div>
+        <div class="pd">DAMON integration — correlates nr_accesses with registered intent priority · TRACE_EVENT tracepoint</div>
+      </div>
+    </div>
+    <div class="patch-item">
+      <div class="patch-num">04</div>
+      <div class="patch-body">
+        <div class="pt">mm: vmscan: experimental intent-aware reclaim — default off</div>
+        <div class="pd">DEFINE_STATIC_KEY_FALSE — zero overhead when disabled · consults intent before eviction · never evicts DECODE_CRITICAL+pinned blocks</div>
+      </div>
+    </div>
+  </div>
+
+  <pre><code><span class="cm">/* Patch 4 — the key addition to shrink_page_list() */</span>
+<span class="kw">if</span> (memory_intent_reclaim_enabled()) {
+    <span class="kw">if</span> (<span class="fn">memory_intent_is_pinned</span>(page_to_pfn(page)))
+        <span class="kw">goto</span> keep_locked;  <span class="cm">/* never evict DECODE_CRITICAL */</span>
+
+    prio = <span class="fn">memory_intent_get_priority</span>(page_to_pfn(page));
+    <span class="kw">if</span> (prio == <span class="cl">KV_PRIORITY_DECODE_CRITICAL</span> && !sc->may_swap)
+        <span class="kw">goto</span> keep_locked;
+}</code></pre>
+
+</div>
+</section>
+
+<!-- ── SECTION 6: ARCHITECTURE ── -->
+<section>
+<div class="container">
+  <h2>THE <span class="r">FULL</span> STACK</h2>
+
+  <!-- Architecture diagram -->
+  <div class="diagram">
+    <svg viewBox="0 0 700 300" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#7a7570" stroke-width="1.2" stroke-linecap="round"/>
+        </marker>
+      </defs>
+
+      <text x="350" y="15" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#7a7570" letter-spacing=".1em">FULL SYSTEM ARCHITECTURE</text>
+
+      <!-- Layer 1: Serving -->
+      <rect x="10" y="25" width="195" height="55" rx="5" fill="rgba(255,255,255,.03)" stroke="#2a2b2d"/>
+      <text x="107" y="47" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#f0ede8" font-weight="600">Serving Engine</text>
+      <text x="107" y="62" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">vLLM · TRT-LLM · SGLang</text>
+      <text x="107" y="74" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">VLLMIntentAdapter (zero changes)</text>
+
+      <!-- Layer 1: Telemetry -->
+      <rect x="215" y="25" width="195" height="55" rx="5" fill="rgba(255,255,255,.03)" stroke="#2a2b2d"/>
+      <text x="312" y="47" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#f0ede8" font-weight="600">External Telemetry</text>
+      <text x="312" y="62" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">OpenAI proxy logs · Prometheus GPU</text>
+      <text x="312" y="74" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">openai_proxy_adapter · prometheus_adapter</text>
+
+      <!-- Layer 1: KV Estimator -->
+      <rect x="420" y="25" width="265" height="55" rx="5" fill="rgba(255,255,255,.03)" stroke="#2a2b2d"/>
+      <text x="552" y="47" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#f0ede8" font-weight="600">KV Estimator</text>
+      <text x="552" y="62" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">token counts → block footprint</text>
+      <text x="552" y="74" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">ModelKVConfig · kv_estimator.py</text>
+
+      <!-- arrows to event stream -->
+      <line x1="107" y1="80" x2="200" y2="118" stroke="#7a7570" stroke-width="1" marker-end="url(#b)"/>
+      <line x1="312" y1="80" x2="280" y2="118" stroke="#7a7570" stroke-width="1" marker-end="url(#b)"/>
+      <line x1="530" y1="80" x2="320" y2="118" stroke="#7a7570" stroke-width="1" marker-end="url(#b)"/>
+
+      <!-- Event stream -->
+      <rect x="155" y="120" width="220" height="55" rx="5" fill="rgba(214,48,49,.07)" stroke="#d63031" stroke-width="1.2"/>
+      <text x="265" y="143" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#d63031" font-weight="700">MemoryIntentEvent JSONL</text>
+      <text x="265" y="158" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">schema.py · events.py · trace_importer.py</text>
+      <text x="265" y="169" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">step · event_type · MemoryIntent</text>
+
+      <!-- arrow to policy -->
+      <line x1="375" y1="147" x2="420" y2="147" stroke="#7a7570" stroke-width="1" marker-end="url(#b)"/>
+
+      <!-- Policy engine -->
+      <rect x="422" y="120" width="262" height="55" rx="5" fill="rgba(0,184,148,.06)" stroke="#00b894" stroke-width="1.2"/>
+      <text x="553" y="143" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#00b894" font-weight="700">Policy Engine</text>
+      <text x="553" y="158" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">LRU · HotCold · Predictive · Intent · Deadline</text>
+      <text x="553" y="169" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">policies.py · KVMemorySimulator</text>
+
+      <!-- arrow down -->
+      <line x1="553" y1="175" x2="553" y2="205" stroke="#7a7570" stroke-width="1" marker-end="url(#b)"/>
+
+      <!-- Results -->
+      <rect x="422" y="207" width="262" height="45" rx="5" fill="rgba(255,255,255,.03)" stroke="#2a2b2d"/>
+      <text x="553" y="226" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#f2cc60" font-weight="600">SimulationResult</text>
+      <text x="553" y="241" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">p50 / p95 / p99 · dc_miss_rate · evictions</text>
+
+      <!-- Kernel track arrow -->
+      <line x1="265" y1="175" x2="265" y2="205" stroke="#7a7570" stroke-width="1" marker-end="url(#b)"/>
+
+      <!-- Kernel -->
+      <rect x="10" y="207" width="420" height="85" rx="5" fill="rgba(255,255,255,.02)" stroke="#2a2b2d"/>
+      <text x="220" y="228" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#f0ede8" font-weight="600">Linux Kernel Tracks</text>
+      <text x="220" y="244" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">DAMON · userfaultfd · perf_event · THP · io_uring · ioprio</text>
+      <text x="220" y="259" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#7a7570">kv_intent_shrinker.ko · kv_damon_scheme.c</text>
+      <text x="220" y="274" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#d63031">RFC: mm/memory_intent.c · mm/vmscan.c (4 patches)</text>
+    </svg>
+    <p class="diagram-cap">End-to-end system — no vLLM changes required to start generating MemoryIntentEvent traces</p>
+  </div>
+
+</div>
+</section>
+
+<!-- ── SECTION 7: WHY IT MATTERS ── -->
+<section>
+<div class="container">
+  <h2>WHY THIS <span class="g">MATTERS</span></h2>
+
+  <p>
+    The KV cache problem scales with context length — and context lengths are getting
+    longer, fast. GPT-4o, Claude, Gemini, and every major model now supports 100k+ tokens.
+    Kimi K2 runs at 1 million. At these scales, KV cache is not a background concern.
+    It is the primary bottleneck.
+  </p>
+
+  <p>
+    The existing approaches — PagedAttention, LMCache, DistKV — solve the <em>capacity</em> problem.
+    They make KV cache fit. What they don't solve is the <em>scheduling</em> problem: given
+    that something must be evicted, which block is safe to lose?
+  </p>
+
+  <p>
+    That's the white space this project occupies. And the answer requires intent — knowledge
+    that only the serving engine has, propagated downward to where eviction decisions are made.
+  </p>
+
+  <div class="conclusion-grid">
+    <div class="conclusion-card">
+      <h4>For inference engineers</h4>
+      <p>If your p99 latency spikes under memory pressure and you don't know why, a bad eviction decision is the most likely cause. This is the diagnostic and the fix.</p>
+    </div>
+    <div class="conclusion-card">
+      <h4>For systems researchers</h4>
+      <p>The MemoryIntent schema, kernel module, and RFC patch series are a complete research artifact. Every claim is backed by code and committed result files.</p>
+    </div>
+    <div class="conclusion-card">
+      <h4>For OS / MM engineers</h4>
+      <p>The 4-patch RFC is formatted for linux-mm submission. The DAMON scheme driver extends DAMON's official extension point. The shrinker module compiles against a 6.x kernel tree.</p>
+    </div>
+    <div class="conclusion-card">
+      <h4>For the long term</h4>
+      <p>KV cache today. Database buffer pools, ML weight serving, real-time media pipelines tomorrow. Any latency-critical memory workload has this problem. Memory Intent is the generic fix.</p>
+    </div>
+  </div>
+
+</div>
+</section>
+
+<!-- ── SECTION 8: GET STARTED ── -->
+<section>
+<div class="container">
+  <h2>GET <span class="r">STARTED</span></h2>
+
+  <p>Zero runtime dependencies. Pure Python 3.11+. One command to see the core result:</p>
+
+<pre><code><span class="cm"># Install</span>
+git clone https://github.com/manishklach/kv_deadline_scheduler
+<span class="fn">cd</span> kv_deadline_scheduler && pip install -e .
+
+<span class="cm"># Run the full policy sweep — see LRU vs DeadlineAware under 12× HBM pressure</span>
+python examples/benchmark_sweep.py \
+  --seed <span class="nu">42</span> --requests <span class="nu">64</span> --blocks-per-req <span class="nu">24</span> \
+  --block-size-mb <span class="nu">1</span> --hbm-mb <span class="nu">128</span> --dram-mb <span class="nu">4096</span>
+
+<span class="cm"># Compare policies on a real request trace</span>
+kvmi import-request-trace --requests examples/sample_request_trace.jsonl \
+  --model llama-3-8b --out trace.jsonl
+kvmi compare --trace trace.jsonl --hbm-mb <span class="nu">4096</span></code></pre>
+
+  <a href="https://github.com/manishklach/kv_deadline_scheduler" target="_blank" class="repo-box">
+    <span class="rb-icon">⚙</span>
+    <div>
+      <div class="rb-name">github.com/manishklach/kv_deadline_scheduler</div>
+      <div class="rb-desc">MIT · Python 3.11+ · Linux 6.x · v0.6.0 · 53 tests passing</div>
+    </div>
+    <span class="rb-arr">★ Star the repo →</span>
+  </a>
+
+</div>
+</section>
+
+<section style="padding:0 0 3rem;">
+<div class="container">
+  <form class="subscribe" action="https://buttondown.email/api/emails/embed-subscribe/manish-ai" method="post" target="popupwindow" onsubmit="window.open('https://buttondown.email/manish-ai', 'popupwindow')">
+    <label for="bd-email">Get new essays by email</label>
+    <input id="bd-email" type="email" name="email" placeholder="you@example.com" required>
+    <input type="hidden" value="1" name="embed">
+    <input type="submit" value="Subscribe">
+  </form>
+  <div id="webmentions" hidden></div>
+  <div class="meta-footer">
+    <p>Published June 17, 2026 on MANISH AI. Part 2 expands the kernel-facing architecture, trace adapters, and scheduling argument behind kv_deadline_scheduler.</p>
+  </div>
+</div>
+</section>
+
+</main>
+
+<footer>
+  <p>Written June 2026 · <a href="https://github.com/manishklach/kv_deadline_scheduler" target="_blank">github.com/manishklach/kv_deadline_scheduler</a></p>
+  <p style="margin-top:.5rem">All latency figures are from prototype simulation. Kernel patches are RFC — not upstream. Results committed at v0.6.0.</p>
+</footer>
+
+</body>
+</html>
