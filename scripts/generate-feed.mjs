@@ -110,6 +110,11 @@ const buildCollection = (dirPath, urlPrefix) => {
 
 const items = buildCollection(writingsDir, "writings");
 const patentItems = buildCollection(patentsDir, "patents");
+const homepageEntries = [
+  { url: `${siteUrl}/`, lastmod: safeDate(gitDate("index.html")), changefreq: "weekly", priority: "1.0" },
+  { url: `${siteUrl}/writings.html`, lastmod: safeDate(gitDate("writings.html")), changefreq: "weekly", priority: "0.95" },
+  { url: `${siteUrl}/patents.html`, lastmod: safeDate(gitDate("patents.html")), changefreq: "weekly", priority: "0.9" }
+];
 
 const feed = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
@@ -152,28 +157,44 @@ const jsonFeed = {
 
 fs.writeFileSync(path.join(root, "feed.json"), `${JSON.stringify(jsonFeed, null, 2)}\n`, "utf8");
 
-const sitemapEntries = [
-  { url: `${siteUrl}/`, lastmod: safeDate(gitDate("index.html")), changefreq: "weekly", priority: "1.0" },
-  { url: `${siteUrl}/writings.html`, lastmod: safeDate(gitDate("writings.html")), changefreq: "weekly", priority: "0.95" },
-  { url: `${siteUrl}/patents.html`, lastmod: safeDate(gitDate("patents.html")), changefreq: "weekly", priority: "0.9" },
-  ...items.map((item) => ({
-    url: item.link,
-    lastmod: item.published,
-    changefreq: "weekly",
-    priority: "0.8"
-  })),
-  ...patentItems.map((item) => ({
-    url: item.link,
-    lastmod: item.published,
-    changefreq: "monthly",
-    priority: "0.75"
-  }))
-];
+const writingSitemapEntries = items.map((item) => ({
+  url: item.link,
+  lastmod: item.published,
+  changefreq: "weekly",
+  priority: "0.8"
+}));
 
-const sitemap = `<?xml version="1.0" encoding="utf-8"?>
+const patentSitemapEntries = patentItems.map((item) => ({
+  url: item.link,
+  lastmod: item.published,
+  changefreq: "monthly",
+  priority: "0.75"
+}));
+
+const renderUrlSet = (entries) => `<?xml version="1.0" encoding="utf-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${sitemapEntries.map((entry) => `  <url><loc>${xmlEscape(entry.url)}</loc><lastmod>${entry.lastmod}</lastmod><changefreq>${entry.changefreq}</changefreq><priority>${entry.priority}</priority></url>`).join("\n")}
+${entries.map((entry) => `  <url><loc>${xmlEscape(entry.url)}</loc><lastmod>${entry.lastmod}</lastmod><changefreq>${entry.changefreq}</changefreq><priority>${entry.priority}</priority></url>`).join("\n")}
 </urlset>
 `;
 
-fs.writeFileSync(path.join(root, "sitemap.xml"), sitemap, "utf8");
+const pageSitemapFile = "pages-sitemap.xml";
+const writingSitemapFile = "writings-sitemap.xml";
+const patentSitemapFile = "patents-sitemap.xml";
+
+fs.writeFileSync(path.join(root, pageSitemapFile), renderUrlSet(homepageEntries), "utf8");
+fs.writeFileSync(path.join(root, writingSitemapFile), renderUrlSet(writingSitemapEntries), "utf8");
+fs.writeFileSync(path.join(root, patentSitemapFile), renderUrlSet(patentSitemapEntries), "utf8");
+
+const sitemapIndexEntries = [
+  { url: `${siteUrl}/${pageSitemapFile}`, lastmod: homepageEntries[0].lastmod },
+  { url: `${siteUrl}/${writingSitemapFile}`, lastmod: writingSitemapEntries[0]?.lastmod || homepageEntries[1].lastmod },
+  { url: `${siteUrl}/${patentSitemapFile}`, lastmod: patentSitemapEntries[0]?.lastmod || homepageEntries[2].lastmod }
+];
+
+const sitemapIndex = `<?xml version="1.0" encoding="utf-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${sitemapIndexEntries.map((entry) => `  <sitemap><loc>${xmlEscape(entry.url)}</loc><lastmod>${entry.lastmod}</lastmod></sitemap>`).join("\n")}
+</sitemapindex>
+`;
+
+fs.writeFileSync(path.join(root, "sitemap.xml"), sitemapIndex, "utf8");
