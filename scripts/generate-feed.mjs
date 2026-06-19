@@ -49,11 +49,53 @@ const pickDate = (html, filePath) => {
   return gitDate(filePath);
 };
 
+const getAttr = (tag, attr) => {
+  const match = tag.match(new RegExp(`${attr}=["']([^"']+)["']`, "i"));
+  return match ? match[1] : "";
+};
+
+const readMetaRobots = (html) => {
+  const metaTags = html.match(/<meta\b[^>]*>/gi) || [];
+  const robotsTag = metaTags.find((tag) => getAttr(tag, "name").toLowerCase() === "robots");
+  return robotsTag ? getAttr(robotsTag, "content").toLowerCase() : "";
+};
+
+const readCanonical = (html) => {
+  const linkTags = html.match(/<link\b[^>]*>/gi) || [];
+  const canonicalTag = linkTags.find((tag) => getAttr(tag, "rel").toLowerCase() === "canonical");
+  return canonicalTag ? getAttr(canonicalTag, "href") : "";
+};
+
+const readRefreshTarget = (html) => {
+  const metaTags = html.match(/<meta\b[^>]*>/gi) || [];
+  const refreshTag = metaTags.find((tag) => getAttr(tag, "http-equiv").toLowerCase() === "refresh");
+  const content = refreshTag ? getAttr(refreshTag, "content") : "";
+  const refreshMatch = content.match(/url=(.+)$/i);
+  return refreshMatch ? refreshMatch[1].trim() : "";
+};
+
+const isIndexablePage = (html, expectedUrl) => {
+  const robots = readMetaRobots(html);
+  if (robots.includes("noindex")) return false;
+
+  const canonical = readCanonical(html);
+  if (canonical && canonical !== expectedUrl) return false;
+
+  const refreshTarget = readRefreshTarget(html);
+  if (refreshTarget) return false;
+
+  return true;
+};
+
 const buildCollection = (dirPath, urlPrefix) => {
   const files = fs.readdirSync(dirPath).filter((name) => name.endsWith(".html") && name !== "index.html");
-  return files.map((name) => {
+  return files.flatMap((name) => {
     const fullPath = path.join(dirPath, name);
     const html = fs.readFileSync(fullPath, "utf8");
+    const link = `${siteUrl}/${urlPrefix}/${name}`;
+    if (!isIndexablePage(html, link)) {
+      return [];
+    }
     const titleMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || html.match(/<title>([\s\S]*?)<\/title>/i);
     const title = stripTags(titleMatch ? titleMatch[1].replace(/\s*\|\s*Manish.*$/i, "") : name.replace(/\.html$/, ""));
     const paraMatches = [...html.matchAll(/<p\b([^>]*)>([\s\S]*?)<\/p>/gi)];
@@ -62,8 +104,7 @@ const buildCollection = (dirPath, urlPrefix) => {
       .find((para) => !/reading-meta|card-label|post-footer/i.test(para.attrs) && para.text.length > 40 && para.text !== "Contents");
     const description = (picked ? picked.text : title).slice(0, 500);
     const published = safeDate(pickDate(html, fullPath));
-    const link = `${siteUrl}/${urlPrefix}/${name}`;
-    return { title, description, published, link, fullPath };
+    return [{ title, description, published, link, fullPath }];
   }).sort((a, b) => (a.published < b.published ? 1 : -1));
 };
 
