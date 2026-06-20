@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Warp &amp; Thread Groups: Field Notes on GPU Execution | MANISH AI</title>
+<meta name="description" content="A technical essay on GPU warps, wavefronts, thread groups, divergence, and shared memory, explaining how compute kernels really map onto hardware execution lanes."/>
+<meta name="keywords" content="GPU warps, thread groups, wavefronts, CUDA blocks, HLSL compute shaders, SIMT, divergence, shared memory"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f3f7fb"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/warp-thread-groups-field-notes-gpu-execution.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Warp &amp; Thread Groups: Field Notes on GPU Execution | MANISH AI"/>
+<meta property="og:description" content="A technical essay on how GPU warps, wavefronts, thread groups, divergence, and synchronization shape real kernel performance."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/warp-thread-groups-field-notes-gpu-execution.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/warp-thread-groups-field-notes-gpu-execution.png"/>
+<meta property="og:image:alt" content="Preview image for Warp &amp; Thread Groups: Field Notes on GPU Execution"/>
+<meta property="article:published_time" content="2026-06-19T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-06-19T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Warp &amp; Thread Groups: Field Notes on GPU Execution"/>
+<meta name="twitter:description" content="A technical essay on the hidden hierarchy behind GPU parallelism: warps, thread groups, divergence, and shared memory."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/warp-thread-groups-field-notes-gpu-execution.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Warp & Thread Groups: Field Notes on GPU Execution","description":"A technical essay on GPU warps, wavefronts, thread groups, divergence, and shared memory, explaining how compute kernels really map onto hardware execution lanes.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/warp-thread-groups-field-notes-gpu-execution.html","mainEntityOfPage":"https://manishklach.github.io/writings/warp-thread-groups-field-notes-gpu-execution.html","datePublished":"2026-06-19","dateModified":"2026-06-19","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+:root{
+  --bg:#f3f7fb;
+  --bg-deep:#e6eef6;
+  --panel:#ffffff;
+  --ink:#12324a;
+  --muted:#4f6f8a;
+  --line:#2f6f9f;
+  --grid:rgba(47,111,159,0.10);
+  --amber:#a76600;
+  --green:#0d7c61;
+  --font-display:'Big Shoulders Display', sans-serif;
+  --font-body:'IBM Plex Sans', sans-serif;
+  --font-mono:'IBM Plex Mono', monospace;
+  --maxw:760px;
+  color-scheme:light;
+}
+
+html.dark{
+  --bg:#0A2A43;
+  --bg-deep:#071D30;
+  --panel:#0D3252;
+  --ink:#EAF2F8;
+  --muted:#8FB3CE;
+  --line:#5A9BD4;
+  --grid:rgba(125,178,216,0.16);
+  --amber:#FFB627;
+  --green:#5FE1A6;
+  color-scheme:dark;
+}
+
+  *{ box-sizing: border-box; }
+  html{ scroll-behavior: smooth; }
+
+  body{
+    margin:0;
+    background:
+      repeating-linear-gradient(0deg, var(--grid) 0px, var(--grid) 1px, transparent 1px, transparent 32px),
+      repeating-linear-gradient(90deg, var(--grid) 0px, var(--grid) 1px, transparent 1px, transparent 32px),
+      var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body::before{
+    content:"";
+    position: fixed; inset:0;
+    pointer-events:none;
+    opacity:.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    z-index: 50;
+  }
+
+  ::selection{ background: var(--amber); color: var(--bg-deep); }
+
+  a{ color: var(--amber); }
+  a:focus-visible, button:focus-visible{
+    outline: 2px solid var(--amber);
+    outline-offset: 3px;
+  }
+
+  /* corner registration marks */
+  .reg{
+    position: fixed; width: 22px; height: 22px; z-index: 40; opacity:.55; pointer-events:none;
+  }
+  .reg::before, .reg::after{ content:""; position:absolute; background: var(--line); }
+  .reg::before{ left:50%; top:0; width:1px; height:100%; transform:translateX(-50%); }
+  .reg::after{ top:50%; left:0; height:1px; width:100%; transform:translateY(-50%); }
+  .reg.tl{ top:14px; left:14px; } .reg.tr{ top:14px; right:14px; }
+  .reg.bl{ bottom:14px; left:14px; } .reg.br{ bottom:14px; right:14px; }
+
+  .wrap{ max-width: var(--maxw); margin: 0 auto; padding: 0 24px; position:relative; z-index: 5;}
+
+  /* ---------- title block / header ---------- */
+  header.titleblock{
+    border-bottom: 1px solid rgba(125,178,216,.35);
+    padding: 18px 0;
+    margin-bottom: 0;
+  }
+  .tb-row{
+    display:flex; justify-content:space-between; align-items:baseline; gap: 12px; flex-wrap: wrap;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing:.12em; color: var(--muted); text-transform: uppercase;
+  }
+
+  .hero{ padding: 64px 0 28px; }
+  .eyebrow{
+    font-family: var(--font-mono); font-size: 12px; letter-spacing:.18em; text-transform: uppercase;
+    color: var(--amber); margin: 0 0 14px; display:flex; align-items:center; gap:10px;
+  }
+  .eyebrow::before{ content:""; width: 26px; height:1px; background: var(--amber); display:inline-block; }
+
+  h1.title{
+    font-family: var(--font-display); font-weight: 900; text-transform: uppercase;
+    font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: .92; letter-spacing: .01em;
+    margin: 0 0 22px;
+  }
+  h1.title em{ font-style: normal; color: var(--green); }
+
+  .dek{
+    font-size: clamp(1.02rem, 1.6vw, 1.18rem); color: var(--muted); max-width: 60ch; margin: 0 0 40px;
+    font-weight: 400;
+  }
+
+  /* ---------- lockstep hero diagram ---------- */
+  .lockstep{
+    border: 1px solid rgba(125,178,216,.4);
+    background: var(--bg-deep);
+    border-radius: 2px;
+    padding: 22px 22px 18px;
+    margin-bottom: 56px;
+  }
+  .lockstep-row{ display:flex; align-items:center; gap:18px; margin: 14px 0; flex-wrap: wrap; }
+  .lockstep-tag{
+    font-family: var(--font-mono); font-size: 11px; color: var(--muted); width: 142px; flex-shrink:0;
+    text-transform: uppercase; letter-spacing:.08em;
+  }
+  .lanes{ display:flex; gap:4px; flex-wrap: wrap; }
+  .lane{
+    width: 13px; height: 13px; background: var(--panel); border: 1px solid rgba(125,178,216,.45);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  .lanes.cpu .lane{ animation-name: pulse-amber; }
+  .lanes.gpu .lane{ animation-name: pulse-green; }
+  @keyframes pulse-amber{ 0%,100%{ background: var(--panel); } 50%{ background: var(--amber); } }
+  @keyframes pulse-green{ 0%,100%{ background: var(--panel); } 50%{ background: var(--green); } }
+  .lockstep-cap{ font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .lockstep-cap b{ color: var(--ink); font-weight: 600; }
+  @media (prefers-reduced-motion: reduce){
+    .lane{ animation: none !important; }
+    .lanes.cpu .lane:nth-child(odd){ background: var(--amber); }
+    .lanes.gpu .lane{ background: var(--green); }
+  }
+
+  /* ---------- article ---------- */
+  article{ padding-bottom: 40px; }
+  section{ padding: 56px 0; border-top: 1px dashed rgba(125,178,216,.3); }
+  section:first-of-type{ border-top: none; }
+
+  .sheet{
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--line); letter-spacing:.16em;
+    text-transform: uppercase; margin: 0 0 10px; display:flex; gap: 10px; align-items:center;
+  }
+  .sheet::after{ content:""; flex:1; height:1px; background: rgba(125,178,216,.3); }
+
+  h2{
+    font-family: var(--font-display); font-weight: 800; text-transform: uppercase;
+    font-size: clamp(1.6rem, 3.4vw, 2.3rem); letter-spacing:.01em; margin: 0 0 20px; line-height: 1.05;
+  }
+  h3{
+    font-family: var(--font-mono); font-weight: 600; font-size: 1rem; text-transform: uppercase;
+    letter-spacing:.06em; color: var(--green); margin: 32px 0 14px;
+  }
+
+  p{ margin: 0 0 18px; max-width: 68ch; }
+  p.lead{ color: var(--ink); font-size: 1.05rem; }
+  strong{ color: var(--ink); font-weight: 600; }
+  code.inline{
+    font-family: var(--font-mono); background: var(--bg-deep); border: 1px solid rgba(125,178,216,.3);
+    padding: 1px 6px; border-radius: 2px; font-size: .88em; color: var(--green);
+  }
+
+  ul{ margin: 0 0 18px; padding-left: 1.2em; max-width: 64ch; }
+  li{ margin-bottom: 8px; }
+  li::marker{ color: var(--amber); }
+
+  /* ---------- spec chips ---------- */
+  .chiprow{ display:flex; gap: 14px; flex-wrap: wrap; margin: 24px 0 32px; }
+  .chip{
+    border: 1px solid rgba(125,178,216,.4); background: var(--bg-deep);
+    padding: 14px 18px; min-width: 150px; flex: 1 1 150px;
+  }
+  .chip .num{ font-family: var(--font-display); font-weight: 900; font-size: 2.2rem; color: var(--amber); line-height:1; }
+  .chip .lbl{ font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); letter-spacing:.08em; text-transform: uppercase; margin-top: 6px; display:block; }
+
+  /* ---------- code panels ---------- */
+  .codepanel{ margin: 22px 0 30px; border: 1px solid rgba(125,178,216,.4); background: var(--bg-deep); }
+  .codepanel .ch{
+    display:flex; justify-content: space-between; align-items:center; padding: 8px 14px;
+    border-bottom: 1px solid rgba(125,178,216,.3); font-family: var(--font-mono); font-size: 11px;
+    color: var(--muted); letter-spacing:.06em; text-transform: uppercase;
+  }
+  .codepanel .ch .file{ color: var(--green); }
+  .codepanel pre{ margin:0; padding: 16px; overflow-x:auto; }
+  .codepanel code{ font-family: var(--font-mono); font-size: 13.2px; line-height: 1.65; color: var(--ink); }
+  .tok-kw{ color: var(--amber); }
+  .tok-cm{ color: var(--muted); font-style: italic; }
+  .tok-ty{ color: var(--green); }
+  .tok-str{ color: #B7D7A8; }
+
+  .codegrid{ display:grid; grid-template-columns: 1fr; gap: 18px; }
+  @media (min-width: 760px){ .codegrid.two{ grid-template-columns: 1fr 1fr; } }
+
+  /* ---------- diagrams: nested hierarchy ---------- */
+  .nest{
+    border: 1px solid var(--line); padding: 26px; position: relative; margin: 30px 0 12px;
+  }
+  .nest .tag{
+    position:absolute; top:-10px; left:14px; background: var(--bg); padding: 0 8px;
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing:.1em; color: var(--line); text-transform: uppercase;
+  }
+  .nest .desc{ font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .nest.l1{ border-color: rgba(90,155,212,.55); }
+  .nest.l2{ border-color: rgba(95,225,166,.6); margin-top: 24px; }
+  .nest.l3{ border-color: rgba(255,182,39,.7); margin-top: 24px; }
+  .nest.l4{ border: 1px solid rgba(234,242,248,.5); margin-top: 24px; padding: 16px; }
+  .nest.l1 .tag{ color: var(--line); }
+  .nest.l2 .tag{ color: var(--green); }
+  .nest.l3 .tag{ color: var(--amber); }
+  .nest.l4 .tag{ color: var(--ink); }
+
+  /* ---------- warp composition diagram ---------- */
+  .warpgroup{ border: 1px dashed var(--line); padding: 20px; margin: 28px 0; }
+  .warpgroup .glabel{
+    font-family: var(--font-mono); font-size: 11px; color: var(--line); letter-spacing:.1em;
+    text-transform: uppercase; margin-bottom: 14px;
+  }
+  .warprow{ display:flex; align-items:center; gap: 12px; margin-bottom: 6px; }
+  .warprow .wl{
+    font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); width: 64px; flex-shrink:0;
+  }
+  .warprow .bar{
+    flex:1; height: 16px;
+    background: repeating-linear-gradient(90deg, var(--panel) 0 3px, var(--bg-deep) 3px 4px);
+    border: 1px solid rgba(95,225,166,.5);
+  }
+
+  /* ---------- divergence diagram ---------- */
+  .diverge{ border: 1px solid rgba(125,178,216,.4); padding: 20px; margin: 28px 0; background: var(--bg-deep); }
+  .drow{ display:flex; align-items:center; gap: 12px; margin-bottom: 10px; }
+  .drow .dl{ font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); width: 150px; flex-shrink:0; text-transform:uppercase; letter-spacing:.05em;}
+  .dlanes{ display:flex; gap: 4px; }
+  .dlane{ width: 22px; height: 22px; border: 1px solid rgba(125,178,216,.4); }
+  .dlane.a{ background: var(--amber); }
+  .dlane.b{ background: var(--green); }
+  .dlane.dim{ background: var(--panel); opacity: .3; }
+  .dcap{ font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); margin-top: 12px; }
+
+  /* ---------- tables ---------- */
+  table{ width:100%; border-collapse: collapse; margin: 24px 0 30px; font-size: .92rem; }
+  caption{
+    text-align:left; font-family: var(--font-mono); font-size: 10.5px; color: var(--line);
+    letter-spacing:.1em; text-transform: uppercase; margin-bottom: 8px;
+  }
+  th, td{ border: 1px solid rgba(125,178,216,.3); padding: 10px 12px; text-align: left; vertical-align: top; }
+  th{ font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing:.06em; color: var(--amber); background: rgba(255,182,39,.06); }
+  td{ font-family: var(--font-mono); font-size: 12.6px; color: var(--ink); }
+  tr:nth-child(even) td{ background: rgba(125,178,216,.04); }
+
+  /* ---------- BOM / rules list ---------- */
+  .bom{ width:100%; border-collapse: collapse; margin: 20px 0 8px; }
+  .bom td, .bom th{ border-bottom: 1px solid rgba(125,178,216,.25); border-top:none; border-left:none; border-right:none; padding: 12px 10px; }
+  .bom .itno{ font-family: var(--font-mono); color: var(--amber); width: 46px; }
+  .bom .rule{ font-weight: 600; color: var(--ink); font-family: var(--font-body); }
+  .bom .why{ color: var(--muted); font-family: var(--font-body); font-size: .92rem; }
+
+  /* ---------- pull quote ---------- */
+  .pull{
+    border-left: 2px solid var(--amber); padding: 4px 0 4px 22px; margin: 30px 0;
+    font-family: var(--font-display); font-size: clamp(1.2rem,2.4vw,1.5rem); font-weight: 700;
+    text-transform: uppercase; line-height: 1.18; color: var(--ink); letter-spacing:.005em;
+  }
+
+  /* ---------- footer titleblock ---------- */
+  footer{ border-top: 1px solid rgba(125,178,216,.35); padding: 36px 0 60px; }
+  .stamp{
+    display:grid; grid-template-columns: repeat(2, 1fr); gap: 18px;
+    font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing:.08em;
+  }
+  @media (min-width: 600px){ .stamp{ grid-template-columns: repeat(4, 1fr); } }
+  .stamp .k{ color: var(--line); display:block; margin-bottom: 4px; }
+  .stamp .v{ color: var(--ink); font-size: 12.5px; }
+  footer .note{ margin-top: 26px; color: var(--muted); font-size: .92rem; max-width: 64ch; }
+
+  @media (max-width: 480px){
+    .reg{ display:none; }
+    .lockstep-tag{ width: 100%; }
+  }
+html{background:var(--bg)}
+body{min-height:100vh}
+.shell{max-width:1100px;margin:0 auto;padding:18px 24px 0;position:relative;z-index:90}
+.site-tools{border:1px solid rgba(125,178,216,.28);border-radius:16px;background:color-mix(in srgb, var(--bg) 82%, transparent);backdrop-filter:blur(12px)}
+.site-actions{display:flex;align-items:center;gap:14px}
+.titleblock{margin-top:8px}
+.hero .reading-meta{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:-14px 0 28px}
+.hero .reading-meta time{color:var(--ink)}
+.site-global-footer{border-top:1px solid rgba(125,178,216,.28);padding:28px 24px 48px;margin-top:20px}
+.site-footer-inner{max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-family:var(--font-mono);font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.site-footer-inner strong,.site-footer-inner a{color:var(--ink);text-decoration:none}
+.site-footer-inner a:hover{text-decoration:underline}
+.logo-word{letter-spacing:.18em}
+.logo-i{color:var(--green)}
+@media (max-width: 640px){.shell{padding:14px 16px 0}.site-global-footer{padding:28px 16px 44px}}
+</style>
+</head>
+<body>
+<main data-pagefind-body>
+<div class="reg tl"></div><div class="reg tr"></div><div class="reg bl"></div><div class="reg br"></div>
+
+  <div class="shell"><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><div class="site-actions"><a class="rss-link" href="/feed.xml">RSS</a><button type="button" id="theme-toggle" aria-label="Toggle theme">☀️</button></div></div></div>
+  <header class="titleblock">
+    <div class="wrap tb-row">
+      <span>Field Notes — GPU Execution Model</span>
+      <span>Doc SM&#8209;32 · Rev A · 2026</span>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <section class="hero" style="border:none; padding-top:64px;">
+      <p class="eyebrow">Compute Architecture</p>
+      <h1 class="title">Warp &amp; Thread<br><em>Groups</em></h1>
+      <p class="dek">The hidden hierarchy behind GPU parallelism — why thousands of threads behave like a few hundred tightly synchronized squads, and what that means for the code you write.</p>
+      <p class="reading-meta">Published <time datetime="2026-06-19">June 19, 2026</time> · 10 min read</p>
+
+      <div class="lockstep">
+        <div class="lockstep-row">
+          <span class="lockstep-tag">CPU threads</span>
+          <div class="lanes cpu" id="cpuLanes"></div>
+        </div>
+        <div class="lockstep-row">
+          <span class="lockstep-tag">GPU warp (32&nbsp;lanes)</span>
+          <div class="lanes gpu" id="gpuLanes"></div>
+        </div>
+        <p class="lockstep-cap">Independent CPU threads drift out of phase. A <b>warp</b> can't — every lane executes the <b>same instruction</b>, on the same clock, or sits out entirely.</p>
+      </div>
+    </section>
+
+    <article>
+
+      <section>
+        <p class="sheet">Sheet 01 — Scale</p>
+        <h2>Three Levels of Parallelism</h2>
+        <p class="lead">Ask someone what makes a GPU fast and they'll say "thousands of cores." True, but misleading — a GPU doesn't run thousands of independent threads. It runs them in tightly coordinated squads, and that organization is the difference between code that merely runs on a GPU and code that actually uses one.</p>
+        <p>NVIDIA calls the basic execution unit a <strong>warp</strong>. AMD calls it a <strong>wavefront</strong>. HLSL and DirectCompute call the layer above it a <strong>thread group</strong>; CUDA calls the same idea a <strong>thread block</strong>. Different vocabulary, same hierarchy:</p>
+
+        <div class="nest l1">
+          <span class="tag">Grid / Dispatch</span>
+          <div class="nest l2">
+            <span class="tag">Thread Group / Block — programmer-defined</span>
+            <div class="nest l3">
+              <span class="tag">Warp / Wavefront — hardware-fixed, 32–64 threads</span>
+              <div class="nest l4">
+                <span class="tag">Thread — one lane, one instruction stream shared</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="desc" style="font-family:var(--font-mono); font-size:11px; color:var(--muted); margin-top:14px;">Grid → independent work spread across the whole chip. Thread group → your scheduling unit, shares memory and barriers. Warp → the hardware's true atomic unit of execution.</p>
+      </section>
+
+      <section>
+        <p class="sheet">Sheet 02 — Definition</p>
+        <h2>What Exactly Is a Warp?</h2>
+        <p class="lead">A warp is NVIDIA's unit of <strong>SIMT execution</strong> — Single Instruction, Multiple Threads. All 32 threads in a warp share one instruction stream. Every cycle, the scheduler issues the <em>same instruction</em> to all 32 lanes; each lane just applies it to its own data.</p>
+        <p>This is the key mental model: a warp is <strong>not</strong> 32 independent threads that happen to run nearby. It's one instruction stream wearing 32 hats. If you've used SIMD on CPUs — SSE, AVX, NEON — the analogy is exact, except a GPU runs hundreds of these lane-groups concurrently and hides memory latency by switching between them.</p>
+
+        <div class="chiprow">
+          <div class="chip"><span class="num">32</span><span class="lbl">NVIDIA warp width</span></div>
+          <div class="chip"><span class="num">64</span><span class="lbl">AMD GCN wavefront</span></div>
+          <div class="chip"><span class="num">32/64</span><span class="lbl">AMD RDNA, configurable</span></div>
+        </div>
+        <p style="font-family:var(--font-mono); font-size:12px; color:var(--muted);">Portable code shouldn't hardcode the number — query it. <code class="inline">WaveGetLaneCount()</code> in HLSL, <code class="inline">warpSize</code> in CUDA.</p>
+      </section>
+
+      <section>
+        <p class="sheet">Sheet 03 — Definition</p>
+        <h2>What Exactly Is a Thread Group?</h2>
+        <p class="lead">A thread group is the unit <em>you</em> define when writing a compute shader or kernel. The hardware doesn't know or care about your chosen shape — it flattens it into a sequence of threads and slices that into warps of 32 (or wavefronts of 64).</p>
+
+        <div class="codegrid two">
+          <div class="codepanel">
+            <div class="ch"><span>Example</span><span class="file">compute.hlsl</span></div>
+            <pre><code><span class="tok-kw">[numthreads</span>(8, 8, 1)<span class="tok-kw">]</span>
+<span class="tok-ty">void</span> CSMain(
+    uint3 groupID      : SV_GroupID,
+    uint3 groupThreadID : SV_GroupThreadID,
+    uint3 dispatchID    : SV_DispatchThreadID)
+{
+    <span class="tok-cm">// 8 * 8 * 1 = 64 threads / group</span>
+    <span class="tok-cm">// → flattened into 2 warps of 32</span>
+}</code></pre>
+          </div>
+          <div class="codepanel">
+            <div class="ch"><span>Example</span><span class="file">kernel.cu</span></div>
+            <pre><code><span class="tok-ty">dim3</span> blockDim(8, 8, 1);   <span class="tok-cm">// 64 threads / block</span>
+<span class="tok-ty">dim3</span> gridDim(16, 16, 1);
+
+myKernel<span class="tok-kw">&lt;&lt;&lt;</span>gridDim, blockDim<span class="tok-kw">&gt;&gt;&gt;</span>(data);
+
+<span class="tok-cm">// inside the kernel:</span>
+<span class="tok-ty">int</span> tid = threadIdx.x + blockIdx.x * blockDim.x;</code></pre>
+          </div>
+        </div>
+
+        <p>What a thread group guarantees that a lone warp does not:</p>
+        <ul>
+          <li><strong>Shared memory</strong> — a fast on-chip scratchpad (<code class="inline">groupshared</code> / <code class="inline">__shared__</code>) visible to every thread in the group.</li>
+          <li><strong>Group-wide synchronization</strong> — a barrier where every thread waits for the others, so shared-memory writes are visible before anyone reads them.</li>
+        </ul>
+        <p>Warps in different thread groups generally can't talk to each other — there's no hardware guarantee about when other groups even run. That isolation is intentional: it's what lets the GPU schedule thousands of groups without a global coordination bottleneck.</p>
+      </section>
+
+      <section>
+        <p class="sheet">Sheet 04 — Composition</p>
+        <h2>How Warps Compose a Group</h2>
+        <p class="lead">Request a 256-thread group and the hardware doesn't hand you 256 independent lanes — it hands you 8 warps that share one shared-memory allocation and one barrier.</p>
+
+        <div class="warpgroup">
+          <div class="glabel">Thread Group — 256 threads</div>
+          <div class="warprow"><span class="wl">Warp 0</span><div class="bar"></div></div>
+          <div class="warprow"><span class="wl">Warp 1</span><div class="bar"></div></div>
+          <div class="warprow"><span class="wl">Warp 2</span><div class="bar"></div></div>
+          <div class="warprow"><span class="wl">Warp 3</span><div class="bar"></div></div>
+          <div class="warprow"><span class="wl">Warp 4</span><div class="bar"></div></div>
+          <div class="warprow"><span class="wl">Warp 5</span><div class="bar"></div></div>
+          <div class="warprow"><span class="wl">Warp 6</span><div class="bar"></div></div>
+          <div class="warprow"><span class="wl">Warp 7</span><div class="bar"></div></div>
+        </div>
+
+        <p>Each warp is scheduled independently by the streaming multiprocessor. Warp 3 might stall on a memory load while Warp 6 keeps computing — that interleaving is how the GPU hides memory latency: when one warp stalls, the scheduler swaps in another that's ready, at essentially zero cost, since each warp owns its own register file.</p>
+        <p class="pull">More resident warps means more places to hide a stall behind.</p>
+      </section>
+
+      <section>
+        <p class="sheet">Sheet 05 — Failure Mode</p>
+        <h2>Divergence: When Warps Misbehave</h2>
+        <p class="lead">Because every thread in a warp executes the same instruction, trouble starts the moment threads in a warp disagree about <em>which</em> instruction to run — typically an <code class="inline">if</code>/<code class="inline">else</code> on per-thread data.</p>
+
+        <div class="codepanel">
+          <div class="ch"><span>Example</span><span class="file">divergent.hlsl</span></div>
+          <pre><code><span class="tok-kw">if</span> (threadID % 2 == 0) {
+    DoExpensiveWorkA();   <span class="tok-cm">// even lanes</span>
+} <span class="tok-kw">else</span> {
+    DoExpensiveWorkB();   <span class="tok-cm">// odd lanes</span>
+}</code></pre>
+        </div>
+
+        <p>A warp can't actually split into two streams. The hardware executes <strong>both branches serially</strong>, masking off the threads that don't apply to each one. The warp pays the combined cost of A and B — correctness is fine, throughput quietly halves.</p>
+
+        <div class="diverge">
+          <div class="drow">
+            <span class="dl">Warp lanes</span>
+            <div class="dlanes">
+              <div class="dlane a"></div><div class="dlane b"></div><div class="dlane a"></div><div class="dlane b"></div>
+              <div class="dlane a"></div><div class="dlane b"></div><div class="dlane a"></div><div class="dlane b"></div>
+            </div>
+          </div>
+          <div class="drow">
+            <span class="dl">Step 1 — branch A</span>
+            <div class="dlanes">
+              <div class="dlane a"></div><div class="dlane dim"></div><div class="dlane a"></div><div class="dlane dim"></div>
+              <div class="dlane a"></div><div class="dlane dim"></div><div class="dlane a"></div><div class="dlane dim"></div>
+            </div>
+          </div>
+          <div class="drow">
+            <span class="dl">Step 2 — branch B</span>
+            <div class="dlanes">
+              <div class="dlane dim"></div><div class="dlane b"></div><div class="dlane dim"></div><div class="dlane b"></div>
+              <div class="dlane dim"></div><div class="dlane b"></div><div class="dlane dim"></div><div class="dlane b"></div>
+            </div>
+          </div>
+          <p class="dcap">Masked lanes still occupy a cycle — they just don't write a result. Total cost ≈ cost(A) + cost(B), even though each lane only needed one.</p>
+        </div>
+
+        <p>The fix isn't "never branch" — it's awareness of where the boundary falls relative to warp boundaries. A branch that's <strong>uniform across the warp</strong> (e.g. based on <code class="inline">groupID</code> rather than per-thread data) costs nothing extra, because the whole warp takes the same path together.</p>
+      </section>
+
+      <section>
+        <p class="sheet">Sheet 06 — Coordination</p>
+        <h2>Synchronization &amp; Shared Memory</h2>
+        <p class="lead">The barrier at the thread-group level exists specifically because warps run asynchronously relative to each other. Load a tile into shared memory, then have every thread read from it — that requires a barrier in between.</p>
+
+        <div class="codepanel">
+          <div class="ch"><span>Example</span><span class="file">tile_matmul.cu</span></div>
+          <pre><code><span class="tok-kw">__shared__</span> <span class="tok-ty">float</span> tile[16][16];
+
+tile[ty][tx] = globalData[...];   <span class="tok-cm">// each thread loads one element</span>
+<span class="tok-kw">__syncthreads</span>();              <span class="tok-cm">// wait for the WHOLE group — all warps</span>
+
+<span class="tok-cm">// now safe to read any element, not just your own</span>
+sum += tile[ty][k] * tile[k][tx];</code></pre>
+        </div>
+
+        <p>Without the barrier, a fast warp could start reading the tile before a slow warp finishes writing its portion — a race condition that fails intermittently, which makes it miserable to debug, since it depends on scheduling rather than logic. Note what the barrier <em>doesn't</em> do: it never synchronizes across thread groups. There's no cheap, general way for Group&nbsp;5 to wait on Group&nbsp;12, by design.</p>
+      </section>
+
+      <section>
+        <p class="sheet">Sheet 07 — Cross-Reference</p>
+        <h2>Warp-Level Primitives</h2>
+        <p class="lead">Because a warp already moves in lockstep, vendors expose intrinsics that let threads inside it exchange data without touching shared memory or paying a barrier — far cheaper than a full group sync.</p>
+
+        <table>
+          <caption>Cross-reference — vendor terminology</caption>
+          <thead>
+            <tr><th>Operation</th><th>CUDA</th><th>HLSL (SM6+)</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Sum across the warp</td><td>__reduce_add_sync / shuffle reduction</td><td>WaveActiveSum</td></tr>
+            <tr><td>Broadcast a value</td><td>__shfl_sync</td><td>WaveReadLaneFirst</td></tr>
+            <tr><td>Any / all lanes true</td><td>__any_sync / __all_sync</td><td>WaveActiveAnyTrue / WaveActiveAllTrue</td></tr>
+            <tr><td>Bitmask of active lanes</td><td>__ballot_sync</td><td>WaveActiveBallot</td></tr>
+            <tr><td>Execution unit, NVIDIA</td><td>warp (32 threads)</td><td>wave (32 lanes)</td></tr>
+            <tr><td>Cooperative container</td><td>thread block</td><td>thread group</td></tr>
+          </tbody>
+        </table>
+        <p>If you find yourself writing a tree-reduction over shared memory that only spans 32 elements, that's almost always better expressed as a single warp-level shuffle reduction instead.</p>
+      </section>
+
+      <section>
+        <p class="sheet">Sheet 08 — Specification</p>
+        <h2>Choosing a Thread Group Size</h2>
+        <p class="lead">This is the practical question every GPU programmer eventually answers, and the warp relationship is exactly what should drive the decision.</p>
+
+        <table class="bom">
+          <thead>
+            <tr><th class="itno">Item</th><th class="rule">Rule</th><th class="why">Rationale</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="itno">01</td><td class="rule">Size as a multiple of warp width</td><td class="why">100 threads round up to 4 warps (128 lanes) — 28 lanes wasted on every instruction. 128 or 256 wastes nothing.</td></tr>
+            <tr><td class="itno">02</td><td class="rule">Don't go smaller than ~64</td><td class="why">A 32-thread group is exactly one warp — correct, but gives the scheduler nothing to interleave for latency hiding.</td></tr>
+            <tr><td class="itno">03</td><td class="rule">Don't oversize carelessly</td><td class="why">Bigger groups raise shared-memory and register pressure, which can shrink how many groups fit per SM — lowering occupancy.</td></tr>
+            <tr><td class="itno">04</td><td class="rule">Query the warp size, don't hardcode it</td><td class="why">Code that assumes 32 wastes a quarter of every lane group on 64-wide AMD hardware.</td></tr>
+          </tbody>
+        </table>
+        <p style="font-family:var(--font-mono); font-size:12px; color:var(--muted);">Common sweet spots: 64 · 128 · 256 · 512 — the right one depends on your shared-memory footprint and register usage. Profile for occupancy; don't guess.</p>
+      </section>
+
+      <section>
+        <p class="sheet">Sheet 09 — Closing</p>
+        <h2>Why the Hierarchy Exists</h2>
+        <p class="lead">It's worth asking why GPU vendors didn't just give every thread a fully independent instruction stream, the way a CPU core does. The answer is area and power: an independent fetch/decode unit per thread would be enormously expensive to replicate thousands of times over.</p>
+        <p>By sharing one instruction stream across 32 or 64 threads, the warp amortizes that cost across many execution lanes, freeing up silicon for more ALUs instead of more control logic. The thread group, in turn, is the software contract that lets you exploit locality without requiring the hardware to coordinate across the entire chip.</p>
+        <p>The constraints that feel limiting at first — lockstep execution, divergence penalties, no cross-group sync — are the same constraints that make GPUs so much more power-efficient than CPUs at the regular, data-parallel work they're built for. Think in warps and thread groups, and GPU performance stops feeling mysterious.</p>
+
+        <p class="pull">The warp is the GPU's true atomic unit of execution. The thread group is the cooperative unit you build on top of it.</p>
+
+        <p>The next time a compute shader runs slower than expected, ask two questions first: is this thread group sized as a clean multiple of the warp width, and is there a branch where threads in the same warp disagree? More often than not, the answer to one of those explains the gap.</p>
+      </section>
+
+    </article>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <div class="stamp">
+        <div><span class="k">Drawn by</span><span class="v">Claude</span></div>
+        <div><span class="k">Scale</span><span class="v">Not to scale</span></div>
+        <div><span class="k">Sheet</span><span class="v">09 of 09</span></div>
+        <div><span class="k">Status</span><span class="v">Rev A — issued</span></div>
+      </div>
+      <p class="note">Terminology and lane widths reflect common NVIDIA / AMD / DirectCompute conventions as of this writing; consult current vendor documentation before relying on specific numbers for a target architecture.</p>
+    </div>
+  </footer>
+
+<script>
+  (function(){
+    function buildRow(id, count, synced){
+      var row = document.getElementById(id);
+      if(!row) return;
+      for(var i=0;i<count;i++){
+        var lane = document.createElement('div');
+        lane.className = 'lane';
+        if(!synced){
+          var pseudo = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+          lane.style.animationDelay = (pseudo * 1.4).toFixed(2) + 's';
+        }
+        row.appendChild(lane);
+      }
+    }
+    buildRow('cpuLanes', 24, false);
+    buildRow('gpuLanes', 24, true);
+  })();
+</script>
+</main>
+<footer class="site-global-footer" aria-label="Site footer">
+  <div class="site-footer-inner">
+    <div><strong><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span></strong><br/>Technical essays on AI infrastructure and systems.</div>
+    <div><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a></div>
+  </div>
+</footer>
+</body>
+</html>
