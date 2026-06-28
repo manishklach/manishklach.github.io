@@ -1,0 +1,1652 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CPUOpt-Kernel: Architecture-Aware CPU Performance for Linux | MANISH AI</title>
+<meta name="description" content="A systems essay on CPUOpt-Kernel, a Linux architecture-aware CPU performance policy layer spanning Intel HWP, AMD CPPC, ARM SCMI, thermal telemetry, and workload-shaped tuning."/>
+<meta name="keywords" content="CPUOpt-Kernel, Linux performance tuning, Intel HWP, AMD CPPC, ARM SCMI, cpufreq, intel_pstate, amd-pstate, thermal telemetry, AI inference"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f4f8fb"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/cpuopt-kernel-architecture-aware-cpu-performance-linux.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="CPUOpt-Kernel: Architecture-Aware CPU Performance for Linux | MANISH AI"/>
+<meta property="og:description" content="A deep dive into CPUOpt-Kernel: architecture-aware Linux CPU policy across Intel, AMD, and ARM, with thermal feedback, workload profiles, and safe documented control surfaces."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/cpuopt-kernel-architecture-aware-cpu-performance-linux.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/cpuopt-kernel-architecture-aware-cpu-performance-linux.png"/>
+<meta property="og:image:alt" content="Preview image for the CPUOpt-Kernel essay"/>
+<meta property="article:published_time" content="2026-06-28T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-06-28T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="CPUOpt-Kernel: Architecture-Aware CPU Performance for Linux"/>
+<meta name="twitter:description" content="A Linux systems essay on CPUOpt-Kernel, from Intel HWP and AMD CPPC to ARM SCMI, thermal control loops, and workload-aware CPU policy."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/cpuopt-kernel-architecture-aware-cpu-performance-linux.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"CPUOpt-Kernel: Architecture-Aware CPU Performance for Linux","description":"A systems essay on CPUOpt-Kernel, a Linux architecture-aware CPU performance policy layer spanning Intel HWP, AMD CPPC, ARM SCMI, thermal telemetry, and workload-shaped tuning.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/cpuopt-kernel-architecture-aware-cpu-performance-linux.html","mainEntityOfPage":"https://manishklach.github.io/writings/cpuopt-kernel-architecture-aware-cpu-performance-linux.html","datePublished":"2026-06-28","dateModified":"2026-06-28","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+
+  :root {
+  --bg: #f4f8fb;
+  --bg2: #ffffff;
+  --bg3: #eaf0f6;
+  --border: #c8d6e3;
+  --border-bright: #b8c9d9;
+  --text: #223142;
+  --text-dim: #5e7185;
+  --text-bright: #0f1a26;
+  --accent: #0a9f75;
+  --accent2: #cf5d22;
+  --accent3: #2d74df;
+  --accent-glow: rgba(10,159,117,0.12);
+  --header-bg: rgba(244,248,251,0.86);
+  --mono: 'DM Mono', monospace;
+  --display: 'Syne', sans-serif;
+  --body: 'Lora', serif;
+  color-scheme: light;
+}
+
+html.dark {
+  --bg: #0b0d11;
+  --bg2: #111318;
+  --bg3: #181c22;
+  --border: #232830;
+  --border-bright: #2e3540;
+  --text: #c8cdd6;
+  --text-dim: #6b7585;
+  --text-bright: #e8ecf2;
+  --accent: #00e5a0;
+  --accent2: #ff6b35;
+  --accent3: #4da6ff;
+  --accent-glow: rgba(0,229,160,0.12);
+  --header-bg: rgba(11,13,17,0.85);
+  --mono: 'DM Mono', monospace;
+  --display: 'Syne', sans-serif;
+  --body: 'Lora', serif;
+  color-scheme: dark;
+}
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.75;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── HEADER ── */
+  .site-header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    background: var(--header-bg);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .site-header .logo {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+  }
+
+  .site-header nav {
+    display: flex;
+    gap: 2rem;
+  }
+
+  .site-header nav a {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    text-decoration: none;
+    letter-spacing: 0.05em;
+    transition: color 0.2s;
+  }
+
+  .site-header nav a:hover { color: var(--accent); }
+
+  /* ── HERO ── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    padding: 7rem 2rem 4rem;
+    overflow: hidden;
+  }
+
+  .hero-grid-bg {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,160,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,160,0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  .hero-glow {
+    position: absolute;
+    width: 700px;
+    height: 700px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0,229,160,0.06) 0%, transparent 70%);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .hero-content {
+    max-width: 860px;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 1.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+  }
+
+  .hero-eyebrow::before, .hero-eyebrow::after {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 1px;
+    background: var(--accent);
+    opacity: 0.5;
+  }
+
+  .hero-title {
+    font-family: var(--display);
+    font-size: clamp(2.8rem, 7vw, 5.5rem);
+    font-weight: 800;
+    line-height: 1.05;
+    color: var(--text-bright);
+    letter-spacing: -0.02em;
+    margin-bottom: 1rem;
+  }
+
+  .hero-title .accent { color: var(--accent); }
+  .hero-title .accent2 { color: var(--accent2); }
+
+  .hero-subtitle {
+    font-family: var(--body);
+    font-style: italic;
+    font-size: 1.2rem;
+    color: var(--text-dim);
+    max-width: 640px;
+    margin: 1.5rem auto 2.5rem;
+    line-height: 1.7;
+  }
+
+  .hero-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    justify-content: center;
+    margin-bottom: 3rem;
+  }
+
+  .tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 2px;
+    letter-spacing: 0.04em;
+    border: 1px solid;
+  }
+
+  .tag-green { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.06); }
+  .tag-orange { border-color: var(--accent2); color: var(--accent2); background: rgba(255,107,53,0.06); }
+  .tag-blue { border-color: var(--accent3); color: var(--accent3); background: rgba(77,166,255,0.06); }
+
+  .hero-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    max-width: 560px;
+    margin: 0 auto;
+  }
+
+  .metric {
+    background: var(--bg2);
+    padding: 1.2rem;
+    text-align: center;
+  }
+
+  .metric-value {
+    font-family: var(--display);
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .metric-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  /* ── SCROLL INDICATOR ── */
+  .scroll-hint {
+    position: absolute;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    letter-spacing: 0.1em;
+  }
+
+  .scroll-hint::after {
+    content: '';
+    display: block;
+    width: 1px;
+    height: 40px;
+    background: linear-gradient(to bottom, var(--text-dim), transparent);
+    animation: scrollpulse 2s ease-in-out infinite;
+  }
+
+  @keyframes scrollpulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  /* ── MAIN LAYOUT ── */
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  /* ── SECTION STYLES ── */
+  .section {
+    padding: 5rem 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+  }
+
+  .section-title {
+    font-family: var(--display);
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 700;
+    color: var(--text-bright);
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin-bottom: 1.5rem;
+  }
+
+  .section-body {
+    font-size: 17px;
+    line-height: 1.8;
+    color: var(--text);
+    max-width: 72ch;
+  }
+
+  .section-body p + p { margin-top: 1.2rem; }
+
+  em { color: var(--text-bright); font-style: italic; }
+
+  strong {
+    color: var(--text-bright);
+    font-weight: 500;
+  }
+
+  /* ── TWO-COL INTRO ── */
+  .intro-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+    align-items: start;
+  }
+
+  @media (max-width: 760px) {
+    .intro-grid { grid-template-columns: 1fr; gap: 2rem; }
+    .hero-metrics { grid-template-columns: 1fr; max-width: 200px; }
+  }
+
+  /* ── THESIS BLOCK ── */
+  .thesis {
+    border-left: 3px solid var(--accent);
+    padding: 1.5rem 2rem;
+    background: var(--accent-glow);
+    margin: 2rem 0;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .thesis p {
+    font-family: var(--body);
+    font-style: italic;
+    font-size: 1.1rem;
+    color: var(--text-bright);
+    line-height: 1.7;
+  }
+
+  /* ── CODE BLOCKS ── */
+  .code-block {
+    background: var(--bg3);
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 1.8rem 0;
+  }
+
+  .code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 1.2rem;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .code-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+  }
+
+  .code-dots {
+    display: flex;
+    gap: 5px;
+  }
+
+  .code-dots span {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border-bright);
+  }
+
+  .code-dots span:nth-child(1) { background: #ff5f57; }
+  .code-dots span:nth-child(2) { background: #febc2e; }
+  .code-dots span:nth-child(3) { background: #28c840; }
+
+  .code-block pre {
+    padding: 1.4rem 1.6rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text);
+  }
+
+  .code-block pre .c { color: var(--text-dim); font-style: italic; }
+  .code-block pre .k { color: var(--accent); }
+  .code-block pre .s { color: var(--accent2); }
+  .code-block pre .v { color: var(--accent3); }
+  .code-block pre .h { color: var(--text-bright); font-weight: 500; }
+
+  /* ── ARCHITECTURE LAYERS ── */
+  .arch-layers {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin: 2rem 0;
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .arch-layer {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    background: var(--bg2);
+    transition: background 0.2s;
+    position: relative;
+  }
+
+  .arch-layer:hover { background: var(--bg3); }
+
+  .arch-layer:not(:last-child) {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .layer-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    padding: 1.4rem 1.6rem;
+    border-right: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    letter-spacing: 0.08em;
+  }
+
+  .layer-content {
+    padding: 1.4rem 1.8rem;
+  }
+
+  .layer-name {
+    font-family: var(--display);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-bottom: 0.3rem;
+  }
+
+  .layer-desc {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  /* ── VENDOR GRID ── */
+  .vendor-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 2.5rem 0;
+  }
+
+  @media (max-width: 760px) {
+    .vendor-grid { grid-template-columns: 1fr; }
+  }
+
+  .vendor-card {
+    background: var(--bg2);
+    padding: 2rem 1.8rem;
+    transition: background 0.2s;
+  }
+
+  .vendor-card:hover { background: var(--bg3); }
+
+  .vendor-name {
+    font-family: var(--display);
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 1.2rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid var(--border-bright);
+  }
+
+  .vendor-name.intel { color: #4da6ff; }
+  .vendor-name.amd { color: #ff6b35; }
+  .vendor-name.arm { color: #00e5a0; }
+
+  .vendor-items {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+
+  .vendor-items li {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    line-height: 1.5;
+  }
+
+  .vendor-items li::before {
+    content: '→';
+    color: var(--text-dim);
+    flex-shrink: 0;
+    font-size: 11px;
+  }
+
+  /* ── PROFILE TABLE ── */
+  .profile-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 2rem 0;
+    font-family: var(--mono);
+    font-size: 12.5px;
+  }
+
+  .profile-table th {
+    text-align: left;
+    padding: 0.8rem 1.2rem;
+    background: var(--bg2);
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    font-size: 11px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border-bright);
+  }
+
+  .profile-table td {
+    padding: 0.9rem 1.2rem;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+
+  .profile-table tr:last-child td { border-bottom: none; }
+  .profile-table tr:hover td { background: var(--bg3); }
+
+  .profile-name {
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  /* ── WARNING / CALLOUT ── */
+  .callout {
+    padding: 1.4rem 1.8rem;
+    border-radius: 4px;
+    margin: 2rem 0;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .callout-warn {
+    background: rgba(255,107,53,0.07);
+    border: 1px solid rgba(255,107,53,0.25);
+  }
+
+  .callout-info {
+    background: rgba(77,166,255,0.06);
+    border: 1px solid rgba(77,166,255,0.2);
+  }
+
+  .callout-icon {
+    font-family: var(--mono);
+    font-size: 13px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .callout-warn .callout-icon { color: var(--accent2); }
+  .callout-info .callout-icon { color: var(--accent3); }
+
+  .callout p {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text);
+  }
+
+  /* ── SYSFS PATHS ── */
+  .sysfs-list {
+    background: var(--bg3);
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    padding: 1.4rem 1.6rem;
+    margin: 1.5rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .sysfs-list .path {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--accent3);
+    letter-spacing: 0.01em;
+  }
+
+  .sysfs-list .path-desc {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-left: 1.5rem;
+    margin-top: -2px;
+    margin-bottom: 0.4rem;
+  }
+
+  /* ── MILESTONE STEPS ── */
+  .milestone-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 2.5rem 0;
+    position: relative;
+  }
+
+  .milestone-steps::before {
+    content: '';
+    position: absolute;
+    left: 20px;
+    top: 0; bottom: 0;
+    width: 1px;
+    background: var(--border-bright);
+    z-index: 0;
+  }
+
+  .step {
+    display: flex;
+    gap: 2rem;
+    padding: 1.5rem 0;
+    position: relative;
+  }
+
+  .step-num {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--bg2);
+    border: 1px solid var(--border-bright);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    flex-shrink: 0;
+    z-index: 1;
+    position: relative;
+  }
+
+  .step-body { flex: 1; }
+
+  .step-title {
+    font-family: var(--display);
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-bottom: 0.4rem;
+  }
+
+  .step-desc {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  /* ── WHY BOX ── */
+  .why-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 2rem 0;
+  }
+
+  @media (max-width: 700px) {
+    .why-grid { grid-template-columns: 1fr; }
+  }
+
+  .why-card {
+    background: var(--bg2);
+    padding: 2rem;
+  }
+
+  .why-title {
+    font-family: var(--display);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin-bottom: 0.8rem;
+  }
+
+  .why-body {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--text-dim);
+  }
+
+  /* ── RECRUIT CTA ── */
+  .recruit {
+    background: var(--bg2);
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    padding: 3.5rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    margin-top: 4rem;
+  }
+
+  .recruit::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center top, rgba(0,229,160,0.05) 0%, transparent 65%);
+    pointer-events: none;
+  }
+
+  .recruit-title {
+    font-family: var(--display);
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--text-bright);
+    margin-bottom: 1rem;
+    position: relative;
+  }
+
+  .recruit-body {
+    font-size: 16px;
+    color: var(--text-dim);
+    max-width: 56ch;
+    margin: 0 auto 2.5rem;
+    position: relative;
+    line-height: 1.75;
+  }
+
+  .recruit-skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    justify-content: center;
+    margin-bottom: 2.5rem;
+    position: relative;
+  }
+
+  .skill-badge {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 6px 16px;
+    background: var(--bg3);
+    border: 1px solid var(--border-bright);
+    border-radius: 2px;
+    color: var(--text);
+  }
+
+  .cta-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    position: relative;
+  }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.05em;
+    padding: 0.75rem 2rem;
+    border-radius: 2px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--bg);
+    border: 1px solid var(--accent);
+    font-weight: 500;
+  }
+
+  .btn-primary:hover { background: #00ffb3; border-color: #00ffb3; }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border-bright);
+  }
+
+  .btn-outline:hover { border-color: var(--text-dim); color: var(--text-bright); }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 2rem;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+    line-height: 1.9;
+  }
+
+  /* ── INLINE CODE ── */
+  code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    color: var(--accent3);
+    background: rgba(77,166,255,0.07);
+    padding: 1px 6px;
+    border-radius: 2px;
+    border: 1px solid rgba(77,166,255,0.12);
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadein {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .hero-content { animation: fadein 0.9s ease both; }
+  .hero-title { animation: fadein 0.9s 0.1s ease both; }
+  .hero-subtitle { animation: fadein 0.9s 0.2s ease both; }
+  .hero-tags { animation: fadein 0.9s 0.3s ease both; }
+  .hero-metrics { animation: fadein 0.9s 0.4s ease both; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+
+  /* ── INLINE HIGHLIGHT ── */
+  .hl { color: var(--accent); }
+  .hl2 { color: var(--accent2); }
+  .hl3 { color: var(--accent3); }
+
+  /* ── DIVIDER ── */
+  .div-line {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 3rem 0;
+  }
+
+  /* ── READING GUIDE / TOC ── */
+  .toc {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2rem 2.4rem;
+    margin: 3rem 0;
+  }
+
+  .toc-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 1.2rem;
+  }
+
+  .toc ol {
+    list-style: none;
+    counter-reset: toc;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem 2rem;
+  }
+
+  @media (max-width: 600px) {
+    .toc ol { grid-template-columns: 1fr; }
+  }
+
+  .toc li {
+    counter-increment: toc;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+  }
+
+  .toc li::before {
+    content: counter(toc, decimal-leading-zero);
+    font-size: 10px;
+    color: var(--accent);
+    opacity: 0.7;
+    flex-shrink: 0;
+  }
+
+  .toc li a {
+    color: var(--text);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .toc li a:hover { color: var(--accent); }
+
+  /* flow-path diagram */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 2rem 0;
+    font-family: var(--mono);
+    font-size: 12.5px;
+  }
+
+  .flow-row {
+    display: flex;
+    align-items: stretch;
+  }
+
+  .flow-box {
+    border: 1px solid var(--border-bright);
+    background: var(--bg2);
+    padding: 0.8rem 1.4rem;
+    flex: 1;
+    color: var(--text);
+    line-height: 1.5;
+  }
+
+  .flow-box.highlight {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem 0;
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+
+
+
+.shell {
+  padding: 1.25rem 0 0;
+}
+</style>
+</head>
+<body>
+<div class="shell"><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><div class="site-actions"><a class="rss-link" href="/feed.xml">RSS</a><button type="button" id="theme-toggle" aria-label="Toggle theme">☀️</button></div></div></div>
+
+
+<!-- HEADER -->
+<header class="site-header">
+  <div class="logo">$ cpuopt-kernel</div>
+  <nav>
+    <a href="#problem">Problem</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="#join">Join</a>
+  </nav>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-grid-bg"></div>
+  <div class="hero-glow"></div>
+
+  <div class="hero-content">
+    <div class="hero-eyebrow">Open Source Kernel Project</div>
+
+    <h1 class="hero-title">
+      Architecture-Aware<br>
+      <span class="accent">CPU Performance</span><br>
+      for Linux
+    </h1>
+
+    <p class="hero-subtitle">
+      Modern CPUs expose dozens of performance knobs — HWP, EPP, CPPC, SST, uncore frequency,
+      C-states, thermal governors — yet Linux scatters them across fragmented drivers with no
+      unified policy layer. <em>CPUOpt-Kernel</em> fixes that.
+    </p>
+
+    <div class="hero-tags">
+      <span class="tag tag-green">Linux Kernel Module</span>
+      <span class="tag tag-blue">Intel · AMD · ARM</span>
+      <span class="tag tag-orange">HWP / EPP / CPPC</span>
+      <span class="tag tag-green">Closed-Loop Telemetry</span>
+      <span class="tag tag-blue">AI Inference · HPC · Latency</span>
+    </div>
+
+    <div class="hero-metrics">
+      <div class="metric">
+        <div class="metric-value">4</div>
+        <div class="metric-label">Kernel Layers</div>
+      </div>
+      <div class="metric">
+        <div class="metric-value">8</div>
+        <div class="metric-label">Workload Profiles</div>
+      </div>
+      <div class="metric">
+        <div class="metric-value">3</div>
+        <div class="metric-label">Vendor Backends</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="scroll-hint">scroll</div>
+</section>
+
+<!-- MAIN CONTENT -->
+<main data-pagefind-body>
+
+  <!-- TABLE OF CONTENTS -->
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#problem">The fragmentation problem</a></li>
+      <li><a href="#thesis">Project thesis</a></li>
+      <li><a href="#cpu-landscape">CPU performance landscape</a></li>
+      <li><a href="#architecture">Four-layer architecture</a></li>
+      <li><a href="#vendors">Vendor backends</a></li>
+      <li><a href="#profiles">Workload profiles</a></li>
+      <li><a href="#safety">What not to do</a></li>
+      <li><a href="#roadmap">MVP roadmap</a></li>
+      <li><a href="#telemetry">Telemetry loop</a></li>
+      <li><a href="#join">Join the project</a></li>
+    </ol>
+  </div>
+
+  <!-- THE PROBLEM -->
+  <section class="section" id="problem">
+    <div class="section-label">The Problem</div>
+    <h2 class="section-title">Linux performance tuning is a disaster of fragmentation</h2>
+
+    <div class="intro-grid">
+      <div class="section-body">
+        <p>Ask any kernel engineer how to optimize a modern server CPU for sustained AI inference and you'll get a six-tool answer: <code>cpupower</code> for governor, <code>tuned</code> for profiles, <code>power-profiles-daemon</code> for desktop hints, <code>intel-speed-select</code> for Xeon SST, <code>turbostat</code> for monitoring, and direct sysfs writes for whatever's left. These tools conflict with each other, step on the same kernel interfaces, and require expert knowledge of each CPU's documentation to use safely.</p>
+        <p>Worse: on modern CPUs, <em>the wrong tool can silently do nothing</em>. Firmware owns many performance registers. Existing kernel drivers overwrite sysfs changes on the next scheduler tick. And MSR writes that worked on a Skylake core may hang a different SKU of the same product line.</p>
+        <p>The ecosystem is aware. OpenSUSE's mailing lists show tuned and power-profiles-daemon <strong>hard-conflicting</strong> in their systemd service files as of early 2025. The two most common server-facing tools can't be installed together without one being disabled.</p>
+      </div>
+
+      <div>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-title">today's toolchain</span>
+            <div class="code-dots"><span></span><span></span><span></span></div>
+          </div>
+          <pre><span class="c"># The current fragmented reality:</span>
+
+cpupower frequency-set -g performance
+tuned-adm profile latency-performance
+systemctl stop power-profiles-daemon
+<span class="c"># ↑ these three conflict</span>
+
+echo performance > \
+  /sys/devices/system/cpu/cpu*/\
+  cpufreq/energy_performance_preference
+<span class="c"># ↑ overwritten next tick by intel_pstate</span>
+
+intel-speed-select -o perf-profile \
+  set-config-level 0 -a
+<span class="c"># ↑ only on specific Xeon SKUs</span>
+
+wrmsr -a 0x1b0 0x0
+<span class="c"># ↑ undefined behavior on many platforms</span></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- THESIS -->
+  <section class="section" id="thesis">
+    <div class="section-label">Project Thesis</div>
+    <h2 class="section-title">One policy layer. Three architectures. Zero blind MSR writes.</h2>
+
+    <div class="thesis">
+      <p>CPUOpt-Kernel reads vendor CPU manuals and Linux PM subsystems, detects the exact CPU and platform, and safely applies workload-aware performance and thermal setup policies through supported kernel interfaces first — with guarded vendor-specific controls only where explicitly documented.</p>
+    </div>
+
+    <div class="section-body">
+      <p>The core insight is that modern CPUs increasingly <em>hide</em> low-level control behind firmware, CPPC, HWP, SCMI, ACPI, BMC/EC, and platform controllers. Intel's <code>intel_pstate</code>, AMD's <code>amd-pstate</code>, and ARM's SCMI framework each expose fine-grained performance knobs — but through completely different interfaces that require completely different knowledge to navigate safely.</p>
+
+      <p>A unified policy layer that understands all three architectures, detects what each platform actually supports, and applies the right controls through the right interfaces doesn't exist yet. That's CPUOpt-Kernel.</p>
+    </div>
+
+    <div class="callout callout-info">
+      <span class="callout-icon">ℹ</span>
+      <p>A critical terminology note: <strong>lower fan speed ≠ higher performance</strong>. For sustained boost, you want silicon cool enough that the CPU doesn't thermal-throttle. The correct goal is: <em>minimize fan speed subject to no thermal throttling and maximum sustained boost.</em> CPUOpt-Kernel optimizes for performance outcomes, not noise metrics.</p>
+    </div>
+  </section>
+
+  <!-- CPU LANDSCAPE -->
+  <section class="section" id="cpu-landscape">
+    <div class="section-label">The Landscape</div>
+    <h2 class="section-title">How modern CPUs actually expose performance controls</h2>
+
+    <div class="section-body">
+      <p>The Linux kernel's CPUFreq subsystem has evolved enormously in the past three years. Understanding what exists — and what each layer owns — is prerequisite to building anything safe.</p>
+    </div>
+
+    <div class="code-block" style="margin: 2rem 0;">
+      <div class="code-header">
+        <span class="code-title">linux cpufreq control hierarchy</span>
+        <div class="code-dots"><span></span><span></span><span></span></div>
+      </div>
+      <pre><span class="h">userspace</span>
+  └─ cpupower, tuned, tlp, power-profiles-daemon
+
+<span class="h">kernel / sysfs</span>
+  └─ /sys/devices/system/cpu/cpu*/cpufreq/
+       ├── scaling_governor          <span class="c"># schedutil, performance, powersave</span>
+       ├── energy_performance_preference  <span class="c"># EPP: performance→power_efficiency</span>
+       └── scaling_min/max_freq
+
+<span class="h">cpufreq drivers</span>
+  ├── intel_pstate    <span class="c"># Intel: active (HWP) or passive (intel_cpufreq)</span>
+  ├── amd_pstate_epp  <span class="c"># AMD: active / passive / guided CPPC modes</span>
+  └── acpi-cpufreq    <span class="c"># legacy: 3 P-states only, minimal control</span>
+
+<span class="h">hardware autonomous control</span>
+  ├── Intel HWP  <span class="c"># Skylake+: CPU selects P-state itself given EPP hint</span>
+  ├── AMD CPPC   <span class="c"># Zen2+: Collaborative Processor Performance Control</span>
+  └── ARM SCMI   <span class="c"># firmware-mediated performance level requests</span>
+
+<span class="h">firmware / platform</span>
+  ├── Intel SST  <span class="c"># Speed Select Technology: Xeon multi-profile SKUs</span>
+  ├── AMD PPR    <span class="c"># Processor Programming Reference per family</span>
+  └── ACPI _PSS / _CPC tables</pre>
+    </div>
+
+    <div class="section-body">
+      <p><strong>Intel's HWP (Hardware P-States)</strong> — available since Skylake — fundamentally changes who drives frequency decisions. When HWP is active, the CPU sets its own P-states autonomously; <code>intel_pstate</code> gives <em>hints</em> via the Energy Performance Preference (EPP) register, not commands. Writing <code>0x00</code> to EPP says "bias toward performance"; writing <code>0x80</code> says "balance"; <code>0xFF</code> says "power efficiency." The kernel sets EPP to zero — full performance focus — when the performance governor is active.</p>
+      <p><strong>AMD's amd-pstate</strong>, based on ACPI CPPC (Collaborative Processor Performance Control), provides far more granular control than the legacy <code>acpi-cpufreq</code> driver which exposed only three P-state steps. In active (EPP) mode, the AMD firmware autonomously adjusts frequency given hints; in guided mode, the driver sets min/max bounds and firmware picks within that range. As of Linux 6.14, the AMD P-State driver saw the most changes in the PM subsystem — Ryzen now defaults to <code>balance_performance</code> EPP while EPYC server chips default to full <code>performance</code>.</p>
+      <p><strong>ARM platforms</strong> present the most fragmented picture: Ampere Altra, Qualcomm Oryon, NVIDIA Grace, Neoverse N2, Apple M-series (Linux via Asahi), Rockchip, and MediaTek all expose completely different performance control surfaces. The common thread is SCMI — the System Control and Management Interface — which lets the OS request performance levels through firmware rather than touching registers directly.</p>
+    </div>
+  </section>
+
+  <!-- ARCHITECTURE -->
+  <section class="section" id="architecture">
+    <div class="section-label">Architecture</div>
+    <h2 class="section-title">Four-layer kernel design</h2>
+
+    <div class="section-body">
+      <p>CPUOpt-Kernel is structured as a layered kernel driver framework, not a userspace daemon. Userspace daemons get clobbered by other tools; a kernel module can coordinate properly with existing PM drivers and intercept the right hooks.</p>
+    </div>
+
+    <div class="arch-layers">
+      <div class="arch-layer">
+        <div class="layer-num">L1</div>
+        <div class="layer-content">
+          <div class="layer-name">CPU Capability Scanner</div>
+          <div class="layer-desc">Detects vendor · family/model/stepping · microcode version · HWP/CPPC/SCMI availability · EPP/EPB support · turbo state · C-state table · thermal zones · cooling devices · uncore controls · NUMA topology · hybrid core topology · firmware ownership model. Exports structured capability tree to <code>/sys/kernel/cpuopt/capabilities</code>.</div>
+        </div>
+      </div>
+      <div class="arch-layer">
+        <div class="layer-num">L2</div>
+        <div class="layer-content">
+          <div class="layer-name">Safe Policy Engine</div>
+          <div class="layer-desc">Translates named profiles (performance, latency, throughput, ai_inference, hpc_memory, quiet, battery, balanced) into platform-specific kernel calls. Always tries documented sysfs interfaces first, falls back to vendor driver paths, then to guarded firmware interfaces. Never issues undocumented MSR writes.</div>
+        </div>
+      </div>
+      <div class="arch-layer">
+        <div class="layer-num">L3</div>
+        <div class="layer-content">
+          <div class="layer-name">Vendor Backends</div>
+          <div class="layer-desc">Separate backend implementations for Intel (<code>intel.c</code>), AMD (<code>amd.c</code>), and ARM (<code>arm.c</code>), plus shared thermal (<code>thermal.c</code>) and sysfs (<code>sysfs.c</code>) modules. Each backend reads CPU family documentation and implements only what is safe and documented for that platform.</div>
+        </div>
+      </div>
+      <div class="arch-layer">
+        <div class="layer-num">L4</div>
+        <div class="layer-content">
+          <div class="layer-name">Closed-Loop Telemetry</div>
+          <div class="layer-desc">Continuously samples: frequency residency · thermal throttle events · power-limit throttle events · IPC via APERF/MPERF · LLC miss rates · memory bandwidth pressure · package temperature · fan RPM/PWM (where exposed) · energy counters. Feeds telemetry back to the policy engine to adapt the profile in real time — not just "set performance governor," but <em>closed-loop CPU setup</em>.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-body">
+      <p>The sysfs interface is minimal and intentional:</p>
+    </div>
+
+    <div class="sysfs-list">
+      <div class="path">/sys/kernel/cpuopt/profile</div>
+      <div class="path-desc">read/write — current active profile name</div>
+
+      <div class="path">/sys/kernel/cpuopt/status</div>
+      <div class="path-desc">read — active controls, detected vendor, driver mode, HWP/CPPC state</div>
+
+      <div class="path">/sys/kernel/cpuopt/capabilities</div>
+      <div class="path-desc">read — full platform capability tree in structured format</div>
+
+      <div class="path">/sys/kernel/cpuopt/telemetry</div>
+      <div class="path-desc">read — live telemetry: freq, temp, throttle_count, EPP, IPC, power</div>
+
+      <div class="path">/sys/kernel/cpuopt/safe_mode</div>
+      <div class="path-desc">read/write — when 1, restricts all actions to sysfs paths only; no direct register access</div>
+    </div>
+
+    <div class="section-body">
+      <p>The userspace control tool is intentionally simple. The kernel module does the intelligence; <code>cpuoptctl</code> is just a thin sysfs wrapper:</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-title">cpuoptctl — userspace interface</span>
+        <div class="code-dots"><span></span><span></span><span></span></div>
+      </div>
+      <pre>$ sudo cpuoptctl status
+
+<span class="h">CPUOpt-Kernel v0.1</span>
+  Vendor:   Intel · Core Ultra 9 285K (Arrow Lake)
+  Driver:   intel_pstate [active / HWP enabled]
+  Profile:  balanced
+  EPP:      balance_performance (0x80)
+  Temp:     62°C (pkg) / 68°C (core max)
+  Freq:     4812 MHz (sustained avg, last 30s)
+  Throttle: 0 events (thermal) / 0 (PL1/PL2)
+  Turbo:    enabled
+
+$ sudo cpuoptctl profile performance
+<span class="k">→ EPP set to 0x00 (performance)</span>
+<span class="k">→ C-states capped at C1 (latency target: &lt;50μs)</span>
+<span class="k">→ Turbo confirmed enabled</span>
+<span class="k">→ Uncore freq set to maximum</span>
+
+$ sudo cpuoptctl profile ai_inference
+<span class="k">→ EPP: performance</span>
+<span class="k">→ NUMA policy: local preferred</span>
+<span class="k">→ C-states: disabled (avoid inference jitter)</span>
+<span class="k">→ Uncore: max (LLC bandwidth critical)</span>
+<span class="k">→ Watching throttle events...</span>
+
+$ sudo cpuoptctl monitor
+<span class="v">TIME    FREQ     TEMP   IPC    THROTTLE  EPP</span>
+0.0s    4812MHz  62°C   3.21   0         performance
+1.0s    4800MHz  64°C   3.19   0         performance
+2.0s    3200MHz  72°C   1.84   1 (PL2)   performance
+<span class="c">        ↑ thermal event detected — adapting...</span>
+3.0s    4612MHz  68°C   3.05   0         performance</pre>
+    </div>
+  </section>
+
+  <!-- VENDORS -->
+  <section class="section" id="vendors">
+    <div class="section-label">Vendor Backends</div>
+    <h2 class="section-title">Three architectures, three strategies</h2>
+
+    <div class="section-body">
+      <p>Each architecture requires a fundamentally different approach to performance control. The vendor backend model lets CPUOpt-Kernel implement each correctly without compromise.</p>
+    </div>
+
+    <div class="vendor-grid">
+      <div class="vendor-card">
+        <div class="vendor-name intel">Intel</div>
+        <ul class="vendor-items">
+          <li>HWP / Speed Shift via <code>intel_pstate</code> in active mode — EPP through documented sysfs path, never raw <code>IA32_HWP_REQUEST</code> directly</li>
+          <li>EPB for Sandy Bridge+ without HWP</li>
+          <li>C-state management: cap idle latency per workload (latency→C1, throughput→C6)</li>
+          <li>Intel SST-PP for multi-profile Xeon SKUs — enumerate via <code>intel-speed-select</code> kernel interface</li>
+          <li>Uncore frequency control: critical for LLC-intensive workloads like AI inference</li>
+          <li>Turbo/boost enable/disable with safe defaults</li>
+          <li>APERF/MPERF telemetry for real IPC measurement</li>
+          <li>Arrow Lake: ACPI CPPC scaling factors for HWP↔frequency mapping (Linux 6.14)</li>
+        </ul>
+      </div>
+
+      <div class="vendor-card">
+        <div class="vendor-name amd">AMD</div>
+        <ul class="vendor-items">
+          <li><code>amd-pstate</code> with CPPC — active (EPP), guided, or passive mode selection per workload</li>
+          <li>EPP: <code>0x00</code> (performance) to <code>0xFF</code> (power efficiency) with fine integer control</li>
+          <li>Preferred core scheduling — CPPC performance ranking exposed via driver; match kernel scheduler to hardware priority</li>
+          <li>Dynamic EPP: detect AC/battery state changes (Ryzen laptops)</li>
+          <li>EPYC: full <code>performance</code> EPP default (Linux 6.14+); expose per-domain uncore controls</li>
+          <li>Thermal power limit awareness: read telemetry before issuing any override</li>
+          <li>AMD Family reference: PPR for target family — Family 1Ah (Zen 5) docs released March 2026</li>
+        </ul>
+      </div>
+
+      <div class="vendor-card">
+        <div class="vendor-name arm">ARM</div>
+        <ul class="vendor-items">
+          <li>SCMI performance protocol — request performance levels via System Control and Management Interface firmware, not raw registers</li>
+          <li>PSCI CPU idle — standard ARM64 idle state management</li>
+          <li>Device tree / ACPI topology — detect big.LITTLE / heterogeneous core hierarchy and map workloads to appropriate core capacity</li>
+          <li>cpufreq driver detection: platform varies enormously (Ampere, Qualcomm, NVIDIA Grace, Neoverse, Rockchip)</li>
+          <li>Thermal framework: cooling devices, trip points, fan governors via standard sysfs</li>
+          <li>No raw register writes: ARM requires firmware mediation on all current server/mobile platforms</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROFILES -->
+  <section class="section" id="profiles">
+    <div class="section-label">Workload Profiles</div>
+    <h2 class="section-title">Policy that maps to what you actually run</h2>
+
+    <div class="section-body">
+      <p>Generic governors ("performance," "powersave") are too coarse. The same system running LLVM compilation and AI inference needs different knob positions: compilation benefits from all-core sustained clocks and efficient deep-sleep when idle; inference needs no C-state latency penalties and maximum uncore bandwidth at all times.</p>
+    </div>
+
+    <table class="profile-table">
+      <thead>
+        <tr>
+          <th>Profile</th>
+          <th>Optimizes For</th>
+          <th>Key Knobs</th>
+          <th>Best Fit</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="profile-name">performance</span></td>
+          <td>Max sustained boost</td>
+          <td>EPP=0x00 · turbo on · C1 max · uncore max</td>
+          <td>Kernel builds, compilation, transactional workloads</td>
+        </tr>
+        <tr>
+          <td><span class="profile-name">latency</span></td>
+          <td>Consistent low-latency response</td>
+          <td>EPP=0x00 · C-states disabled · no idle transitions</td>
+          <td>Trading systems, real-time processing, game servers</td>
+        </tr>
+        <tr>
+          <td><span class="profile-name">throughput</span></td>
+          <td>Sustained all-core clocks</td>
+          <td>EPP=balance_performance · PL1=TDP · deep idle when empty</td>
+          <td>Batch jobs, video encoding, ML training</td>
+        </tr>
+        <tr>
+          <td><span class="profile-name">ai_inference</span></td>
+          <td>LLC bandwidth + consistent latency</td>
+          <td>EPP=0x00 · uncore max · NUMA local · C-states off</td>
+          <td>LLM inference (llama.cpp, vLLM), embedding servers</td>
+        </tr>
+        <tr>
+          <td><span class="profile-name">hpc_memory</span></td>
+          <td>Memory bandwidth + NUMA</td>
+          <td>Uncore max · NUMA aware · turbo on · IPC monitored</td>
+          <td>Scientific HPC, memory-bound numerical workloads</td>
+        </tr>
+        <tr>
+          <td><span class="profile-name">quiet</span></td>
+          <td>Good performance, minimal fan/noise</td>
+          <td>EPP=balance_performance · thermal headroom gated</td>
+          <td>Developer workstations, office environments</td>
+        </tr>
+        <tr>
+          <td><span class="profile-name">battery</span></td>
+          <td>Maximum battery life</td>
+          <td>EPP=power_efficiency · deep C-states · turbo off</td>
+          <td>Laptops on battery, mobile workloads</td>
+        </tr>
+        <tr>
+          <td><span class="profile-name">balanced</span></td>
+          <td>Adaptive to current load</td>
+          <td>Telemetry-driven EPP · C-state per-IPC</td>
+          <td>Mixed workload servers, desktop general use</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- SAFETY -->
+  <section class="section" id="safety">
+    <div class="section-label">Safety Model</div>
+    <h2 class="section-title">The cardinal rule: documented interfaces first, always</h2>
+
+    <div class="callout callout-warn">
+      <span class="callout-icon">⚠</span>
+      <p>Do <strong>not</strong> start by writing random MSR values from vendor manuals. Some registers are model-specific and change by SKU. Firmware may own the setting. Existing kernel drivers may overwrite your value on the next scheduler tick. Bad writes can hang the system. Laptop fan control may be EC-specific. Server fan control may live in BMC/IPMI/Redfish, entirely outside CPU registers.</p>
+    </div>
+
+    <div class="flow">
+      <div class="flow-row">
+        <div class="flow-box highlight">① Documented kernel sysfs interface (CPUFreq, thermal, hwmon)</div>
+      </div>
+      <div class="flow-arrow">↓ only if unavailable or insufficient</div>
+      <div class="flow-row">
+        <div class="flow-box">② Vendor driver interface (intel_pstate params, amd-pstate mode, SCMI levels)</div>
+      </div>
+      <div class="flow-arrow">↓ only if documented and safe</div>
+      <div class="flow-row">
+        <div class="flow-box">③ Firmware interface (ACPI _PPC, CPPC desired performance, PSCI)</div>
+      </div>
+      <div class="flow-arrow">↓ last resort: guarded, documented, platform-verified</div>
+      <div class="flow-row">
+        <div class="flow-box">④ Direct MSR/CPPC register write — only when Intel SDM or AMD PPR explicitly documents it for the detected family/model/stepping and firmware ownership is confirmed absent</div>
+      </div>
+    </div>
+
+    <div class="section-body">
+      <p>CPUOpt-Kernel's <strong>safe_mode</strong> flag (default: enabled) restricts all operations to level ①–②. Level ③ and ④ require explicit opt-in per platform with capability verification. This is not timidity — it's the only way to ship something that doesn't brick systems.</p>
+
+      <p>The Intel Software Developer Manual Volume 4 (MSR reference), AMD Processor Programming Reference for each family, and ARM SCMI/PSCI specifications are the authoritative sources. No register write happens in CPUOpt-Kernel without a line citation in one of these documents.</p>
+    </div>
+
+    <div class="why-grid">
+      <div class="why-card">
+        <div class="why-title">Why not just write EPP directly to the MSR?</div>
+        <div class="why-body">Because <code>intel_pstate</code> owns <code>IA32_HWP_REQUEST</code> when active. Writing it directly races with the driver and your value will be clobbered. The correct path is the EPP sysfs file — which the driver reads and applies through the register on its schedule, consistently.</div>
+      </div>
+      <div class="why-card">
+        <div class="why-title">Why not just use tuned or power-profiles-daemon?</div>
+        <div class="why-body">These tools conflict with each other in production, don't understand the full platform capability surface, don't implement closed-loop feedback, and don't have vendor-specific awareness of CPPC desired performance levels, SST profiles, uncore frequency domains, or hybrid core topology.</div>
+      </div>
+      <div class="why-card">
+        <div class="why-title">Why a kernel module, not a daemon?</div>
+        <div class="why-body">A kernel module can integrate with existing PM hooks, properly coordinate with <code>intel_pstate</code> and <code>amd-pstate</code>, and avoid the race conditions inherent in userspace polling of sysfs values that get overwritten. It also persists correctly across suspend/resume cycles.</div>
+      </div>
+      <div class="why-card">
+        <div class="why-title">What about fan control?</div>
+        <div class="why-body">Fan speed is not a CPU register setting. It's exposed through the Linux thermal framework, hwmon, ACPI, embedded controller (EC), BMC, or board-specific firmware. CPUOpt-Kernel reads cooling device state from thermal sysfs but does not write fan curves directly — that's EC territory and unsafe to touch blindly.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROADMAP -->
+  <section class="section" id="roadmap">
+    <div class="section-label">Roadmap</div>
+    <h2 class="section-title">From MVP to multi-architecture policy framework</h2>
+
+    <div class="milestone-steps">
+      <div class="step">
+        <div class="step-num">v0.1</div>
+        <div class="step-body">
+          <div class="step-title">Intel HWP/EPP Autopolicy — the MVP</div>
+          <div class="step-desc">Detect Intel CPU model and HWP support. Read current intel_pstate mode (active vs passive). Detect EPP availability. Expose /sys/kernel/cpuopt/profile with four profiles: performance, quiet, latency, balanced. Set EPP/EPB through sysfs. Read thermal zones. Log throttling events. Benchmark: stress-ng, kernel build, llama.cpp, fio+compile mixed load.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">v0.2</div>
+        <div class="step-body">
+          <div class="step-title">Intel Telemetry Loop + Adaptive Policy</div>
+          <div class="step-desc">Add APERF/MPERF IPC tracking. Implement closed-loop adaptation: when throttle events detected, back off EPP before the platform firmware does it forcefully. Add turbo residency monitoring. Add C-state latency control. Expose live telemetry sysfs.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">v0.3</div>
+        <div class="step-body">
+          <div class="step-title">AMD amd-pstate Backend</div>
+          <div class="step-desc">Detect amd-pstate driver and active mode. Implement EPP control path. Add preferred core detection and CPPC performance ranking. Support guided vs active mode selection per profile. Test on Zen 3/4/5 (Ryzen) and EPYC platforms. Handle dynamic EPP (battery vs AC).</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">v0.4</div>
+        <div class="step-body">
+          <div class="step-title">Workload Profiles + AI/HPC Modes</div>
+          <div class="step-desc">Implement full profile matrix. Add ai_inference and hpc_memory profiles with NUMA awareness. Add uncore frequency control for Intel (where exposed). Add LLC miss telemetry. Integrate with existing sched_domain topology. Benchmark against llama.cpp, ROCm/CUDA memory bandwidth, STREAM.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">v0.5</div>
+        <div class="step-body">
+          <div class="step-title">Intel SST (Speed Select Technology) Support</div>
+          <div class="step-desc">Enumerate available SST-PP profiles on Xeon SKUs. Integrate with intel-speed-select kernel interface. Allow profile switching via cpuoptctl. Target: Sapphire Rapids, Emerald Rapids, Granite Rapids Xeon server deployments.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">v1.0</div>
+        <div class="step-body">
+          <div class="step-title">ARM SCMI Backend + Hybrid Core Topology</div>
+          <div class="step-desc">Implement SCMI performance protocol interface. Handle big.LITTLE/heterogeneous core detection via device tree / ACPI PPTT. Add PSCI idle state control. Target: Ampere Altra, NVIDIA Grace, Neoverse N2. Add Intel P/E core topology (Alder Lake+) awareness to scheduler hints.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TELEMETRY -->
+  <section class="section" id="telemetry">
+    <div class="section-label">Closed-Loop Telemetry</div>
+    <h2 class="section-title">The part that makes this genuinely new</h2>
+
+    <div class="section-body">
+      <p>Every existing CPU tuning tool is open-loop: set a governor, walk away. CPUOpt-Kernel's differentiating capability is its telemetry-driven feedback loop. The policy engine continuously observes what the hardware is actually doing and adapts — before thermal or power-limit throttling degrades your workload.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-title">telemetry signals — what the loop monitors</span>
+        <div class="code-dots"><span></span><span></span><span></span></div>
+      </div>
+      <pre><span class="h">Frequency telemetry</span>
+  APERF / MPERF MSRs     <span class="c"># actual vs nominal frequency ratio</span>
+  scaling_cur_freq sysfs <span class="c"># current frequency per core</span>
+  turbo residency        <span class="c"># % time in boost P-states</span>
+
+<span class="h">Thermal telemetry</span>
+  /sys/class/thermal/    <span class="c"># thermal zones, trip points</span>
+  coretemp / k10temp     <span class="c"># per-core temperature via hwmon</span>
+  Intel THERM_STATUS     <span class="c"># thermal throttle event bits (read-only)</span>
+
+<span class="h">Power telemetry</span>
+  Intel RAPL             <span class="c"># package / core / uncore / DRAM energy</span>
+  AMD energy_uj sysfs    <span class="c"># per-socket energy counters</span>
+  PL1 / PL2 throttle     <span class="c"># power limit events from MSR bits</span>
+
+<span class="h">Performance telemetry</span>
+  perf PMU               <span class="c"># instructions, cycles, LLC misses</span>
+  /proc/schedstat        <span class="c"># scheduler run queue length</span>
+  memory bandwidth       <span class="c"># via uncore PMU (Intel) or SMN (AMD)</span>
+
+<span class="h">Policy output</span>
+  EPP adjustment         <span class="c"># adapt hint based on throttle events</span>
+  C-state cap            <span class="c"># relax if idle, tighten if latency-sensitive</span>
+  uncore freq            <span class="c"># scale with observed LLC miss rate</span></pre>
+    </div>
+
+    <div class="section-body">
+      <p>The feedback loop runs at a configurable interval (default: 250ms). When PL2 power-limit throttling is detected, the loop backs the EPP hint down slightly before the firmware's own thermal management engages — resulting in smoother sustained performance rather than the sawtooth frequency profile that characterizes unmanaged boost behavior.</p>
+
+      <p>This is the difference between a system that runs at 4.8 GHz for 10 seconds then drops to 3.2 GHz for 2 seconds (unmanaged) and one that sustains 4.3 GHz continuously (managed). For AI inference, that second behavior produces lower median and p99 token latency even though the peak frequency is lower.</p>
+    </div>
+  </section>
+
+  <!-- READING MAP -->
+  <section class="section">
+    <div class="section-label">Research Foundation</div>
+    <h2 class="section-title">The documentation map every contributor needs</h2>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-title">required reading — vendor + kernel documentation</span>
+        <div class="code-dots"><span></span><span></span><span></span></div>
+      </div>
+      <pre><span class="h">Intel</span>
+  SDM Vol. 3A/3B/3C/3D  <span class="c"># system programming, PM, APIC, perf monitoring</span>
+  SDM Vol. 4             <span class="c"># MSR reference: HWP, EPP, EPB, turbo, RAPL</span>
+  intel.com/developer/articles/technical/intel-sdm
+
+<span class="h">AMD</span>
+  PPR for target family  <span class="c"># e.g. Family 1Ah Models 00h-0Fh (Zen5, March 2026)</span>
+  OSRR where available   <span class="c"># Open-Source Register Reference</span>
+  docs.amd.com
+
+<span class="h">ARM</span>
+  ARM Architecture Reference Manual (ARM ARM)
+  SCMI Specification     <span class="c"># DEN0056 — System Control and Management Interface</span>
+  PSCI Specification     <span class="c"># DEN0022 — Power State Coordination Interface</span>
+  developer.arm.com
+
+<span class="h">Linux Kernel Documentation</span>
+  Documentation/admin-guide/pm/intel_pstate.rst
+  Documentation/admin-guide/pm/amd-pstate.rst
+  Documentation/admin-guide/pm/intel-speed-select.rst
+  Documentation/admin-guide/pm/cpufreq.rst
+  Documentation/driver-api/thermal/
+  Documentation/hwmon/
+  Documentation/arch/x86/msr.rst</pre>
+    </div>
+  </section>
+
+  <!-- RECRUIT CTA -->
+  <section id="join">
+    <div class="recruit">
+      <h2 class="recruit-title">We're looking for contributors</h2>
+      <p class="recruit-body">CPUOpt-Kernel is at the intersection of CPU microarchitecture, Linux PM subsystems, and performance engineering. If you find yourself reading Intel SDM Vol. 4 for fun, we should talk.</p>
+
+      <div class="recruit-skills">
+        <span class="skill-badge">Linux kernel module development</span>
+        <span class="skill-badge">CPUFreq subsystem internals</span>
+        <span class="skill-badge">Intel HWP / AMD CPPC / ARM SCMI</span>
+        <span class="skill-badge">C · Rust (kernel)</span>
+        <span class="skill-badge">Performance benchmarking</span>
+        <span class="skill-badge">PMU / RAPL telemetry</span>
+        <span class="skill-badge">ACPI / device tree</span>
+        <span class="skill-badge">AI inference systems</span>
+        <span class="skill-badge">Thermal management</span>
+        <span class="skill-badge">NUMA topology</span>
+      </div>
+
+      <div style="font-family: var(--mono); font-size: 13px; color: var(--text-dim); margin-bottom: 2rem; line-height: 1.9;">
+        <p><strong style="color: var(--text);">Ideal first contributions:</strong></p>
+        <p>→ Intel HWP capability detection and safe EPP sysfs writer</p>
+        <p>→ AMD amd-pstate mode detection + CPPC preferred-core reader</p>
+        <p>→ APERF/MPERF telemetry loop + throttle event counter</p>
+        <p>→ Benchmark harness: stress-ng, llama.cpp, kernel build, fio</p>
+        <p>→ ARM SCMI performance domain enumeration (Neoverse / Grace)</p>
+      </div>
+
+      <div class="cta-buttons">
+        <a href="#" class="btn btn-primary">View on GitHub</a>
+        <a href="#" class="btn btn-outline">Read the RFC</a>
+        <a href="#" class="btn btn-outline">Join the Mailing List</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>CPUOpt-Kernel · Architecture-Aware CPU Performance Policy for Linux</p>
+  <p style="margin-top: 0.4rem;">Intel · AMD · ARM · HWP · CPPC · SCMI · EPP · C-states · Uncore · Thermal</p>
+  <p style="margin-top: 0.4rem; font-size: 10px; opacity: 0.5;">
+    References: Linux Kernel Documentation — intel_pstate, amd-pstate, intel-speed-select, thermal/sysfs-api ·
+    Intel SDM Vol. 4 · AMD PPR Family 1Ah · ARM SCMI DEN0056 · Phoronix Linux 6.14 PM coverage
+  </p>
+</footer>
+
+
+<footer class="site-footer"><p>MANISH AI · Systems essays on AI infrastructure, kernels, interconnects, memory, and inference engineering.</p></footer>
+</body>
+</html>
