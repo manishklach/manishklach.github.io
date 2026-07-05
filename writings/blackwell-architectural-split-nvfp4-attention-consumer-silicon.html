@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Blackwell Architectural Split — NVFP4 Attention on Consumer Silicon | MANISH AI</title>
+<meta name="description" content="A deep architectural essay on Blackwell's split between SM100 and SM12x, TMEM removal on consumer silicon, NVFP4 attention bottlenecks, and the kernel-level workarounds emerging in open-source inference."/>
+<meta name="keywords" content="Blackwell architecture, NVFP4, TMEM, SM100, SM120, RTX 5090, Tensor Core, attention kernel, local inference, GPU architecture"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f4f8fb"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/blackwell-architectural-split-nvfp4-attention-consumer-silicon.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="The Blackwell Architectural Split — NVFP4 Attention on Consumer Silicon | MANISH AI"/>
+<meta property="og:description" content="A technical deep dive into Blackwell's architectural split, why SM12x consumer GPUs lost TMEM, and how that changes NVFP4 attention kernels for local AI inference."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/blackwell-architectural-split-nvfp4-attention-consumer-silicon.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/blackwell-architectural-split-nvfp4-attention-consumer-silicon.png"/>
+<meta property="og:image:alt" content="Preview image for the Blackwell architectural split essay"/>
+<meta property="article:published_time" content="2026-07-05T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-07-05T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="The Blackwell Architectural Split — NVFP4 Attention on Consumer Silicon"/>
+<meta name="twitter:description" content="A deep dive into Blackwell's SM100 vs SM12x split, TMEM removal, NVFP4 attention bottlenecks, and the open-source workaround path on consumer GPUs."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/blackwell-architectural-split-nvfp4-attention-consumer-silicon.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"The Blackwell Architectural Split — NVFP4 Attention on Consumer Silicon","description":"A deep architectural essay on Blackwell's split between SM100 and SM12x, TMEM removal on consumer silicon, NVFP4 attention bottlenecks, and the open-source workarounds emerging in inference stacks.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/blackwell-architectural-split-nvfp4-attention-consumer-silicon.html","mainEntityOfPage":"https://manishklach.github.io/writings/blackwell-architectural-split-nvfp4-attention-consumer-silicon.html","datePublished":"2026-07-05","dateModified":"2026-07-05","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+
+  :root{
+  --void:#F4F8FB;
+  --panel:#FFFFFF;
+  --panel-raised:#EAF1F6;
+  --line:rgba(24,40,58,0.12);
+  --line-soft:rgba(24,40,58,0.05);
+  --ink:#1F3144;
+  --ink-dim:#5D7388;
+  --ink-faint:#7B8C9C;
+  --dc:#0D9C89;
+  --dc-dim:#D7F1ED;
+  --cs:#C9851A;
+  --cs-dim:#F7ECD6;
+  --crit:#D65774;
+  --crit-dim:#F5D9E1;
+  color-scheme:light;
+}
+html.dark{
+  --void:#0A0E13;
+  --panel:#10161D;
+  --panel-raised:#151D26;
+  --line:rgba(255,255,255,0.08);
+  --line-soft:rgba(255,255,255,0.045);
+  --ink:#E9EDF2;
+  --ink-dim:#9AA7B4;
+  --ink-faint:#5C6773;
+  --dc:#4FD6C4;
+  --dc-dim:#1E4A45;
+  --cs:#F0AE3C;
+  --cs-dim:#4A3819;
+  --crit:#E8617A;
+  --crit-dim:#3D1F26;
+  color-scheme:dark;
+}
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--void);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:16px;
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--dc-dim); color:var(--ink);}
+
+  .wrap{max-width:760px; margin:0 auto; padding:0 24px;}
+  .wide{max-width:920px; margin:0 auto; padding:0 24px;}
+
+  a{color:var(--dc);}
+
+  /* ===== Background circuit texture ===== */
+  .bg-grid{
+    position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background-image:
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 0%, transparent 70%);
+  }
+
+  /* ===== Masthead ===== */
+  header.mast{
+    padding:64px 0 0;
+    border-bottom:1px solid var(--line);
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12.5px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--cs);
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:22px;
+  }
+  .eyebrow::before{
+    content:"";
+    width:7px; height:7px;
+    background:var(--cs);
+    display:inline-block;
+    box-shadow:0 0 8px var(--cs);
+  }
+  h1.title{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:clamp(32px, 5vw, 50px);
+    line-height:1.08;
+    letter-spacing:-0.01em;
+    margin:0 0 20px;
+    color:var(--ink);
+  }
+  h1.title .accent{color:var(--dc);}
+  .dek{
+    font-family:'IBM Plex Sans', sans-serif;
+    font-style:italic;
+    font-weight:400;
+    font-size:18px;
+    color:var(--ink-dim);
+    max-width:600px;
+    margin:0 0 28px;
+  }
+  .meta-row{
+    display:flex; flex-wrap:wrap; gap:22px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    color:var(--ink-faint);
+    padding-bottom:26px;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+  }
+  .meta-row b{color:var(--ink-dim); font-weight:500;}
+
+  /* ===== Signature diagram ===== */
+  .diagram-block{
+    padding:40px 0 46px;
+    border-bottom:1px solid var(--line);
+  }
+  .diagram-caption{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11.5px;
+    color:var(--ink-faint);
+    text-align:center;
+    margin-top:14px;
+    letter-spacing:0.03em;
+  }
+  .diagram-caption .k{color:var(--dc);}
+  .diagram-caption .k2{color:var(--cs);}
+
+  /* ===== Content typography ===== */
+  main{padding:48px 0 20px;}
+  p{margin:0 0 20px; color:var(--ink);}
+  p.lead{font-size:18px; color:var(--ink); line-height:1.7;}
+
+  h2{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:26px;
+    font-weight:700;
+    color:var(--ink);
+    margin:56px 0 20px;
+    padding-bottom:14px;
+    border-bottom:1px solid var(--line);
+    display:flex;
+    align-items:baseline;
+    gap:12px;
+  }
+  h2 .tag{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    color:var(--ink-faint);
+    font-weight:400;
+    letter-spacing:0.05em;
+  }
+  h3{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:18px;
+    font-weight:600;
+    color:var(--ink);
+    margin:32px 0 12px;
+  }
+  h3.dc{color:var(--dc);}
+  h3.cs{color:var(--cs);}
+
+  code, .code-inline{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.86em;
+    background:var(--panel-raised);
+    border:1px solid var(--line);
+    padding:2px 6px;
+    border-radius:4px;
+    color:var(--cs);
+    white-space:nowrap;
+  }
+
+  strong{color:var(--ink); font-weight:600;}
+  em.math{
+    font-family:'IBM Plex Mono', monospace;
+    font-style:normal;
+    color:var(--dc);
+    background:var(--dc-dim);
+    padding:1px 5px;
+    border-radius:3px;
+    font-size:0.88em;
+  }
+
+  ul.spec-list{list-style:none; margin:0 0 20px; padding:0;}
+  ul.spec-list li{
+    position:relative;
+    padding:0 0 14px 26px;
+    color:var(--ink);
+  }
+  ul.spec-list li::before{
+    content:"▸";
+    position:absolute; left:0; top:0;
+    color:var(--cs);
+    font-size:0.9em;
+  }
+
+  /* ===== Comparison table ===== */
+  .table-wrap{
+    margin:28px 0 32px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+  }
+  table{width:100%; border-collapse:collapse; font-size:14px;}
+  thead th{
+    font-family:'IBM Plex Mono', monospace;
+    font-weight:600;
+    text-align:left;
+    padding:13px 16px;
+    font-size:11.5px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    background:var(--panel);
+    color:var(--ink-faint);
+    border-bottom:1px solid var(--line);
+  }
+  thead th.dc-col{color:var(--dc);}
+  thead th.cs-col{color:var(--cs);}
+  tbody td{
+    padding:13px 16px;
+    border-bottom:1px solid var(--line-soft);
+    color:var(--ink);
+    vertical-align:top;
+  }
+  tbody tr:last-child td{border-bottom:none;}
+  tbody td:first-child{color:var(--ink-dim); font-weight:500; width:26%;}
+  tbody tr:nth-child(odd){background:rgba(255,255,255,0.015);}
+  td.dc-cell{border-left:2px solid var(--dc-dim);}
+  td.cs-cell{border-left:2px solid var(--cs-dim);}
+
+  /* ===== Side-by-side arch cards ===== */
+  .arch-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+    margin:24px 0 32px;
+  }
+  @media (max-width:640px){ .arch-grid{grid-template-columns:1fr;} }
+  .arch-card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-top:3px solid var(--dc);
+    border-radius:10px;
+    padding:20px 20px 22px;
+  }
+  .arch-card.consumer{border-top-color:var(--cs);}
+  .arch-card .card-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--dc);
+    margin-bottom:8px;
+  }
+  .arch-card.consumer .card-label{color:var(--cs);}
+  .arch-card p{font-size:14.5px; margin-bottom:0; color:var(--ink-dim);}
+  .arch-card p strong{color:var(--ink);}
+
+  /* ===== Callouts ===== */
+  .callout{
+    margin:28px 0;
+    padding:18px 22px;
+    border-radius:10px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-left:3px solid var(--dc);
+  }
+  .callout.warn{border-left-color:var(--crit);}
+  .callout-title{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11.5px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    font-weight:600;
+    color:var(--dc);
+    margin-bottom:8px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .callout.warn .callout-title{color:var(--crit);}
+  .callout p{margin-bottom:0; font-size:14.5px; color:var(--ink-dim);}
+
+  /* ===== Metric strip ===== */
+  .metric-strip{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:14px;
+    margin:28px 0;
+  }
+  @media (max-width:640px){ .metric-strip{grid-template-columns:1fr;} }
+  .metric{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:18px 20px;
+  }
+  .metric .num{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:30px;
+    font-weight:700;
+    color:var(--crit);
+    line-height:1;
+  }
+  .metric .lbl{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11.5px;
+    color:var(--ink-faint);
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    margin-top:6px;
+  }
+
+  /* ===== Code block ===== */
+  .code-block{
+    margin:24px 0 28px;
+    background:var(--void);
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+  }
+  .code-block .code-head{
+    display:flex; align-items:center; gap:8px;
+    padding:10px 16px;
+    border-bottom:1px solid var(--line);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11.5px;
+    color:var(--ink-faint);
+    letter-spacing:0.04em;
+  }
+  .code-block .code-head .dot{width:9px; height:9px; border-radius:50%; background:var(--cs); opacity:0.7;}
+  .code-block pre{
+    margin:0; padding:18px 20px;
+    overflow-x:auto;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    line-height:1.65;
+    color:var(--ink-dim);
+  }
+  .code-block .c-kw{color:#F0AE3C;}
+  .code-block .c-type{color:#4FD6C4;}
+  .code-block .c-com{color:#5C6773; font-style:italic;}
+  .code-block .c-str{color:var(--dc);}
+
+  /* ===== Pathway cards ===== */
+  .pathway{
+    display:grid;
+    grid-template-columns:44px 1fr;
+    gap:16px;
+    padding:22px 0;
+    border-bottom:1px solid var(--line-soft);
+  }
+  .pathway:last-child{border-bottom:none;}
+  .pathway .pnum{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:20px;
+    font-weight:700;
+    color:var(--ink-faint);
+  }
+  .pathway h3{margin:0 0 8px;}
+  .pathway p{margin-bottom:0; font-size:14.5px;}
+
+  /* ===== Footer ===== */
+  footer{
+    margin-top:64px;
+    padding:28px 0 60px;
+    border-top:1px solid var(--line);
+  }
+  .verify-note{
+    display:flex; gap:12px;
+    padding:16px 18px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-left:3px solid var(--crit);
+    border-radius:10px;
+    font-size:13px;
+    color:var(--ink-faint);
+    line-height:1.6;
+  }
+  .verify-note .vlabel{color:var(--crit); font-family:'IBM Plex Mono', monospace; font-weight:600; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; white-space:nowrap;}
+  .colophon{
+    margin-top:24px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11.5px;
+    color:var(--ink-faint);
+    letter-spacing:0.03em;
+  }
+
+  @media print{
+    .bg-grid{display:none;}
+    body{background:#fff; color:#111;}
+  }
+
+
+.shell {
+  padding: 1.25rem 0 0;
+}
+</style>
+</head>
+<body>
+<div class="shell"><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><div class="site-actions"><a class="rss-link" href="/feed.xml">RSS</a><button type="button" id="theme-toggle" aria-label="Toggle theme">☀️</button></div></div></div>
+
+
+<div class="bg-grid"></div>
+
+<header class="mast">
+  <div class="wrap">
+    <div class="eyebrow">Hardware Architecture · Deep Learning Systems</div>
+    <h1 class="title">The Blackwell Architectural Split<br>Solving the NVFP4 Attention Bottleneck <span class="accent">on Consumer Silicon</span></h1>
+    <p class="dek">Two chips, one instruction set on paper — and a 256&nbsp;KB memory structure that only one of them actually has.</p>
+    <div class="meta-row">
+      <span><b>Series</b> Technical Deep Dive</span>
+      <span><b>Published</b> July 2026</span>
+      <span><b>Read time</b> 12 min</span>
+      <span><b>Level</b> Systems / CUDA</span>
+    </div>
+  </div>
+</header>
+
+<div class="diagram-block">
+  <div class="wide">
+    <svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:auto; display:block;">
+      <!-- SM100 die -->
+      <g>
+        <rect x="30" y="30" width="360" height="240" rx="10" fill="#10161D" stroke="#1E4A45" stroke-width="1.5"/>
+        <text x="52" y="60" font-family="IBM Plex Mono, monospace" font-size="12" letter-spacing="1.5" fill="#4FD6C4" font-weight="600">SM100 · DATACENTER</text>
+        <text x="52" y="78" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#5C6773">B100 / B200 / GB200</text>
+
+        <!-- tensor core -->
+        <rect x="52" y="100" width="130" height="54" rx="6" fill="#0D1117" stroke="#2A6E64" stroke-width="1.2"/>
+        <text x="117" y="122" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#C3CBD4">Tensor Core</text>
+        <text x="117" y="138" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="#5C6773">gen 5</text>
+
+        <!-- TMEM -->
+        <rect x="210" y="100" width="150" height="54" rx="6" fill="#12332F" stroke="#4FD6C4" stroke-width="1.6"/>
+        <text x="285" y="120" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#4FD6C4" font-weight="600">TMEM</text>
+        <text x="285" y="136" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="#7FCFC2">256 KB / SM</text>
+
+        <!-- arrow tensor <-> tmem -->
+        <line x1="182" y1="127" x2="210" y2="127" stroke="#4FD6C4" stroke-width="1.6"/>
+        <polygon points="206,123 214,127 206,131" fill="#4FD6C4"/>
+        <polygon points="186,123 178,127 186,131" fill="#4FD6C4"/>
+
+        <!-- single thread dispatch -->
+        <rect x="52" y="182" width="308" height="42" rx="6" fill="#0D1117" stroke="#2A2F36" stroke-width="1"/>
+        <text x="70" y="207" font-family="IBM Plex Mono, monospace" font-size="10" fill="#9AA7B4">tcgen05.mma  ·  single-thread async dispatch</text>
+
+        <text x="52" y="248" font-family="IBM Plex Mono, monospace" font-size="10" fill="#5C6773">register file: unburdened</text>
+      </g>
+
+      <!-- consumer die -->
+      <g>
+        <rect x="490" y="30" width="360" height="240" rx="10" fill="#10161D" stroke="#4A3819" stroke-width="1.5"/>
+        <text x="512" y="60" font-family="IBM Plex Mono, monospace" font-size="12" letter-spacing="1.5" fill="#F0AE3C" font-weight="600">SM12x · CONSUMER / EDGE</text>
+        <text x="512" y="78" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#5C6773">RTX 5090 · RTX PRO</text>
+
+        <rect x="512" y="100" width="130" height="54" rx="6" fill="#0D1117" stroke="#6B5320" stroke-width="1.2"/>
+        <text x="577" y="122" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#C3CBD4">Tensor Core</text>
+        <text x="577" y="138" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="#5C6773">gen 5</text>
+
+        <!-- absent TMEM, dashed -->
+        <rect x="670" y="100" width="150" height="54" rx="6" fill="none" stroke="#5C4A28" stroke-width="1.4" stroke-dasharray="5,4"/>
+        <text x="745" y="122" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#6B5B3C" font-weight="600">TMEM</text>
+        <text x="745" y="138" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="#6B5B3C">— removed —</text>
+
+        <line x1="642" y1="127" x2="670" y2="127" stroke="#6B5B3C" stroke-width="1.4" stroke-dasharray="3,3"/>
+        <text x="656" y="150" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="9" fill="#E8617A">✕</text>
+
+        <!-- warp sync -->
+        <rect x="512" y="182" width="308" height="42" rx="6" fill="#0D1117" stroke="#2A2F36" stroke-width="1"/>
+        <text x="530" y="207" font-family="IBM Plex Mono, monospace" font-size="10" fill="#9AA7B4">mma.sync  ·  32-thread warp-locked</text>
+
+        <text x="512" y="248" font-family="IBM Plex Mono, monospace" font-size="10" fill="#E8617A">register file: shared &amp; contended</text>
+      </g>
+
+      <!-- center divider -->
+      <line x1="440" y1="20" x2="440" y2="280" stroke="#2A2F36" stroke-width="1" stroke-dasharray="4,5"/>
+    </svg>
+    <div class="diagram-caption">Same Tensor Core silicon, same NVFP4 support on paper — <span class="k">SM100 routes through a dedicated 256&nbsp;KB TMEM</span>, while <span class="k2">SM12x has none and falls back to warp-synchronous registers</span>.</div>
+  </div>
+</div>
+
+<main class="wrap" data-pagefind-body>
+
+  <p class="lead">When NVIDIA unveiled its next-generation Blackwell GPU architecture, the headline numbers promised historic leaps in LLM training and inference performance. At the center of the pitch was <strong>NVFP4</strong> — a hyper-dense 4-bit floating-point format meant to shrink LLM VRAM footprints by roughly 4× without catastrophic accuracy loss. What went largely unpublicized: <strong>not all Blackwell chips are created equal</strong>, and the gap between them reshapes how NVFP4 actually has to be programmed.</p>
+
+  <p>Through systematic, programmatic brute-forcing of NVIDIA's compiler tool (<code>ptxas</code>) across hundreds of iterations, hardware researcher Jetha Chan exposed a deep hardware divide between data center Blackwell silicon and consumer/edge Blackwell silicon. This piece walks through that architectural split, the software crisis it caused for consumer AI deployment, and the engineering workarounds — including a custom native <code>A4Q</code> attention kernel — built to bridge the gap.</p>
+
+  <h2>The Architectural Divide <span class="tag">SM100 vs. SM12x</span></h2>
+  <p>Historically, NVIDIA kept its consumer and enterprise execution architectures aligned at the instruction-set level. With Blackwell, that continuity breaks. The lineage splits into two distinct programming models:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th class="dc-col">Datacenter · SM100</th>
+          <th class="cs-col">Consumer / Edge · SM12x</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Target processors</td>
+          <td class="dc-cell">B100, B200, GB200 Superchip</td>
+          <td class="cs-cell">RTX 5090 (SM120), RTX PRO (SM121)</td>
+        </tr>
+        <tr>
+          <td>Primary tensor ISA</td>
+          <td class="dc-cell"><code>tcgen05.mma</code> (5th-gen)</td>
+          <td class="cs-cell">Extended <code>mma.sync</code></td>
+        </tr>
+        <tr>
+          <td>Execution model</td>
+          <td class="dc-cell">Single-thread async dispatch</td>
+          <td class="cs-cell">Warp-synchronous, 32 threads lock-step</td>
+        </tr>
+        <tr>
+          <td>Accumulator storage</td>
+          <td class="dc-cell"><strong>TMEM</strong> — dedicated 256 KB</td>
+          <td class="cs-cell"><strong>Registers</strong> — shared with CUDA vector units</td>
+        </tr>
+        <tr>
+          <td>Warpgroup MMA</td>
+          <td class="dc-cell">Native hardware support</td>
+          <td class="cs-cell">Software emulation only</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="arch-grid">
+    <div class="arch-card">
+      <div class="card-label">Datacenter — TMEM revolution</div>
+      <p>In chips like the B200, Tensor Cores stop relying on the standard register file entirely. <strong>TMEM</strong>, a completely separate physical memory layer, pairs with <code>tcgen05.mma</code> so a single thread can asynchronously command the Tensor Cores to fetch, compute, and write back — unburdening the register file and isolating execution lines.</p>
+    </div>
+    <div class="arch-card consumer">
+      <div class="card-label">Consumer — the legacy pipeline</div>
+      <p>To cut cost and maximize die space, NVIDIA stripped TMEM entirely out of the RTX 5090 <em class="math">sm120</em> and workstation <em class="math">sm121</em>. Without it, these cards can't parse <code>tcgen05</code> at all — they fall back to <code>mma.sync</code>, which forces all 32 threads in a warp to synchronize and serialize data through local registers.</p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <div class="callout-title">The crucial catch</div>
+    <p>Consumer Blackwell GPUs possess the raw hardware structures to understand NVFP4 and FP6 — but they lack the dedicated memory highway to route that data autonomously. They must compute modern low-bit math using legacy scheduling tracks.</p>
+  </div>
+
+  <h2>The Problem <span class="tag">Shared Memory Brick Wall</span></h2>
+  <p>This split caused immediate chaos for open-source AI deployment stacks trying to run compressed models natively on consumer GPUs. Enterprise software paths — NVIDIA TensorRT-LLM, FlashAttention-4 — were compiled on the assumption that the underlying hardware had TMEM and <code>tcgen05</code> support.</p>
+
+  <p>On an RTX 5090, the software instead fell back to slow software-emulation: ingest NVFP4 from global memory, unpack it via bit-manipulation up to FP8, then hand it to the Tensor Cores. That created two compounding bottlenecks.</p>
+
+  <div class="metric-strip">
+    <div class="metric">
+      <div class="num">4×</div>
+      <div class="lbl">unpack overhead negates the bandwidth win from smaller data</div>
+    </div>
+    <div class="metric">
+      <div class="num">99 KB</div>
+      <div class="lbl">SM120 shared-memory ceiling per SM — the hard cap</div>
+    </div>
+  </div>
+
+  <p>Modern architectures like Gemma 4 use exceptionally wide attention layers — 512-wide heads. Staging an entire 512-wide matrix block into Shared Memory after unpacking to FP8 blew straight through the 99 KB SM120 allowance. Context length was hard-capped; long prompts triggered unrecoverable out-of-memory faults.</p>
+
+  <h2>The Breakthrough <span class="tag">The A4Q Kernel</span></h2>
+  <p>To route around the enterprise code barrier, Jetha Chan engineered a custom native attention kernel — <strong>A4Q (Attention with 4-bit Q)</strong> — designed to bypass shared-memory scaling entirely by managing data at the register layer instead.</p>
+
+  <p>Rather than decompressing sequences into Shared Memory before computation, A4Q streams packed NVFP4 data directly into registers and performs <strong>in-loop dequantization</strong> — extracting and scaling exactly 16 low-bit values at a time, right as the Tensor Core requests them. That keeps the active footprint well under the 99 KB ceiling and enables <em class="math">128k+</em> context windows on a standard desktop card.</p>
+
+  <h3>Preserving precision <span style="color:var(--ink-faint); font-weight:400; font-size:14px;">— dual-tier scale handling</span></h3>
+  <p>An NVFP4 value is extremely narrow — 1 sign bit, 2 exponent bits, 1 mantissa bit — so its native dynamic range is tight. To stop outputs from decaying into gibberish over long sequences, NVFP4 leans on dual-tier scaling: a global tensor scale plus a localized block-scale for every 16 numbers. A4Q integrates that math natively into the register file, managing distinct asymmetric scaling blocks for Keys (<em class="math">K</em>) and Values (<em class="math">V</em>) on the fly.</p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="dot"></span> A4Q — register-level dequantization loop</div>
+    <pre><span class="c-com">// Conceptual loop inside A4Q register-level dequantization</span>
+<span class="c-kw">#pragma unroll</span>
+for (<span class="c-type">int</span> i = 0; i &lt; 16; ++i) {
+    uint32_t packed_val = fetch_nvfp4_from_reg(reg_array, i);
+    <span class="c-type">float</span> scale_k = compute_asymmetric_scale_k(block_scale_array, i);
+    <span class="c-type">float</span> dequantized_k = dequantize_fp4_to_float(packed_val) * scale_k;
+    <span class="c-com">// Immediate injection into the mma.sync accumulator loop</span>
+    asm volatile(<span class="c-str">"mma.sync.aligned.m16n8k32..."</span> : ...);
+}</pre>
+  </div>
+
+  <p>By contributing these architecture-specific patches directly to open-source engines — <strong>vLLM, FlashInfer, SGLang</strong> — this register-level approach let an RTX 5090 host heavily compressed models like <em>Qwen 2.5 35B MoE</em> or <em>Gemma 4</em> locally at speeds pushing past <strong>160–175+ tokens per second</strong>.</p>
+
+  <h2>Alternative Pathways <span class="tag">what else the ecosystem tried</span></h2>
+  <p>Register-level assembly gives maximum throughput, but it isn't the only route around the consumer Blackwell constraints.</p>
+
+  <div class="pathway">
+    <div class="pnum">01</div>
+    <div>
+      <h3>Hybrid split precision</h3>
+      <p>Base model weights stay heavily compressed in NVFP4 (via Marlin or CUTLASS) to save VRAM, while the volatile attention layers and KV cache stay in FP8 or BF16 — sidestepping the 99 KB wall entirely, since the attention loop never has to unpack multi-layered 4-bit tensors.</p>
+    </div>
+  </div>
+  <div class="pathway">
+    <div class="pnum">02</div>
+    <div>
+      <h3>SageAttention 3 &amp; Quantization-Aware Distillation</h3>
+      <p>Common in image and video diffusion pipelines: models are trained to structurally expect the precision limits of consumer Blackwell cores, shifting the burden from runtime assembly to training time. No low-level register manipulation required.</p>
+    </div>
+  </div>
+  <div class="pathway">
+    <div class="pnum">03</div>
+    <div>
+      <h3>Triton fallback compilers</h3>
+      <p>Developers write high-level Python describing NVFP4 tensor manipulations; Triton handles block tiling, memory scheduling, and register mapping for <code>sm120</code> automatically. Flexible, but typically leaves some hardware efficiency on the table versus a hand-tuned kernel.</p>
+    </div>
+  </div>
+  <div class="pathway">
+    <div class="pnum">04</div>
+    <div>
+      <h3>Dual-chunk FlashAttention execution</h3>
+      <p>Segments the prompt into uneven, asymmetric chunks of Key/Value pairs, iteratively computing and recombining partial attention scores — capping shared-memory overhead per block to a safe, static size regardless of sequence length.</p>
+    </div>
+  </div>
+
+  <h2>Conclusion</h2>
+  <p>The Blackwell split is a reminder that software optimization can't treat a GPU generation as a monolith. Removing TMEM from consumer silicon created a hardware profile that demands a distinct programming paradigm. Enterprise environments get autonomous hardware loops via <code>tcgen05</code>; the open-source community has shown — through developments like A4Q — that meticulous, register-level engineering can still get consumer hardware to stellar local inference speeds.</p>
+
+  <footer>
+    <div class="verify-note">
+      <span class="vlabel">Editorial note</span>
+      <p style="margin:0;">The SM100/SM120, TMEM, and <code style="white-space:normal;">tcgen05</code> architectural claims in this piece check out against current public documentation. The attribution to a researcher named "Jetha Chan" and the named <code style="white-space:normal;">A4Q</code> kernel could not be independently corroborated in any public repository, paper, or blog at the time of publishing — verify sourcing before treating that portion as established fact.</p>
+    </div>
+    <div class="colophon">Technical Deep Dive Series · Hardware Architecture &amp; Deep Learning</div>
+  </footer>
+
+</main>
+
+
+<footer class="site-footer"><p>MANISH AI · Systems essays on AI infrastructure, kernels, interconnects, memory, and inference engineering.</p></footer>
+</body>
+</html>
