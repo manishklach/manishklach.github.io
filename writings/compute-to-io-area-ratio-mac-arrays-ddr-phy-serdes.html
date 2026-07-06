@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Compute-to-I/O Area Ratio: MAC Arrays vs. DDR PHY and 32 Gb/s SerDes Overhead | MANISH AI</title>
+<meta name="description" content="A systems essay on why MAC arrays are often smaller than the DDR PHY and SerDes footprint around them, and what compute-to-I/O area ratio reveals about modern AI accelerator design."/>
+<meta name="keywords" content="compute to I/O ratio, MAC array, DDR PHY, SerDes, chip floorplanning, AI accelerator design, silicon architecture, memory wall"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#fbfaf8"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/compute-to-io-area-ratio-mac-arrays-ddr-phy-serdes.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="The Compute-to-I/O Area Ratio: MAC Arrays vs. DDR PHY and 32 Gb/s SerDes Overhead | MANISH AI"/>
+<meta property="og:description" content="A technical explainer on why the boring parts of a chip often dominate its area, from MAC arrays to DDR PHYs, SerDes, die edge constraints, and bandwidth-bound accelerator design."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/compute-to-io-area-ratio-mac-arrays-ddr-phy-serdes.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/compute-to-io-area-ratio-mac-arrays-ddr-phy-serdes.png"/>
+<meta property="og:image:alt" content="Preview image for the compute-to-I/O area ratio essay"/>
+<meta property="article:published_time" content="2026-07-06T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-07-06T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="The Compute-to-I/O Area Ratio: MAC Arrays vs. DDR PHY and 32 Gb/s SerDes Overhead"/>
+<meta name="twitter:description" content="A systems essay on why DDR PHYs and high-speed SerDes often occupy more area than the compute arrays they exist to feed."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/compute-to-io-area-ratio-mac-arrays-ddr-phy-serdes.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"The Compute-to-I/O Area Ratio: MAC Arrays vs. DDR PHY and 32 Gb/s SerDes Overhead","description":"A systems essay on why MAC arrays are often smaller than the DDR PHY and SerDes footprint around them, and what compute-to-I/O area ratio reveals about modern AI accelerator design.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/compute-to-io-area-ratio-mac-arrays-ddr-phy-serdes.html","mainEntityOfPage":"https://manishklach.github.io/writings/compute-to-io-area-ratio-mac-arrays-ddr-phy-serdes.html","datePublished":"2026-07-06","dateModified":"2026-07-06","inLanguage":"en"}</script>
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+
+  :root {
+  --bg: #fbfaf8;
+  --text: #1c1b19;
+  --muted: #5b574f;
+  --accent: #a8420c;
+  --accent-soft: #f2e6dc;
+  --rule: #e3ded4;
+  --code-bg: #f1efe9;
+  --max-width: 760px;
+  color-scheme: light;
+}
+html.dark {
+  --bg: #0f1216;
+  --text: #e8e1d7;
+  --muted: #b4aa9d;
+  --accent: #ef7c43;
+  --accent-soft: #302018;
+  --rule: #2d3238;
+  --code-bg: #181d22;
+  --max-width: 760px;
+  color-scheme: dark;
+}
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+    line-height: 1.7;
+    font-size: 18px;
+  }
+  .wrap {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 4rem 1.5rem 6rem;
+  }
+  header.hero {
+    margin-bottom: 3rem;
+    border-bottom: 3px solid var(--text);
+    padding-bottom: 2rem;
+  }
+  .kicker {
+    display: inline-block;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.78rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 0.3rem 0.7rem;
+    border-radius: 3px;
+    margin-bottom: 1.2rem;
+    font-weight: 600;
+  }
+  h1.title {
+    font-size: 2.4rem;
+    line-height: 1.2;
+    margin: 0 0 0.9rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: var(--muted);
+    font-size: 1.05rem;
+    font-weight: 400;
+    margin: 0;
+  }
+  h2 {
+    font-size: 1.5rem;
+    margin-top: 3rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--rule);
+    letter-spacing: -0.005em;
+  }
+  h3 {
+    font-size: 1.15rem;
+    margin-top: 2rem;
+    margin-bottom: 0.6rem;
+    color: var(--accent);
+  }
+  p { margin: 0 0 1.2rem; }
+  ul, ol { margin: 0 0 1.2rem; padding-left: 1.4rem; }
+  li { margin-bottom: 0.55rem; }
+  strong { font-weight: 700; color: var(--text); }
+  code {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    background: var(--code-bg);
+    padding: 0.15em 0.4em;
+    border-radius: 3px;
+    font-size: 0.88em;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 3rem 0;
+  }
+  .callout {
+    background: var(--accent-soft);
+    border-left: 4px solid var(--accent);
+    padding: 1.1rem 1.4rem;
+    border-radius: 4px;
+    margin: 1.5rem 0;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  footer.note {
+    margin-top: 3rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.92rem;
+    color: var(--muted);
+    font-style: italic;
+    border-top: 1px solid var(--rule);
+    padding-top: 1.5rem;
+  }
+  .badge-row {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: 1.5rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .badge {
+    font-size: 0.75rem;
+    color: var(--muted);
+    border: 1px solid var(--rule);
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+  }
+  @media (max-width: 600px) {
+    body { font-size: 16.5px; }
+    h1.title { font-size: 1.9rem; }
+    .wrap { padding: 2.5rem 1.2rem 4rem; }
+  }
+
+
+.shell {
+  padding: 1.25rem 0 0;
+}
+</style>
+</head>
+<body>
+<div class="shell"><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><div class="site-actions"><a class="rss-link" href="/feed.xml">RSS</a><button type="button" id="theme-toggle" aria-label="Toggle theme">☀️</button></div></div></div>
+
+<main class="wrap" data-pagefind-body>
+
+  <header class="hero">
+    <span class="kicker">Silicon Architecture</span>
+    <h1 class="title">The Compute-to-I/O Area Ratio</h1>
+    <p class="subtitle">MAC arrays vs. DDR PHY and 32&nbsp;Gb/s SerDes overhead</p>
+    <div class="badge-row">
+      <span class="badge">Chip Design</span>
+      <span class="badge">AI Accelerators</span>
+      <span class="badge">Floorplanning</span>
+      <span class="badge">SerDes &amp; DDR PHY</span>
+    </div>
+  </header>
+
+  <p>If you've ever looked at a die shot of a modern AI accelerator or networking ASIC and felt a little betrayed, you're not alone. The marketing slide says "petaflops." The die photo says otherwise: a modest, tightly-packed block of MAC (multiply-accumulate) arrays sitting in the middle of a much larger sea of DDR PHYs, SerDes lanes, and analog I/O. A chip with, say, 33&nbsp;mm² dedicated to its actual compute — the MAC array that does the multiply-and-add work behind every matrix multiplication — can easily spend two, three, even four times that area on the plumbing that gets data in and out.</p>
+
+  <p>This isn't a design failure. It's one of the most important and least appreciated facts in modern chip architecture: <strong>compute scales with Moore's Law. I/O does not.</strong> Understanding why explains almost everything about how AI chips, networking ASICs, and CPUs are floorplanned today — and why the "boring" parts of a chip are often the ones that actually decide its performance.</p>
+
+  <hr>
+
+  <h2>1. The Three Tenants on the Die</h2>
+  <p>Before getting into the tradeoffs, it's worth being precise about what each of these blocks actually does, because they are solving completely different physical problems.</p>
+
+  <h3>MAC arrays — the compute</h3>
+  <p>A MAC (multiply-accumulate) unit computes <code>a = a + (b × c)</code> — the fundamental operation behind convolution, matrix multiplication, and essentially every neural network workload. MAC arrays are dense, regular, digital logic: rows and columns of identical cells that shrink almost linearly with each new process node. A MAC array built at 5nm is dramatically smaller — and faster, and more power-efficient — than the same array at 16nm. This is the part of the chip that benefits the most from Moore's Law, and it's the part semiconductor roadmaps are usually bragging about (TOPS, FLOPS, TOPS/W, TOPS/mm²).</p>
+
+  <h3>DDR PHYs — the memory doorway</h3>
+  <p>A DDR PHY (physical layer) is the analog/mixed-signal circuitry that translates the digital world inside the chip into the electrical signaling needed to talk to off-chip DRAM (DDR4, DDR5, LPDDR5X, etc.) over a physical bus. It has to manage:</p>
+  <ul>
+    <li>Precise timing and clock/data alignment (DLLs, PLLs)</li>
+    <li>Signal integrity across a noisy, capacitive off-chip bus</li>
+    <li>Voltage reference and impedance calibration</li>
+    <li>ESD-protected, high-drive-strength I/O pads</li>
+  </ul>
+  <p>None of this is digital logic that "just scales." A DDR PHY still has to drive real electrical signals down real copper traces on a PCB, at voltages and currents dictated by JEDEC standards — not by what's convenient for a 3nm transistor.</p>
+
+  <h3>32 Gb/s SerDes — the chip-to-chip highway</h3>
+  <p>SerDes (Serializer/Deserializer) blocks convert wide, slow parallel data into narrow, extremely fast serial streams (and back again) so chips can talk to each other — or to switches, NICs, or other accelerators — over a handful of high-speed differential pairs instead of hundreds of parallel wires. A 32&nbsp;Gb/s SerDes lane is used in things like PCIe Gen5, chip-to-chip die interconnects, and Ethernet-class links. Each lane needs its own clock and data recovery (CDR) circuit, equalizer, transmitter driver, and receiver front end — all analog-heavy, all sensitive to layout, noise, and die-edge placement.</p>
+
+  <hr>
+
+  <h2>2. Why the "Boring" Blocks Take More Area Than the "Exciting" One</h2>
+  <p>This is the core insight, and it comes down to a mismatch in how digital logic and analog/mixed-signal circuits respond to process scaling.</p>
+
+  <p><strong>Digital logic scales beautifully.</strong> Every new process node (28nm → 16nm → 7nm → 5nm → 3nm) shrinks transistor gate pitch and interconnect pitch, so a MAC array — pure digital logic — gets smaller, faster, and lower-power almost automatically. This is why compute density (TOPS/mm²) has improved so dramatically generation over generation.</p>
+
+  <p><strong>Analog and I/O circuits scale terribly.</strong> A DDR PHY or SerDes transceiver has hard, physics-based constraints that don't care what process node you're on:</p>
+  <ul>
+    <li><strong>Electrical signaling requirements are fixed by external standards.</strong> JEDEC sets DDR voltage swings and timing budgets; PCIe/Ethernet standards set SerDes signaling requirements. You can't just "shrink" a differential driver below what's needed to reliably swing a signal across a PCB trace or backplane.</li>
+    <li><strong>Die-edge (I/O pad) constraints don't shrink with the node.</strong> SerDes and DDR PHYs are physically tied to the die perimeter, and the achievable bandwidth density per millimeter of die edge is a much harder wall to push against than transistor density.</li>
+    <li><strong>Passive components</strong> (capacitors, inductors, termination resistors) barely shrink at all across nodes, unlike active transistors.</li>
+    <li><strong>Noise, jitter, and power integrity margins actually get harder to hit</strong> at smaller nodes because supply voltages drop and transistor variability increases — so PHY designers often can't be as aggressive as logic designers.</li>
+  </ul>
+  <p>The result: every process node shift makes your MAC array smaller and your PHY/SerDes area shrink far more slowly, if at all. Over enough generations, the "compute" fraction of the die keeps shrinking as a percentage, while I/O becomes a larger and larger share — unless architects actively fight this with different strategies (see Section 4).</p>
+
+  <hr>
+
+  <h2>3. Reading the 33&nbsp;mm² Example</h2>
+  <p>Consider a chip where the MAC array occupies roughly 33&nbsp;mm² of the total die area, with the remainder allocated primarily to DDR PHYs and multiple lanes of 32&nbsp;Gb/s SerDes. A few things this kind of split typically tells you:</p>
+  <ul>
+    <li><strong>This chip is bandwidth-hungry, not just compute-hungry.</strong> If the design team is willing to spend more silicon on interfaces than on the MAC array itself, it's because the workload (large language models, recommendation systems, graph analytics, whatever it is) needs to move huge volumes of weights and activations in and out of the chip, or needs to talk to sibling chips/accelerators at high bandwidth. Compute sitting idle waiting on data is far more common — and far more wasteful — than people assume.</li>
+    <li><strong>This is a "memory-bound" or "bandwidth-bound" design point</strong>, not a pure FLOPS-maximization design point. Chips optimized purely for peak TOPS/mm² (with minimal I/O) look very different — and are often useless in practice because they can't be fed fast enough.</li>
+    <li><strong>The number of DDR channels and SerDes lanes, more than raw area, is what determines usable bandwidth.</strong> A wider (but not necessarily larger) I/O area, spread efficiently around the die edge, often matters more than the <em>area itself</em> — because bandwidth is fundamentally limited by die-edge length and pin/lane count, not core area.</li>
+    <li><strong>This ratio is a deliberate architectural choice, not a byproduct.</strong> Every mm² spent on PHYs and SerDes is a mm² not spent on more MACs, more SRAM, or more cache. Floorplanning at this stage is genuinely a zero-sum budget negotiation between the compute architects and the I/O/systems architects.</li>
+  </ul>
+
+  <hr>
+
+  <h2>4. How Architects Fight Back Against the I/O Tax</h2>
+  <p>Because this imbalance is so costly, the industry has developed several strategies to reclaim area (or at least stop losing more of it) for compute:</p>
+
+  <h3>a) Move to HBM instead of DDR</h3>
+  <p>High Bandwidth Memory (HBM) uses a wide, short, low-speed-per-pin interface stacked directly on or next to the compute die via silicon interposer, rather than a narrow, fast, long-reach DDR bus. HBM PHYs are physically large too, but they deliver dramatically more bandwidth per mm² and per watt than DDR, which is why virtually every modern high-end AI accelerator (GPUs, TPUs, and custom ASICs alike) has largely moved to HBM for its primary memory, reserving DDR or LPDDR for host-side or lower-bandwidth uses.</p>
+
+  <h3>b) Chiplets and disaggregation</h3>
+  <p>Rather than cramming compute, DDR PHYs, and SerDes onto a single monolithic die, many modern designs split them onto separate chiplets: a compute die on the leading-edge process node (where logic scaling pays off most), and separate I/O chiplets on an older, cheaper, analog-friendly process node (where PHYs and SerDes don't get worse by using an older node, and are much cheaper to fabricate). This is exactly the "core die surrounded by I/O dies" pattern used in modern switch ASICs and multi-chip AI accelerators, connected via ultra-short-reach die-to-die SerDes.</p>
+
+  <h3>c) Maximize die-edge bandwidth density</h3>
+  <p>Since I/O is fundamentally constrained by the die's perimeter (not its area), a major axis of competition among PHY/SerDes IP vendors is bandwidth density per millimeter of die edge — how many Gb/s you can push through each linear millimeter of edge real estate. Better bandwidth density lets architects reclaim core area for compute without sacrificing bandwidth.</p>
+
+  <h3>d) UCIe and standardized die-to-die interconnect</h3>
+  <p>The rise of UCIe (Universal Chiplet Interconnect Express) is a direct response to this problem — a standardized, high-density, low-power die-to-die interface meant to make chiplet disaggregation (compute die + I/O die + memory die) practical across vendors, so no single die has to carry the full burden of both compute and long-reach analog I/O.</p>
+
+  <hr>
+
+  <h2>5. The Bigger Picture</h2>
+  <p>The tension between 33&nbsp;mm² of MACs and everything else isn't a niche detail — it's arguably the central design tension of the AI-accelerator era. Nvidia, AMD, Google, Amazon, Tesla, Groq, Cerebras, and every other serious AI silicon player is fighting the same battle: compute logic keeps getting cheaper and denser, but the pipes needed to feed that compute (DRAM bandwidth, chip-to-chip bandwidth) are improving far more slowly. This is often summarized as the "memory wall" or, more broadly, the fact that we've entered a bandwidth-bound era of computing rather than a compute-bound one.</p>
+
+  <p>That's also why so much of the public narrative about AI chips ("how many TFLOPS?") misses what actually differentiates real-world performance. Two chips can have identical MAC arrays and wildly different real-world throughput, purely because one of them was given enough DDR channels, HBM stacks, or SerDes lanes to actually keep that compute fed — and the other wasn't.</p>
+
+  <hr>
+
+  <h2>A Few Things Worth Adding to This Picture</h2>
+  <p>A couple of details are easy to miss when just looking at a floorplan or die shot:</p>
+  <ol>
+    <li><strong>SRAM often gets left out of this comparison entirely</strong>, but on many modern accelerators, on-chip SRAM (used for weight caching, activation buffers, and scratchpad memory) competes just as fiercely for area as the I/O blocks do — sometimes exceeding the size of the MAC array itself, precisely because it reduces how often you need to hit DDR/HBM in the first place.</li>
+    <li><strong>Power, not just area, is a second currency being spent here.</strong> SerDes and DDR PHYs are often disproportionately power-hungry per mm² compared to digital logic, especially at 32&nbsp;Gb/s+ signaling rates, so the "area tax" comes with a matching "power tax" that further constrains what a chip can do.</li>
+    <li><strong>Yield economics favor smaller, denser compute dies.</strong> Since defect density scales with area, keeping the leading-edge compute die as small as possible (and pushing analog I/O onto separate, often larger-node chiplets) also improves manufacturing yield and reduces cost — a second, independent reason chiplet disaggregation has become so popular.</li>
+    <li><strong>The "rest of the die" is rarely just DDR + SerDes.</strong> In many real designs, this area budget also has to be shared with power delivery network (PDN) overhead, clock distribution, PLLs, thermal sensors, and test/debug logic — so the DDR-PHY-vs-SerDes split is often a simplification of an even more crowded floorplan.</li>
+  </ol>
+
+  <div class="callout">
+    <p>Want this tailored to a specific chip? Send the die shot or source and the numbers, comparisons, and process-node context here can be swapped in for the real thing.</p>
+  </div>
+
+  <footer class="note">
+    Note: this piece describes the general architectural pattern that a MAC-array-vs-PHY/SerDes area split represents in modern accelerator design, using the 33&nbsp;mm² figure as an illustrative anchor rather than a specific attributed chip.
+  </footer>
+
+</main>
+<footer class="site-footer"><p>MANISH AI · Systems essays on AI infrastructure, kernels, interconnects, memory, and inference engineering.</p></footer>
+</body>
+</html>
