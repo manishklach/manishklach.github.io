@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true" data-theme-lock="dark">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Flash Is Capacity. DRAM Is Prediction. SRAM Is Latency. | MANISH AI</title>
+<meta name="description" content="A review of flash-sram-dram-inference-fabric — a solo research project betting that AI inference memory access patterns are predictable enough to turn cheap NVMe flash into a hidden capacity tier." />
+<meta name="keywords" content="SRAM, DRAM, flash, inference fabric, memory hierarchy, prefetch, predictor, AI inference, KV cache" />
+<meta name="author" content="MANISH AI" />
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+<meta name="color-scheme" content="dark" />
+<link rel="canonical" href="https://manishklach.github.io/writings/memory-fabric-review.html" />
+<meta property="og:locale" content="en_US" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Flash Is Capacity. DRAM Is Prediction. SRAM Is Latency. — A Look at flash-sram-dram-inference-fabric | MANISH AI" />
+<meta property="og:description" content="A review of flash-sram-dram-inference-fabric — a solo research project betting that AI inference memory access patterns are predictable enough to turn cheap NVMe flash into a hidden capacity tier." />
+<meta property="og:url" content="https://manishklach.github.io/writings/memory-fabric-review.html" />
+<meta property="og:site_name" content="MANISH AI Writings" />
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="article:published_time" content="2026-07-08T00:00:00Z" />
+<meta property="article:modified_time" content="2026-07-08T00:00:00Z" />
+<meta property="article:author" content="MANISH AI" />
+<meta property="article:section" content="AI Systems &amp; Inference Runtime" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Flash Is Capacity. DRAM Is Prediction. SRAM Is Latency." />
+<meta name="twitter:description" content="A review of flash-sram-dram-inference-fabric — a solo research project betting that AI inference memory access patterns are predictable enough to turn cheap NVMe flash into a hidden capacity tier." />
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png" />
+<meta name="twitter:image:alt" content="Flash Is Capacity. DRAM Is Prediction. SRAM Is Latency. by MANISH AI" />
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"Flash Is Capacity. DRAM Is Prediction. SRAM Is Latency.",
+  "description":"A review of flash-sram-dram-inference-fabric — a solo research project betting that AI inference memory access patterns are predictable enough to turn cheap NVMe flash into a hidden capacity tier.",
+  "url":"https://manishklach.github.io/writings/memory-fabric-review.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/memory-fabric-review.html",
+  "datePublished":"2026-07-08",
+  "dateModified":"2026-07-08",
+  "articleSection":"AI Systems & Inference Runtime",
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+  :root{
+    --bg:#0b0f14;
+    --panel:#121820;
+    --panel-2:#0e1319;
+    --line:#22303b;
+    --line-soft:#1a2530;
+    --text:#e8edf2;
+    --muted:#8b98a5;
+    --muted-2:#5f6d79;
+    --sram:#ffb020;
+    --dram:#35c7f0;
+    --flash:#8b7cff;
+    --good:#57d18a;
+    --bad:#ff6b6b;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1100px 500px at 15% -5%, rgba(53,199,240,0.08), transparent 60%),
+      radial-gradient(900px 500px at 90% 10%, rgba(139,124,255,0.07), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans', system-ui, sans-serif;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:'IBM Plex Mono', ui-monospace, monospace;}
+  a{color:var(--dram);}
+  ::selection{background:rgba(53,199,240,0.3);}
+
+  .wrap{max-width:920px;margin:0 auto;padding:0 24px;}
+
+  header.hero{
+    border-bottom:1px solid var(--line-soft);
+    padding:72px 0 56px;
+    position:relative;
+    overflow:hidden;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono';
+    font-size:12px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--muted);
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:22px;
+  }
+  .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--good);box-shadow:0 0 8px var(--good);}
+  h1.title{
+    font-family:'IBM Plex Mono';
+    font-size:clamp(30px,5vw,50px);
+    line-height:1.15;
+    font-weight:600;
+    margin:0 0 20px;
+    letter-spacing:-0.01em;
+  }
+  h1.title .sram{color:var(--sram);}
+  h1.title .dram{color:var(--dram);}
+  h1.title .flash{color:var(--flash);}
+  p.dek{
+    font-size:18px;
+    color:var(--muted);
+    max-width:640px;
+    margin:0 0 28px;
+  }
+  .meta-row{
+    display:flex;flex-wrap:wrap;gap:10px;
+    font-family:'IBM Plex Mono';font-size:12.5px;
+  }
+  .chip{
+    border:1px solid var(--line);
+    background:var(--panel);
+    color:var(--muted);
+    padding:6px 12px;
+    border-radius:5px;
+  }
+  .chip b{color:var(--text);font-weight:600;}
+  .repo-link{
+    display:inline-flex;align-items:center;gap:8px;
+    margin-top:30px;
+    font-family:'IBM Plex Mono';font-size:13.5px;
+    color:var(--text);
+    text-decoration:none;
+    border:1px solid var(--line);
+    padding:10px 16px;border-radius:6px;
+    background:var(--panel);
+    transition:border-color .15s, background .15s;
+  }
+  .repo-link:hover{border-color:var(--dram);background:var(--panel-2);}
+  .repo-link svg{width:15px;height:15px;flex:none;}
+
+  main{padding:56px 0 40px;}
+  section{margin-bottom:64px;}
+  h2{
+    font-family:'IBM Plex Mono';
+    font-size:14px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--muted-2);
+    margin:0 0 6px;
+  }
+  h3.section-title{
+    font-size:26px;
+    font-weight:600;
+    margin:0 0 20px;
+    color:var(--text);
+  }
+  p{color:#c7d0d8;margin:0 0 16px;}
+  .lede{font-size:17px;color:var(--text);}
+
+  blockquote{
+    margin:24px 0;
+    padding:18px 22px;
+    border-left:3px solid var(--dram);
+    background:var(--panel);
+    border-radius:0 8px 8px 0;
+    font-family:'IBM Plex Mono';
+    font-size:14.5px;
+    color:#b9c4cd;
+  }
+
+  .fabric{
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--panel);
+    padding:32px 28px 24px;
+    margin:28px 0;
+  }
+  .fabric-caption{
+    font-family:'IBM Plex Mono';font-size:11.5px;color:var(--muted-2);
+    text-align:center;margin-top:14px;letter-spacing:.04em;
+  }
+  .tier{
+    display:flex;align-items:center;gap:18px;
+    padding:16px 18px;border-radius:8px;border:1px solid var(--line);
+    margin-bottom:10px;position:relative;background:var(--panel-2);
+  }
+  .tier:last-child{margin-bottom:0;}
+  .tier .badge{
+    font-family:'IBM Plex Mono';font-weight:700;font-size:12px;
+    width:64px;flex:none;text-align:center;padding:6px 0;border-radius:5px;
+  }
+  .tier.sram .badge{background:rgba(255,176,32,0.14);color:var(--sram);border:1px solid rgba(255,176,32,0.35);}
+  .tier.dram .badge{background:rgba(53,199,240,0.14);color:var(--dram);border:1px solid rgba(53,199,240,0.35);}
+  .tier.flash .badge{background:rgba(139,124,255,0.14);color:var(--flash);border:1px solid rgba(139,124,255,0.35);}
+  .tier .role{font-weight:600;font-size:15px;}
+  .tier .desc{color:var(--muted);font-size:13.5px;}
+  .tier .lat{
+    margin-left:auto;font-family:'IBM Plex Mono';font-size:12px;color:var(--muted-2);
+    text-align:right;flex:none;white-space:nowrap;
+  }
+  .flow-col{display:flex;flex-direction:column;align-items:center;gap:2px;margin:2px 0 8px 82px;}
+  .flow-col svg{display:block;}
+
+  @keyframes flow{
+    0%{transform:translateY(0);opacity:0;}
+    15%{opacity:1;}
+    85%{opacity:1;}
+    100%{transform:translateY(34px);opacity:0;}
+  }
+  .connector{position:relative;height:34px;margin-left:82px;width:2px;background:linear-gradient(var(--line),var(--line));}
+  .connector .pulse{
+    position:absolute;left:-3px;top:0;width:8px;height:8px;border-radius:50%;
+    background:var(--dram);box-shadow:0 0 8px var(--dram);
+    animation:flow 2.2s linear infinite;
+  }
+  .connector.b .pulse{background:var(--flash);box-shadow:0 0 8px var(--flash);animation-delay:1.1s;}
+
+  .path-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px 0;}
+  @media(max-width:640px){.path-grid{grid-template-columns:1fr;}}
+  .path-card{border:1px solid var(--line);border-radius:10px;padding:20px;background:var(--panel);}
+  .path-card.bad{border-color:rgba(255,107,107,0.35);}
+  .path-card.good{border-color:rgba(87,209,138,0.35);}
+  .path-label{font-family:'IBM Plex Mono';font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px;}
+  .path-card.bad .path-label{color:var(--bad);}
+  .path-card.good .path-label{color:var(--good);}
+  .path-formula{font-family:'IBM Plex Mono';font-size:13.5px;color:var(--text);line-height:1.7;}
+
+  .doc-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;margin:20px 0;
+    font-family:'IBM Plex Mono';font-size:13px;
+  }
+  @media(max-width:640px){.doc-grid{grid-template-columns:1fr;}}
+  .doc-grid div{color:var(--muted);padding:7px 0;border-bottom:1px dashed var(--line-soft);}
+  .doc-grid div b{color:var(--text);font-weight:500;}
+
+  .rating-card{
+    border:1px solid var(--line);border-radius:12px;background:var(--panel);
+    padding:28px 28px 24px;margin:24px 0;
+  }
+  .rating-top{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+  .rating-score{font-family:'IBM Plex Mono';font-size:46px;font-weight:700;color:var(--dram);}
+  .rating-score span{font-size:20px;color:var(--muted-2);}
+  .rating-tag{font-family:'IBM Plex Mono';font-size:12.5px;color:var(--muted);}
+
+  .verdict-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:6px;}
+  @media(max-width:640px){.verdict-grid{grid-template-columns:1fr;}}
+  .verdict-col h4{
+    font-family:'IBM Plex Mono';font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    margin:0 0 12px;
+  }
+  .verdict-col.plus h4{color:var(--good);}
+  .verdict-col.minus h4{color:var(--bad);}
+  .verdict-col ul{margin:0;padding-left:18px;color:#c7d0d8;font-size:14px;}
+  .verdict-col li{margin-bottom:9px;}
+
+  .checklist{list-style:none;margin:24px 0;padding:0;counter-reset:step;}
+  .checklist li{
+    counter-increment:step;
+    display:flex;gap:16px;
+    padding:16px 0;border-bottom:1px solid var(--line-soft);
+  }
+  .checklist li:last-child{border-bottom:none;}
+  .checklist li::before{
+    content:counter(step,decimal-leading-zero);
+    font-family:'IBM Plex Mono';font-size:13px;color:var(--flash);
+    flex:none;width:28px;padding-top:2px;
+  }
+  .checklist strong{color:var(--text);}
+  .checklist span{color:var(--muted);}
+
+  .cta{
+    border:1px solid var(--line);border-radius:12px;
+    background:linear-gradient(135deg, rgba(53,199,240,0.07), rgba(139,124,255,0.06));
+    padding:32px;text-align:center;margin-top:8px;
+  }
+  .cta h3{margin:0 0 10px;font-size:22px;}
+  .cta p{color:var(--muted);margin:0 0 20px;}
+
+  .site-footer {
+    border-top:1px solid var(--line-soft);
+    background:var(--panel-2);
+  }
+  .site-footer-inner {
+    padding:28px 24px 60px;
+    font-family:'IBM Plex Mono';font-size:12px;color:var(--muted-2);
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;
+    max-width:920px;margin:0 auto;
+  }
+  .site-footer-inner a{color:var(--muted-2);text-decoration:none;}
+  .site-footer-inner a:hover{color:var(--dram);}
+
+  @media(max-width:640px){
+    .tier{flex-wrap:wrap;}
+    .tier .lat{margin-left:0;width:100%;text-align:left;padding-top:4px;}
+    .flow-col, .connector{margin-left:38px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="site-tools" aria-label="Site tools" style="font-family:'IBM Plex Mono';font-size:12.5px;max-width:920px;margin:0 auto;padding:14px 24px;display:flex;justify-content:space-between;align-items:center;gap:12px;color:var(--muted-2);">
+  <a href="/writings.html" style="color:inherit;text-decoration:none;"><span class="logo-word">MAN<span class="logo-i">\</span>SH AI</span> / Writings</a>
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow"><span class="dot"></span>SYSTEMS RESEARCH &middot; REPO REVIEW</div>
+    <h1 class="title">Flash is <span class="flash">capacity</span>.<br>DRAM is <span class="dram">prediction</span>.<br>SRAM is <span class="sram">latency</span>.</h1>
+    <p class="dek">Inside <span class="mono">flash-sram-dram-inference-fabric</span> — a solo research project betting that AI inference's memory access patterns are predictable enough to turn cheap NVMe flash into a hidden capacity tier, without ever letting it touch the token-critical path.</p>
+    <div class="meta-row">
+      <span class="chip">★ <b>1</b> star</span>
+      <span class="chip"><b>MIT</b> license</span>
+      <span class="chip"><b>Python</b> 100%</span>
+      <span class="chip">latest release <b>v0.3.0</b></span>
+      <span class="chip">21 commits</span>
+    </div>
+    <a class="repo-link" href="https://github.com/manishklach/flash-sram-dram-inference-fabric" target="_blank" rel="noopener">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      github.com/manishklach/flash-sram-dram-inference-fabric
+    </a>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section>
+    <h2>The Idea</h2>
+    <h3 class="section-title">Treat inference memory access as a schedule, not a guess</h3>
+    <p class="lede">Most discussions of "cheap memory for AI inference" start and end with SSD caching — swap in flash, accept the latency hit, move on. This repo argues that's the wrong framing entirely for transformer inference specifically, because transformer inference isn't a random-access workload the way a database or a game engine is.</p>
+    <p>Layer execution order is fixed. Weight access can be linearized into predictable tile sequences. Even KV cache access, while not perfectly uniform, has locality and "temperature" — recently used tokens matter more than old ones. MoE routing history can hint at which experts get called next. None of this is a novel observation on its own, but the repo's contribution is organizing an entire memory architecture around exploiting it: a compiler that schedules based on traced access patterns, a runtime that predicts and prefetches ahead of compute, and a strict rule that flash is never allowed to sit on the synchronous decode path.</p>
+    <blockquote>A synchronous flash read during token generation isn't treated as an ordinary cache miss — it's treated as a scheduling failure the system should have prevented.</blockquote>
+  </section>
+
+  <section>
+    <h2>Architecture</h2>
+    <h3 class="section-title">Three tiers, one direction of hiding</h3>
+    <p>The fabric is a strict hierarchy. Each tier has a distinct job, and — this is the part that matters — a distinct <em>relationship to time</em>: SRAM is where compute happens right now, DRAM is where the system stages what it predicts compute will need soon, and flash is where everything else waits, streamed in bulk, never on demand.</p>
+
+    <div class="fabric">
+      <div class="tier sram">
+        <div class="badge">SRAM</div>
+        <div>
+          <div class="role">Deterministic scratchpad</div>
+          <div class="desc">Active KV tiles, decode scratch buffers, routing metadata — the hot path compute reads from directly.</div>
+        </div>
+        <div class="lat">~ns &middot; always on-path</div>
+      </div>
+      <div class="connector"><div class="pulse"></div></div>
+      <div class="tier dram">
+        <div class="badge">DRAM</div>
+        <div>
+          <div class="role">Predictive staging buffer</div>
+          <div class="desc">Warm KV blocks, upcoming layer bundles, likely-next MoE experts — pre-loaded before compute asks for them.</div>
+        </div>
+        <div class="lat">~100ns &middot; staged ahead</div>
+      </div>
+      <div class="connector b"><div class="pulse"></div></div>
+      <div class="tier flash">
+        <div class="badge">FLASH</div>
+        <div>
+          <div class="role">Sequential capacity tier</div>
+          <div class="desc">Cold KV history, cold MoE experts, suspended sessions — streamed, never randomly accessed on-demand.</div>
+        </div>
+        <div class="lat">~&mu;s-ms &middot; hidden path only</div>
+      </div>
+      <div class="fabric-caption">DATA FLOWS UPWARD BEFORE IT'S NEEDED — NOT WHEN IT'S NEEDED</div>
+    </div>
+
+    <p>The reframing of the SSD access pattern is the whole trick: instead of random synchronous reads triggered by a compute stall, the system does large sequential asynchronous prefetches into DRAM ahead of time, based on trace-guided prediction. The visible path compute sees is short: SRAM &rarr; compute &rarr; output token. Everything involving the SSD happens off to the side, hidden behind however much lookahead the predictor can buy.</p>
+
+    <div class="path-grid">
+      <div class="path-card bad">
+        <div class="path-label">Naive SSD caching</div>
+        <div class="path-formula">latency = compute time<br>&nbsp;&nbsp;&nbsp;&nbsp;+ SSD read latency</div>
+      </div>
+      <div class="path-card good">
+        <div class="path-label">This project's target</div>
+        <div class="path-formula">latency = max(compute time,<br>&nbsp;&nbsp;&nbsp;&nbsp;SRAM/DRAM service time)</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What's Actually In The Repo</h2>
+    <h3 class="section-title">More scaffolding than most solo research repos ever build</h3>
+    <p>What separates this from a README-only concept pitch is that it ships a runnable simulator path alongside the design docs — <span class="mono">run_sim.py</span>, DRAM capacity sweeps, lookahead sweeps, and a deployment economics model, each with checked-in CSV/JSON results. The documentation set underneath it is unusually deep for a project at this stage:</p>
+    <div class="doc-grid">
+      <div><b>ARCHITECTURE.md</b> — tier design &amp; data flow</div>
+      <div><b>RUNTIME.md</b> — prediction &amp; promotion logic</div>
+      <div><b>COMPILER.md</b> — trace-guided scheduling</div>
+      <div><b>BENCHMARKS.md</b> — methodology</div>
+      <div><b>KV_CACHE_TIERING.md</b> — long-context staging</div>
+      <div><b>MOE_EXPERT_TIERING.md</b> — router-guided prefetch</div>
+      <div><b>PREDICTOR_MODEL_DESIGN.md</b> — prediction internals</div>
+      <div><b>THREATS_AND_LIMITATIONS.md</b> — explicit caveats</div>
+    </div>
+    <p>The <b>Non-Goals</b> section is worth calling out specifically: it explicitly disclaims that SSD latency equals DRAM latency, that every workload can hit HBM-class performance, and that prediction misses are free. That kind of self-limiting honesty is rare, and it's a good sign for how the rest of the project is likely to be reasoned about.</p>
+  </section>
+
+  <section>
+    <h2>Assessment</h2>
+    <h3 class="section-title">Where it stands today</h3>
+    <div class="rating-card">
+      <div class="rating-top">
+        <div class="rating-score">7<span>/10</span></div>
+        <div class="rating-tag">Sharp thesis, real early evidence, documentation ahead of proof</div>
+      </div>
+      <div class="verdict-grid">
+        <div class="verdict-col plus">
+          <h4>Working in its favor</h4>
+          <ul>
+            <li>A genuinely well-differentiated core idea — deterministic inference access as the exploit, not generic caching</li>
+            <li>Runnable simulator + sweep scripts with committed results, not just prose</li>
+            <li>An explicit Non-Goals section — rare, and a strong credibility signal</li>
+            <li>Visible momentum: v0.3.0 shipped prefetch types, a policy sweep, and a test suite</li>
+          </ul>
+        </div>
+        <div class="verdict-col minus">
+          <h4>Holding it back</h4>
+          <ul>
+            <li>No quickstart — nothing to run in under a minute to see it work</li>
+            <li>Benchmark numbers live in linked files, not surfaced in the README itself</li>
+            <li>No related-work section against vLLM, FlexGen, ZeRO-Infinity, AirLLM</li>
+            <li>No CI, no badges, despite a <span class="mono">tests/</span> folder existing</li>
+            <li>"Big Vision" and commercialization sections outweigh the engineering evidence in proportion</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Path To A 10</h2>
+    <h3 class="section-title">What would close the gap</h3>
+    <ol class="checklist">
+      <li><span><strong>Add a real Quickstart.</strong> Install command, one script invocation, and a pasted sample output block, placed before the architecture diagram.</span></li>
+      <li><span><strong>Surface one headline number in the README.</strong> Pull the best result out of the DRAM capacity sweep or deployment economics model and put it in a table or chart, not just a link.</span></li>
+      <li><span><strong>Add a Related Work section.</strong> Position this explicitly against vLLM/PagedAttention, FlexGen, and ZeRO-Infinity-style offloading — say in one line each what's actually different.</span></li>
+      <li><span><strong>Wire up CI.</strong> A GitHub Actions workflow running the test suite and a simulator smoke test, plus build/license/version badges at the top of the README.</span></li>
+      <li><span><strong>Render the real diagrams.</strong> The <span class="mono">diagrams/</span> folder exists — use its output in the README instead of ASCII boxes.</span></li>
+      <li><span><strong>Add a maturity badge.</strong> One line near the top: "research prototype — simulator only, no hardware backend yet" — sets expectations before the vision sections do.</span></li>
+      <li><span><strong>Add CONTRIBUTING.md and issue templates.</strong> Lower the barrier for the first outside contributor to show up.</span></li>
+      <li><span><strong>Rebalance the README.</strong> Move commercialization and big-vision framing below the runnable evidence so the engineering leads.</span></li>
+    </ol>
+  </section>
+
+  <div class="cta">
+    <h3>Worth a star and a watch</h3>
+    <p>Early-stage, but built on a real insight and backed by more runnable evidence than most projects at this stage bother with.</p>
+    <a class="repo-link" href="https://github.com/manishklach/flash-sram-dram-inference-fabric" target="_blank" rel="noopener" style="margin-top:0;">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      View flash-sram-dram-inference-fabric on GitHub
+    </a>
+  </div>
+
+</main>
+
+<footer class="site-footer" role="contentinfo">
+  <div class="site-footer-inner">
+    <span>&copy; 2026 MANISH AI</span>
+    <a href="/">Home</a>
+    <a href="/writings.html">Writings</a>
+    <a href="https://github.com/manishklach" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</footer>
+
+</body>
+</html>
