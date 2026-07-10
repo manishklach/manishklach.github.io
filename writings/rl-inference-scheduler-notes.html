@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Scheduler That Has to Earn Its Keep — Notes on rl-inference-scheduler | MANISH AI</title>
+<meta name="description" content="Notes on rl-inference-scheduler, a simulator and RL testbed where learned scheduling has to beat FIFO, SJF, and priority baselines on the real tradeoffs inside LLM inference serving."/>
+<meta name="keywords" content="rl-inference-scheduler, LLM scheduling, reinforcement learning, inference serving, FIFO, SJF, PPO, DQN, KV cache, TTFT"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f4f8fb"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/rl-inference-scheduler-notes.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="The Scheduler That Has to Earn Its Keep — Notes on rl-inference-scheduler | MANISH AI"/>
+<meta property="og:description" content="A systems essay on rl-inference-scheduler, where a reinforcement-learning agent has to beat FIFO, SJF, and priority queues on the messy realities of LLM serving."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/rl-inference-scheduler-notes.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/rl-inference-scheduler-notes.png"/>
+<meta property="og:image:alt" content="Preview image for the rl-inference-scheduler essay"/>
+<meta property="article:published_time" content="2026-07-09T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-07-09T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="The Scheduler That Has to Earn Its Keep — Notes on rl-inference-scheduler"/>
+<meta name="twitter:description" content="Notes on a serving scheduler where RL has to honestly beat FIFO, SJF, and priority queues on real inference tradeoffs before it earns deployment complexity."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/rl-inference-scheduler-notes.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"The Scheduler That Has to Earn Its Keep — Notes on rl-inference-scheduler","description":"Notes on rl-inference-scheduler, a simulator and RL testbed where learned scheduling has to beat FIFO, SJF, and priority baselines on the real tradeoffs inside LLM inference serving.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/rl-inference-scheduler-notes.html","mainEntityOfPage":"https://manishklach.github.io/writings/rl-inference-scheduler-notes.html","datePublished":"2026-07-09","dateModified":"2026-07-09","inLanguage":"en"}</script>
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+
+  :root{
+  --bg: #f4f8fb;
+  --bg-panel: #ffffff;
+  --bg-panel-2: #ebf1f7;
+  --line: #c9d4de;
+  --text: #1f3144;
+  --text-dim: #5f7388;
+  --text-faint: #7b8d9e;
+  --accent-blue: #4f7de6;
+  --accent-amber: #c9831f;
+  --accent-green: #3e9f6b;
+  --accent-red: #c95b54;
+  --mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color-scheme: light;
+}
+html.dark{
+  --bg: #12151a;
+  --bg-panel: #191d24;
+  --bg-panel-2: #1f242c;
+  --line: #2a3038;
+  --text: #e7e5df;
+  --text-dim: #9aa0aa;
+  --text-faint: #656c76;
+  --accent-blue: #6f9bff;
+  --accent-amber: #e8a33d;
+  --accent-green: #4fbb85;
+  --accent-red: #e2685f;
+  --mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color-scheme: dark;
+}
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  ::selection{ background:var(--accent-blue); color:#0c0e12; }
+
+  a{ color:var(--accent-blue); text-decoration:none; border-bottom:1px solid rgba(111,155,255,0.35); }
+  a:hover{ border-bottom-color:var(--accent-blue); }
+
+  .wrap{ max-width:760px; margin:0 auto; padding:0 24px; }
+
+  /* ---------- HERO ---------- */
+  .hero{
+    position:relative;
+    padding:120px 0 80px;
+    border-bottom:1px solid var(--line);
+    overflow:hidden;
+  }
+  .hero::before{
+    content:"";
+    position:absolute; inset:0;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 42px 42px;
+    opacity:0.18;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 20%, black 30%, transparent 75%);
+  }
+  .hero-inner{ position:relative; }
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:12.5px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--accent-amber);
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:28px;
+  }
+  .eyebrow::before{
+    content:"";
+    width:7px; height:7px; border-radius:50%;
+    background:var(--accent-amber);
+    box-shadow:0 0 0 4px rgba(232,163,61,0.15);
+  }
+  h1{
+    font-family:var(--sans);
+    font-size:44px;
+    line-height:1.12;
+    font-weight:700;
+    letter-spacing:-0.02em;
+    margin:0 0 22px;
+    color:var(--text);
+  }
+  h1 em{
+    font-style:normal;
+    color:var(--text-dim);
+  }
+  .dek{
+    font-size:18px;
+    color:var(--text-dim);
+    max-width:58ch;
+    margin:0 0 34px;
+  }
+  .meta-row{
+    display:flex; gap:22px; flex-wrap:wrap;
+    font-family:var(--mono);
+    font-size:12.5px;
+    color:var(--text-faint);
+    border-top:1px solid var(--line);
+    padding-top:20px;
+  }
+  .meta-row span b{ color:var(--text-dim); font-weight:500; }
+
+  /* ---------- BODY TYPE ---------- */
+  main{ padding:64px 0 40px; }
+  section{ margin-bottom:64px; }
+  h2{
+    font-size:26px;
+    font-weight:700;
+    color:var(--text);
+    letter-spacing:-0.01em;
+    margin:0 0 8px;
+  }
+  .h2-tag{
+    display:block;
+    font-family:var(--mono);
+    font-size:11.5px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--text-faint);
+    margin-bottom:10px;
+  }
+  h3{
+    font-size:17px;
+    color:var(--text);
+    margin:28px 0 10px;
+    font-weight:650;
+  }
+  p{ color:var(--text); font-size:16px; margin:0 0 16px; }
+  p.lead{ color:var(--text); font-size:17px; }
+  ul, ol{ color:var(--text); font-size:16px; padding-left:22px; }
+  li{ margin-bottom:8px; }
+  code{
+    font-family:var(--mono);
+    font-size:0.85em;
+    background:var(--bg-panel-2);
+    border:1px solid var(--line);
+    padding:1.5px 6px;
+    border-radius:4px;
+    color:var(--accent-blue);
+  }
+  pre{
+    font-family:var(--mono);
+    font-size:13px;
+    background:var(--bg);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:18px 20px;
+    overflow-x:auto;
+    color:var(--text-dim);
+    line-height:1.55;
+  }
+  blockquote{
+    margin:24px 0;
+    padding:2px 0 2px 20px;
+    border-left:2px solid var(--accent-blue);
+    color:var(--text-dim);
+    font-size:16px;
+  }
+
+  /* ---------- SIGNATURE: QUEUE VISUAL ---------- */
+  .queue-panel{
+    background:var(--bg-panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:26px 24px 22px;
+    margin:26px 0 8px;
+  }
+  .queue-panel .cap{
+    font-family:var(--mono);
+    font-size:11.5px;
+    color:var(--text-faint);
+    text-transform:uppercase;
+    letter-spacing:0.1em;
+    margin-bottom:16px;
+  }
+  .lane{
+    display:flex; align-items:center; gap:6px;
+    margin-bottom:14px;
+  }
+  .lane-label{
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--text-faint);
+    width:78px;
+    flex-shrink:0;
+  }
+  .job{
+    height:26px;
+    border-radius:4px;
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:var(--mono);
+    font-size:10px;
+    color:#0c0e12;
+    font-weight:700;
+  }
+  .job.hi{ background:var(--accent-amber); width:44px; }
+  .job.lo{ background:#5f6773; width:30px; color:#e7e5df; }
+  .job.done{ background:var(--accent-green); width:34px; }
+  .job.wait{ background:transparent; border:1px dashed var(--text-faint); color:var(--text-faint); width:30px; }
+  .arrow{ color:var(--text-faint); font-size:14px; }
+  .queue-note{ font-size:13px; color:var(--text-faint); margin-top:14px; }
+
+  /* ---------- STAT GRID ---------- */
+  .stat-grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:1px;
+    background:var(--line);
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+    margin:24px 0;
+  }
+  .stat{
+    background:var(--bg-panel);
+    padding:20px 18px;
+  }
+  .stat .num{
+    font-family:var(--mono);
+    font-size:24px;
+    font-weight:700;
+    color:var(--accent-blue);
+  }
+  .stat .lbl{
+    font-size:12.5px;
+    color:var(--text-faint);
+    margin-top:4px;
+  }
+
+  /* ---------- TABLE ---------- */
+  table{
+    width:100%;
+    border-collapse:collapse;
+    margin:20px 0;
+    font-size:14px;
+  }
+  th, td{
+    text-align:left;
+    padding:10px 12px;
+    border-bottom:1px solid var(--line);
+  }
+  th{
+    font-family:var(--mono);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    color:var(--text-faint);
+    font-weight:500;
+  }
+  td{ color:var(--text); }
+  td.win{ color:var(--accent-green); font-weight:600; }
+  tr:last-child td{ border-bottom:none; }
+
+  /* ---------- TIMELINE ---------- */
+  .tl{ border-left:1px solid var(--line); padding-left:24px; margin:26px 0; }
+  .tl-item{ position:relative; margin-bottom:26px; }
+  .tl-item::before{
+    content:"";
+    position:absolute; left:-29px; top:5px;
+    width:9px; height:9px; border-radius:50%;
+    background:var(--bg);
+    border:2px solid var(--accent-blue);
+  }
+  .tl-item .v{ font-family:var(--mono); font-size:12px; color:var(--accent-blue); letter-spacing:0.04em; }
+  .tl-item h4{ margin:4px 0 6px; font-size:15.5px; color:var(--text); }
+  .tl-item p{ font-size:14.5px; margin:0; color:var(--text-dim); }
+
+  /* ---------- CALLOUT ---------- */
+  .callout{
+    background:var(--bg-panel);
+    border:1px solid var(--line);
+    border-left:3px solid var(--accent-amber);
+    border-radius:6px;
+    padding:16px 18px;
+    font-size:14.5px;
+    color:var(--text-dim);
+    margin:22px 0;
+  }
+  .callout b{ color:var(--accent-amber); }
+
+  /* ---------- CTA ---------- */
+  .cta{
+    background:var(--bg-panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:34px 30px;
+    text-align:left;
+    margin-top:12px;
+  }
+  .cta h3{ margin-top:0; font-size:19px; color:var(--text); }
+  .cta p{ font-size:14.5px; }
+  .cta-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    font-family:var(--mono);
+    font-size:13.5px;
+    background:var(--accent-blue);
+    color:#0c0e12;
+    border:none;
+    border-bottom:none;
+    padding:11px 18px;
+    border-radius:6px;
+    font-weight:700;
+    margin-top:6px;
+  }
+  .cta-btn:hover{ filter:brightness(1.08); }
+
+  footer{
+    border-top:1px solid var(--line);
+    padding:34px 0 60px;
+    font-size:13px;
+    color:var(--text-faint);
+    font-family:var(--mono);
+  }
+
+  @media (max-width:640px){
+    h1{ font-size:32px; }
+    .stat-grid{ grid-template-columns:1fr; }
+    .hero{ padding:80px 0 56px; }
+  }
+
+
+.shell {
+  padding: 1.25rem 0 0;
+}
+</style>
+</head>
+<body>
+<div class="shell"><div class="site-tools"><a class="back-link" href="/writings.html">← All posts</a><div class="site-actions"><a class="rss-link" href="/feed.xml">RSS</a><button type="button" id="theme-toggle" aria-label="Toggle theme">☀️</button></div></div></div>
+
+
+<div class="hero">
+  <div class="wrap hero-inner">
+    <div class="eyebrow">Systems &amp; ML notebook</div>
+    <h1>The scheduler that has to <em>earn</em> its keep</h1>
+    <p class="dek">Inside <code>rl-inference-scheduler</code>: a testbed where a reinforcement-learning agent has to beat FIFO, SJF, and priority queues at the unglamorous job of deciding which LLM request runs next — and, so far, honestly reports that it hasn't yet.</p>
+    <div class="meta-row">
+      <span><b>Repo</b> github.com/manishklach/rl-inference-scheduler</span>
+      <span><b>Stack</b> Python, PyTorch</span>
+      <span><b>Scope</b> DQN → PPO, single-env → 4096-way vectorized</span>
+    </div>
+  </div>
+</div>
+
+<main class="wrap" data-pagefind-body>
+
+  <section>
+    <span class="h2-tag">01 — The problem underneath the problem</span>
+    <h2>Every request is a bet on the future</h2>
+    <p class="lead">An LLM inference server doesn't process one request at a time so much as referee a crowd of them. Each incoming job carries a prompt length, a priority, a first-token deadline, and a KV-cache footprint that grows as it runs — and the scheduler has to decide, tick by tick, who gets a compute slot and who waits.</p>
+    <p>The obvious heuristics all trade one thing for another. Run jobs in arrival order and short requests get stuck behind long ones. Run the shortest job first and you starve whichever long request showed up early. Prioritize by importance and you can blow through VRAM. <code>rl-inference-scheduler</code> takes that tension and turns it into an RL environment: a hardware-aware simulator with prefill/decode phases, memory pressure, and SLOs, where DQN and PPO agents are trained to out-schedule fixed policies like FIFO, SJF, Priority, LargestSafeBatch, and MemAwarePriority.</p>
+  </section>
+
+  <section>
+    <span class="h2-tag">02 — What the agent actually sees and does</span>
+    <h2>A 21-number snapshot, a 12-way decision</h2>
+    <p>At every tick, the environment hands the agent a 21-dimensional, normalized observation — queue length, VRAM headroom, average wait time, how many jobs are close to breaching their TTFT SLO, how many are near their deadline — and asks it to pick one of 12 actions.</p>
+
+    <div class="queue-panel">
+      <div class="cap">Dispatch queue — one simulated tick</div>
+      <div class="lane">
+        <div class="lane-label">incoming</div>
+        <div class="job hi">P1</div>
+        <div class="job lo">P3</div>
+        <div class="job lo">P3</div>
+        <div class="job hi">P1</div>
+        <div class="job wait">…</div>
+      </div>
+      <div class="lane">
+        <div class="lane-label">action</div>
+        <span class="arrow">action 7 → reserve slot for high-priority</span>
+      </div>
+      <div class="lane">
+        <div class="lane-label">dispatched</div>
+        <div class="job done">✓</div>
+        <div class="job done">✓</div>
+        <div class="job wait">held</div>
+        <div class="job wait">held</div>
+      </div>
+      <div class="queue-note">The action space isn't just "who goes next" — it includes batch-size choices (2/4/8, each with its own throughput multiplier), memory-protective dispatch, deferring low-priority jobs, and dropping expired ones before they burn a deadline penalty anyway.</div>
+    </div>
+
+    <p>The reward function is where the intent lives: completing a job pays out, high-priority completions pay more, missing a TTFT SLO costs more than a slow-but-on-time job, missing a hard deadline costs more still, and an OOM event is the single worst outcome in the whole function. That shape is deliberate — it's pushing the agent toward the same trade-offs a real inference-serving team argues about in an incident retro.</p>
+  </section>
+
+  <section>
+    <span class="h2-tag">03 — Four versions in, and the honesty is the point</span>
+    <h2>What the benchmarks actually show</h2>
+    <p class="lead">This is the part most repos smooth over. The published results, run across five scenarios and five seeds, don't have RL winning yet — and the README says so directly.</p>
+
+    <table>
+      <tr><th>Metric</th><th>Best performer</th><th>Why</th></tr>
+      <tr><td>Average latency</td><td class="win">SJF</td><td>Shortest-job-first is hard to beat on raw efficiency</td></tr>
+      <tr><td>TTFT SLO misses</td><td class="win">Priority / MemAwarePriority</td><td>Fast-tracking urgent jobs pays off directly</td></tr>
+      <tr><td>Adversarial long→short mix</td><td class="win">FIFO</td><td>0% miss rate — SJF starves the long jobs that arrived first</td></tr>
+      <tr><td>DQN (300 episodes)</td><td>— matches FIFO</td><td>Under-trained for a 21-dim / 12-action space</td></tr>
+    </table>
+
+    <div class="callout"><b>The finding that matters most:</b> no single heuristic dominates across scenarios. SJF's efficiency becomes a liability the moment the workload shifts adversarially. That gap — not a cherry-picked win — is the actual argument for why a learned policy could be worth the complexity.</div>
+
+    <p>The project's response to "DQN doesn't beat the baselines yet" wasn't to hide the table — it was to rebuild the training path. v0.3 replaced the single-environment loop with a tensorized environment that runs up to 4,096 simulated servers in parallel and swapped DQN for PPO with GAE. v0.4 added deterministic trace replay and richer tail-latency metrics (p95/p99) so the next round of results can be checked against something closer to production telemetry.</p>
+  </section>
+
+  <section>
+    <span class="h2-tag">04 — Four releases, in order</span>
+    <h2>How the project actually got here</h2>
+    <div class="tl">
+      <div class="tl-item">
+        <div class="v">v0.1</div>
+        <h4>Basic schedulers + DQN</h4>
+        <p>A tick-based server, FIFO/SJF/Priority baselines, and a DQN agent with a replay buffer and target network — the skeleton everything else hangs on.</p>
+      </div>
+      <div class="tl-item">
+        <div class="v">v0.2</div>
+        <h4>Hardware-aware simulator</h4>
+        <p>Prefill/decode phases, real KV-cache growth, VRAM pressure, batch-efficiency multipliers, and the 21-dim/12-action spaces described above, plus three more baselines and a five-scenario comparison pipeline.</p>
+      </div>
+      <div class="tl-item">
+        <div class="v">v0.3</div>
+        <h4>Vectorized rollout engine + PPO</h4>
+        <p>State reworked as flat PyTorch tensors so thousands of environments can step together; a PPO agent with an actor-critic head; six equivalence tests proving the fast path matches the reference simulator exactly.</p>
+      </div>
+      <div class="tl-item">
+        <div class="v">v0.4</div>
+        <h4>Trace replay + RL-wins benchmark</h4>
+        <p>Six synthetic 10k-request traces, deterministic replay through the vectorized env, a six-phase curriculum for PPO training, and distribution-shift evaluation against scenarios the agent never trained on.</p>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat"><div class="num">25</div><div class="lbl">tests passing across all four versions</div></div>
+      <div class="stat"><div class="num">4,096</div><div class="lbl">parallel simulated environments per step</div></div>
+      <div class="stat"><div class="num">12 × 21</div><div class="lbl">action space × observation dimensions</div></div>
+    </div>
+  </section>
+
+  <section>
+    <span class="h2-tag">05 — What's still open</span>
+    <h2>The unfinished part is the interesting part</h2>
+    <p>The repo's own limitations table is worth reading as a roadmap rather than a disclaimer. PPO trained on the vectorized engine hasn't yet been shown to beat the heuristics on the richer trace-replay benchmark — that comparison, run with a longer <code>mixed_curriculum</code> schedule, is the next real test of the project's thesis. Past that: no OOM events have been triggered yet, meaning the memory-pressure scenario isn't tight enough to stress the one penalty term (-10) designed to matter most. And everything so far runs against synthetic traces — the CSV trace-replay path is built specifically so real vLLM or Ray Serve logs can be dropped in without touching the environment code.</p>
+    <p>That's a reasonable place for a systems-RL project to be four versions in: the infrastructure for a fair fight is built, instrumented, and tested. The fight itself is still in progress.</p>
+  </section>
+
+  <div class="cta">
+    <h3>Follow the fight between the agent and the heuristics</h3>
+    <p>Full simulator, scenario configs, benchmark scripts, and the trace-replay pipeline are on GitHub.</p>
+    <a class="cta-btn" href="https://github.com/manishklach/rl-inference-scheduler">→ github.com/manishklach/rl-inference-scheduler</a>
+  </div>
+
+</main>
+
+<footer>
+  <div class="wrap">Notes on rl-inference-scheduler · figures drawn from the project's published README and benchmark tables</div>
+</footer>
+
+
+<footer class="site-footer"><p>MANISH AI · Systems essays on AI infrastructure, kernels, interconnects, memory, and inference engineering.</p></footer>
+</body>
+</html>
