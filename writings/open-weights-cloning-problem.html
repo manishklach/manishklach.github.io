@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Cloning Problem — What Open Weights Actually Give Away | MANISH AI</title>
+<meta name="description" content="A technical essay on what open weights really release: not just a runnable model, but a pretrained asset that can be quantized, fine-tuned, distilled, and used to shape whole families of cheaper derivatives."/>
+<meta name="keywords" content="open weights, model distillation, fine-tuning, model licensing, open model derivatives, logits, hidden states, LLM competition"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f6f7f2"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/open-weights-cloning-problem.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="The Cloning Problem — What Open Weights Actually Give Away | MANISH AI"/>
+<meta property="og:description" content="What a lab really releases when it opens model weights: a runnable model, a teacher for distillation, and an architectural blueprint competitors can optimize against."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/open-weights-cloning-problem.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/open-weights-cloning-problem.png"/>
+<meta property="og:image:alt" content="Preview image for The Cloning Problem essay"/>
+<meta property="article:published_time" content="2026-07-20T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-07-20T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="The Cloning Problem — What Open Weights Actually Give Away"/>
+<meta name="twitter:description" content="A field-note essay on how open weights enable cheaper inference, fine-tuned variants, distilled students, and architecture-informed competitors."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/open-weights-cloning-problem.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"The Cloning Problem — What Open Weights Actually Give Away","description":"A technical essay on what open weights really release: not just a runnable model, but a pretrained asset that can be quantized, fine-tuned, distilled, and used to shape whole families of cheaper derivatives.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/open-weights-cloning-problem.html","mainEntityOfPage":"https://manishklach.github.io/writings/open-weights-cloning-problem.html","datePublished":"2026-07-20","dateModified":"2026-07-20","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,450;0,9..144,600;1,9..144,450&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+  :root{
+    --bg: #f6f7f2;
+    --bg-alt: #eef0e6;
+    --paper: #243124;
+    --ink: #304032;
+    --ink-dim: #66715f;
+    --ink-faint: #7b8474;
+    --accent: #7da61f;
+    --accent-dim: #6f8d21;
+    --rust: #bf6b42;
+    --wire: #d9decf;
+    --card: #fbfcf8;
+    --serif: 'Fraunces', serif;
+    --mono: 'IBM Plex Mono', monospace;
+    color-scheme: light;
+  }
+
+  html.dark{
+    --bg: #0d0f0c;
+    --bg-alt: #12150f;
+    --paper: #f4f1e8;
+    --ink: #e9e6da;
+    --ink-dim: #9a9b8c;
+    --ink-faint: #5f6155;
+    --accent: #c9ff5e;
+    --accent-dim: #8fae42;
+    --rust: #d97b4a;
+    --wire: #3a3d33;
+    --card: #161911;
+    --serif: 'Fraunces', serif;
+    --mono: 'IBM Plex Mono', monospace;
+    color-scheme: dark;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html{ scroll-behavior: smooth; }
+
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 16px;
+    line-height: 1.7;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(201,255,94,0.06), transparent),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+  }
+
+  ::selection{ background: var(--accent); color: #0d0f0c; }
+
+  a{ color: var(--accent); }
+
+  .wrap{ max-width: 760px; margin: 0 auto; padding: 0 28px; }
+
+  /* ---------- HEADER ---------- */
+  header.hero{
+    position: relative;
+    padding: 110px 0 70px;
+    border-bottom: 1px solid var(--wire);
+    overflow: hidden;
+  }
+  .kicker{
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--accent-dim);
+    display:flex;
+    align-items:center;
+    gap: 12px;
+  }
+  .kicker::before{
+    content:"";
+    width: 26px; height: 1px;
+    background: var(--accent-dim);
+    display:inline-block;
+  }
+  h1.title{
+    font-family: var(--serif);
+    font-weight: 450;
+    font-style: normal;
+    font-size: clamp(2.4rem, 6vw, 3.6rem);
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    margin: 22px 0 18px;
+    color: var(--paper);
+  }
+  h1.title em{ font-style: italic; color: var(--accent); font-weight: 450; }
+  .dek{
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.2rem;
+    color: var(--ink-dim);
+    max-width: 58ch;
+    margin: 0 0 34px;
+    line-height: 1.55;
+  }
+  .meta-row{
+    display:flex; gap: 22px; flex-wrap: wrap;
+    font-size: 12.5px; color: var(--ink-faint);
+    letter-spacing: 0.03em;
+    padding-top: 20px;
+    border-top: 1px dashed var(--wire);
+  }
+  .meta-row span b{ color: var(--ink-dim); font-weight: 500;}
+
+  /* faint schematic corner decoration */
+  .schema-corner{
+    position:absolute; top: 20px; right: -40px;
+    width: 260px; height: 260px;
+    opacity: 0.35;
+    pointer-events:none;
+  }
+
+  /* ---------- ARTICLE BODY ---------- */
+  article{ padding: 56px 0 40px; }
+
+  article > p.lede{
+    font-family: var(--serif);
+    font-size: 1.28rem;
+    line-height: 1.6;
+    color: var(--paper);
+    margin: 0 0 34px;
+  }
+
+  article p{
+    font-family: var(--serif);
+    font-size: 1.06rem;
+    color: var(--ink);
+    margin: 0 0 22px;
+  }
+
+  article p.body-note{
+    font-family: var(--mono);
+    font-size: 0.95rem;
+    color: var(--ink-dim);
+  }
+
+  .section-index{
+    font-family: var(--mono);
+    color: var(--accent);
+    font-size: 0.9em;
+    margin-right: 6px;
+  }
+
+  h2{
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 1.9rem;
+    color: var(--paper);
+    margin: 68px 0 8px;
+    display:flex;
+    align-items:baseline;
+    gap: 14px;
+  }
+  h2 .num{
+    font-family: var(--mono);
+    font-size: 1rem;
+    color: var(--bg);
+    background: var(--accent);
+    padding: 3px 9px;
+    border-radius: 3px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  h2 + .subhead{
+    font-family: var(--mono);
+    font-size: 12.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 26px 46px;
+  }
+
+  h3{
+    font-family: var(--mono);
+    font-size: 0.95rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--rust);
+    margin: 34px 0 14px;
+  }
+
+  ul.taglist{
+    list-style:none; margin: 0 0 26px; padding: 0;
+    display:grid; grid-template-columns: repeat(auto-fill, minmax(190px,1fr));
+    gap: 8px 14px;
+  }
+  ul.taglist li{
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    color: var(--ink-dim);
+    background: var(--card);
+    border: 1px solid var(--wire);
+    border-radius: 4px;
+    padding: 9px 12px;
+    display:flex; align-items:flex-start; gap: 8px;
+  }
+  ul.taglist li::before{
+    content:"→";
+    color: var(--accent-dim);
+    flex-shrink:0;
+  }
+
+  /* pull quote */
+  blockquote{
+    margin: 40px 0;
+    padding: 4px 0 4px 26px;
+    border-left: 2px solid var(--accent);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.3rem;
+    line-height: 1.5;
+    color: var(--paper);
+  }
+
+  /* code / diagram blocks */
+  .diagram{
+    background: var(--card);
+    border: 1px solid var(--wire);
+    border-radius: 6px;
+    padding: 22px 24px;
+    margin: 28px 0;
+    position: relative;
+    overflow-x: auto;
+  }
+  .diagram::before{
+    content: attr(data-label);
+    position:absolute;
+    top: -10px; left: 16px;
+    background: var(--bg);
+    padding: 0 8px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .diagram pre{
+    margin:0; font-family: var(--mono); font-size: 0.88rem;
+    color: var(--ink-dim); white-space: pre; line-height: 1.65;
+  }
+  .diagram .accent-line{ color: var(--accent); }
+  .diagram .rust-line{ color: var(--rust); }
+
+  /* flow / pipeline visual for distillation */
+  .flow{
+    display:flex; flex-direction:column; gap:0;
+    margin: 30px 0 34px;
+  }
+  .flow .stage{
+    font-family: var(--mono);
+    font-size: 0.92rem;
+    color: var(--paper);
+    background: var(--card);
+    border: 1px solid var(--wire);
+    border-left: 3px solid var(--accent);
+    padding: 12px 16px;
+    border-radius: 3px;
+  }
+  .flow .stage .label{ color: var(--ink-faint); font-size: 0.78rem; display:block; margin-bottom:3px; letter-spacing:0.05em; }
+  .flow .arrow{
+    align-self:center;
+    color: var(--accent-dim);
+    font-size: 0.8rem;
+    padding: 6px 0;
+    font-family: var(--mono);
+  }
+
+  /* cost hierarchy ladder */
+  .ladder{ margin: 30px 0 40px; }
+  .rung{
+    display:grid; grid-template-columns: 1fr auto;
+    align-items:center;
+    gap: 14px;
+    padding: 13px 16px;
+    border: 1px solid var(--wire);
+    border-radius: 4px;
+    margin-bottom: 7px;
+    background: var(--card);
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    color: var(--ink);
+  }
+  .rung .bar{
+    height: 5px; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-dim));
+    margin-top: 8px;
+  }
+  .rung .tag{
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-faint); white-space:nowrap;
+  }
+  .rung.cheap .tag{ color: var(--accent); }
+  .rung.expensive .tag{ color: var(--rust); }
+
+  /* two column technical vs legal */
+  .split{
+    display:grid; grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 28px 0 36px;
+  }
+  @media (max-width: 640px){ .split{ grid-template-columns: 1fr; } }
+  .split .col{
+    background: var(--card);
+    border: 1px solid var(--wire);
+    border-radius: 6px;
+    padding: 20px;
+  }
+  .split .col h4{
+    font-family: var(--mono);
+    font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+    margin: 0 0 10px; color: var(--ink-faint);
+  }
+  .split .col.tech h4{ color: var(--accent); }
+  .split .col.legal h4{ color: var(--rust); }
+  .split .col p{
+    font-family: var(--mono); font-size: 0.9rem; color: var(--ink-dim);
+    margin: 0; line-height: 1.6;
+  }
+
+  hr.divider{
+    border: none;
+    height: 1px;
+    background: repeating-linear-gradient(90deg, var(--wire) 0 6px, transparent 6px 12px);
+    margin: 56px 0;
+  }
+
+  .closing{
+    font-family: var(--serif);
+    font-size: 1.15rem;
+    color: var(--paper);
+    padding: 30px 26px;
+    border: 1px solid var(--wire);
+    border-radius: 6px;
+    background: linear-gradient(180deg, rgba(201,255,94,0.04), transparent);
+    margin-top: 30px;
+  }
+
+  footer{
+    padding: 40px 0 90px;
+    border-top: 1px solid var(--wire);
+    margin-top: 40px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+    display:flex; justify-content: space-between; flex-wrap:wrap; gap:10px;
+    letter-spacing: 0.03em;
+  }
+
+  /* fade-in on scroll */
+  .reveal{
+    opacity: 0;
+    transform: translateY(14px);
+    animation: rise 0.7s ease forwards;
+  }
+  @keyframes rise{ to{ opacity:1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+<header class="site-shell" aria-label="Site">
+<div class="shell-chrome">
+<a class="shell-back" href="/writings.html">All essays</a>
+<div class="shell-actions">
+<a class="shell-link" href="/feed.xml">RSS</a>
+<button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
+</div>
+</div>
+</header>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">Model Weights · Field Notes</div>
+    <h1 class="title">What You're Really<br>Releasing When You<br>Open the <em>Weights</em></h1>
+    <p class="dek">Open weights don't just let people run your model cheaper. They hand over a pretrained asset that can be quantized, fine-tuned, distilled, and reverse-engineered into an entire family of competitors — some of it in a weekend, some of it against your license, all of it easier than starting from scratch.</p>
+    <div class="meta-row">
+      <span><b>Reading time</b> · 9 min</span>
+      <span><b>Filed under</b> · Open weights, distillation, model licensing</span>
+      <span><b>Difficulty</b> · Technical</span>
+    </div>
+  </div>
+</header>
+
+<article class="wrap" data-pagefind-body>
+
+  <p class="lede reveal">Yes — open weights make it dramatically easier to build a cheaper derivative of a model. But "clone" is doing a lot of work in that sentence. There isn't one kind of clone. There are at least four, and they sit on a cost ladder that runs from an afternoon's optimization job to something that looks uncomfortably close to training a new foundation model.</p>
+
+  <p class="reveal">The moment a lab publishes weights, it hands the field two different things at once: a runnable artifact, and a <em style="font-style:italic;color:var(--paper)">teacher</em>. What people do with the second one is where things get interesting.</p>
+
+  <hr class="divider">
+
+  <h2><span class="num">01</span> Same Model, Cheaper Inference</h2>
+  <p class="subhead">the easiest route</p>
+
+  <p>This tier doesn't produce a new model at all — it produces a leaner build of the same one. Nothing about the model's knowledge or behavior changes; only its footprint does. This is the path of least resistance, and it's why a 600B-parameter release is running on modest hardware within days of launch.</p>
+
+  <ul class="taglist">
+    <li>Quantize weights: BF16 → FP8, INT8, INT4, sometimes lower</li>
+    <li>Quantize the KV cache</li>
+    <li>Optimized attention & MoE kernels</li>
+    <li>Speculative decoding with a smaller draft model</li>
+    <li>Prune unused weights or experts</li>
+    <li>Cache common prefixes</li>
+    <li>Optimize batching and parallelism</li>
+  </ul>
+
+  <p class="body-note">Net effect: approximately the same model at a fraction of the memory and compute cost. Call it an optimized build, not a clone — the weights are still, in essence, the original author's.</p>
+
+  <hr class="divider">
+
+  <h2><span class="num">02</span> Fine-Tuned Derivatives</h2>
+  <p class="subhead">new variants, same backbone</p>
+
+  <p>One layer up, anyone with the weights can start training on top of them. This is where the original model stops being "the model" and starts being raw material.</p>
+
+  <div class="diagram" data-label="common fine-tuning targets">
+<pre>instruction tuning         → shapes response style & task-following
+domain specialization      → legal, medical, code, finance corpora
+preference optimization    → RLHF / DPO on a new reward signal
+safety-policy modification → <span class="rust-line">loosened or tightened guardrails</span>
+language adaptation        → new or underrepresented languages
+tool-use training           → function calling, agentic workflows
+continued pretraining      → <span class="accent-line">extends the knowledge base itself</span></pre>
+  </div>
+
+  <p>These are genuinely new model variants — not just a relabeled copy — but they retain most of the original's capability and, crucially, most of its training investment. That's the whole economic trick: the expensive part, the general world knowledge baked into billions of parameters, is already paid for. Fine-tuning is comparatively cheap because it's editing, not building.</p>
+
+  <hr class="divider">
+
+  <h2><span class="num">03</span> Smaller Distilled Clones</h2>
+  <p class="subhead">the open model becomes a teacher</p>
+
+  <p>This is the tier where open weights become genuinely more powerful than a closed API for competitors. A big open model can be turned into a teacher that trains a smaller, cheaper "student" to approximate its behavior.</p>
+
+  <div class="flow reveal">
+    <div class="stage"><span class="label">01 · source</span>Large open model</div>
+    <div class="arrow">↓ generates answers, logits, or reasoning traces</div>
+    <div class="stage"><span class="label">02 · target</span>Smaller student model</div>
+    <div class="arrow">↓ trained on that output</div>
+    <div class="stage" style="border-left-color: var(--rust);"><span class="label">03 · result</span>Cheaper, approximate clone</div>
+  </div>
+
+  <p>Distillation isn't magic compression. You usually can't fold a 600B-class model losslessly into a 20B one — the student gives something up, particularly on rare knowledge and hard multi-step reasoning. But "enough performance for a particular product or domain" is a much lower bar than "matches the teacher everywhere," and it's often all a competitor needs.</p>
+
+  <p>What makes <em style="font-style:italic;color:var(--paper)">open</em> weights different from a closed API here is the quality of supervision available:</p>
+
+  <ul class="taglist">
+    <li>Output logits, not just sampled text</li>
+    <li>Intermediate hidden states</li>
+    <li>Attention or routing information</li>
+    <li>Unlimited local teacher inference</li>
+    <li>Controlled synthetic training data</li>
+    <li>Gradients, if the setup allows training</li>
+  </ul>
+
+  <blockquote>Logit and hidden-state access can provide much richer supervision than anything obtainable by querying a closed API — you're not reconstructing the teacher's judgment from text alone, you're reading it directly off the probability distribution.</blockquote>
+
+  <hr class="divider">
+
+  <h2><span class="num">04</span> Architectural Derivatives</h2>
+  <p class="subhead">reading the blueprint, not just the output</p>
+
+  <p>Open weights leak more than behavior — they leak design decisions. Anyone who can load the checkpoint can inspect the architecture that produced it:</p>
+
+  <ul class="taglist">
+    <li>Tensor shapes</li>
+    <li>Layer ratios</li>
+    <li>Expert counts and routing</li>
+    <li>Attention structure</li>
+    <li>State dimensions</li>
+    <li>Normalization choices</li>
+    <li>Vocabulary and embeddings</li>
+  </ul>
+
+  <p>Researchers can lift that knowledge — the ratio of layers to width, how experts are routed, which attention variant was chosen — and use it to inform a smaller model built in a similar shape. What they generally <em style="font-style:italic;color:var(--paper)">can't</em> do is drop the same weights straight into a materially different architecture. Converting a model built on multi-head latent attention into something like kernelized delta attention, for instance, is not a copy-paste job — it typically demands substantial retraining from that point forward.</p>
+
+  <hr class="divider">
+
+  <h2 style="margin-top:56px;">Is This Inference-Only?</h2>
+
+  <p>No — and this is the part that surprises people outside ML. Open weights can normally be loaded for inference <em style="font-style:italic;color:var(--paper)">and</em> used as a training starting point. Technically, nothing stops either use. What actually governs it is the license, and the two questions are separate:</p>
+
+  <div class="split reveal">
+    <div class="col tech">
+      <h4>Technical capability</h4>
+      <p>Can I fine-tune, distill, or modify these tensors? — Usually yes, the moment you have the file.</p>
+    </div>
+    <div class="col legal">
+      <h4>Legal permission</h4>
+      <p>Does the license allow derivatives, commercial use, redistribution, and training a competing model? — Depends entirely on the fine print.</p>
+    </div>
+  </div>
+
+  <p>"Open weights" does not automatically mean open source or unrestricted. Some licenses permit nearly everything a downstream developer could want. Others carve out restrictions on commercial use, active-user thresholds, redistribution, regulated applications, or — increasingly common — a clause that specifically forbids using the model's outputs to train a competing model.</p>
+
+  <hr class="divider">
+
+  <h2 style="margin-top:56px;">The Cost Hierarchy</h2>
+  <p class="subhead">training still costs money — just not the same amount of money</p>
+
+  <p>None of this is free. Every tier above requires real compute and real expertise. But the tiers are wildly uneven in price, and that unevenness is the entire strategic story:</p>
+
+  <div class="ladder reveal">
+    <div class="rung cheap">
+      <div><div>Quantized inference build</div><div class="bar" style="width:12%"></div></div>
+      <div class="tag">cheapest</div>
+    </div>
+    <div class="rung">
+      <div><div>LoRA / domain fine-tune</div><div class="bar" style="width:28%"></div></div>
+      <div class="tag">low cost</div>
+    </div>
+    <div class="rung">
+      <div><div>Full-parameter fine-tune</div><div class="bar" style="width:48%"></div></div>
+      <div class="tag">moderate</div>
+    </div>
+    <div class="rung">
+      <div><div>Distilling a smaller student</div><div class="bar" style="width:65%"></div></div>
+      <div class="tag">substantial</div>
+    </div>
+    <div class="rung">
+      <div><div>Continued pretraining</div><div class="bar" style="width:83%"></div></div>
+      <div class="tag">high</div>
+    </div>
+    <div class="rung expensive">
+      <div><div>Training foundation model</div><div class="bar" style="width:100%"></div></div>
+      <div class="tag">most expensive</div>
+    </div>
+  </div>
+
+  <p class="closing reveal">The strategic consequence is the part worth sitting with: releasing weights doesn't just let competitors host your model cheaply. It hands them a pretrained asset from which they can produce many specialized, quantized, censored, uncensored, distilled, and hardware-targeted derivatives — bounded only by the license they agreed to and the capability losses that compression inevitably introduces.</p>
+
+</article>
+
+<footer class="wrap">
+  <span>Field notes on open-weight models</span>
+  <span>Compiled from technical & licensing analysis</span>
+</footer>
+
+<footer class="site-footer">
+<div>
+<strong>MANISH AI</strong>
+<span>Systems, chips, kernels, and inference infrastructure.</span>
+</div>
+<a href="/writings.html">Back to writings</a>
+</footer>
+</body>
+</html>
