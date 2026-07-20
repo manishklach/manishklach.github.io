@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kernel Families — Why "One Kernel to Rule Them All" Is a Myth | MANISH AI</title>
+<meta name="description" content="A systems essay on reusable GPU kernel families: where attention and grouped-GEMM kernels travel well across model lineages, and where novel architectures force bespoke runtime work."/>
+<meta name="keywords" content="GPU kernels, FlashInfer, CUTLASS, grouped GEMM, attention kernels, MoE serving, vLLM, TensorRT-LLM, model architectures"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f6f7f2"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/kernel-families-one-kernel-to-rule-them-all-myth.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Kernel Families — Why "One Kernel to Rule Them All" Is a Myth | MANISH AI"/>
+<meta property="og:description" content="A systems essay on reusable GPU kernel families: where attention and grouped-GEMM kernels travel well across model lineages, and where novel architectures force bespoke runtime work."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/kernel-families-one-kernel-to-rule-them-all-myth.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/kernel-families-one-kernel-to-rule-them-all-myth.png"/>
+<meta property="og:image:alt" content="Preview image for the kernel families essay"/>
+<meta property="article:published_time" content="2026-07-20T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-07-20T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Kernel Families — Why "One Kernel to Rule Them All" Is a Myth"/>
+<meta name="twitter:description" content="Why reusable kernels are really reusable families tied to architectural compatibility, not one universal binary for every model."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/kernel-families-one-kernel-to-rule-them-all-myth.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Kernel Families — Why "One Kernel to Rule Them All" Is a Myth","description":"A systems essay on reusable GPU kernel families: where attention and grouped-GEMM kernels travel well across model lineages, and where novel architectures force bespoke runtime work.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/kernel-families-one-kernel-to-rule-them-all-myth.html","mainEntityOfPage":"https://manishklach.github.io/writings/kernel-families-one-kernel-to-rule-them-all-myth.html","datePublished":"2026-07-20","dateModified":"2026-07-20","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,450;0,9..144,600;1,9..144,450&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+
+  :root{
+    --bg: #f6f7f2;
+    --paper: #243124;
+    --ink: #304032;
+    --ink-dim: #66715f;
+    --ink-faint: #7b8474;
+    --accent: #7da61f;
+    --accent-dim: #6f8d21;
+    --rust: #bf6b42;
+    --wire: #d9decf;
+    --card: #fbfcf8;
+    --serif: 'Fraunces', serif;
+    --mono: 'IBM Plex Mono', monospace;
+    color-scheme: light;
+  }
+  html.dark{
+    --bg: #0d0f0c;
+    --paper: #f4f1e8;
+    --ink: #e9e6da;
+    --ink-dim: #9a9b8c;
+    --ink-faint: #5f6155;
+    --accent: #c9ff5e;
+    --accent-dim: #8fae42;
+    --rust: #d97b4a;
+    --wire: #3a3d33;
+    --card: #161911;
+    --serif: 'Fraunces', serif;
+    --mono: 'IBM Plex Mono', monospace;
+    color-scheme: dark;
+  }
+  *{ box-sizing: border-box; }
+  html{ scroll-behavior: smooth; }
+  body{
+    margin:0; background: var(--bg); color: var(--ink);
+    font-family: var(--mono); font-size: 16px; line-height: 1.7;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(201,255,94,0.06), transparent),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+  }
+  ::selection{ background: var(--accent); color: #0d0f0c; }
+  a{ color: var(--accent); text-decoration-thickness: 1px; }
+  .wrap{ max-width: 760px; margin: 0 auto; padding: 0 28px; }
+
+  header.hero{ position: relative; padding: 110px 0 70px; border-bottom: 1px solid var(--wire); }
+  .kicker{
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.28em; text-transform: uppercase;
+    color: var(--accent-dim); display:flex; align-items:center; gap: 12px;
+  }
+  .kicker::before{ content:""; width: 26px; height: 1px; background: var(--accent-dim); display:inline-block; }
+  h1.title{
+    font-family: var(--serif); font-weight: 450; font-size: clamp(2.3rem, 6vw, 3.5rem);
+    line-height: 1.06; letter-spacing: -0.01em; margin: 22px 0 18px; color: var(--paper);
+  }
+  h1.title em{ font-style: italic; color: var(--accent); font-weight: 450; }
+  .dek{
+    font-family: var(--serif); font-style: italic; font-size: 1.2rem; color: var(--ink-dim);
+    max-width: 58ch; margin: 0 0 34px; line-height: 1.55;
+  }
+  .meta-row{
+    display:flex; gap: 22px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-faint);
+    letter-spacing: 0.03em; padding-top: 20px; border-top: 1px dashed var(--wire);
+  }
+  .meta-row span b{ color: var(--ink-dim); font-weight: 500; }
+
+  article{ padding: 56px 0 40px; }
+  article > p.lede{
+    font-family: var(--serif); font-size: 1.28rem; line-height: 1.6; color: var(--paper); margin: 0 0 34px;
+  }
+  article p{ font-family: var(--serif); font-size: 1.06rem; color: var(--ink); margin: 0 0 22px; }
+  article p.body-note{ font-family: var(--mono); font-size: 0.95rem; color: var(--ink-dim); }
+
+  h2{
+    font-family: var(--serif); font-weight: 500; font-size: 1.85rem; color: var(--paper);
+    margin: 68px 0 8px; display:flex; align-items:baseline; gap: 14px;
+  }
+  h2 .num{
+    font-family: var(--mono); font-size: 1rem; color: var(--bg); background: var(--accent);
+    padding: 3px 9px; border-radius: 3px; font-weight: 600; letter-spacing: 0.02em;
+  }
+  h2 + .subhead{
+    font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-faint); margin: 0 0 26px 46px;
+  }
+  h3{
+    font-family: var(--mono); font-size: 0.95rem; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--rust); margin: 34px 0 14px;
+  }
+
+  ul.taglist{
+    list-style:none; margin: 0 0 26px; padding: 0;
+    display:grid; grid-template-columns: repeat(auto-fill, minmax(190px,1fr)); gap: 8px 14px;
+  }
+  ul.taglist li{
+    font-family: var(--mono); font-size: 0.88rem; color: var(--ink-dim); background: var(--card);
+    border: 1px solid var(--wire); border-radius: 4px; padding: 9px 12px; display:flex; align-items:flex-start; gap: 8px;
+  }
+  ul.taglist li::before{ content:"→"; color: var(--accent-dim); flex-shrink:0; }
+  ul.taglist li.warn::before{ content:"⚠"; color: var(--rust); }
+
+  blockquote{
+    margin: 40px 0; padding: 4px 0 4px 26px; border-left: 2px solid var(--accent);
+    font-family: var(--serif); font-style: italic; font-size: 1.25rem; line-height: 1.5; color: var(--paper);
+  }
+
+  .diagram{
+    background: var(--card); border: 1px solid var(--wire); border-radius: 6px;
+    padding: 22px 24px; margin: 28px 0; position: relative; overflow-x: auto;
+  }
+  .diagram::before{
+    content: attr(data-label); position:absolute; top: -10px; left: 16px; background: var(--bg);
+    padding: 0 8px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+  .diagram pre{ margin:0; font-family: var(--mono); font-size: 0.86rem; color: var(--ink-dim); white-space: pre; line-height: 1.65; }
+  .diagram .accent-line{ color: var(--accent); }
+  .diagram .rust-line{ color: var(--rust); }
+
+  .flow{ display:flex; flex-direction:column; gap:0; margin: 30px 0 34px; }
+  .flow .stage{
+    font-family: var(--mono); font-size: 0.92rem; color: var(--paper); background: var(--card);
+    border: 1px solid var(--wire); border-left: 3px solid var(--accent); padding: 12px 16px; border-radius: 3px;
+  }
+  .flow .stage .label{ color: var(--ink-faint); font-size: 0.78rem; display:block; margin-bottom:3px; letter-spacing:0.05em; }
+  .flow .arrow{ align-self:center; color: var(--accent-dim); font-size: 0.8rem; padding: 6px 0; font-family: var(--mono); }
+
+  /* reusability spectrum ladder */
+  .ladder{ margin: 30px 0 40px; }
+  .rung{
+    display:grid; grid-template-columns: 1fr auto; align-items:center; gap: 14px;
+    padding: 13px 16px; border: 1px solid var(--wire); border-radius: 4px; margin-bottom: 7px;
+    background: var(--card); font-family: var(--mono); font-size: 0.9rem; color: var(--ink);
+  }
+  .rung .bar{ height: 5px; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent-dim)); margin-top: 8px; }
+  .rung .tag{ font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); white-space:nowrap; }
+  .rung.cheap .tag{ color: var(--accent); }
+  .rung.expensive .tag{ color: var(--rust); }
+
+  .split{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 28px 0 36px; }
+  @media (max-width: 640px){ .split{ grid-template-columns: 1fr; } }
+  .split .col{ background: var(--card); border: 1px solid var(--wire); border-radius: 6px; padding: 20px; }
+  .split .col h4{ font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; margin: 0 0 10px; color: var(--ink-faint); }
+  .split .col.tech h4{ color: var(--accent); }
+  .split .col.legal h4{ color: var(--rust); }
+  .split .col p{ font-family: var(--mono); font-size: 0.9rem; color: var(--ink-dim); margin: 0; line-height: 1.6; }
+
+  .equation{
+    font-family: var(--mono); font-size: 0.95rem; color: var(--paper);
+    background: var(--card); border: 1px solid var(--wire); border-radius: 6px;
+    padding: 18px 22px; margin: 28px 0; line-height: 1.9;
+  }
+  .equation .plus{ color: var(--ink-faint); }
+  .equation .result{ color: var(--accent); }
+
+  hr.divider{ border: none; height: 1px; background: repeating-linear-gradient(90deg, var(--wire) 0 6px, transparent 6px 12px); margin: 56px 0; }
+
+  .closing{
+    font-family: var(--serif); font-size: 1.15rem; color: var(--paper); padding: 30px 26px;
+    border: 1px solid var(--wire); border-radius: 6px;
+    background: linear-gradient(180deg, rgba(201,255,94,0.04), transparent); margin-top: 30px;
+  }
+
+  .cite-row{ font-family: var(--mono); font-size: 0.82rem; color: var(--ink-faint); margin: -10px 0 26px; }
+  .cite-row a{ color: var(--ink-dim); border-bottom: 1px dotted var(--wire); }
+
+  footer{
+    padding: 40px 0 90px; border-top: 1px solid var(--wire); margin-top: 40px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-faint);
+    display:flex; justify-content: space-between; flex-wrap:wrap; gap:10px; letter-spacing: 0.03em;
+  }
+
+  .reveal{ opacity: 0; transform: translateY(14px); animation: rise 0.7s ease forwards; }
+  @keyframes rise{ to{ opacity:1; transform: translateY(0); } }
+
+</style>
+</head>
+<body>
+<header class="site-shell" aria-label="Site">
+<div class="shell-chrome">
+<a class="shell-back" href="/writings.html">All essays</a>
+<div class="shell-actions">
+<a class="shell-link" href="/feed.xml">RSS</a>
+<button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
+</div>
+</div>
+</header>
+
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">Serving Infrastructure · Field Notes</div>
+    <h1 class="title">Kernel Families,<br>Not One Universal <em>Kernel</em></h1>
+    <p class="dek">GPU kernels don't know what a "Llama" or a "DeepSeek" is. They know matrix shapes, memory layouts, and numeric formats. Whether one kernel accelerates ten model families or none of them comes down to how closely those models share the same underlying math.</p>
+    <div class="meta-row">
+      <span><b>Reading time</b> · 8 min</span>
+      <span><b>Filed under</b> · Inference, attention, MoE, GPU kernels</span>
+      <span><b>Difficulty</b> · Technical</span>
+    </div>
+  </div>
+</header>
+
+<article class="wrap" data-pagefind-body>
+
+  <p class="lede reveal">Mostly yes — a lot of serving speed does come from reusable kernels. But it's more accurate, and more useful, to think of them as <em style="font-style:italic;color:var(--paper)">reusable kernel families</em> rather than one universal kernel that accelerates every model on contact.</p>
+
+  <p class="reveal">A kernel doesn't contain model knowledge or weights. It implements an operation — nothing more:</p>
+
+  <div class="diagram" data-label="what a kernel actually is">
+<pre>attention(Q, K, V)
+grouped_GEMM(tokens, expert_weights, routing)</pre>
+  </div>
+
+  <p>The model supplies the tensors, the dimensions, the layouts, the parameters. The kernel just does the arithmetic — fast, and in the right shape. That distinction is the whole story: reuse depends entirely on whether two models feed the kernel <em style="font-style:italic;color:var(--paper)">compatible shapes</em>, not on whether they're related in any other sense.</p>
+
+  <hr class="divider">
+
+  <h2><span class="num">01</span> Attention Kernels</h2>
+  <p class="subhead">the most reusable layer in the stack</p>
+
+  <p>Standard attention implementations travel remarkably well across models that share compatible attention semantics:</p>
+
+  <ul class="taglist">
+    <li>Multi-head attention</li>
+    <li>Grouped-query attention</li>
+    <li>Causal masking</li>
+    <li>Paged KV caches</li>
+    <li>Common head dimensions</li>
+    <li>Supported FP16 / BF16 / FP8 formats</li>
+    <li>Prefill and decoding</li>
+  </ul>
+
+  <p class="cite-row">Libraries such as <a href="https://github.com/flashinfer-ai/flashinfer" target="_blank" rel="noopener">FlashInfer</a> provide reusable kernels for paged/ragged KV caches, prefill, decoding, MLA, and sparse attention.</p>
+
+  <p>Concretely, the same paged-attention kernel can serve an entire lineage of Llama-like models without modification:</p>
+
+  <div class="flow reveal">
+    <div class="stage"><span class="label">shared kernel serves →</span>Llama</div>
+    <div class="stage" style="margin-top:6px;"><span class="label"></span>Mistral</div>
+    <div class="stage" style="margin-top:6px;"><span class="label"></span>Qwen</div>
+    <div class="stage" style="margin-top:6px;"><span class="label"></span>Yi</div>
+    <div class="stage" style="margin-top:6px; border-left-color: var(--rust);"><span class="label"></span>many fine-tuned derivatives</div>
+  </div>
+
+  <p>The weights change. The number of layers changes. But the mathematical attention operation stays compatible, so the kernel doesn't need to know or care which model it's running.</p>
+
+  <h3>Where reuse breaks</h3>
+  <p>That compatibility is fragile in specific, predictable ways. Any of the following can force a custom kernel:</p>
+
+  <ul class="taglist">
+    <li class="warn">Different head dimension</li>
+    <li class="warn">Different KV layout</li>
+    <li class="warn">Unusual positional encoding</li>
+    <li class="warn">MLA instead of GQA</li>
+    <li class="warn">Sliding-window or sparse pattern</li>
+    <li class="warn">Quantized KV with different scale metadata</li>
+    <li class="warn">KDA / recurrent state instead of ordinary attention</li>
+  </ul>
+
+  <p class="body-note">A newly released architecture that trips any of these wires doesn't inherit the existing kernel ecosystem for free — it needs a custom kernel, or a new specialization bolted onto an existing library.</p>
+
+  <hr class="divider">
+
+  <h2><span class="num">02</span> MoE Kernels</h2>
+  <p class="subhead">reusable primitive, model-specific assembly</p>
+
+  <p>Mixture-of-experts models route each token through only a subset of the network, which splits the serving problem into two distinct stages:</p>
+
+  <div class="flow reveal">
+    <div class="stage"><span class="label">stage 1</span>Router — chooses top-k experts</div>
+    <div class="arrow">↓</div>
+    <div class="stage"><span class="label">stage 2</span>Token permutation / grouping</div>
+    <div class="arrow">↓</div>
+    <div class="stage"><span class="label">stage 3</span>Grouped matrix multiplications</div>
+    <div class="arrow">↓</div>
+    <div class="stage" style="border-left-color: var(--rust);"><span class="label">stage 4</span>Weighted combination of expert outputs</div>
+  </div>
+
+  <p>The expensive part — the expert computation itself — is usually implemented as a <strong style="color:var(--paper); font-weight:500;">grouped GEMM</strong>: many matrix multiplications, of different effective batch sizes, executed together rather than one at a time.</p>
+
+  <p class="cite-row">Grouped GEMM is a genuinely reusable primitive: <a href="https://github.com/NVIDIA/cutlass" target="_blank" rel="noopener">NVIDIA CUTLASS</a> provides reusable grouped-GEMM and MoE building blocks specialized by tile size, data type, scaling format, and GPU generation.</p>
+
+  <p>But "reusable primitive" isn't the same as "drop-in fused kernel." A complete fused-MoE kernel has to match a long list of model-specific details before it will run correctly:</p>
+
+  <ul class="taglist">
+    <li>Number of experts</li>
+    <li>Experts selected per token</li>
+    <li>Expert hidden dimensions</li>
+    <li>SwiGLU / GELU or another activation</li>
+    <li>Routing and normalization semantics</li>
+    <li>Weight precision and scale layout</li>
+    <li>Tensor / expert parallelism</li>
+    <li>Token permutation format</li>
+    <li>GPU architecture</li>
+  </ul>
+
+  <p class="cite-row">This is exactly why <a href="https://github.com/flashinfer-ai/flashinfer" target="_blank" rel="noopener">FlashInfer</a> supports standard top-k routing plus specialized routing patterns tied to specific model families like DeepSeek and Llama 4 — the underlying machinery is shared, but some routing paths still need family-specific support built in.</p>
+
+  <hr class="divider">
+
+  <h2 style="margin-top:56px;">A Reusability Hierarchy</h2>
+  <p class="subhead">from pure hardware primitive to bespoke architecture</p>
+
+  <p>Laid out end to end, kernel reusability forms a fairly clean spectrum — the closer you get to raw hardware instructions, the more universal the kernel; the closer you get to a specific architecture's quirks, the more bespoke it has to be.</p>
+
+  <div class="ladder reveal">
+    <div class="rung cheap">
+      <div><div>Tensor Core instructions</div><div class="bar" style="width:100%"></div></div>
+      <div class="tag">most reusable</div>
+    </div>
+    <div class="rung">
+      <div><div>GEMM primitives</div><div class="bar" style="width:85%"></div></div>
+      <div class="tag">broadly shared</div>
+    </div>
+    <div class="rung">
+      <div><div>Grouped GEMM</div><div class="bar" style="width:70%"></div></div>
+      <div class="tag">shared primitive</div>
+    </div>
+    <div class="rung">
+      <div><div>Standard attention</div><div class="bar" style="width:55%"></div></div>
+      <div class="tag">widely compatible</div>
+    </div>
+    <div class="rung">
+      <div><div>Paged attention</div><div class="bar" style="width:42%"></div></div>
+      <div class="tag">family-level reuse</div>
+    </div>
+    <div class="rung">
+      <div><div>Fused MoE pipeline</div><div class="bar" style="width:26%"></div></div>
+      <div class="tag">needs specialization</div>
+    </div>
+    <div class="rung expensive">
+      <div><div>Special attention / MoE architecture</div><div class="bar" style="width:10%"></div></div>
+      <div class="tag">most model-specific</div>
+    </div>
+  </div>
+
+  <p>Even a kernel sitting comfortably on the reusable end of that spectrum usually isn't served as one generic binary. The runtime typically selects or generates a specialization tuned to the exact serving configuration:</p>
+
+  <div class="diagram" data-label="a real specialization, chosen at serve time">
+<pre>GPU        = H100
+dtype      = FP8
+head_dim   = 128
+page_size  = 16
+expert_dim = 2048</pre>
+  </div>
+
+  <p class="body-note">This selection happens through templates, JIT compilation, or runtime autotuning — the "reusable kernel" is often really a reusable <em style="font-style:italic;">generator</em> of many narrow, hardware-tuned variants.</p>
+
+  <hr class="divider">
+
+  <h2 style="margin-top:56px;">What Open Weights Actually Buy You</h2>
+
+  <p>Put the pieces together and the practical payoff of open weights becomes concrete. If the released model uses a supported, well-trodden architecture, optimizing it is close to a solved problem:</p>
+
+  <div class="equation reveal">
+open weights <span class="plus">+</span><br>
+architecture configuration <span class="plus">+</span><br>
+supported vLLM / SGLang / TensorRT-LLM backend <span class="plus">+</span><br>
+existing FlashAttention / FlashInfer / CUTLASS kernels<br>
+<span class="result">= optimized serving without retraining</span>
+  </div>
+
+  <p>For a conventional Llama-like model, most of the important kernels already exist off the shelf. A quantized clone can often reuse them directly, after converting the weights into the layout the kernel expects.</p>
+
+  <div class="split reveal">
+    <div class="col tech">
+      <h4>Conventional architecture</h4>
+      <p>Llama-shaped attention, standard MoE routing → existing kernel libraries apply almost immediately. Optimization is largely a configuration problem.</p>
+    </div>
+    <div class="col legal">
+      <h4>Novel architecture</h4>
+      <p>Kimi's KDA changes the operation itself. Ordinary attention kernels simply don't apply — Kimi had to ship specialized KDA kernels and integrate them into the serving runtime directly.</p>
+    </div>
+  </div>
+
+  <blockquote>Standard attention and MoE architectures reuse mature kernel libraries extensively. Fine-tuned or quantized clones usually inherit that compatibility for free. Novel attention, routing, state layout, or quantization schemes commonly require integration, specialization — or an entirely new kernel.</blockquote>
+
+  <p class="closing reveal">The takeaway isn't that kernels are universal — it's that kernel <em style="font-style:italic;">families</em> track architectural families. Stay inside a well-supported shape and the ecosystem does most of the optimization work for you. Step outside it, the way Kimi did with KDA, and the convenience disappears: you inherit none of the tooling, and you're back to writing the serving stack from close to first principles.</p>
+
+</article>
+
+<footer class="wrap">
+  <span>Field notes on GPU serving infrastructure</span>
+  <span>Sources: FlashInfer, NVIDIA CUTLASS</span>
+</footer>
+
+
+<footer class="site-footer">
+<div>
+<strong>MANISH AI</strong>
+<span>Systems, chips, kernels, and inference infrastructure.</span>
+</div>
+<a href="/writings.html">Back to writings</a>
+</footer>
+</body>
+</html>

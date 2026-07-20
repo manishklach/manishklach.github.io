@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Could Kimi Linear Run on a CPU? — RAM Isn't the Bottleneck | MANISH AI</title>
+<meta name="description" content="A technical essay on why Kimi Linear could plausibly run CPU-only: the weights fit after quantization, KDA is CPU-friendly, but the missing piece is a serious runtime with native KDA, MLA, and MoE kernels."/>
+<meta name="keywords" content="Kimi Linear, CPU inference, linear attention, KDA, MoE, quantization, AVX-512, AMX, long-context inference"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f6f7f2"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/could-kimi-linear-run-on-a-cpu.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Could Kimi Linear Run on a CPU? — RAM Isn't the Bottleneck | MANISH AI"/>
+<meta property="og:description" content="A technical essay on why Kimi Linear could plausibly run CPU-only: the weights fit after quantization, KDA is CPU-friendly, but the missing piece is a serious runtime with native KDA, MLA, and MoE kernels."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/could-kimi-linear-run-on-a-cpu.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/could-kimi-linear-run-on-a-cpu.png"/>
+<meta property="og:image:alt" content="Preview image for the Kimi Linear CPU essay"/>
+<meta property="article:published_time" content="2026-07-20T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-07-20T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Could Kimi Linear Run on a CPU? — RAM Isn't the Bottleneck"/>
+<meta name="twitter:description" content="Why Kimi Linear is more CPU-plausible than it first appears — and why the real blocker is the kernel/runtime stack, not RAM capacity."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/could-kimi-linear-run-on-a-cpu.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Could Kimi Linear Run on a CPU? — RAM Isn't the Bottleneck","description":"A technical essay on why Kimi Linear could plausibly run CPU-only: the weights fit after quantization, KDA is CPU-friendly, but the missing piece is a serious runtime with native KDA, MLA, and MoE kernels.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/could-kimi-linear-run-on-a-cpu.html","mainEntityOfPage":"https://manishklach.github.io/writings/could-kimi-linear-run-on-a-cpu.html","datePublished":"2026-07-20","dateModified":"2026-07-20","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,450;0,9..144,600;1,9..144,450&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+
+  :root{
+    --bg: #f6f7f2;
+    --paper: #243124;
+    --ink: #304032;
+    --ink-dim: #66715f;
+    --ink-faint: #7b8474;
+    --accent: #7da61f;
+    --accent-dim: #6f8d21;
+    --rust: #bf6b42;
+    --wire: #d9decf;
+    --card: #fbfcf8;
+    --serif: 'Fraunces', serif;
+    --mono: 'IBM Plex Mono', monospace;
+    color-scheme: light;
+  }
+  html.dark{
+    --bg: #0d0f0c;
+    --paper: #f4f1e8;
+    --ink: #e9e6da;
+    --ink-dim: #9a9b8c;
+    --ink-faint: #5f6155;
+    --accent: #c9ff5e;
+    --accent-dim: #8fae42;
+    --rust: #d97b4a;
+    --wire: #3a3d33;
+    --card: #161911;
+    --serif: 'Fraunces', serif;
+    --mono: 'IBM Plex Mono', monospace;
+    color-scheme: dark;
+  }
+  *{ box-sizing: border-box; }
+  html{ scroll-behavior: smooth; }
+  body{
+    margin:0; background: var(--bg); color: var(--ink);
+    font-family: var(--mono); font-size: 16px; line-height: 1.7;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(201,255,94,0.06), transparent),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+  }
+  ::selection{ background: var(--accent); color: #0d0f0c; }
+  a{ color: var(--accent); text-decoration-thickness: 1px; }
+  .wrap{ max-width: 760px; margin: 0 auto; padding: 0 28px; }
+
+  header.hero{ position: relative; padding: 110px 0 70px; border-bottom: 1px solid var(--wire); }
+  .kicker{
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.28em; text-transform: uppercase;
+    color: var(--accent-dim); display:flex; align-items:center; gap: 12px;
+  }
+  .kicker::before{ content:""; width: 26px; height: 1px; background: var(--accent-dim); display:inline-block; }
+  h1.title{
+    font-family: var(--serif); font-weight: 450; font-size: clamp(2.3rem, 6vw, 3.5rem);
+    line-height: 1.06; letter-spacing: -0.01em; margin: 22px 0 18px; color: var(--paper);
+  }
+  h1.title em{ font-style: italic; color: var(--accent); font-weight: 450; }
+  .dek{
+    font-family: var(--serif); font-style: italic; font-size: 1.2rem; color: var(--ink-dim);
+    max-width: 58ch; margin: 0 0 34px; line-height: 1.55;
+  }
+  .meta-row{
+    display:flex; gap: 22px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-faint);
+    letter-spacing: 0.03em; padding-top: 20px; border-top: 1px dashed var(--wire);
+  }
+  .meta-row span b{ color: var(--ink-dim); font-weight: 500; }
+
+  article{ padding: 56px 0 40px; }
+  article > p.lede{
+    font-family: var(--serif); font-size: 1.28rem; line-height: 1.6; color: var(--paper); margin: 0 0 34px;
+  }
+  article p{ font-family: var(--serif); font-size: 1.06rem; color: var(--ink); margin: 0 0 22px; }
+  article p.body-note{ font-family: var(--mono); font-size: 0.95rem; color: var(--ink-dim); }
+
+  h2{
+    font-family: var(--serif); font-weight: 500; font-size: 1.85rem; color: var(--paper);
+    margin: 68px 0 8px; display:flex; align-items:baseline; gap: 14px;
+  }
+  h2 .num{
+    font-family: var(--mono); font-size: 1rem; color: var(--bg); background: var(--accent);
+    padding: 3px 9px; border-radius: 3px; font-weight: 600; letter-spacing: 0.02em;
+  }
+  h2 + .subhead{
+    font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-faint); margin: 0 0 26px 46px;
+  }
+  h3{
+    font-family: var(--mono); font-size: 0.95rem; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--rust); margin: 34px 0 14px;
+  }
+
+  ul.taglist{
+    list-style:none; margin: 0 0 26px; padding: 0;
+    display:grid; grid-template-columns: repeat(auto-fill, minmax(190px,1fr)); gap: 8px 14px;
+  }
+  ul.taglist li{
+    font-family: var(--mono); font-size: 0.88rem; color: var(--ink-dim); background: var(--card);
+    border: 1px solid var(--wire); border-radius: 4px; padding: 9px 12px; display:flex; align-items:flex-start; gap: 8px;
+  }
+  ul.taglist li::before{ content:"→"; color: var(--accent-dim); flex-shrink:0; }
+  ul.taglist li.warn::before{ content:"⚠"; color: var(--rust); }
+  ul.taglist li.good::before{ content:"✓"; color: var(--accent); }
+  ul.taglist li.bad::before{ content:"✕"; color: var(--rust); }
+
+  blockquote{
+    margin: 40px 0; padding: 4px 0 4px 26px; border-left: 2px solid var(--accent);
+    font-family: var(--serif); font-style: italic; font-size: 1.25rem; line-height: 1.5; color: var(--paper);
+  }
+
+  .diagram{
+    background: var(--card); border: 1px solid var(--wire); border-radius: 6px;
+    padding: 22px 24px; margin: 28px 0; position: relative; overflow-x: auto;
+  }
+  .diagram::before{
+    content: attr(data-label); position:absolute; top: -10px; left: 16px; background: var(--bg);
+    padding: 0 8px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+  .diagram pre{ margin:0; font-family: var(--mono); font-size: 0.86rem; color: var(--ink-dim); white-space: pre; line-height: 1.65; }
+  .diagram .accent-line{ color: var(--accent); }
+  .diagram .rust-line{ color: var(--rust); }
+
+  .flow{ display:flex; flex-direction:column; gap:0; margin: 30px 0 34px; }
+  .flow .stage{
+    font-family: var(--mono); font-size: 0.92rem; color: var(--paper); background: var(--card);
+    border: 1px solid var(--wire); border-left: 3px solid var(--accent); padding: 12px 16px; border-radius: 3px;
+  }
+  .flow .stage .label{ color: var(--ink-faint); font-size: 0.78rem; display:block; margin-bottom:3px; letter-spacing:0.05em; }
+  .flow .arrow{ align-self:center; color: var(--accent-dim); font-size: 0.8rem; padding: 6px 0; font-family: var(--mono); }
+
+  /* weight size table */
+  table.spec{
+    width: 100%; border-collapse: collapse; margin: 28px 0 36px;
+    font-family: var(--mono); font-size: 0.92rem; background: var(--card);
+    border: 1px solid var(--wire); border-radius: 6px; overflow: hidden;
+  }
+  table.spec th{
+    text-align:left; padding: 12px 16px; background: rgba(201,255,94,0.06);
+    color: var(--accent); font-weight:500; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    border-bottom: 1px solid var(--wire);
+  }
+  table.spec td{ padding: 12px 16px; border-bottom: 1px solid var(--wire); color: var(--ink-dim); }
+  table.spec tr:last-child td{ border-bottom: none; }
+  table.spec td.num{ color: var(--paper); text-align:right; font-variant-numeric: tabular-nums; }
+  table.spec tr.highlight td{ color: var(--accent); }
+
+  /* memory tier stack visual */
+  .stack{ display:flex; flex-direction:column; gap:6px; margin: 30px 0 36px; }
+  .tier{
+    display:grid; grid-template-columns: 190px 1fr; gap: 14px; align-items:center;
+    padding: 13px 16px; border: 1px solid var(--wire); border-radius: 4px;
+    background: var(--card); font-family: var(--mono); font-size: 0.86rem;
+  }
+  .tier .name{ color: var(--paper); font-weight:500; }
+  .tier .desc{ color: var(--ink-faint); }
+  .tier.fast{ border-left: 3px solid var(--accent); }
+  .tier.mid{ border-left: 3px solid var(--accent-dim); }
+  .tier.slow{ border-left: 3px solid var(--rust); }
+
+  .split{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 28px 0 36px; }
+  @media (max-width: 640px){ .split{ grid-template-columns: 1fr; } }
+  .split .col{ background: var(--card); border: 1px solid var(--wire); border-radius: 6px; padding: 20px; }
+  .split .col h4{ font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; margin: 0 0 10px; color: var(--ink-faint); }
+  .split .col.tech h4{ color: var(--accent); }
+  .split .col.legal h4{ color: var(--rust); }
+  .split .col p{ font-family: var(--mono); font-size: 0.9rem; color: var(--ink-dim); margin: 0; line-height: 1.6; }
+  .split .col ul{ margin: 0; padding-left: 18px; font-family: var(--mono); font-size: 0.86rem; color: var(--ink-dim); line-height: 1.9; }
+
+  hr.divider{ border: none; height: 1px; background: repeating-linear-gradient(90deg, var(--wire) 0 6px, transparent 6px 12px); margin: 56px 0; }
+
+  .closing{
+    font-family: var(--serif); font-size: 1.15rem; color: var(--paper); padding: 30px 26px;
+    border: 1px solid var(--wire); border-radius: 6px;
+    background: linear-gradient(180deg, rgba(201,255,94,0.04), transparent); margin-top: 30px;
+  }
+
+  .cite-row{ font-family: var(--mono); font-size: 0.82rem; color: var(--ink-faint); margin: -10px 0 26px; }
+  .cite-row a{ color: var(--ink-dim); border-bottom: 1px dotted var(--wire); }
+
+  .stat-pair{ display:flex; gap: 14px; margin: 24px 0 30px; flex-wrap: wrap; }
+  .stat{
+    flex: 1; min-width: 160px; background: var(--card); border: 1px solid var(--wire);
+    border-radius: 6px; padding: 18px 20px;
+  }
+  .stat .n{ font-family: var(--serif); font-size: 2rem; color: var(--accent); line-height:1; }
+  .stat .l{ font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 8px; }
+
+  footer{
+    padding: 40px 0 90px; border-top: 1px solid var(--wire); margin-top: 40px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-faint);
+    display:flex; justify-content: space-between; flex-wrap:wrap; gap:10px; letter-spacing: 0.03em;
+  }
+
+  .reveal{ opacity: 0; transform: translateY(14px); animation: rise 0.7s ease forwards; }
+  @keyframes rise{ to{ opacity:1; transform: translateY(0); } }
+
+</style>
+</head>
+<body>
+<header class="site-shell" aria-label="Site">
+<div class="shell-chrome">
+<a class="shell-back" href="/writings.html">All essays</a>
+<div class="shell-actions">
+<a class="shell-link" href="/feed.xml">RSS</a>
+<button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
+</div>
+</div>
+</header>
+
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">Inference Hardware · Field Notes</div>
+    <h1 class="title">Could Kimi Linear<br>Run on a CPU <em>Alone</em>?</h1>
+    <p class="dek">Technically, yes — and its architecture is unusually well-suited to it. But the honest answer has a catch: RAM capacity was never the hard part. The hard part is that nobody has written the CPU kernels yet.</p>
+    <div class="meta-row">
+      <span><b>Reading time</b> · 9 min</span>
+      <span><b>Filed under</b> · CPU inference, MoE, linear attention, quantization</span>
+      <span><b>Difficulty</b> · Technical</span>
+    </div>
+  </div>
+</header>
+
+<article class="wrap" data-pagefind-body>
+
+  <p class="lede reveal">Yes — technically, Kimi Linear could become a CPU-only model. In some respects its architecture is genuinely attractive for CPU long-context inference. But open weights alone aren't enough. What's missing isn't theory or memory — it's optimized CPU implementations of KDA, MLA, and its MoE layers.</p>
+
+  <hr class="divider">
+
+  <h2><span class="num">01</span> Why It Could Work</h2>
+  <p class="subhead">the parameter count is misleading in a good way</p>
+
+  <p>Kimi Linear's headline numbers look intimidating until you notice how the model actually uses them:</p>
+
+  <div class="stat-pair reveal">
+    <div class="stat"><div class="n">48B</div><div class="l">total parameters</div></div>
+    <div class="stat"><div class="n">3B</div><div class="l">activated per token</div></div>
+  </div>
+
+  <p class="cite-row">Because it's an MoE model, every token only executes a subset of the 48B weights — see the <a href="https://huggingface.co/moonshotai/Kimi-Linear-48B-A3B-Instruct" target="_blank" rel="noopener">Kimi Linear model card</a>.</p>
+
+  <p>Its arithmetic cost per token is therefore much closer to a small dense model — <em style="font-style:italic;color:var(--paper)">although every expert's weights still have to stay accessible somewhere</em>, even the ones that aren't firing this step. That distinction — light compute, heavy storage — is the whole tension of running MoE models on CPU.</p>
+
+  <h3>The weight-size math actually works out</h3>
+
+  <table class="spec reveal">
+    <tr><th>Weight format</th><th>Approx. raw size</th></tr>
+    <tr><td>BF16</td><td class="num">96 GB</td></tr>
+    <tr><td>INT8</td><td class="num">48 GB</td></tr>
+    <tr><td>INT4</td><td class="num">24 GB</td></tr>
+    <tr class="highlight"><td>3-bit</td><td class="num">18 GB</td></tr>
+  </table>
+
+  <p class="body-note">Add metadata, embeddings, alignment, and runtime buffers, and a practical INT4 deployment lands around 28–35 GB — comfortably inside a workstation with 64–128 GB of RAM. Capacity, in other words, was never going to be the blocker.</p>
+
+  <hr class="divider">
+
+  <h2><span class="num">02</span> Linear Attention Helps CPUs With Long Context</h2>
+  <p class="subhead">a fixed-size state beats a growing KV cache</p>
+
+  <p>For 75% of its attention layers, Kimi doesn't scan an ever-growing KV cache at all. It processes fixed-sized recurrent states instead:</p>
+
+  <div class="diagram" data-label="the core CPU-relevant difference">
+<pre><span class="rust-line">Normal attention CPU work:
+scan historical KV for every generated token</span>
+
+<span class="accent-line">KDA CPU work:
+read/update fixed state matrices</span></pre>
+  </div>
+
+  <p>At extremely long contexts this stops being a minor optimization and becomes the whole ballgame. A conventional CPU deployment gets progressively slower as context grows, because attention has to read more and more KV history for every new token. KDA's token-generation cost for those layers stays approximately constant regardless of how long the context gets.</p>
+
+  <p class="body-note">The caveat: the remaining MLA layers still carry a context-growing KV cache, so total decoding cost isn't fully constant — just far flatter than a conventional architecture's.</p>
+
+  <hr class="divider">
+
+  <h2><span class="num">03</span> The Real Obstacle: CPU Kernels</h2>
+  <p class="subhead">theoretical feasibility isn't a runtime</p>
+
+  <p>Here's where the optimism has to meet reality. The released fast KDA implementation is built entirely around GPU-oriented tooling:</p>
+
+  <ul class="taglist">
+    <li class="warn">Triton kernels</li>
+    <li class="warn">CUDA kernels</li>
+    <li class="warn">TileLang kernels</li>
+  </ul>
+
+  <p class="cite-row">Official usage and deployment paths emphasize <a href="https://github.com/fla-org/flash-linear-attention" target="_blank" rel="noopener">Flash Linear Attention</a> and vLLM acceleration. Kimi Linear does not currently appear among <a href="https://github.com/ggml-org/llama.cpp" target="_blank" rel="noopener">llama.cpp's</a> supported model architectures.</p>
+
+  <p>A serious CPU runtime would need native implementations covering all of the following, not just one:</p>
+
+  <ul class="taglist">
+    <li>KDA state read/update</li>
+    <li>MLA attention</li>
+    <li>MoE routing</li>
+    <li>Token-to-expert permutation</li>
+    <li>Quantized grouped matrix multiplication</li>
+    <li>RMSNorm, RoPE, and activation fusions</li>
+  </ul>
+
+  <p class="body-note">A slow PyTorch reference implementation would technically run on a CPU. That is a categorically different claim from "usable" — the difference between a proof of concept and a deployable model.</p>
+
+  <hr class="divider">
+
+  <h2><span class="num">04</span> MoE: Both the Advantage and the Difficulty</h2>
+  <p class="subhead">sparse compute, scattered memory</p>
+
+  <div class="flow reveal">
+    <div class="stage"><span class="label">step 1</span>Router selects experts for this token</div>
+    <div class="arrow">↓</div>
+    <div class="stage"><span class="label">step 2</span>Execute only the selected expert matrices</div>
+  </div>
+
+  <p>That routing is what lowers total computation — but the selected experts can change on every single token, which scatters memory access across a weight set that may span 24–100 GB depending on quantization. On a GPU, HBM's raw bandwidth absorbs that chaos. On a CPU, performance instead hinges on a long list of hardware specifics:</p>
+
+  <ul class="taglist">
+    <li>DRAM channel count and bandwidth</li>
+    <li>Whether expert weights are NUMA-local</li>
+    <li>INT4 / INT8 vector kernels</li>
+    <li>AVX-512, VNNI, or AMX support</li>
+    <li>Batch size</li>
+    <li>Expert-routing locality</li>
+    <li>Whether hot experts stay cache-resident</li>
+  </ul>
+
+  <blockquote>The model may fit comfortably in RAM and still run slowly — inference at this scale is mostly about moving weights, not merely storing them.</blockquote>
+
+  <hr class="divider">
+
+  <h2><span class="num">05</span> KDA Is Genuinely Implementable on CPU</h2>
+  <p class="subhead">a regular access pattern, not a sparse lookup</p>
+
+  <p>Unlike the scattered MoE access pattern, KDA's core recurrent-state operation is dense and regular — it works with 128×128 matrices, which CPUs are well equipped to handle:</p>
+
+  <ul class="taglist">
+    <li>AVX-512</li>
+    <li>Intel AMX</li>
+    <li>ARM SVE/SME</li>
+    <li>oneDNN or specialized GEMM microkernels</li>
+    <li>Fused state-read/update/output operations</li>
+  </ul>
+
+  <p>A well-built implementation would process state tiles entirely in cache rather than round-tripping to DRAM repeatedly:</p>
+
+  <div class="flow reveal">
+    <div class="stage"><span class="label">01</span>Load state tile from RAM / L3</div>
+    <div class="arrow">↓</div>
+    <div class="stage"><span class="label">02</span>Compute key read</div>
+    <div class="arrow">↓</div>
+    <div class="stage"><span class="label">03</span>Apply decay and correction</div>
+    <div class="arrow">↓</div>
+    <div class="stage"><span class="label">04</span>Compute query output</div>
+    <div class="arrow">↓</div>
+    <div class="stage" style="border-left-color: var(--rust);"><span class="label">05</span>Write updated tile once</div>
+  </div>
+
+  <p class="body-note">That avoids physically reading the state from DRAM three separate times — and this regular, predictable access pattern is far friendlier to a CPU than sparse, random KV retrieval ever is.</p>
+
+  <hr class="divider">
+
+  <h2 style="margin-top:56px;">Where CPU-Only Would Actually Be Compelling</h2>
+
+  <div class="split reveal">
+    <div class="col tech">
+      <h4>Makes sense for</h4>
+      <ul>
+        <li>Private local deployment</li>
+        <li>Offline batch processing</li>
+        <li>Long-running agents</li>
+        <li>High-throughput servers with large batches</li>
+        <li>Machines with abundant, inexpensive RAM</li>
+        <li>Latency-tolerant environments (a few tokens/sec is fine)</li>
+        <li>Hybrid CPU/NPU systems</li>
+      </ul>
+    </div>
+    <div class="col legal">
+      <h4>Poor fit for</h4>
+      <ul>
+        <li>Very fast interactive generation</li>
+        <li>Million-token prompt ingestion</li>
+        <li>Large concurrent batches on ordinary desktop DDR5</li>
+        <li>Workloads needing tens or hundreds of tok/s per user</li>
+      </ul>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <h2 style="margin-top:56px;">A Particularly Interesting Implementation</h2>
+  <p class="subhead">tiering memory the way GPUs tier bandwidth</p>
+
+  <p>The most promising CPU-only architecture would likely tier data across memory the way a well-designed GPU pipeline tiers across bandwidth levels:</p>
+
+  <div class="stack reveal">
+    <div class="tier fast"><div class="name">Quantized model weights</div><div class="desc">CPU DRAM</div></div>
+    <div class="tier fast"><div class="name">Hot KDA state</div><div class="desc">CPU cache / DRAM</div></div>
+    <div class="tier mid"><div class="name">Remaining MLA KV</div><div class="desc">DRAM</div></div>
+    <div class="tier slow"><div class="name">Cold residual KV</div><div class="desc">SSD</div></div>
+    <div class="tier fast"><div class="name">Compute</div><div class="desc">AVX-512 / AMX</div></div>
+  </div>
+
+  <p class="body-note">Notice that SSD offload for KV only makes sense for the remaining MLA layers and for persistent cold contexts — KDA's fixed-size state has no need for it.</p>
+
+  <p class="closing reveal">So, yes: open weights could enable a practical CPU-only version of Kimi Linear, especially after INT4 quantization. The missing ingredient was never theoretical feasibility or RAM capacity — it's a llama.cpp- or oneDNN-class CPU runtime with native quantized MoE, MLA, and fused KDA kernels. Until that runtime exists, "runs on CPU" and "usefully runs on CPU" remain two very different claims.</p>
+
+</article>
+
+<footer class="wrap">
+  <span>Field notes on CPU inference for MoE / linear-attention models</span>
+  <span>Sources: Kimi Linear model card, Flash Linear Attention, llama.cpp</span>
+</footer>
+
+
+<footer class="site-footer">
+<div>
+<strong>MANISH AI</strong>
+<span>Systems, chips, kernels, and inference infrastructure.</span>
+</div>
+<a href="/writings.html">Back to writings</a>
+</footer>
+</body>
+</html>
