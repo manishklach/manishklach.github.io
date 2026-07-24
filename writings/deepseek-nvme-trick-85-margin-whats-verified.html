@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The NVMe Trick, the 85% Margin, and What's Actually Verified | MANISH AI</title>
+<meta name="description" content="A technical explainer on DeepSeek's disk-backed KV caching, the public 3FS storage layer behind it, and why the viral 85% margin claim is much shakier than the engineering story."/>
+<meta name="keywords" content="DeepSeek, 3FS, NVMe KV cache, prefix caching, MLA, inference economics, 85% margin, leaked investor call, LLM serving"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f5f7fa"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/deepseek-nvme-trick-85-margin-whats-verified.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="The NVMe Trick, the 85% Margin, and What's Actually Verified | MANISH AI"/>
+<meta property="og:description" content="What DeepSeek really published about SSD-backed KV caching, what 3FS proves publicly, and why the viral 85% margin number is more arithmetic extrapolation than audited fact."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/deepseek-nvme-trick-85-margin-whats-verified.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/deepseek-nvme-trick-85-margin-whats-verified.png"/>
+<meta property="og:image:alt" content="Preview image for the DeepSeek NVMe and margin essay"/>
+<meta property="article:published_time" content="2026-07-24T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-07-24T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="The NVMe Trick, the 85% Margin, and What's Actually Verified"/>
+<meta name="twitter:description" content="A field-note explainer on DeepSeek's real NVMe prefix-caching architecture and the much less certain economics attached to it in the rumor cycle."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/deepseek-nvme-trick-85-margin-whats-verified.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"The NVMe Trick, the 85% Margin, and What's Actually Verified","description":"A technical explainer on DeepSeek's disk-backed KV caching, the public 3FS storage layer behind it, and why the viral 85% margin claim is much shakier than the engineering story.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/deepseek-nvme-trick-85-margin-whats-verified.html","mainEntityOfPage":"https://manishklach.github.io/writings/deepseek-nvme-trick-85-margin-whats-verified.html","datePublished":"2026-07-24","dateModified":"2026-07-24","inLanguage":"en"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+  :root{
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --panel-2: #edf2f7;
+    --line: #d6dee7;
+    --line-soft: #e9eef4;
+    --text: #263341;
+    --text-dim: #617180;
+    --text-faint: #7c8b98;
+    --copper: #d46f28;
+    --copper-dim: #ab5923;
+    --cyan: #1aa89a;
+    --red: #cb5555;
+    --radius: 3px;
+    color-scheme: light;
+  }
+
+  html.dark{
+    --bg: #0a0d10;
+    --panel: #10151a;
+    --panel-2: #141a20;
+    --line: #212a31;
+    --line-soft: #191f25;
+    --text: #dde5eb;
+    --text-dim: #93a1ab;
+    --text-faint: #5c6b75;
+    --copper: #ff8a3d;
+    --copper-dim: #b8632b;
+    --cyan: #59d6c6;
+    --red: #e05c5c;
+    --radius: 3px;
+    color-scheme: dark;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html{ scroll-behavior: smooth; }
+
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 18px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection{ background: var(--copper); color: #0a0d10; }
+
+  .grain{
+    position: fixed; inset:0; pointer-events:none; z-index: 2;
+    opacity: .035; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .blueprint{
+    position: fixed; inset:0; z-index:0; pointer-events:none;
+    background-image:
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size: 64px 64px;
+    -webkit-mask-image: radial-gradient(ellipse 80% 55% at 50% 0%, #000 0%, transparent 70%);
+    mask-image: radial-gradient(ellipse 80% 55% at 50% 0%, #000 0%, transparent 70%);
+    opacity: .55;
+  }
+
+  .wrap{ max-width: 760px; margin: 0 auto; padding: 0 28px; position: relative; z-index: 1; }
+  .wrap-wide{ max-width: 900px; margin: 0 auto; padding: 0 28px; position: relative; z-index: 1; }
+
+  a{ color: var(--copper); text-decoration-color: rgba(255,138,61,.35); text-underline-offset: 3px; }
+  a:hover{ text-decoration-color: var(--copper); }
+
+  code, .mono{
+    font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  /* ---------- HEADER / MASTHEAD ---------- */
+  header.masthead{
+    padding: 20px 0;
+    border-bottom: 1px solid var(--line);
+    position: relative; z-index: 1;
+  }
+  .masthead-inner{
+    max-width: 900px; margin: 0 auto; padding: 0 28px;
+    display:flex; align-items:center; justify-content:space-between;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .masthead-inner .dot{ color: var(--copper); }
+
+  /* ---------- HERO ---------- */
+  .hero{ padding: 88px 0 56px; position: relative; z-index:1; }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace; font-size: 12.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--copper);
+    display:flex; align-items:center; gap:10px; margin-bottom: 26px;
+  }
+  .eyebrow::before{ content:''; width:26px; height:1px; background: var(--copper-dim); display:inline-block; }
+
+  h1.headline{
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: clamp(34px, 5.4vw, 54px);
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+    margin: 0 0 26px;
+    color: #f2f6f8;
+  }
+  h1.headline em{
+    font-style: normal; color: var(--copper);
+  }
+
+  .dek{
+    font-size: 20px; line-height: 1.6; color: var(--text-dim);
+    max-width: 620px; margin: 0 0 34px;
+    font-family: 'Source Serif 4', serif;
+  }
+
+  .meta-row{
+    display:flex; gap: 22px; flex-wrap: wrap;
+    font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--text-faint);
+    padding-top: 20px; border-top: 1px solid var(--line);
+  }
+  .meta-row span b{ color: var(--text-dim); font-weight: 500; }
+
+  /* ---------- READOUT (signature element) ---------- */
+  .readout{
+    margin: 54px 0 10px;
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border-radius: var(--radius);
+    padding: 30px 30px 26px;
+  }
+  .readout-label{
+    font-family:'IBM Plex Mono', monospace; font-size: 11.5px; letter-spacing:.14em;
+    text-transform: uppercase; color: var(--text-faint); margin-bottom: 22px;
+    display:flex; justify-content: space-between;
+  }
+  .readout-label .status{ color: var(--cyan); }
+
+  .readout-bars{ display:flex; flex-direction: column; gap: 18px; }
+  .rbar-row{ display:grid; grid-template-columns: 120px 1fr 90px; align-items:center; gap: 14px; }
+  .rbar-tag{ font-family:'IBM Plex Mono', monospace; font-size: 13px; color: var(--text-dim); }
+  .rbar-track{ height: 20px; background: #0d1216; border: 1px solid var(--line); border-radius: 2px; position: relative; overflow: hidden; }
+  .rbar-fill{ position:absolute; left:0; top:0; bottom:0; border-radius: 1px; }
+  .rbar-fill.cold{ width: 100%; background: repeating-linear-gradient(45deg, var(--red), var(--red) 6px, #7a3a3a 6px, #7a3a3a 12px); opacity:.85; }
+  .rbar-fill.warm{ width: 3.8%; background: var(--cyan); box-shadow: 0 0 14px rgba(89,214,198,.55); }
+  .rbar-val{ font-family:'IBM Plex Mono', monospace; font-size: 13px; text-align:right; color: var(--text); }
+  .readout-foot{
+    margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--line);
+    font-family:'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-faint);
+  }
+
+  /* ---------- SECTIONS ---------- */
+  main{ padding-bottom: 40px; }
+  section{ padding: 58px 0; border-bottom: 1px solid var(--line); position: relative; z-index:1; }
+  section.no-border{ border-bottom: none; }
+
+  .section-num{
+    font-family:'IBM Plex Mono', monospace; font-size: 12px; color: var(--copper-dim);
+    letter-spacing: .1em; margin-bottom: 10px;
+  }
+
+  h2{
+    font-family:'Space Grotesk', sans-serif; font-weight: 600;
+    font-size: clamp(24px, 3.4vw, 32px); letter-spacing: -0.01em;
+    color: #f2f6f8; margin: 0 0 22px; line-height: 1.22;
+  }
+  h3{
+    font-family:'Space Grotesk', sans-serif; font-weight: 600; font-size: 19px;
+    color: var(--text); margin: 30px 0 12px;
+  }
+
+  p{ margin: 0 0 20px; color: var(--text); }
+  p.lede{ color: var(--text-dim); font-size: 17.5px; }
+
+  ul, ol{ margin: 0 0 22px; padding-left: 22px; color: var(--text); }
+  li{ margin-bottom: 10px; }
+  li::marker{ color: var(--copper-dim); font-family:'IBM Plex Mono', monospace; }
+
+  strong{ color: #fff; font-weight: 600; }
+
+  blockquote{
+    margin: 28px 0; padding: 4px 0 4px 22px;
+    border-left: 2px solid var(--copper-dim);
+    color: var(--text-dim); font-style: italic; font-size: 17px;
+  }
+
+  /* ---------- PIPELINE DIAGRAM ---------- */
+  .pipeline{
+    margin: 30px 0 8px; border: 1px solid var(--line); background: var(--panel);
+    border-radius: var(--radius); padding: 26px 24px; font-family:'IBM Plex Mono', monospace;
+    font-size: 13.5px; overflow-x:auto;
+  }
+  .pipeline .req{ color: var(--text-dim); }
+  .pipeline .branch{ padding-left: 22px; position: relative; margin-top: 6px; }
+  .pipeline .branch .arrow{ color: var(--text-faint); }
+  .pipeline .cached{ color: var(--cyan); }
+  .pipeline .fresh{ color: var(--copper); }
+  .pipeline .comment{ color: var(--text-faint); }
+
+  /* ---------- STAT GRID ---------- */
+  .stat-grid{
+    display:grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+    background: var(--line); border: 1px solid var(--line); margin: 30px 0 8px;
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .stat-cell{ background: var(--panel); padding: 24px 20px; }
+  .stat-num{
+    font-family:'Space Grotesk', sans-serif; font-size: 30px; font-weight: 600;
+    color: var(--copper); line-height:1; margin-bottom: 8px;
+  }
+  .stat-num small{ font-size: 16px; color: var(--text-dim); font-weight: 500; }
+  .stat-label{ font-family:'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .06em; }
+
+  @media (max-width: 640px){ .stat-grid{ grid-template-columns: 1fr; } }
+
+  /* ---------- DRIVE GRID (3FS cluster visual) ---------- */
+  .drive-panel{
+    border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius);
+    padding: 26px 26px 22px; margin: 30px 0 8px;
+  }
+  .drive-panel-head{ display:flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px; flex-wrap: wrap; gap: 8px;}
+  .drive-panel-head h4{ font-family:'Space Grotesk', sans-serif; font-size: 16px; color: var(--text); margin:0; font-weight: 600; }
+  .drive-panel-head span{ font-family:'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--text-faint); }
+  .drive-grid{
+    display:grid; grid-template-columns: repeat(36, 1fr); gap: 2.5px;
+  }
+  .drive-grid i{
+    display:block; aspect-ratio: 1/1.6; background: #1b2731; border-radius: 1px;
+  }
+  .drive-grid i:nth-child(7n){ background: var(--cyan); opacity:.75; }
+  .drive-grid i:nth-child(13n){ background: var(--copper); opacity:.8; }
+  @media (max-width: 640px){ .drive-grid{ grid-template-columns: repeat(20,1fr); } }
+
+  /* ---------- MATH TABLE ---------- */
+  .mathtable{ width:100%; border-collapse: collapse; margin: 26px 0 10px; font-size: 15.5px; }
+  .mathtable th, .mathtable td{
+    text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line);
+  }
+  .mathtable th{
+    font-family:'IBM Plex Mono', monospace; font-size: 11.5px; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--text-faint); font-weight: 500;
+  }
+  .mathtable td.num{ font-family:'IBM Plex Mono', monospace; color: var(--text); }
+  .mathtable tr.highlight td{ color: var(--copper); font-weight: 600; }
+  .mathtable td:first-child{ color: var(--text-dim); }
+
+  /* ---------- CAVEAT BOX ---------- */
+  .callout{
+    border: 1px solid var(--line); border-left: 3px solid var(--copper);
+    background: var(--panel); border-radius: var(--radius);
+    padding: 22px 24px; margin: 30px 0;
+  }
+  .callout .callout-title{
+    font-family:'IBM Plex Mono', monospace; font-size: 11.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--copper); margin-bottom: 10px;
+  }
+  .callout p:last-child{ margin-bottom: 0; }
+
+  .callout.cool{ border-left-color: var(--cyan); }
+  .callout.cool .callout-title{ color: var(--cyan); }
+
+  /* ---------- CONFIDENCE LEDGER ---------- */
+  .ledger{ margin: 30px 0 8px; }
+  .ledger-row{
+    display:grid; grid-template-columns: 140px 1fr; gap: 18px;
+    padding: 16px 0; border-bottom: 1px solid var(--line);
+    align-items: start;
+  }
+  .ledger-row:last-child{ border-bottom: none; }
+  .ledger-tag{
+    font-family:'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; padding: 5px 9px; border-radius: 2px; height: fit-content;
+    text-align:center;
+  }
+  .ledger-tag.public{ background: rgba(89,214,198,.12); color: var(--cyan); border: 1px solid rgba(89,214,198,.35); }
+  .ledger-tag.claim{ background: rgba(224,92,92,.12); color: var(--red); border: 1px solid rgba(224,92,92,.35); }
+  .ledger-tag.math{ background: rgba(255,138,61,.12); color: var(--copper); border: 1px solid rgba(255,138,61,.35); }
+  .ledger-text{ color: var(--text-dim); font-size: 16px; }
+  .ledger-text b{ color: var(--text); }
+
+  /* ---------- COMPOUND STACK ---------- */
+  .stack{ margin: 30px 0 8px; display:flex; flex-direction: column; gap: 10px; }
+  .stack-item{
+    border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius);
+    padding: 16px 18px; display:grid; grid-template-columns: 34px 1fr; gap: 14px; align-items:start;
+  }
+  .stack-item .idx{
+    font-family:'IBM Plex Mono', monospace; color: var(--copper-dim); font-size: 14px; padding-top: 2px;
+  }
+  .stack-item h5{ margin:0 0 4px; font-family:'Space Grotesk', sans-serif; font-size: 15.5px; color: var(--text); font-weight:600; }
+  .stack-item p{ margin:0; font-size: 15px; color: var(--text-dim); }
+
+  /* ---------- VERDICT ---------- */
+  .verdict{
+    background: linear-gradient(160deg, #14191d, #0d1114);
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 34px 32px; margin: 12px 0;
+  }
+  .verdict .eyebrow{ margin-bottom: 16px; }
+  .verdict p{ font-size: 17.5px; color: var(--text-dim); }
+  .verdict p strong{ color: var(--copper); }
+
+  /* ---------- FOOTER / SOURCES ---------- */
+  footer{ padding: 46px 0 80px; }
+  .sources h4{
+    font-family:'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text-faint); margin-bottom: 16px;
+  }
+  .sources ol{ list-style: none; padding:0; margin:0; counter-reset: src; }
+  .sources li{
+    counter-increment: src;
+    font-family:'IBM Plex Mono', monospace; font-size: 13.5px; color: var(--text-dim);
+    padding: 10px 0; border-bottom: 1px solid var(--line-soft);
+    display:flex; gap: 12px;
+  }
+  .sources li::before{
+    content: "[" counter(src) "]"; color: var(--text-faint); flex-shrink:0;
+  }
+  .sources li::marker{ content: none; }
+  .colophon{
+    margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--line);
+    font-family:'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-faint);
+  }
+
+  @media (max-width: 560px){
+    body{ font-size: 16.5px; }
+    .rbar-row{ grid-template-columns: 90px 1fr 66px; }
+    .stack-item{ grid-template-columns: 24px 1fr; }
+  }
+</style>
+</head>
+<body>
+<header class="site-shell" aria-label="Site">
+<div class="shell-chrome">
+<a class="shell-back" href="/writings.html">All essays</a>
+<div class="shell-actions">
+<a class="shell-link" href="/feed.xml">RSS</a>
+<button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
+</div>
+</div>
+</header>
+
+<div class="blueprint"></div>
+<div class="grain"></div>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <span>FIELD NOTES <span class="dot">·</span> INFERENCE SYSTEMS</span>
+    <span>ISSUE NO. 014</span>
+  </div>
+</header>
+
+<main data-pagefind-body>
+  <div class="wrap">
+    <section class="hero no-border" style="padding-bottom:0; border-bottom:none;">
+      <div class="eyebrow">Verified vs. Alleged</div>
+      <h1 class="headline">The NVMe trick is real. The <em>85% margin</em> is doing something else entirely.</h1>
+      <p class="dek">A leaked investor call, a viral claim about DeepSeek's profitability, and a genuinely public storage architecture that's been sitting on GitHub since February. Untangling which parts of this story are engineering and which are arithmetic.</p>
+      <div class="meta-row">
+        <span><b>Reading time</b> — 9 min</span>
+        <span><b>Subject</b> — KV-cache offload, 3FS, inference unit economics</span>
+        <span><b>Confidence</b> — mixed, see ledger</span>
+      </div>
+
+      <div class="readout">
+        <div class="readout-label"><span>TIME TO FIRST TOKEN — 128K PROMPT, HIGH PREFIX REUSE</span><span class="status">● measured</span></div>
+        <div class="readout-bars">
+          <div class="rbar-row">
+            <div class="rbar-tag">Cold prefill</div>
+            <div class="rbar-track"><div class="rbar-fill cold"></div></div>
+            <div class="rbar-val">13.0s</div>
+          </div>
+          <div class="rbar-row">
+            <div class="rbar-tag">Disk-cached</div>
+            <div class="rbar-track"><div class="rbar-fill warm"></div></div>
+            <div class="rbar-val">0.5s</div>
+          </div>
+        </div>
+        <div class="readout-foot">Source: DeepSeek API — "Context Caching on Disk" release notes, Aug 2024. A ~26× reduction in first-token latency when the incoming prompt shares a cached prefix.</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <section>
+      <div class="section-num">01 — The part that's public</div>
+      <h2>DeepSeek really does cache KV state on SSD, and the repo is open</h2>
+      <p class="lede">The "NVMe rumor" circulating after the leaked investor call isn't a rumor. DeepSeek has documented disk-backed prefix caching in its own API changelog since mid-2024, and shipped the storage layer underneath it as an open-source project, <a href="https://github.com/deepseek-ai/3FS" target="_blank" rel="noopener">3FS</a>, in February 2025.</p>
+      <p>The mechanism is a distinction most explanations of LLM serving skip over. During live generation, the key/value state for the tokens actively being decoded has to sit in fast accelerator memory — there's no way around that; attention math happens on-chip. But a huge share of real-world traffic isn't novel tokens at all. It's the same system prompt, the same uploaded document, the same tool-scaffolding preamble, arriving over and over with only the last few hundred tokens changing.</p>
+      <p>For that reusable, "colder" portion of context, DeepSeek stores the KV blocks on large pools of NVMe storage rather than recomputing them, and pulls them back in when a new request shares an existing prefix. That's the entire trick: skip prefill, not skip compute.</p>
+
+      <div class="pipeline">
+<span class="req">request</span>
+<div class="branch"><span class="arrow">├─</span> <span class="cached">cached prefix</span>  → load compressed KV from SSD → mostly skip prefill  <span class="comment">// ~500ms</span></div>
+<div class="branch"><span class="arrow">└─</span> <span class="fresh">new tokens</span>     → compute normally on GPU/NPU → generate output      <span class="comment">// full prefill</span></div>
+      </div>
+
+      <p>Two things make this practical rather than theoretical. First, DeepSeek's <a href="https://arxiv.org/abs/2405.04434" target="_blank" rel="noopener">Multi-head Latent Attention (MLA)</a> and its newer compressed-attention variants shrink each KV entry substantially compared to standard multi-head attention — smaller entries mean the SSD round-trip and network transfer are cheap enough to beat recomputation. Second, real traffic has absurdly high prefix overlap: multi-turn conversations re-send their own history every turn, RAG pipelines re-send the same retrieved documents, and agent frameworks re-send hundreds or thousands of tokens of scaffolding on every step.</p>
+    </section>
+  </div>
+
+  <div class="wrap-wide">
+    <section>
+      <div class="section-num">02 — The hardware underneath it</div>
+      <h2>3FS: the file system doing the fetching</h2>
+      <p class="lede">3FS is a distributed file system purpose-built for the access pattern AI workloads actually produce — closer to the random-read demands of high-frequency trading (where DeepSeek's team has roots) than to conventional storage.</p>
+
+      <div class="drive-panel">
+        <div class="drive-panel-head">
+          <h4>Public benchmark cluster — 180 storage nodes</h4>
+          <span>16 × 14 TiB NVMe SSDs per node → 2,880 drives total</span>
+        </div>
+        <div class="drive-grid" id="driveGrid"></div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-cell">
+          <div class="stat-num">6.6<small>TiB/s</small></div>
+          <div class="stat-label">Aggregate read, 180 nodes, under training load</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-num">40<small>GiB/s</small></div>
+          <div class="stat-label">Peak KV-cache read throughput, single client node</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-num">3.66<small>TiB/min</small></div>
+          <div class="stat-label">GraySort throughput on a 25-node Smallpond cluster</div>
+        </div>
+      </div>
+      <p style="margin-top:18px; font-size:14.5px; color:var(--text-faint); font-family:'IBM Plex Mono',monospace;">Figures as published in DeepSeek's 3FS repository and Open Source Week materials, Feb 2025. Not independently re-benchmarked here.</p>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <section>
+      <div class="section-num">03 — What it doesn't explain</div>
+      <h2>None of this, by itself, produces an 85% margin</h2>
+      <p class="lede">Disk-backed KV caching lowers latency and cuts the compute cost of repeat traffic. It's a real economic advantage. But it's being asked to carry a number it never claimed to produce — and that number appears to have been mistranslated or over-interpreted on its way through the discourse.</p>
+
+      <div class="callout">
+        <div class="callout-title">What Liang Wenfeng reportedly said</div>
+        <p>According to summaries of the leaked May 2026 investor call, Liang framed DeepSeek's pricing philosophy around a payback target, not a margin: API pricing is set to recover the cost of the underlying compute hardware within roughly <strong>ten months</strong>. He described this explicitly as "reasonable profit," not profit maximization.</p>
+      </div>
+
+      <p>A ten-month payback target is a capital-recovery statement. Converting it into a gross-margin percentage requires an assumption the original claim doesn't supply: how long that hardware keeps earning after it's paid for itself. Here's what falls out under a few different assumptions:</p>
+
+      <table class="mathtable">
+        <thead>
+          <tr><th>Assumption</th><th>Useful life</th><th>Life ÷ payback</th><th>Implied hardware-only margin</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Conservative accelerator lifespan</td>
+            <td class="num">3 years (36 mo.)</td>
+            <td class="num">3.6×</td>
+            <td class="num">≈ 72%</td>
+          </tr>
+          <tr class="highlight">
+            <td>Commonly cited GPU lifespan</td>
+            <td class="num">5 years (60 mo.)</td>
+            <td class="num">6.0×</td>
+            <td class="num">≈ 83%</td>
+          </tr>
+          <tr>
+            <td>"Six times <em>profit</em>," not revenue</td>
+            <td class="num">— (different claim)</td>
+            <td class="num">7.0×</td>
+            <td class="num">≈ 85.7%</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>The five-year case is the one that lines up closest with the "85%" figure now circulating — but notice what had to happen to get there. A payback period became a lifetime revenue multiple (life ÷ payback), and that multiple became a margin by assuming the hardware is the <em>only</em> cost in the denominator. None of electricity, networking, storage, staffing, R&amp;D, or underutilization are in that calculation. And "six times the hardware cost in revenue" is not the same statement as "six times the hardware cost in profit" — the two produce different percentages, and it looks like the two got conflated somewhere between the original Mandarin remarks and the version now being repeated in English.</p>
+
+      <div class="callout cool">
+        <div class="callout-title">The honest version of this number</div>
+        <p>"DeepSeek can recoup its hardware spend in under a year, which implies very high hardware-only gross margins under standard depreciation assumptions" is a defensible reading of the leaked claim. "DeepSeek runs an 85% net margin" is not — it's a different, much stronger statement that the underlying numbers don't actually support.</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <section>
+      <div class="section-num">04 — Chain of custody</div>
+      <h2>Everything upstream of the technical claims is unaudited</h2>
+      <p class="lede">It's worth being precise about what kind of document this is. The Liang Wenfeng call was a leaked, AI-translated transcript of a private investor meeting, not a filing, a press release, or an on-record interview. That doesn't mean it's false — but it changes how each individual claim inside it should be weighted.</p>
+
+      <div class="ledger">
+        <div class="ledger-row">
+          <div class="ledger-tag public">Public / verifiable</div>
+          <div class="ledger-text"><b>Disk-backed KV/prefix caching, 3FS, MLA-style compressed attention, the TileLang-Ascend compiler backend.</b> All documented in DeepSeek's own API release notes and open-source repositories, independently reproducible.</div>
+        </div>
+        <div class="ledger-row">
+          <div class="ledger-tag math">Derived / interpretive</div>
+          <div class="ledger-text"><b>The 72–86% "margin" figures.</b> Arithmetically consistent with the leaked ten-month payback claim under stated assumptions — but the assumptions (useful life, cost scope) aren't Liang's; they're reconstructions.</div>
+        </div>
+        <div class="ledger-row">
+          <div class="ledger-tag claim">Attributed, unverified</div>
+          <div class="ledger-text"><b>Specific revenue figures, the ~20,000 Hopper-equivalent compute estimate, and the claim of running two Huawei-chip clusters.</b> These exist only inside an unaudited leaked transcript and have not been independently confirmed by DeepSeek, Huawei, or any third party.</div>
+        </div>
+      </div>
+
+      <p>The technical claims and the financial claims in this story don't carry the same evidentiary weight, even though they arrived in the same news cycle. It's reasonable to treat the storage architecture as fact and the margin figure as a plausible-but-unaudited estimate at the same time.</p>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <section class="no-border">
+      <div class="section-num">05 — The actual mystery</div>
+      <h2>It's not one secret. It's five ordinary things, compounding</h2>
+      <p class="lede">If there's a real puzzle here, it isn't "how does the NVMe trick work" — that part is published. It's how DeepSeek's inference costs got low enough for a ten-month payback claim to be plausible at all. That answer is almost certainly not a single undisclosed technique, but the multiplicative effect of several public ones running together.</p>
+
+      <div class="stack">
+        <div class="stack-item">
+          <div class="idx">01</div>
+          <div><h5>Compressed attention (MLA and successors)</h5><p>Shrinks each KV entry, which is what makes SSD-tier caching fast enough to bother with in the first place.</p></div>
+        </div>
+        <div class="stack-item">
+          <div class="idx">02</div>
+          <div><h5>High prefix-cache hit rates</h5><p>System prompts, documents, and agent scaffolding repeat constantly in production traffic — most tokens a server sees were already seen recently.</p></div>
+        </div>
+        <div class="stack-item">
+          <div class="idx">03</div>
+          <div><h5>Disaggregated, NVMe-backed storage (3FS)</h5><p>Moves the KV cache off scarce, expensive HBM and onto abundant, cheap SSD capacity without a fatal latency penalty.</p></div>
+        </div>
+        <div class="stack-item">
+          <div class="idx">04</div>
+          <div><h5>Mixture-of-Experts routing</h5><p>Activates a fraction of total parameters per token, cutting the compute (and therefore the accelerator-hours) each request actually consumes.</p></div>
+        </div>
+        <div class="stack-item">
+          <div class="idx">05</div>
+          <div><h5>Low-precision inference, custom kernels, high utilization</h5><p>None individually exotic — but stacked on top of the first four, they compound rather than add.</p></div>
+        </div>
+      </div>
+
+      <p>Every serious inference provider holds back some combination of scheduling heuristics, cache-eviction policy, and kernel-level tuning — that's normal competitive practice, not a hidden breakthrough. What's unusual about DeepSeek is less a secret ingredient than the willingness to publish most of the recipe while the margin conversation happening around it, in leaked-transcript form, runs several steps ahead of what's actually confirmed.</p>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <div class="verdict">
+      <div class="eyebrow" style="margin-bottom:14px;">Read</div>
+      <p>The NVMe comment is directionally right, and not remotely secret — DeepSeek published the storage system. The <strong>85% margin</strong> figure is a plausible arithmetic extension of a real claim (ten-month hardware payback) stretched past what that claim actually said, riding on a transcript nobody has audited. Treat the engineering as documented fact. Treat the economics as an informed guess wearing a precise-sounding number.</p>
+    </div>
+  </div>
+</main>
+
+<div class="wrap">
+  <footer>
+    <div class="sources">
+      <h4>Sources</h4>
+      <ol>
+        <li>DeepSeek API — "Context Caching on Disk" release notes, api-docs.deepseek.com/news/news0802/</li>
+        <li>DeepSeek AI — 3FS (Fire-Flyer File System) repository and benchmark notes, github.com/deepseek-ai/3FS</li>
+        <li>DeepSeek — Open Source Week, Day 5 announcement (3FS + Smallpond), Feb 2025</li>
+        <li>tile-ai — TileLang-Ascend repository, github.com/tile-ai/tilelang-ascend</li>
+        <li>Leaked Liang Wenfeng investor-meeting transcript and derived summaries, various translations, May–July 2026</li>
+        <li>404K Research — summary and analysis of the leaked investor meeting, 404kresearch.substack.com</li>
+      </ol>
+    </div>
+    <div class="colophon">
+      Field Notes is an independent technical explainer. Figures attributed to leaked or unaudited sources are marked as such throughout and should not be treated as confirmed financials.
+    </div>
+  </footer>
+</div>
+
+<script>
+  // populate the 3FS drive grid (2,880 drives, scaled down visually to 180 units representing nodes)
+  const grid = document.getElementById('driveGrid');
+  if (grid) {
+    const count = 180;
+    let html = '';
+    for (let i = 0; i < count; i++) html += '<i></i>';
+    grid.innerHTML = html;
+  }
+</script>
+
+<footer class="site-footer">
+<div>
+<strong>MANISH AI</strong>
+<span>Systems, chips, kernels, and inference infrastructure.</span>
+</div>
+<a href="/writings.html">Back to writings</a>
+</footer>
+</body>
+</html>
