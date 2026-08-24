@@ -186,7 +186,7 @@ fs.writeFileSync(path.join(root, writingSitemapFile), renderUrlSet(writingSitema
 fs.writeFileSync(path.join(root, patentSitemapFile), renderUrlSet(patentSitemapEntries), "utf8");
 
 const sitemapIndexEntries = [
-  { url: `${siteUrl}/${pageSitemapFile}`, lastmod: homepageEntries[0].lastmod },
+  { url: `${siteUrl}/${pageSitemapFile}`, lastmod: homepageEntries.reduce((latest, entry) => entry.lastmod > latest ? entry.lastmod : latest, homepageEntries[0].lastmod) },
   { url: `${siteUrl}/${writingSitemapFile}`, lastmod: writingSitemapEntries[0]?.lastmod || homepageEntries[1].lastmod },
   { url: `${siteUrl}/${patentSitemapFile}`, lastmod: patentSitemapEntries[0]?.lastmod || homepageEntries[2].lastmod }
 ];

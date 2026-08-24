@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Millisecond Is a Systems Problem: Inside WarpStream TRT | MANISH AI</title>
+<meta name="description" content="A deep technical tour of WarpStream TRT, a C++20, CUDA, and TensorRT 11 runtime built around fixed memory, fused GPU preprocessing, CUDA Graph replay, exact device-side Top-K, and honest tail-latency measurement."/>
+<meta name="keywords" content="WarpStream TRT, TensorRT 11, CUDA Graphs, zero-copy inference, deterministic inference, CUDA preprocessing, warp reduction, C++20, GPU latency"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<meta name="theme-color" content="#f5f7fa"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/warpstream-trt-deterministic-zero-allocation-inference.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="The Millisecond Is a Systems Problem: Inside WarpStream TRT"/>
+<meta property="og:description" content="How fixed addresses, fused CUDA kernels, one TensorRT context per lane, and CUDA Graph replay turn small-model inference into an auditable systems pipeline."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/warpstream-trt-deterministic-zero-allocation-inference.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png"/>
+<meta property="og:image:alt" content="MANISH AI systems and inference infrastructure"/>
+<meta property="article:published_time" content="2026-08-24T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-08-24T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="The Millisecond Is a Systems Problem: Inside WarpStream TRT"/>
+<meta name="twitter:description" content="A close-to-metal tour of deterministic batch-one inference in C++20, CUDA, and TensorRT 11."/>
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png"/>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"The Millisecond Is a Systems Problem: Inside WarpStream TRT","description":"A deep technical tour of WarpStream TRT, a C++20, CUDA, and TensorRT 11 runtime built around fixed memory, fused GPU preprocessing, CUDA Graph replay, exact device-side Top-K, and honest tail-latency measurement.","author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"url":"https://manishklach.github.io/writings/warpstream-trt-deterministic-zero-allocation-inference.html","mainEntityOfPage":"https://manishklach.github.io/writings/warpstream-trt-deterministic-zero-allocation-inference.html","datePublished":"2026-08-24","dateModified":"2026-08-24","inLanguage":"en","keywords":["CUDA","TensorRT","inference runtime","latency","GPU systems"]}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<style>
+  :root{
+    --bg:#f5f7fa; --panel:#fff; --panel-2:#eef2f6; --line:#d7dee6;
+    --line-bright:#bcc8d3; --accent:#2d7e65; --accent-bright:#15946d;
+    --text:#253240; --text-dim:#5d6d7c; --text-faint:#778594;
+    --blue:#326fa8; --amber:#a87816; color-scheme:light;
+  }
+  html.dark{
+    --bg:#0d1013; --panel:#14181d; --panel-2:#191e24; --line:#2a3138;
+    --line-bright:#3c4650; --accent:#57b995; --accent-bright:#77d8b3;
+    --text:#d8dee4; --text-dim:#9ba6b2; --text-faint:#697582;
+    --blue:#72a9dc; --amber:#d4a748; color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; color:var(--text); background-color:var(--bg);
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:40px 40px; background-attachment:fixed; background-position:-1px -1px;
+    font-family:'IBM Plex Sans',sans-serif; line-height:1.68;
+  }
+  ::selection{background:var(--accent);color:#fff}
+  a{color:var(--accent-bright);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}
+  a:hover{border-bottom-color:var(--accent-bright)}
+  .wrap{max-width:900px;margin:0 auto;padding:0 24px 112px}
+  header.hero{padding:64px 0 42px;border-bottom:1px solid var(--line-bright);position:relative}
+  .doc-id{font:12px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--text-faint);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:28px}
+  h1.title{font:700 clamp(34px,5.5vw,56px)/1.06 'Space Grotesk',sans-serif;letter-spacing:-.025em;margin:0 0 20px;color:var(--text);max-width:15ch}
+  h1.title em{font-style:normal;color:var(--accent-bright)}
+  .dek{font-size:19px;color:var(--text-dim);max-width:68ch;margin:0 0 28px}
+  .meta-row{display:flex;gap:20px;flex-wrap:wrap;font:12.5px 'IBM Plex Mono',monospace;color:var(--text-faint)}
+  .meta-row strong{color:var(--text-dim);font-weight:500}
+  .stamp{position:absolute;right:0;top:150px;border:2px solid var(--accent);color:var(--accent);font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;padding:6px 10px;transform:rotate(3deg);border-radius:2px}
+  section{padding:44px 0;border-bottom:1px solid var(--line)}
+  section:last-of-type{border-bottom:0}
+  .eyebrow{font:12px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:10px}
+  .eyebrow::before{content:"";width:18px;height:1px;background:var(--accent)}
+  h2{font:600 28px/1.2 'Space Grotesk',sans-serif;letter-spacing:-.01em;color:var(--text);margin:0 0 17px}
+  h3{font:600 19px/1.3 'Space Grotesk',sans-serif;color:var(--text);margin:28px 0 10px}
+  p{margin:0 0 17px} p.lede{font-size:17.5px}.muted{color:var(--text-dim)}
+  code{font-family:'IBM Plex Mono',monospace;font-size:.9em;background:var(--panel-2);border:1px solid var(--line);border-radius:3px;padding:1px 5px}
+  pre{overflow:auto;background:#10161b;color:#dce7e2;border:1px solid #33423d;border-radius:6px;padding:18px 20px;font:13px/1.65 'IBM Plex Mono',monospace;margin:22px 0}
+  pre code{background:none;border:0;padding:0;color:inherit}
+  .rail{display:grid;grid-template-columns:repeat(7,minmax(88px,1fr));align-items:center;gap:8px;margin:26px 0;overflow-x:auto;padding:4px 0 12px}
+  .rail-node{min-height:74px;padding:11px 9px;display:grid;place-items:center;text-align:center;background:var(--panel);border:1px solid var(--line-bright);border-radius:5px;font:600 11.5px/1.35 'IBM Plex Mono',monospace;color:var(--text)}
+  .rail-arrow{text-align:center;color:var(--accent);font:20px 'IBM Plex Mono',monospace}
+  .callout{background:var(--panel);border:1px solid var(--line-bright);border-left:4px solid var(--accent);border-radius:5px;padding:18px 20px;margin:24px 0}
+  .callout .label{display:block;color:var(--accent);font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.11em;text-transform:uppercase;margin-bottom:8px}
+  .callout p:last-child{margin-bottom:0}
+  .specsheet{background:var(--panel);border:1px solid var(--line-bright);border-radius:6px;overflow:hidden;margin:24px 0}
+  .spec-head{display:flex;justify-content:space-between;gap:16px;padding:10px 15px;background:var(--panel-2);border-bottom:1px solid var(--line-bright);font:11px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-faint);text-transform:uppercase}
+  table.specs{width:100%;border-collapse:collapse;font:13px/1.45 'IBM Plex Mono',monospace}
+  table.specs tr{border-bottom:1px solid var(--line)} table.specs tr:last-child{border:0}
+  table.specs td{padding:11px 15px;vertical-align:top} table.specs td:first-child{width:37%;color:var(--text-dim)} table.specs td:last-child{color:var(--text)}
+  .lanes{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin:24px 0}
+  .lane{background:var(--panel);border:1px solid var(--line-bright);border-radius:6px;padding:17px}
+  .lane strong{display:block;font:600 12px 'IBM Plex Mono',monospace;color:var(--accent);margin-bottom:10px;text-transform:uppercase;letter-spacing:.08em}
+  .lane ul{margin:0;padding-left:19px;color:var(--text-dim)}
+  .state{display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap;margin:25px 0}
+  .state span{padding:9px 12px;background:var(--panel);border:1px solid var(--line-bright);border-radius:999px;font:12px 'IBM Plex Mono',monospace}
+  .state b{color:var(--accent);font-weight:500}
+  .metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:22px 0}
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:15px;text-align:center}
+  .metric strong{display:block;color:var(--accent-bright);font:600 18px 'IBM Plex Mono',monospace}.metric span{font:11px 'IBM Plex Mono',monospace;color:var(--text-faint)}
+  .honesty{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px 0}
+  .honesty article{background:var(--panel);border:1px solid var(--line-bright);border-radius:6px;padding:18px}
+  .honesty article:first-child{border-top:3px solid var(--accent)}.honesty article:last-child{border-top:3px solid var(--amber)}
+  .honesty h3{margin:0 0 10px}.honesty ul{padding-left:20px;margin:0;color:var(--text-dim)}
+  .refs{padding-left:20px}.refs li{margin:9px 0}
+  .article-footer{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:28px 0;border-top:1px solid var(--line);font:12px 'IBM Plex Mono',monospace;color:var(--text-faint)}
+  @media(max-width:720px){.stamp{position:static;display:inline-block;margin:18px 0 0;transform:rotate(-1deg)}.rail{grid-template-columns:1fr}.rail-arrow{transform:rotate(90deg)}.lanes,.honesty{grid-template-columns:1fr}.metric-grid{grid-template-columns:repeat(2,1fr)}table.specs td{display:block;width:100%!important}table.specs td:first-child{padding-bottom:2px}}
+</style>
+</head>
+<body>
+<header class="site-shell" aria-label="Site">
+<div class="shell-chrome">
+<a class="shell-back" href="/writings.html">All essays</a>
+<div class="shell-actions">
+<a class="shell-link" href="/feed.xml">RSS</a>
+<button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
+</div>
+</div>
+</header>
+<div class="wrap" data-pagefind-body>
+  <header class="hero">
+    <div class="doc-id"><span>FIELD NOTE / GPU RUNTIME · <strong>NO. 255</strong></span><span>REV 2026-08-24</span></div>
+    <div class="stamp">OPEN SOURCE · BUILDABLE</div>
+    <h1 class="title">The millisecond is a <em>systems problem</em></h1>
+    <p class="dek">Inside WarpStream TRT: a bare-metal C++20, CUDA, and TensorRT 11 runtime that treats fixed memory, launch overhead, synchronization, and tail latency as one design problem.</p>
+    <div class="meta-row">
+      <span><strong>Repo:</strong> <a href="https://github.com/manishklach/warpstream-trt" target="_blank" rel="noopener">github.com/manishklach/warpstream-trt</a></span>
+      <span><strong>Stack:</strong> C++20 · CUDA · TensorRT 11</span>
+      <span><strong>Read:</strong> 14 minutes</span>
+    </div>
+  </header>
+
+  <section id="premise">
+    <div class="eyebrow">The premise</div>
+    <h2>A fast model does not automatically make a fast inference system</h2>
+    <p class="lede">Once a batch-one model becomes small enough, the work surrounding it starts to look uncomfortably large. A memory allocation, a CPU wake-up, three kernel launches, a layout conversion, or one accidental synchronization can consume the same order of time as the network itself.</p>
+    <p>That is the problem behind <a href="https://github.com/manishklach/warpstream-trt" target="_blank" rel="noopener">WarpStream TRT</a>. The repository is not trying to become another universal model server. It is a constrained reference runtime for latency-critical RGB streams, built so that every address, execution context, stream, transition, and wait can be reasoned about.</p>
+    <p>The central idea is simple: if the steady-state path must be predictable, then dynamism belongs at startup. Allocate once. Resolve shapes once. Bind addresses once. Capture the GPU work once. During traffic, replay a bounded plan over memory whose ownership never changes.</p>
+    <div class="callout">
+      <span class="label">The engineering target</span>
+      <p>Not “the lowest average kernel time.” The target is a complete producer-to-result path whose latency distribution can be explained—and whose p99 does not depend on a surprise allocator, shape update, or host round-trip.</p>
+    </div>
+  </section>
+
+  <section id="rail">
+    <div class="eyebrow">The hot path</div>
+    <h2>One fixed rail from RGB bytes to compact results</h2>
+    <p>The runtime exposes mapped pinned input memory to the producer. A fused CUDA kernel reads those RGB8 bytes, resizes and normalizes them, and writes the exact NCHW tensor expected by TensorRT. Inference produces device-resident logits. A final CUDA kernel selects Top-K and writes only the compact result into mapped host memory.</p>
+    <div class="rail" aria-label="WarpStream inference data path">
+      <div class="rail-node">Producer writes RGB8</div><div class="rail-arrow">→</div>
+      <div class="rail-node">Fused CUDA preprocess</div><div class="rail-arrow">→</div>
+      <div class="rail-node">TensorRT enqueueV3</div><div class="rail-arrow">→</div>
+      <div class="rail-node">Warp Top-K result</div>
+    </div>
+    <p>Preprocess, inference, and Top-K are captured into one lane-specific CUDA Graph. There is no CPU decision point between them. The application synchronizes only when it asks for the completed result.</p>
+    <div class="specsheet">
+      <div class="spec-head"><span>Current reference contract</span><span>Intentionally narrow</span></div>
+      <table class="specs">
+        <tr><td>Producer format</td><td>Interleaved RGB8</td></tr>
+        <tr><td>Network input</td><td>Batch 1 · fixed-shape FP32 NCHW</td></tr>
+        <tr><td>Network output</td><td>Fixed-size FP32 classification logits</td></tr>
+        <tr><td>Postprocess</td><td>Exact Top-K, K ≤ 32</td></tr>
+        <tr><td>Concurrency</td><td>Fixed, preallocated execution lanes</td></tr>
+        <tr><td>Steady-state allocation</td><td>None in submit/wait path</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section id="memory">
+    <div class="eyebrow">Memory first</div>
+    <h2>Zero steady-state allocation is a latency contract</h2>
+    <p>“No allocation in the hot loop” sounds like a micro-optimization. It is really a control over variance. General-purpose allocators carry locks, metadata, fragmentation, deferred cleanup, page behavior, and failure paths. CUDA allocation can introduce still larger synchronization and driver costs.</p>
+    <p>WarpStream moves all of that work into construction. Each lane owns a mapped input slot, a device tensor, device logits, a mapped result slot, two timing events, a non-blocking stream, one TensorRT execution context, and one instantiated CUDA Graph. The addresses bound with <code>setTensorAddress()</code> stay stable for the pipeline lifetime.</p>
+    <div class="lanes">
+      <div class="lane"><strong>Shared once</strong><ul><li>Serialized TensorRT plan</li><li>TensorRT runtime and engine</li><li>Validated model contract</li></ul></div>
+      <div class="lane"><strong>Owned per lane</strong><ul><li>Context, stream, events, graph</li><li>Mapped input and result</li><li>Network tensor and logits</li></ul></div>
+    </div>
+    <p>The implementation also makes failures explicit. A lane cannot be submitted unless it was acquired, cannot be reused while busy, and cannot silently grow a queue. Its state machine is deliberately boring:</p>
+    <div class="state"><span>available</span><b>→ acquire →</b><span>acquired</span><b>→ submit →</b><span>busy</span><b>→ wait →</b><span>available</span></div>
+    <p>That boundary is important. Unbounded queues are throughput-friendly until they turn burst pressure into catastrophic response time. Fixed lanes make backpressure part of the API instead of a production surprise.</p>
+  </section>
+
+  <section id="zero-copy">
+    <div class="eyebrow">The honest zero-copy story</div>
+    <h2>Fewer copies do not always mean fewer nanoseconds</h2>
+    <p>WarpStream allocates input and Top-K output with <code>cudaHostAllocMapped</code>. The CPU and GPU receive usable views of the same pinned allocation, so a camera or decoder can write directly into the slot consumed by the preprocessing kernel. There is no staging allocation and no explicit host-to-device copy inside the runtime.</p>
+    <p>But on a discrete GPU, the bytes still travel across PCIe when the kernel reads them. Mapped memory is genuinely zero-copy in the software architecture; it is not magically device-local. A preallocated <code>cudaMemcpyAsync</code> into VRAM can win when the transfer engine overlaps well and the preprocessing kernel benefits from local bandwidth.</p>
+    <div class="callout">
+      <span class="label">What to benchmark</span>
+      <p>Compare mapped reads against an asynchronous copy into a fixed device input buffer. Then test GPUDirect, peer memory, or device-native decode if the producer can expose a GPU pointer. “Zero-copy” should be a measured topology choice, not a marketing adjective.</p>
+    </div>
+    <p>Mapped memory must also be enabled before a CUDA context is created. The runtime calls <code>cudaSetDeviceFlags(cudaDeviceMapHost)</code> before TensorRT initialization and fails loudly if another library already established an incompatible context.</p>
+  </section>
+
+  <section id="preprocess">
+    <div class="eyebrow">Kernel fusion</div>
+    <h2>Do not materialize an image the model never needs</h2>
+    <p>A conventional preprocessing chain may resize into one buffer, convert integers to floats in another pass, normalize in a third, and finally transpose HWC into NCHW. That design reads and writes the same image repeatedly and launches multiple kernels before inference even begins.</p>
+    <p>WarpStream assigns one thread to each destination pixel. That thread computes the center-aligned source coordinate, fetches the four bilinear neighbors for each RGB channel, interpolates, scales from byte range to <code>[0,1]</code>, applies ImageNet mean and standard deviation, and writes directly into the destination channel plane.</p>
+    <pre><code>source RGB8 (HWC)
+  └─ bilinear sample
+      └─ value × 1/255
+          └─ (value - mean[channel]) × inverse_std[channel]
+              └─ destination[channel × H × W + y × W + x]</code></pre>
+    <p>No resized image exists. No normalized HWC tensor exists. The only materialized result is the tensor TensorRT consumes. This is the useful meaning of fusion: remove memory traffic and launch boundaries, not merely combine function names.</p>
+  </section>
+
+  <section id="graphs">
+    <div class="eyebrow">Launch economics</div>
+    <h2>CUDA Graphs turn a schedule into an object</h2>
+    <p>Small inference workloads can become enqueue-bound: the CPU and driver spend enough time dispatching kernels that launch overhead competes with GPU execution. CUDA Graphs let the runtime capture the sequence once and replay the instantiated graph with one host launch.</p>
+    <p>TensorRT adds two constraints that shape WarpStream’s architecture. First, a dynamic shape or profile change can trigger deferred work on the next enqueue. The runtime therefore sets the fixed input shape and performs one warm enqueue before capture. Second, graph execution retains context state and buffer addresses. That is why every lane receives its own context and fixed allocations.</p>
+    <pre><code>// Initialization only
+context.setInputShape("images", fixed_shape);
+context.setTensorAddress("images", network_input);
+context.setTensorAddress("logits", logits);
+context.enqueueV3(stream);          // flush deferred shape work
+cudaStreamSynchronize(stream);
+
+cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal);
+preprocess(..., stream);
+context.enqueueV3(stream);
+topk(..., stream);
+cudaStreamEndCapture(stream, &amp;graph);
+cudaGraphInstantiateWithFlags(&amp;graph_exec, graph, 0);</code></pre>
+    <p>In steady state, <code>submit()</code> records a start event, launches that graph, and records completion. The graph does not make the model faster; it removes repeated host work around the model and makes the launch path more consistent.</p>
+  </section>
+
+  <section id="topk">
+    <div class="eyebrow">Stay on device</div>
+    <h2>Top-K is small enough to be cheap—and large enough to ruin the path</h2>
+    <p>Copying an entire logit vector to the host just to select five entries creates a transfer and a synchronization at the worst possible point: after the GPU is otherwise finished. WarpStream instead launches one 256-thread block and returns only <code>K</code> score/index pairs.</p>
+    <p>Each thread performs a strided scan over the classes. Candidates reduce inside a warp with <code>__shfl_down_sync</code>; warp winners land in shared memory; a final warp chooses the block winner. Selected indices remain in shared memory while the process repeats for the next rank. Ties prefer the lower class index, and NaNs are treated deterministically as negative infinity.</p>
+    <p>The algorithm is exact and intentionally optimized for small classification outputs with <code>K ≤ 32</code>. Its work scales with classes × K. A language-model vocabulary or very large label space should use hierarchical selection, radix methods, or a library primitive instead. A bounded specialization is better than pretending one kernel is universally optimal.</p>
+  </section>
+
+  <section id="determinism">
+    <div class="eyebrow">What deterministic means</div>
+    <h2>Scheduling determinism is not numerical identity</h2>
+    <p>The repository’s determinism contract covers memory and execution structure: fixed shapes, fixed addresses, bounded concurrency, explicit transitions, no allocations after initialization, and no host decision between GPU stages.</p>
+    <p>It does not promise bit-identical floating-point output across GPU architectures, TensorRT versions, or tactic selections. TensorRT chooses implementations by timing candidates during engine construction. Small measurement differences can select different tactics unless the build environment and timing cache are controlled.</p>
+    <div class="honesty">
+      <article><h3>Controlled by the runtime</h3><ul><li>Buffer lifetime and address stability</li><li>Lane ownership and queue bound</li><li>Fixed shape and graph schedule</li><li>GPU-stage ordering</li><li>Warm-up separation</li></ul></article>
+      <article><h3>Controlled by deployment</h3><ul><li>GPU clocks and thermal state</li><li>TensorRT plan and timing cache</li><li>PCIe and NUMA topology</li><li>Driver and CUDA versions</li><li>Producer and consumer latency</li></ul></article>
+    </div>
+    <p>A production artifact pipeline should build plans for the target GPU class, persist the timing cache, record the complete software stack, and refuse to compare benchmark runs collected under different clock or power conditions.</p>
+  </section>
+
+  <section id="measurement">
+    <div class="eyebrow">Measure the distribution</div>
+    <h2>Sub-millisecond claims live or die at the boundaries</h2>
+    <p>The included benchmark records GPU events immediately before graph launch and after Top-K. That interval includes fused preprocessing, TensorRT inference, and postprocessing. A separate host wall clock measures achieved throughput across one or more lanes.</p>
+    <div class="metric-grid"><div class="metric"><strong>p50</strong><span>typical</span></div><div class="metric"><strong>p95</strong><span>pressure</span></div><div class="metric"><strong>p99</strong><span>tail</span></div><div class="metric"><strong>p99.9</strong><span>rare stalls</span></div></div>
+    <p>That benchmark intentionally excludes the producer’s write and the consumer’s work. It is a component benchmark, not an end-to-end service-level measurement. The application must add timestamps at capture and delivery if it wants to claim camera-to-decision latency.</p>
+    <p>A credible report should state sample count, warm-up count, precision, source and model shapes, graph mode, lane count, GPU clocks, temperature, power state, PCIe topology, model hash, TensorRT/CUDA/driver versions, and whether transfers are included. It should also compare <code>--no-cuda-graph</code> so the launch-overhead benefit is visible instead of assumed.</p>
+  </section>
+
+  <section id="repository">
+    <div class="eyebrow">What ships</div>
+    <h2>A reference implementation you can inspect end to end</h2>
+    <p>The <a href="https://github.com/manishklach/warpstream-trt" target="_blank" rel="noopener">public repository</a> includes the runtime library, CLI, latency harness, CUDA correctness tests, host configuration tests, CMake integration, a deterministic demo ONNX generator, and a TensorRT engine-building helper.</p>
+    <div class="specsheet">
+      <div class="spec-head"><span>Repository map</span><span>MIT licensed</span></div>
+      <table class="specs">
+        <tr><td><code>src/pipeline.cpp</code></td><td>Lane ownership, state transitions, graph capture, submit/wait</td></tr>
+        <tr><td><code>src/preprocess.cu</code></td><td>Fused RGB8 resize, normalization, and layout conversion</td></tr>
+        <tr><td><code>src/topk.cu</code></td><td>Exact shuffle-reduced device-side Top-K</td></tr>
+        <tr><td><code>benchmarks/</code></td><td>Tail-latency distribution and throughput harness</td></tr>
+        <tr><td><code>tools/</code></td><td>Demo ONNX generation and fixed-shape TensorRT plan build</td></tr>
+        <tr><td><code>docs/</code></td><td>Architecture and reproducible benchmarking contract</td></tr>
+      </table>
+    </div>
+    <p>The current implementation is a foundation, not a production server. The next useful steps are precision-specialized preprocessing, detection decode and NMS, direct device-pointer registration for GPUDirect producers, NVTX instrumentation, machine-readable benchmark output, and real-GPU TensorRT CI.</p>
+    <div class="callout">
+      <span class="label">Try the code</span>
+      <p>Clone <a href="https://github.com/manishklach/warpstream-trt" target="_blank" rel="noopener">github.com/manishklach/warpstream-trt</a>, generate the included demo model, build a fixed-shape plan with TensorRT 11, and compare one-lane graph replay against direct enqueue on your target GPU.</p>
+    </div>
+  </section>
+
+  <section id="conclusion">
+    <div class="eyebrow">The larger lesson</div>
+    <h2>The last millisecond is made of ownership decisions</h2>
+    <p>Low-latency inference is often described as a kernel problem. Kernels matter, but the system around them decides whether their speed survives contact with production. Who owns the input memory? When can an address move? Which context carries mutable state? Where does the CPU wait? What happens when all lanes are busy? Which latency interval is actually being reported?</p>
+    <p>WarpStream’s answer is to make those decisions visible and bounded. It trades generality for an execution rail that can be inspected from the producer pointer to the final Top-K entry. That is a useful baseline even if a production system later chooses copied input, dynamic batching, multiple shapes, or a different postprocessor.</p>
+    <p>The important part is not copying every choice. It is refusing to let convenience layers hide the path you are trying to optimize.</p>
+  </section>
+
+  <section id="references">
+    <div class="eyebrow">References</div>
+    <h2>Code and primary documentation</h2>
+    <ol class="refs">
+      <li><a href="https://github.com/manishklach/warpstream-trt" target="_blank" rel="noopener">WarpStream TRT repository</a> — source, tests, benchmark harness, and documentation.</li>
+      <li><a href="https://github.com/manishklach/warpstream-trt/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener">WarpStream architecture notes</a> — resource ownership, startup sequence, kernels, and backpressure.</li>
+      <li><a href="https://github.com/manishklach/warpstream-trt/blob/main/docs/BENCHMARKING.md" target="_blank" rel="noopener">WarpStream benchmarking protocol</a> — measurement boundaries and reproducibility checklist.</li>
+      <li><a href="https://docs.nvidia.com/deeplearning/tensorrt/latest/performance/optimization.html" target="_blank" rel="noopener">NVIDIA TensorRT performance optimization</a> — CUDA Graph capture, shape-change overhead, multi-streaming, and tactic determinism.</li>
+      <li><a href="https://docs.nvidia.com/cuda/cuda-c-programming-guide/" target="_blank" rel="noopener">CUDA C++ Programming Guide</a> — streams, events, mapped memory, warp shuffles, and CUDA Graphs.</li>
+    </ol>
+  </section>
+
+  <section id="webmentions" hidden></section>
+  <footer class="article-footer">
+    <span>Source: <a href="https://github.com/manishklach/warpstream-trt" target="_blank" rel="noopener">github.com/manishklach/warpstream-trt</a> · MIT</span>
+    <span>Repository reviewed 2026-08-24</span>
+  </footer>
+</div>
+<footer class="site-footer">
+<div><strong>MANISH AI</strong><span>Systems, chips, kernels, and inference infrastructure.</span></div>
+<a href="/writings.html">Back to writings</a>
+</footer>
+</body>
+</html>
