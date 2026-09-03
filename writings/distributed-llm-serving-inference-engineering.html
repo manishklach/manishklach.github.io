@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Inference Engineering: Building a Distributed LLM Serving Stack | MANISH AI</title>
+<meta name="description" content="A practical systems guide to GPU topology, vLLM and SGLang replicas, prefix-aware routing, LMCache, heterogeneous fleets, SLOs, benchmarking, and failure handling in production LLM inference."/>
+<meta name="keywords" content="inference engineering, distributed LLM serving, vLLM, SGLang, LMCache, KV cache, prefix caching, cache-aware routing, GPU inference, heterogeneous compute"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/distributed-llm-serving-inference-engineering.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Inference Engineering: Building a Distributed LLM Serving Stack"/>
+<meta property="og:description" content="From acquiring GPUs to serving engines, cache-aware routing, shared KV tiers, and gateways across heterogeneous compute: the whole production inference control loop."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/distributed-llm-serving-inference-engineering.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/distributed-llm-serving-inference-engineering.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="Distributed LLM inference serving architecture by MANISH AI"/>
+<meta property="article:published_time" content="2026-09-03T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-09-03T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="Inference Infrastructure"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Inference Engineering: Building a Distributed LLM Serving Stack"/>
+<meta name="twitter:description" content="A production guide to GPUs, vLLM/SGLang, prefix-aware routing, LMCache, heterogeneous fleets, SLOs, and failure handling."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/distributed-llm-serving-inference-engineering.png"/>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BlogPosting",
+  "headline":"Inference Engineering: Building a Distributed LLM Serving Stack",
+  "description":"A practical systems guide to GPU topology, vLLM and SGLang replicas, prefix-aware routing, LMCache, heterogeneous fleets, SLOs, benchmarking, and failure handling in production LLM inference.",
+  "url":"https://manishklach.github.io/writings/distributed-llm-serving-inference-engineering.html",
+  "mainEntityOfPage":"https://manishklach.github.io/writings/distributed-llm-serving-inference-engineering.html",
+  "datePublished":"2026-09-03",
+  "dateModified":"2026-09-03",
+  "articleSection":"Inference Infrastructure",
+  "wordCount":3100,
+  "author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},
+  "publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@300;400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishai.goatcounter.com/count"></script>
+<style>
+:root{--bg:#f4f1e9;--panel:#ebe7dc;--panel-2:#e2ddd0;--text:#17201d;--text-dim:#58645f;--text-faint:#7b8580;--line:rgba(23,32,29,.12);--line-bright:rgba(23,32,29,.24);--accent:#087f5b;--accent-bright:#096c50;--amber:#a95d05;--red:#b43b36}
+@media(prefers-color-scheme:dark){:root{--bg:#0c1110;--panel:#131a18;--panel-2:#18211e;--text:#e4ebe7;--text-dim:#a4b1ab;--text-faint:#718079;--line:rgba(228,235,231,.09);--line-bright:rgba(228,235,231,.18);--accent:#36d399;--accent-bright:#6ee7b7;--amber:#f3ae55;--red:#fb8179}}
+html{scroll-behavior:smooth}body{margin:0;color:var(--text);background-color:var(--bg);background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:40px 40px;background-attachment:fixed;background-position:-1px -1px;font-family:'IBM Plex Sans',sans-serif;line-height:1.7}::selection{background:var(--accent);color:#fff}a{color:var(--accent-bright);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}a:hover{border-bottom-color:var(--accent-bright)}.site-shell{border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(12px)}.shell-chrome{max-width:940px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px;font:500 12px 'IBM Plex Mono',monospace}.shell-actions{display:flex;align-items:center;gap:16px}.shell-back::before{content:'← ';}.site-shell a{color:var(--text-dim)}.theme-toggle{border:1px solid var(--line-bright);background:var(--panel);color:var(--text);border-radius:999px;padding:6px 11px;font:500 12px 'IBM Plex Mono',monospace;cursor:pointer}.site-footer{max-width:940px;margin:0 auto;padding:28px 24px 48px;border-top:1px solid var(--line);display:flex;align-items:flex-start;justify-content:space-between;gap:20px;font:12px 'IBM Plex Mono',monospace;color:var(--text-faint)}.site-footer strong,.site-footer span{display:block}.wrap{max-width:940px;margin:0 auto;padding:0 24px 112px}header.hero{padding:64px 0 42px;border-bottom:1px solid var(--line-bright)}.doc-id{font:12px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--text-faint);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:28px}h1.title{font:700 clamp(36px,6vw,64px)/1.03 'Space Grotesk',sans-serif;letter-spacing:-.035em;margin:0 0 22px;color:var(--text);max-width:17ch}h1.title em{font-style:normal;color:var(--accent-bright)}.dek{font-size:20px;color:var(--text-dim);max-width:70ch;margin:0 0 28px}.meta-row{display:flex;gap:18px;flex-wrap:wrap;font:12px 'IBM Plex Mono',monospace;color:var(--text-faint)}nav.toc{margin:30px 0 0;padding:20px;background:var(--panel);border:1px solid var(--line-bright);border-radius:6px}nav.toc strong{display:block;font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}.toc ol{columns:2;margin:0;padding-left:22px;font:13px/1.8 'IBM Plex Mono',monospace}.toc a{color:var(--text-dim)}main section{padding:58px 0 12px;border-bottom:1px solid var(--line)}.eyebrow{font:12px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:10px}.eyebrow::before{content:"";width:18px;height:1px;background:var(--accent)}h2{font:600 clamp(27px,4vw,36px)/1.16 'Space Grotesk',sans-serif;letter-spacing:-.018em;margin:0 0 19px}h3{font:600 20px/1.3 'Space Grotesk',sans-serif;margin:30px 0 10px}p{margin:0 0 18px}ul,ol{padding-left:24px}li{margin:8px 0}code{font-family:'IBM Plex Mono',monospace;font-size:.88em;background:var(--panel-2);border:1px solid var(--line);border-radius:3px;padding:1px 5px}pre{overflow:auto;background:#101614;color:#dce8e3;border:1px solid #33443d;border-radius:6px;padding:18px 20px;font:13px/1.65 'IBM Plex Mono',monospace;margin:22px 0}pre code{background:none;border:0;padding:0;color:inherit}.callout{background:var(--panel);border:1px solid var(--line-bright);border-left:4px solid var(--accent);border-radius:5px;padding:18px 20px;margin:24px 0}.callout.warn{border-left-color:var(--amber)}.callout strong.label{display:block;color:var(--accent);font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.11em;text-transform:uppercase;margin-bottom:8px}.callout.warn strong.label{color:var(--amber)}.callout p:last-child{margin-bottom:0}.diagram{margin:28px 0;padding:22px;background:var(--panel);border:1px solid var(--line-bright);border-radius:7px}.diagram-title{font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint);margin-bottom:16px}.flow{display:grid;grid-template-columns:repeat(7,minmax(88px,1fr));align-items:center;gap:7px;overflow-x:auto}.node{min-height:68px;padding:10px 8px;display:grid;place-items:center;text-align:center;background:var(--bg);border:1px solid var(--line-bright);border-radius:5px;font:500 11px/1.35 'IBM Plex Mono',monospace}.node.hot{border-color:var(--accent);color:var(--accent-bright)}.arrow{text-align:center;color:var(--accent);font:18px 'IBM Plex Mono',monospace}.tiers{display:grid;gap:7px}.tier{display:grid;grid-template-columns:140px 1fr auto;gap:14px;align-items:center;padding:12px 14px;background:var(--bg);border-left:4px solid var(--accent)}.tier:nth-child(2){opacity:.9}.tier:nth-child(3){opacity:.8}.tier:nth-child(4){opacity:.7}.tier b,.tier span{font:12px 'IBM Plex Mono',monospace}.tier small{color:var(--text-faint)}.decision{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center}.decision .column{display:grid;gap:10px}.decision .center{font:500 12px 'IBM Plex Mono',monospace;color:var(--accent);text-align:center}.formula{font:14px/1.7 'IBM Plex Mono',monospace;background:var(--panel);border:1px solid var(--line-bright);padding:16px 18px;border-radius:5px;overflow:auto;margin:22px 0}.specsheet{background:var(--panel);border:1px solid var(--line-bright);border-radius:6px;overflow:hidden;margin:24px 0}.spec-head{padding:10px 15px;background:var(--panel-2);border-bottom:1px solid var(--line-bright);font:11px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--text-faint);text-transform:uppercase}.table-scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}tr{border-bottom:1px solid var(--line)}tr:last-child{border:0}th,td{padding:11px 14px;text-align:left;vertical-align:top}th{font:600 11px 'IBM Plex Mono',monospace;text-transform:uppercase;color:var(--text-faint);background:var(--panel-2)}td:first-child{font-family:'IBM Plex Mono',monospace;color:var(--text-dim)}.checklist{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:24px 0}.check{padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:5px}.check strong{display:block;font:600 12px 'IBM Plex Mono',monospace;color:var(--accent);margin-bottom:7px}.refs{padding-left:22px}.refs li{margin:10px 0}.article-footer{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:28px 0;border-top:1px solid var(--line);font:12px 'IBM Plex Mono',monospace;color:var(--text-faint)}@media(max-width:720px){.toc ol{columns:1}.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.tier{grid-template-columns:1fr}.decision{grid-template-columns:1fr}.checklist{grid-template-columns:1fr}h1.title{max-width:none}.site-footer{flex-direction:column}}
+</style>
+</head>
+<body>
+<header class="site-shell" aria-label="Site"><div class="shell-chrome"><a class="shell-back" href="/writings.html">All essays</a><div class="shell-actions"><a class="shell-link" href="/feed.xml">RSS</a><button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button></div></div></header>
+<div class="wrap" data-pagefind-body>
+<header class="hero">
+  <div class="doc-id"><span>SYSTEMS GUIDE / INFERENCE INFRASTRUCTURE · <strong>NO. 256</strong></span><span>REV 2026-09-03</span></div>
+  <h1 class="title">Inference engineering is the art of keeping <em>tokens moving</em></h1>
+  <p class="dek">Get the GPUs. Bring up vLLM or SGLang. Add replicas. Route for cache locality. Share KV state when it pays. Put a gateway across heterogeneous fleets. That short checklist is not “just deployment”—it is a compact description of distributed LLM inference engineering.</p>
+  <div class="meta-row"><span><strong>Scope:</strong> single node → multi-region fleet</span><span><strong>Read:</strong> 18 minutes</span><span><strong>Audience:</strong> inference / platform / SRE</span></div>
+  <nav class="toc" aria-label="Article contents"><strong>Contents</strong><ol><li><a href="#definition">What the job is</a></li><li><a href="#physics">Start with physics</a></li><li><a href="#engine">Serving engine</a></li><li><a href="#replicas">Replicas on one node</a></li><li><a href="#router">Cache-aware routing</a></li><li><a href="#lmcache">Shared KV tiers</a></li><li><a href="#gateway">Heterogeneous fleet</a></li><li><a href="#slo">SLO control loop</a></li><li><a href="#failure">Failure semantics</a></li><li><a href="#benchmark">Benchmarking</a></li><li><a href="#build">Build sequence</a></li><li><a href="#references">References</a></li></ol></nav>
+</header>
+<main>
+<section id="definition">
+  <div class="eyebrow">01 / Definition</div><h2>Yes. More precisely: distributed LLM serving.</h2>
+  <p>Model training produces weights. Inference engineering turns those weights into a service with a latency distribution, throughput envelope, availability target, security boundary, and cost per useful output token. The work spans GPU topology, kernels, memory allocation, batching, admission control, cache placement, routing, networking, observability, and capacity planning.</p>
+  <p>The deceptively simple path—GPU → engine → replicas → cache-aware router → shared cache → fleet gateway—crosses three distinct control loops. The <strong>engine loop</strong> schedules tokens and KV pages inside one process. The <strong>node loop</strong> balances requests across local replicas while respecting GPU and cache affinity. The <strong>fleet loop</strong> chooses a compatible pool, region, accelerator class, and failure domain.</p>
+  <div class="diagram" role="img" aria-label="Request path from API gateway through fleet and cache routers to inference engines and GPUs">
+    <div class="diagram-title">Diagram 1 — the serving data path</div><div class="flow"><div class="node">Client / SDK</div><div class="arrow">→</div><div class="node hot">API gateway<br/>auth · quota · model</div><div class="arrow">→</div><div class="node hot">Fleet router<br/>region · pool · SLO</div><div class="arrow">→</div><div class="node hot">Cache router<br/>prefix · queue · KV</div></div>
+    <div class="flow" style="margin-top:7px"><div class="node">Engine replica<br/>continuous batch</div><div class="arrow">↔</div><div class="node">HBM KV pages</div><div class="arrow">↔</div><div class="node">Host / remote KV</div><div class="arrow">↔</div><div class="node">GPU group<br/>TP · PP · DP</div></div>
+  </div>
+  <div class="callout"><strong class="label">The boundary</strong><p>Installing vLLM is inference serving. Choosing tensor parallelism, measuring tail latency, designing cache ownership, draining replicas without losing sessions, and controlling cost under burst load is inference engineering.</p></div>
+</section>
+
+<section id="physics">
+  <div class="eyebrow">02 / Capacity before YAML</div><h2>The first scheduler is the hardware topology.</h2>
+  <p>“Get the GPUs” is often the hardest step because a GPU is not a fungible integer. Capacity, memory bandwidth, interconnect, NUMA placement, power, cooling, driver compatibility, and failure domain determine which parallelism strategies are viable. Two GPUs separated by PCIe and a CPU socket are not equivalent to two GPUs connected by a high-bandwidth fabric.</p>
+  <h3>Fit the model, then leave room for the service</h3>
+  <div class="formula">HBM_required ≈ weights + KV_cache + activations + graph/workspace + allocator_headroom</div>
+  <p>For a dense model, weight memory is approximately <code>parameter_count × bytes_per_parameter</code>, plus quantization metadata. KV memory grows with concurrent live tokens. A useful first-order estimate for a conventional transformer is:</p>
+  <div class="formula">KV_bytes_per_token ≈ 2 × layers × kv_heads × head_dim × bytes_per_element</div>
+  <p>The factor of two is for keys and values. Grouped-query and multi-query attention reduce <code>kv_heads</code>; sliding-window, hybrid, or state-space layers change the shape again. Never size a fleet from model-file bytes alone. The “free” HBM after loading weights is the inventory from which active sequences, prefix-cache blocks, CUDA graphs, temporary buffers, and fragmentation must all be paid.</p>
+  <h3>Parallelism is a topology decision</h3>
+  <div class="specsheet"><div class="spec-head">Parallelism trade space</div><div class="table-scroll"><table><thead><tr><th>Mode</th><th>What it does</th><th>Best fit</th><th>Primary tax</th></tr></thead><tbody>
+    <tr><td>Tensor parallel</td><td>Shards each layer across accelerators.</td><td>One model cannot fit on one GPU; fast intra-node fabric.</td><td>Collectives on nearly every layer.</td></tr>
+    <tr><td>Pipeline parallel</td><td>Places layer ranges on stages.</td><td>Model spans nodes or weaker links.</td><td>Pipeline bubbles and stage imbalance.</td></tr>
+    <tr><td>Data parallel</td><td>Replicates weights; partitions requests.</td><td>Model fits per replica; throughput scaling.</td><td>Duplicated weights and fragmented KV locality.</td></tr>
+    <tr><td>Expert parallel</td><td>Distributes MoE experts.</td><td>Large sparse models.</td><td>All-to-all token dispatch and stragglers.</td></tr>
+  </tbody></table></div></div>
+  <p>Inventory nodes by accelerator SKU, HBM capacity, link topology, NIC bandwidth, NUMA socket, driver/runtime version, supported precision, and measured engine profile. Kubernetes device plugins expose devices, and Topology Manager can coordinate NUMA-aware placement, but labels do not erase physical asymmetry. Benchmark the exact placement you will operate.</p>
+</section>
+
+<section id="engine">
+  <div class="eyebrow">03 / The engine</div><h2>vLLM and SGLang are schedulers with a model attached.</h2>
+  <p>A modern serving engine does much more than call <code>forward()</code>. It admits requests, tokenizes prompts, allocates paged KV blocks, forms continuous batches, performs chunked prefill, launches attention and matrix kernels, samples tokens, streams responses, handles cancellation, and recycles memory. Its central problem is packing unlike requests into shared GPU iterations without violating latency goals.</p>
+  <h3>Prefill and decode stress different resources</h3>
+  <p><strong>Prefill</strong> processes many prompt tokens in parallel and tends toward compute-heavy matrix multiplication. <strong>Decode</strong> advances each sequence one token at a time, repeatedly reads model weights and KV state, and often becomes memory-bandwidth and launch-latency sensitive. Mixing them maximizes utilization until a giant prompt monopolizes an iteration and damages inter-token latency. Chunked prefill limits that interference; prefill/decode disaggregation goes further by assigning them to separate worker pools.</p>
+  <div class="diagram" role="img" aria-label="Continuous batching timeline showing interleaved prefill and decode work"><div class="diagram-title">Diagram 2 — continuous batching turns requests into token work</div><div class="tiers">
+    <div class="tier"><b>Iteration t</b><span>prefill A[0:512] · decode B · decode C</span><small>mixed batch</small></div>
+    <div class="tier"><b>Iteration t+1</b><span>prefill A[512:1024] · decode B · decode C · decode D</span><small>chunked prefill</small></div>
+    <div class="tier"><b>Iteration t+2</b><span>decode A · decode B · decode C · decode D</span><small>steady decode</small></div>
+  </div></div>
+  <p>Start with one engine instance and pin versions: container digest, engine version, CUDA/ROCm runtime, driver, model revision, tokenizer revision, quantization format, attention backend, and launch flags. Run correctness tests before load tests. Validate stop tokens, structured output, tool calling, streaming cancellation, maximum context, LoRA behavior, and deterministic settings your API promises.</p>
+  <pre><code># Illustrative baseline; tune from measurements, not folklore.
+vllm serve org/model \
+  --tensor-parallel-size 2 \
+  --enable-prefix-caching \
+  --max-model-len 32768 \
+  --gpu-memory-utilization 0.90
+
+# Record the full command, image digest, model revision, and topology
+# beside every benchmark result.</code></pre>
+  <div class="callout warn"><strong class="label">Configuration warning</strong><p>Flags and connector names move between releases. Treat snippets as shape, not scripture; pin a tested version and use that version’s documentation. A “latest” container is not a reproducible serving system.</p></div>
+</section>
+
+<section id="replicas">
+  <div class="eyebrow">04 / One node, several replicas</div><h2>A replica is an isolation boundary, not free throughput.</h2>
+  <p>Multiple replicas on one node can isolate tenants, expose separate model variants, improve failure containment, and exploit GPUs that do not need to participate in one tensor-parallel group. But every replica duplicates weights and maintains its own scheduler queues and HBM-resident KV blocks. Splitting an eight-GPU node into four two-GPU replicas trades a larger shared batching domain for four independent failure and cache domains.</p>
+  <div class="specsheet"><div class="spec-head">Replica design questions</div><div class="table-scroll"><table><tbody>
+    <tr><td>GPU ownership</td><td>Give each replica an explicit, stable device set. Avoid accidental overlap and cross-NUMA CPU pinning.</td></tr>
+    <tr><td>Ports and health</td><td>Separate liveness (“process exists”) from readiness (“model loaded, warmed, and accepting admission”).</td></tr>
+    <tr><td>Memory headroom</td><td>Leave margin for workload variance, graphs, allocator fragmentation, and cache transfers—not only steady-state KV.</td></tr>
+    <tr><td>Warm-up</td><td>Exercise representative prompt/output buckets before advertising readiness; cold kernels and empty caches are real states.</td></tr>
+    <tr><td>Draining</td><td>Stop new admissions, allow active streams to finish up to a deadline, then terminate. Never kill first and hope clients retry safely.</td></tr>
+  </tbody></table></div></div>
+  <p>The basic capacity test is not “can four processes start?” It is whether the node sustains the required arrival process at the target TTFT and inter-token latency while one replica is draining or failed. Reserve failure headroom explicitly; otherwise high availability exists only while nothing is broken.</p>
+</section>
+
+<section id="router">
+  <div class="eyebrow">05 / Cache-aware routing</div><h2>Round-robin destroys information you already paid to compute.</h2>
+  <p>If many requests share a system prompt, retrieved document, codebase prefix, or conversation history, the engine can reuse KV blocks for the common prefix. Automatic prefix caching avoids recomputing attention for cached prompt blocks; it does not reduce decode work and it does not help when prompts share no exact token prefix.</p>
+  <p>A round-robin balancer scatters related requests across replicas. A cache-aware router instead estimates or observes which worker owns the longest reusable prefix, then balances that benefit against queueing. SGLang’s cache-aware policy illustrates the essential control rule: prefer prefix affinity while the fleet is balanced, but switch toward the shortest queue when load skew crosses absolute and relative thresholds.</p>
+  <div class="formula">choose worker i minimizing: α·queue_cost(i) + β·prefill_cost(not_cached_on_i) + γ·transfer_cost(i) + δ·risk(i)</div>
+  <div class="diagram" role="img" aria-label="Router decision between cache affinity and queue balance"><div class="diagram-title">Diagram 3 — locality is valuable only until waiting costs more</div><div class="decision">
+    <div class="column"><div class="node hot">Replica A<br/>80% prefix match<br/>queue = 7</div><div class="node">Replica B<br/>20% prefix match<br/>queue = 1</div></div><div class="center">prefix saved<br/>vs.<br/>queue delay<br/>→</div><div class="column"><div class="node hot">balanced load: A</div><div class="node">overload threshold crossed: B</div></div>
+  </div></div>
+  <p>The router needs a cache index. That index may be <strong>predictive</strong>—an approximate radix tree built from prior routing decisions—or <strong>observed</strong> from engine KV events. Predictive state is cheap but can become wrong after eviction, restart, out-of-band traffic, or failed requests. Observed state is more faithful but introduces event ordering, loss, replay, and recovery problems. In either case, the routing index is a hint. The engine remains the authority on whether a block actually exists.</p>
+  <h3>Canonicalize before hashing</h3>
+  <p>Prefix identity must include the model and tokenizer revision, adapter/LoRA identity, cache dtype, relevant multimodal inputs, and any engine-specific cache namespace. Even a whitespace or chat-template change can alter token IDs. Never let two incompatible model configurations share a cache key merely because their request text looks similar.</p>
+</section>
+
+<section id="lmcache">
+  <div class="eyebrow">06 / Shared KV infrastructure</div><h2>LMCache expands the reuse domain—but every hit still has a price.</h2>
+  <p>Local HBM prefix caching is fastest and smallest in scope. A system such as LMCache can persist and move reusable KV state through host memory or remote storage so another engine instance can retrieve it. This converts cache reuse from a process-local optimization into a data-placement problem.</p>
+  <div class="diagram" role="img" aria-label="KV cache hierarchy from GPU HBM through host DRAM and remote cache to storage"><div class="diagram-title">Diagram 4 — the KV hierarchy</div><div class="tiers">
+    <div class="tier"><b>L1 · GPU HBM</b><span>active sequences + hottest prefixes</span><small>lowest latency / smallest scope</small></div>
+    <div class="tier"><b>L2 · host DRAM</b><span>evicted or prefetched KV near the GPU</span><small>PCIe / CXL movement</small></div>
+    <div class="tier"><b>L3 · remote cache</b><span>shared prefixes across replicas</span><small>NIC + serialization + lookup</small></div>
+    <div class="tier"><b>L4 · storage</b><span>large, colder reusable state</span><small>capacity first</small></div>
+  </div></div>
+  <p>A remote hit is useful only when loading cached KV is cheaper than recomputing the prefix and does not evict more valuable active state. For a prefix of <code>T</code> tokens:</p>
+  <div class="formula">reuse wins when lookup + transfer(KV(T)) + install &lt; prefill_compute(T) − opportunity_cost</div>
+  <p>The crossover depends on model architecture, prefix length, quantization, GPU generation, host path, NIC, storage backend, and current contention. Small prefixes may be faster to recompute. Large shared prefixes may justify remote retrieval, especially when prefill capacity is the bottleneck. Measure the break-even curve rather than assuming that a cache hit is inherently good.</p>
+  <h3>“Shared cache” does not mean coherent HBM</h3>
+  <p>Replicas do not suddenly see one transparent GPU cache. The connector externalizes blocks, metadata describes ownership and compatibility, the destination reserves pages, data moves, and the engine installs it. There are races with eviction, duplicate loads, partial transfers, and cancellation. Production design needs request IDs, checksums or integrity validation where appropriate, timeouts, backpressure, bounded retries, cache namespaces, and a safe recompute fallback.</p>
+  <div class="callout"><strong class="label">Cache correctness rule</strong><p>A miss may make the request slower. A wrong hit can make the answer wrong. Cache identity and invalidation belong in the correctness model, not only the performance model.</p></div>
+</section>
+
+<section id="gateway">
+  <div class="eyebrow">07 / The heterogeneous fleet</div><h2>The gateway routes capabilities, not merely traffic.</h2>
+  <p>Once replicas are spread across accelerator types, nodes, zones, or regions, one global queue is usually the wrong abstraction. Different pools have different supported precisions, context limits, tensor-parallel widths, throughput curves, cache contents, network distance, failure domains, and cost. The gateway should first filter for correctness, then optimize placement.</p>
+  <div class="specsheet"><div class="spec-head">Two-stage placement</div><div class="table-scroll"><table><thead><tr><th>Stage</th><th>Question</th><th>Signals</th></tr></thead><tbody>
+    <tr><td>1 · eligibility</td><td>Can this pool serve the request correctly?</td><td>Model/tokenizer revision, adapter, context length, modality, precision policy, region/compliance, tool/grammar support.</td></tr>
+    <tr><td>2 · scoring</td><td>Which eligible pool is best now?</td><td>Predicted TTFT/ITL, queue tokens, cache affinity, transfer cost, health, failure budget, egress, and marginal cost.</td></tr>
+  </tbody></table></div></div>
+  <p>Route to a pool, not directly to an individual GPU across a WAN. The global gateway makes coarse decisions—region, model version, hardware class, availability zone—while a pool-local router makes fast decisions using current queue and KV locality. This hierarchy limits control-plane fan-out and keeps high-frequency cache signals close to where they matter.</p>
+  <p>Heterogeneity also makes autoscaling non-linear. One H100-class replica and one slower GPU are not “two replicas.” Express capacity in workload-specific service rates: prefill tokens per second at a prompt distribution, decode tokens per second at a concurrency distribution, and SLO-compliant requests per second. A pool weight derived from unloaded peak TPS will route too much work to the wrong place.</p>
+</section>
+
+<section id="slo">
+  <div class="eyebrow">08 / Operate the queue</div><h2>Optimize the latency distribution, not GPU utilization.</h2>
+  <p>Inference exposes at least four clocks: queue time, time to first token (TTFT), inter-token latency (ITL or TPOT), and end-to-end latency. Throughput is usually split into prompt and generation tokens per second. Goodput is the fraction of offered work completed inside the SLO; it is the metric that prevents a saturated system from congratulating itself for high GPU utilization while users wait.</p>
+  <div class="formula">TTFT = gateway + queue + cache_lookup/transfer + uncached_prefill + first_decode + network_stream</div>
+  <div class="checklist">
+    <div class="check"><strong>Admission</strong>Bound concurrency or queued tokens by tenant and pool. Reject or shed early with retry guidance before queues become unbounded.</div>
+    <div class="check"><strong>Scheduling</strong>Track waiting prompt tokens, active decode sequences, expected output, preemption, and batch composition—not only request count.</div>
+    <div class="check"><strong>Cache</strong>Measure queried tokens, hit tokens, useful bytes loaded, transfer time, eviction, failed lookup, and recompute fallback.</div>
+    <div class="check"><strong>Hardware</strong>Observe HBM occupancy, bandwidth proxies, SM activity, power/throttling, interconnect, NIC, CPU saturation, and NUMA traffic.</div>
+  </div>
+  <p>vLLM exposes Prometheus-compatible engine metrics including running/waiting requests, KV-cache usage, prefix-cache queries and hits, prompt/generation token counters, and latency histograms. Join those with router, gateway, GPU, host, and network telemetry under one request trace. Without a shared trace ID, “the GPU was fine” and “the API was slow” become two dashboards arguing with each other.</p>
+  <h3>Autoscale on leading indicators</h3>
+  <p>GPU utilization is a lagging and ambiguous signal. Prefer queued tokens, predicted service time, SLO goodput, cache working-set pressure, and sustained admission rate. Scale-up must include model download/load and warm-up delay. Scale-down must account for active streams and the cache value that disappears when a replica is drained.</p>
+</section>
+
+<section id="failure">
+  <div class="eyebrow">09 / Failure semantics</div><h2>Every optimization adds a new way to be partially wrong.</h2>
+  <div class="specsheet"><div class="spec-head">Failure matrix</div><div class="table-scroll"><table><thead><tr><th>Failure</th><th>Symptom</th><th>Required behavior</th></tr></thead><tbody>
+    <tr><td>Engine crash</td><td>Streams break; router state claims dead KV exists.</td><td>Fail readiness, remove endpoint, expire placement records, retry only if API semantics allow.</td></tr>
+    <tr><td>Router restart</td><td>Lost or stale cache index.</td><td>Fall back to load routing; rebuild from events/snapshots before trusting affinity.</td></tr>
+    <tr><td>Remote cache slow</td><td>“Hits” inflate TTFT and consume HBM reservations.</td><td>Strict lookup/transfer deadlines, circuit breaker, recompute fallback.</td></tr>
+    <tr><td>Network partition</td><td>Gateway sees partial fleet; cache metadata diverges.</td><td>Fence unreachable pools, keep decisions local, reconcile after recovery.</td></tr>
+    <tr><td>Bad rollout</td><td>Same model name maps to incompatible cache state.</td><td>Versioned namespaces; no cross-revision cache reuse; canary and rollback.</td></tr>
+    <tr><td>Overload</td><td>Queue time dominates; retries amplify arrival rate.</td><td>Admission limits, bounded queues, retry budgets, load shedding, client backoff.</td></tr>
+  </tbody></table></div></div>
+  <p>Streaming makes retries delicate: once a client has observed output, replay can duplicate tokens or tool calls. Gateways need explicit idempotency semantics and must distinguish “not admitted,” “admitted but no output observed,” and “partial stream delivered.” Exactly-once generation is generally not something a stateless retry policy can manufacture.</p>
+  <p>High availability also applies to the routers. Multiple cache-aware router replicas can independently learn different approximate trees, reducing locality or producing inconsistent choices. Decide whether router state is expendable, replicated, snapshotted, or rebuilt from worker events—and document the degraded policy during recovery.</p>
+</section>
+
+<section id="benchmark">
+  <div class="eyebrow">10 / Measurement</div><h2>A benchmark is a workload model with receipts.</h2>
+  <p>Single-request tokens per second is a kernel demo, not a capacity plan. Replay a distribution of input lengths, output lengths, arrival times, shared-prefix ratios, session turns, tenants, and cancellation rates. Include cold start, warm engine/empty cache, warm local cache, warm remote cache, replica loss, cache outage, and rolling deployment.</p>
+  <h3>The minimum experiment matrix</h3>
+  <div class="specsheet"><div class="table-scroll"><table><thead><tr><th>Axis</th><th>Representative values</th><th>Why it matters</th></tr></thead><tbody>
+    <tr><td>Arrival</td><td>closed-loop concurrency; open-loop Poisson; burst trace</td><td>Closed-loop tests hide overload by slowing the sender.</td></tr>
+    <tr><td>Prompt</td><td>short, median, long, max; real histogram</td><td>Prefill cost and KV footprint are length-dependent.</td></tr>
+    <tr><td>Output</td><td>short answer, long generation, early stop</td><td>Decode occupancy controls concurrency.</td></tr>
+    <tr><td>Reuse</td><td>0%, 25%, 75% shared prefix; multi-turn sessions</td><td>Separates router and cache value from engine baseline.</td></tr>
+    <tr><td>Topology</td><td>one replica, N replicas, one failed, cross-pool spill</td><td>Reveals locality fragmentation and failure headroom.</td></tr>
+  </tbody></table></div></div>
+  <p>Report p50/p95/p99 TTFT and ITL, request and token throughput, SLO goodput, error and cancellation rates, cache hit tokens—not just hit requests—bytes transferred, prefill saved, queue depth, power, and cost. Sweep offered load past saturation. The knee of the latency curve is more operationally useful than the absolute maximum throughput.</p>
+  <div class="callout warn"><strong class="label">Common benchmark trap</strong><p>If every request uses the same prefix and arrives after the first has warmed the cache, you measured an upper bound on reuse—not production capacity. If every prompt is random, you measured a lower bound. Publish both and the trace-derived middle.</p></div>
+</section>
+
+<section id="build">
+  <div class="eyebrow">11 / Build sequence</div><h2>Add complexity only after its counterfactual is measured.</h2>
+  <ol>
+    <li><strong>Write the contract.</strong> Specify model revisions, request limits, streaming behavior, TTFT/ITL targets, availability, regions, privacy, and cost ceiling.</li>
+    <li><strong>Characterize hardware.</strong> Record GPU/NIC/NUMA topology, supported precisions, model fit, power limits, and measured engine service curves.</li>
+    <li><strong>Prove one engine.</strong> Pin the stack, validate correctness, establish a no-cache baseline, and find the safe saturation knee.</li>
+    <li><strong>Add one-node replication.</strong> Isolate GPUs, define readiness and draining, then retest with a replica unavailable.</li>
+    <li><strong>Add cache-aware routing.</strong> Compare round-robin, least-load, sticky/session, and prefix-aware policies using controlled prefix overlap.</li>
+    <li><strong>Add shared KV only when justified.</strong> Measure lookup, transfer, installation, and recomputation across prefix lengths; set timeouts at the observed crossover.</li>
+    <li><strong>Introduce the fleet gateway.</strong> Separate eligibility from scoring, use pool-local routing, and encode model/cache compatibility in versioned capabilities.</li>
+    <li><strong>Close the control loop.</strong> Trace requests end to end; autoscale on queued work and goodput; rehearse cache, router, engine, node, zone, and rollout failures.</li>
+  </ol>
+  <pre><code># The production question behind every layer:
+if incremental_goodput_gain &gt; complexity_cost + failure_risk + transfer_tax:
+    keep_the_layer()
+else:
+    simplify()</code></pre>
+  <p>This is why the original checklist is unmistakably inference engineering. The hard part is not standing up six named components. It is making their independent schedulers, caches, queues, failure detectors, and cost models behave like one service.</p>
+</section>
+
+<section id="references">
+  <div class="eyebrow">12 / Primary references</div><h2>Specifications and implementation sources</h2>
+  <ol class="refs">
+    <li><a href="https://docs.vllm.ai/en/latest/serving/parallelism_scaling.html" target="_blank" rel="noopener">vLLM — Parallelism and Scaling</a>: tensor, pipeline, data, and multi-node serving patterns.</li>
+    <li><a href="https://docs.vllm.ai/en/latest/design/prefix_caching.html" target="_blank" rel="noopener">vLLM — Automatic Prefix Caching design</a>: block identity and hash-based prefix reuse.</li>
+    <li><a href="https://docs.vllm.ai/en/latest/usage/metrics/" target="_blank" rel="noopener">vLLM — Production metrics</a>: request, scheduler, KV-cache, prefix-cache, and latency telemetry.</li>
+    <li><a href="https://docs.vllm.ai/projects/production-stack/en/latest/" target="_blank" rel="noopener">vLLM Production Stack</a>: Kubernetes deployment, prefix-aware routing, KV offload, tracing, and benchmarking.</li>
+    <li><a href="https://github.com/sgl-project/sglang/blob/main/docs/advanced_features/sgl_model_gateway.md" target="_blank" rel="noopener">SGLang Model Gateway</a>: worker discovery, policies, cache-aware routing, health, retries, and HA considerations.</li>
+    <li><a href="https://github.com/sgl-project/sglang/blob/main/sgl-model-gateway/src/policies/cache_aware.rs" target="_blank" rel="noopener">SGLang cache-aware policy implementation</a>: approximate radix-tree affinity plus shortest-queue fallback.</li>
+    <li><a href="https://docs.lmcache.ai/getting_started/quickstart.html" target="_blank" rel="noopener">LMCache quickstart</a>: current multiprocess connector and shared-cache setup.</li>
+    <li><a href="https://docs.lmcache.ai/kv_cache/storage_backends/index.html" target="_blank" rel="noopener">LMCache storage backends</a>: local and remote KV storage choices.</li>
+    <li><a href="https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/device-plugins/" target="_blank" rel="noopener">Kubernetes Device Plugins</a>: advertising accelerators and device topology to kubelet.</li>
+    <li><a href="https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/" target="_blank" rel="noopener">Kubernetes topology spread constraints</a>: distributing replicas across failure domains.</li>
+  </ol>
+</section>
+<section id="webmentions" hidden></section>
+<footer class="article-footer"><span>MANISH AI · Systems, chips, kernels, and inference infrastructure.</span><span>Published September 3, 2026</span></footer>
+</main>
+</div>
+<footer class="site-footer"><div><strong>MANISH AI</strong><span>Systems, chips, kernels, and inference infrastructure.</span></div><a href="/writings.html">Back to writings</a></footer>
+</body>
+</html>
