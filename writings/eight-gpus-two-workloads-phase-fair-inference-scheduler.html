@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Eight GPUs, Two Workloads, One Fair Scheduler | MANISH AI</title>
+<meta name="description" content="How to build a starvation-free phase-fair inference scheduler when small jobs need one GPU and large jobs must atomically acquire all eight."/>
+<meta name="keywords" content="GPU inference scheduler, gang scheduling, phase fairness, starvation freedom, GPU scheduling, inference infrastructure, Python scheduler"/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/eight-gpus-two-workloads-phase-fair-inference-scheduler.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<link rel="pingback" href="https://webmention.io/manishklach.github.io/xmlrpc"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Eight GPUs, Two Workloads, One Fair Scheduler"/>
+<meta property="og:description" content="The hard part is not allocating GPUs. It is knowing when to stop allocating them."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/eight-gpus-two-workloads-phase-fair-inference-scheduler.html"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:image" content="https://manishklach.github.io/og/eight-gpus-two-workloads-phase-fair-inference-scheduler.png"/>
+<meta property="og:image:type" content="image/png"/>
+<meta property="og:image:width" content="1254"/>
+<meta property="og:image:height" content="1254"/>
+<meta property="og:image:alt" content="Eight GPU tiles showing individual small allocations and one all-GPU amber allocation"/>
+<meta property="article:published_time" content="2026-09-04T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-09-04T00:00:00Z"/>
+<meta property="article:author" content="MANISH AI"/>
+<meta property="article:section" content="Inference Engineering"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Eight GPUs, Two Workloads, One Fair Scheduler"/>
+<meta name="twitter:description" content="Designing starvation-free gang scheduling for mixed GPU inference workloads."/>
+<meta name="twitter:image" content="https://manishklach.github.io/og/eight-gpus-two-workloads-phase-fair-inference-scheduler.png"/>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","headline":"Eight GPUs, Two Workloads, One Fair Scheduler","description":"How to build a starvation-free phase-fair inference scheduler when small jobs need one GPU and large jobs must atomically acquire all eight.","url":"https://manishklach.github.io/writings/eight-gpus-two-workloads-phase-fair-inference-scheduler.html","mainEntityOfPage":"https://manishklach.github.io/writings/eight-gpus-two-workloads-phase-fair-inference-scheduler.html","datePublished":"2026-09-04","dateModified":"2026-09-04","articleSection":"Inference Engineering","wordCount":1700,"author":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"publisher":{"@type":"Person","name":"MANISH AI","url":"https://manishklach.github.io/"},"codeRepository":"https://github.com/manishklach/gpu-inference-scheduler","image":"https://manishklach.github.io/og/eight-gpus-two-workloads-phase-fair-inference-scheduler.png"}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@300;400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<style>
+:root{--bg:#f4f5f0;--panel:#e8ece5;--panel2:#dce4dd;--ink:#17201b;--dim:#59645d;--faint:#778078;--line:rgba(23,32,27,.13);--line2:rgba(23,32,27,.25);--cyan:#087f7a;--amber:#b36800;--red:#b33c35;--green:#087f5b}
+@media(prefers-color-scheme:dark){:root{--bg:#0a100e;--panel:#121b17;--panel2:#1a2721;--ink:#e6eee9;--dim:#a5b2a9;--faint:#76837b;--line:rgba(230,238,233,.09);--line2:rgba(230,238,233,.19);--cyan:#48d8d0;--amber:#ffb24a;--red:#fb8179;--green:#42d6a0}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;line-height:1.72;background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:42px 42px;background-attachment:fixed}::selection{background:var(--cyan);color:#fff}a{color:var(--cyan);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--cyan) 42%,transparent)}a:hover{border-bottom-color:var(--cyan)}.site-shell{border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(12px);position:sticky;top:0;z-index:20}.shell-chrome{max-width:1000px;margin:auto;padding:14px 25px;display:flex;justify-content:space-between;align-items:center;gap:18px;font:500 12px 'IBM Plex Mono',monospace}.shell-actions{display:flex;align-items:center;gap:16px}.shell-back:before{content:'← '}.site-shell a{color:var(--dim)}.theme-toggle{border:1px solid var(--line2);background:var(--panel);color:var(--ink);border-radius:99px;padding:6px 11px;font:500 12px 'IBM Plex Mono',monospace;cursor:pointer}.wrap{max-width:1000px;margin:auto;padding:0 25px 110px}.hero{padding:70px 0 44px;border-bottom:1px solid var(--line2)}.doc-id{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:30px;color:var(--faint);font:12px 'IBM Plex Mono',monospace;letter-spacing:.11em}.title{max-width:17ch;margin:0 0 24px;font:700 clamp(40px,7vw,74px)/.98 'Space Grotesk',sans-serif;letter-spacing:-.05em}.title em{font-style:normal;color:var(--amber)}.dek{max-width:70ch;margin:0 0 28px;color:var(--dim);font-size:21px}.meta-row{display:flex;gap:20px;flex-wrap:wrap;color:var(--faint);font:12px 'IBM Plex Mono',monospace}.thesis{margin:34px 0 0;padding:20px 22px;background:var(--panel);border-left:4px solid var(--amber);font-size:18px}.thesis strong{color:var(--amber)}.repo-cta{display:flex;justify-content:space-between;align-items:center;gap:20px;margin:28px 0 0;padding:19px 21px;border:1px solid var(--line2);border-radius:7px;background:linear-gradient(110deg,var(--panel),color-mix(in srgb,var(--panel) 72%,var(--cyan)))}.repo-cta span{display:block;color:var(--faint);font:11px 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.1em}.repo-cta strong{font-family:'Space Grotesk',sans-serif}.repo-cta a{white-space:nowrap;padding:9px 13px;border:1px solid var(--cyan);border-radius:4px}.toc{margin:30px 0 0;padding:20px;background:var(--panel);border:1px solid var(--line2);border-radius:6px}.toc strong,.diagram-title,.spec-head{display:block;color:var(--faint);font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.11em;text-transform:uppercase}.toc ol{columns:2;margin:10px 0 0;padding-left:22px;font:13px/1.85 'IBM Plex Mono',monospace}.toc a{color:var(--dim)}main section{padding:58px 0 15px;border-bottom:1px solid var(--line)}.eyebrow{display:flex;align-items:center;gap:10px;margin-bottom:10px;color:var(--cyan);font:12px 'IBM Plex Mono',monospace;letter-spacing:.14em;text-transform:uppercase}.eyebrow:before{content:'';width:18px;height:1px;background:var(--cyan)}h2{margin:0 0 20px;font:600 clamp(28px,4vw,39px)/1.15 'Space Grotesk',sans-serif;letter-spacing:-.025em}h3{margin:31px 0 10px;font:600 21px/1.3 'Space Grotesk',sans-serif}p{margin:0 0 18px}ul,ol{padding-left:24px}li{margin:8px 0}code{padding:1px 5px;border:1px solid var(--line);border-radius:3px;background:var(--panel2);font-family:'IBM Plex Mono',monospace;font-size:.88em}pre{overflow:auto;margin:24px 0;padding:19px 21px;border:1px solid #34463d;border-radius:6px;background:#0d1512;color:#dce9e1;font:13px/1.65 'IBM Plex Mono',monospace}pre code{padding:0;border:0;background:none;color:inherit}.cover{margin:34px 0 0}.cover img{display:block;width:100%;max-height:560px;object-fit:cover;border:1px solid var(--line2);border-radius:8px}.caption{margin:11px 0 0;color:var(--faint);font:12px/1.55 'IBM Plex Mono',monospace}.diagram{margin:28px 0;padding:23px;background:var(--panel);border:1px solid var(--line2);border-radius:7px;overflow:hidden}.diagram-title{margin-bottom:17px}.gpus{display:grid;grid-template-columns:repeat(8,1fr);gap:7px}.gpu{min-height:68px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:5px;background:var(--bg);font:500 11px 'IBM Plex Mono',monospace}.gpu.small{border-color:var(--cyan);box-shadow:inset 0 -4px var(--cyan)}.gpu.large{border-color:var(--amber);background:color-mix(in srgb,var(--panel) 72%,var(--amber));color:var(--amber)}.band{grid-column:1/-1;padding:15px;text-align:center;border:1px solid var(--amber);border-radius:5px;background:color-mix(in srgb,var(--panel) 78%,var(--amber));color:var(--amber);font:600 12px 'IBM Plex Mono',monospace}.timeline{display:grid;grid-template-columns:1.4fr .55fr 1.4fr .8fr 1.4fr;gap:5px}.phase{min-height:62px;display:grid;place-items:center;text-align:center;border-radius:4px;background:var(--bg);font:11px/1.4 'IBM Plex Mono',monospace}.phase.cyan{border:1px solid var(--cyan);color:var(--cyan)}.phase.amber{border:1px solid var(--amber);color:var(--amber)}.phase.drain{border:1px dashed var(--faint);color:var(--faint)}.callout{margin:25px 0;padding:19px 21px;background:var(--panel);border:1px solid var(--line2);border-left:4px solid var(--cyan);border-radius:5px}.callout.warn{border-left-color:var(--amber)}.callout.danger{border-left-color:var(--red)}.callout .label{display:block;margin-bottom:7px;color:var(--cyan);font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.11em;text-transform:uppercase}.callout.warn .label{color:var(--amber)}.callout.danger .label{color:var(--red)}.callout p:last-child{margin-bottom:0}.formula{overflow:auto;margin:22px 0;padding:16px 18px;background:var(--panel);border:1px solid var(--line2);border-radius:5px;font:14px/1.7 'IBM Plex Mono',monospace}.spec{margin:25px 0;overflow:hidden;background:var(--panel);border:1px solid var(--line2);border-radius:6px}.spec-head{padding:11px 15px;background:var(--panel2);border-bottom:1px solid var(--line2)}.table-scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}tr{border-bottom:1px solid var(--line)}tr:last-child{border:0}th,td{padding:12px 14px;text-align:left;vertical-align:top}th{background:var(--panel2);color:var(--faint);font:600 11px 'IBM Plex Mono',monospace;text-transform:uppercase}td:first-child{color:var(--dim);font-family:'IBM Plex Mono',monospace}.article-footer{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:29px 0;border-top:1px solid var(--line);color:var(--faint);font:12px 'IBM Plex Mono',monospace}.site-footer{max-width:1000px;margin:auto;padding:29px 25px 50px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:20px;color:var(--faint);font:12px 'IBM Plex Mono',monospace}.site-footer strong,.site-footer span{display:block}@media(max-width:720px){.toc ol{columns:1}.timeline{grid-template-columns:1fr}.gpus{gap:3px}.gpu{min-height:48px;font-size:9px}.repo-cta{align-items:flex-start;flex-direction:column}.title{font-size:43px}.wrap{padding-left:18px;padding-right:18px}.site-footer{padding-left:18px;padding-right:18px}}
+</style>
+</head>
+<body>
+<header class="site-shell" aria-label="Site"><div class="shell-chrome"><a class="shell-back" href="/writings.html">All essays</a><div class="shell-actions"><a href="/feed.xml">RSS</a><button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button></div></div></header>
+<div class="wrap">
+<header class="hero">
+  <div class="doc-id"><span>INFERENCE ENGINEERING / SCHEDULING</span><span>NOTE 041</span></div>
+  <h1 class="title">Eight GPUs. Two workloads. <em>One fair scheduler.</em></h1>
+  <p class="dek">Small models want one GPU now. Large models need the whole node at once. The hard part is not allocation—it is knowing when to stop allocating.</p>
+  <div class="meta-row"><span>September 4, 2026</span><span>9 min read</span><span>Design + working implementation</span></div>
+  <div class="thesis"><strong>Core idea:</strong> the moment a large request waits, close small-job admission, drain what is already running, and transfer the node atomically. Then use bounded phases so fairness works in both directions.</div>
+  <div class="repo-cta"><div><span>Open-source implementation</span><strong>gpu-inference-scheduler</strong></div><a href="https://github.com/manishklach/gpu-inference-scheduler" target="_blank" rel="noopener">View repository ↗</a></div>
+  <figure class="cover"><img src="/og/eight-gpus-two-workloads-phase-fair-inference-scheduler.png" alt="Eight GPU tiles with small teal allocations and an all-GPU amber allocation" width="1254" height="1254"/><figcaption class="caption">One physical pool, two incompatible allocation shapes: 1 × GPU and 8 × GPU atomically.</figcaption></figure>
+  <nav class="toc" aria-label="Contents"><strong>Contents</strong><ol><li><a href="#problem">The deceptively small problem</a></li><li><a href="#failure">Why greedy allocation fails</a></li><li><a href="#gate">The admission gate</a></li><li><a href="#fairness">Phase fairness</a></li><li><a href="#implementation">Implementation anatomy</a></li><li><a href="#races">The cancellation race</a></li><li><a href="#proof">Testing the guarantees</a></li><li><a href="#production">From reference to production</a></li></ol></nav>
+</header>
+<main>
+<section id="problem">
+  <div class="eyebrow">01 / Problem</div><h2>The resource pool is simple. The queueing geometry is not.</h2>
+  <p>Imagine a single inference node with eight GPUs. Small-model requests need exactly one GPU, so eight can run independently. Large-model requests use tensor or pipeline parallelism and must acquire all eight GPUs simultaneously. They cannot start on seven. They cannot share the node while running.</p>
+  <div class="diagram" role="img" aria-label="Eight GPUs separately assigned to small jobs"><div class="diagram-title">Small allocation shape</div><div class="gpus"><div class="gpu small">S0</div><div class="gpu small">S1</div><div class="gpu small">S2</div><div class="gpu small">S3</div><div class="gpu small">S4</div><div class="gpu small">S5</div><div class="gpu small">S6</div><div class="gpu small">S7</div></div><p class="caption">Small jobs compose naturally: every free GPU is useful immediately.</p></div>
+  <div class="diagram" role="img" aria-label="One large job spanning all eight GPUs"><div class="diagram-title">Large allocation shape</div><div class="gpus"><div class="band">LARGE REQUEST — GPU 0 · 1 · 2 · 3 · 4 · 5 · 6 · 7</div></div><p class="caption">Large work is gang-scheduled: partial allocation has no value.</p></div>
+  <p>The allocator therefore faces two different notions of availability. A small request asks, “Is <em>any</em> GPU free?” A large request asks, “Is the <em>entire set</em> free at the same instant?” That second predicate turns an ordinary worker pool into a coordination problem.</p>
+</section>
+
+<section id="failure">
+  <div class="eyebrow">02 / Failure mode</div><h2>Keeping every GPU busy can make the system less useful.</h2>
+  <p>The tempting policy is greedy: whenever a small request and a GPU are available, start the request. It maximizes instantaneous utilization. It can also starve every large request forever.</p>
+  <p>Suppose eight small jobs are running. One finishes, freeing GPU 3. If another small job immediately takes GPU 3, the node remains fragmented. Repeat this under continuous arrivals and there may never be a moment when all eight GPUs are free—even though individual GPUs complete work constantly.</p>
+  <div class="formula">local rule: free_gpu → start_small &nbsp;&nbsp; ⇒ &nbsp;&nbsp; global state “all_free” may never occur</div>
+  <p>This is a reservation paradox: work conservation at the single-GPU level destroys liveness at the whole-node level. Priority alone does not fix it if priority is consulted only when resources are already available. The scheduler must influence <em>future admissions</em> before the requested shape becomes available.</p>
+  <div class="callout danger"><strong class="label">The key failure</strong><p>A large request is not starved because it loses an allocation decision. It is starved because the scheduler never allows its eligibility condition to become true.</p></div>
+</section>
+
+<section id="gate">
+  <div class="eyebrow">03 / Admission control</div><h2>Close the gate, then let the machine drain.</h2>
+  <p>The liveness mechanism is a gate. As soon as the large queue becomes non-empty, the scheduler stops launching new small work. Small requests already running are not killed; they finish normally. Each completion returns one GPU to the free set, and that GPU remains intentionally idle. When the eighth GPU returns, the large request starts atomically.</p>
+  <div class="diagram" role="img" aria-label="Timeline from small phase through drain to large phase"><div class="diagram-title">Admission and phase transition</div><div class="timeline"><div class="phase cyan">SMALL PHASE<br/>up to 8 concurrent</div><div class="phase drain">GATE<br/>CLOSES</div><div class="phase drain">DRAIN<br/>no new small work</div><div class="phase amber">ATOMIC<br/>RESERVE</div><div class="phase amber">LARGE PHASE<br/>all 8 exclusive</div></div></div>
+  <pre><code>if large_queue:
+    if running_jobs:
+        return []                 # drain; admit nothing
+    large = large_queue.pop_left()
+    return reserve(large, ALL_GPUS)
+
+while small_queue and free_gpus:
+    small = small_queue.pop_left()
+    reserve(small, one_free_gpu)</code></pre>
+  <p>The deliberate idleness during drain is not wasted capacity. It is capacity being assembled into the only shape that can run the waiting job. This is the same reason memory compactors, gang schedulers, and maintenance quiescence mechanisms temporarily refuse otherwise valid work.</p>
+  <p>If small runtimes are bounded, so is the drain: a newly waiting large request waits at most the maximum remaining runtime among small jobs already in flight. New small arrivals cannot extend that interval.</p>
+</section>
+
+<section id="fairness">
+  <div class="eyebrow">04 / Fairness</div><h2>Writer preference solves one starvation problem—and can create its mirror image.</h2>
+  <p>Strict large priority is sufficient to protect large requests from small traffic. But if large requests also arrive continuously, blindly draining one large job into the next can starve the small queue. A scheduler advertised as “fair” should explain which direction fairness flows.</p>
+  <p>The implementation uses phase fairness. After a large request completes, if both queues contain work, the scheduler admits one wave of at most eight small requests. The admission gate closes again immediately; when that wave drains, the next large request runs. Each class therefore makes bounded progress.</p>
+  <div class="diagram" role="img" aria-label="Alternating large jobs and one bounded small wave"><div class="diagram-title">Bounded bidirectional progress</div><div class="timeline"><div class="phase amber">LARGE 1</div><div class="phase cyan">ONE SMALL WAVE<br/>≤ 8 jobs</div><div class="phase amber">LARGE 2</div><div class="phase cyan">ONE SMALL WAVE<br/>≤ 8 jobs</div><div class="phase amber">LARGE 3</div></div></div>
+  <p>A subtle detail matters: fairness credit cannot linger forever. If a large job ends and small jobs receive unrestricted service because no large request is waiting, that service consumes the credit. Otherwise a later large arrival could pay for an unnecessary extra small wave after it has already waited for active small jobs to drain.</p>
+  <div class="spec"><div class="spec-head">Policy modes</div><div class="table-scroll"><table><thead><tr><th>Mode</th><th>Between consecutive large jobs</th><th>Best for</th></tr></thead><tbody><tr><td>Phase fair</td><td>One bounded small wave when small work waits</td><td>Mixed multi-tenant traffic</td></tr><tr><td>Strict large</td><td>No small wave while a large request waits</td><td>Latency-critical large models</td></tr></tbody></table></div></div>
+</section>
+
+<section id="implementation">
+  <div class="eyebrow">05 / Implementation</div><h2>Make scheduling decisions in one place; execute work somewhere else.</h2>
+  <p>The <a href="https://github.com/manishklach/gpu-inference-scheduler" target="_blank" rel="noopener">open-source implementation</a> is intentionally dependency-free and compact. It maintains two FIFO queues, a set of free GPU IDs, a map of running jobs, and a condition variable guarding every state transition. One dispatcher thread decides admission. Worker threads execute callbacks only after reservation is committed.</p>
+  <p>That separation is important. The scheduling policy should not know whether the callback invokes PyTorch, vLLM, TensorRT-LLM, a subprocess launcher, or an RPC endpoint. Its contract is smaller: choose a legal allocation, hand the exclusive GPU IDs to the runtime, and reclaim them exactly once.</p>
+  <pre><code>with GPUScheduler(gpu_count=8) as scheduler:
+    future = scheduler.submit(
+        "small",
+        lambda gpu_ids: model.generate(
+            prompt="hello",
+            devices=gpu_ids,
+        ),
+    )
+    result = future.result()</code></pre>
+  <p>Reservation occurs under the condition lock before the worker starts. Completion releases GPUs inside a <code>finally</code> block, making model failure a job outcome rather than a capacity leak. Snapshots expose queue depths, running counts, free GPU IDs, and completed, failed, and cancelled counters.</p>
+  <h3>The invariants are the architecture</h3>
+  <ol><li>Free and allocated GPU sets are disjoint.</li><li>Allocations of distinct running jobs never overlap.</li><li>A small allocation contains exactly one GPU.</li><li>A large allocation equals the complete configured GPU set.</li><li>If a large job runs, no other job runs.</li></ol>
+  <p>Everything else—the API, CLI, HTTP adapter, and metrics—is built around preserving those five facts across concurrent submissions and failures.</p>
+</section>
+
+<section id="races">
+  <div class="eyebrow">06 / Concurrency</div><h2>The dangerous race fits between “queued” and “running.”</h2>
+  <p>Cancellation looks easy until a future is cancelled at the same moment the dispatcher removes its job from the queue. If the scheduler reserves GPUs without atomically claiming execution ownership, the caller may observe successful cancellation while the callback still runs. When the callback later publishes a result, the future is already terminal.</p>
+  <p>The implementation closes this gap with <code>Future.set_running_or_notify_cancel()</code> while holding the scheduler lock. Exactly one outcome wins: cancellation prevents reservation, or reservation marks the future running and later cancellation fails. There is no state where GPU work runs behind a cancelled contract.</p>
+  <div class="callout"><strong class="label">Concurrency principle</strong><p>Resource reservation and ownership transfer must be one logical transition. “Pop, then mark running later” is two transitions with a race in between.</p></div>
+  <p>The same discipline applies to completion. State becomes succeeded or failed, counters update, GPU IDs return to the free set, the running map is cleared, and the dispatcher is notified under one lock. User code never runs while that lock is held.</p>
+</section>
+
+<section id="proof">
+  <div class="eyebrow">07 / Verification</div><h2>Fairness claims need adversarial timelines, not happy-path unit tests.</h2>
+  <p>The repository’s tests coordinate jobs with events rather than relying on arbitrary sleeps. Eight small callbacks are held in flight to prove distinct assignment. A large request and a late small request are then queued; releasing the first wave must start the large request while the late small remains blocked. Only after the large releases all eight GPUs may the late small begin.</p>
+  <p>A second test runs two large requests with a queued small request between them. The small request must run as a bounded wave before the second large request. Another regression test proves that unrestricted small service consumes stale fairness credit. Failure and cancellation tests verify that every GPU returns to the pool and cancelled callbacks never execute.</p>
+  <div class="spec"><div class="spec-head">What the suite proves</div><div class="table-scroll"><table><thead><tr><th>Scenario</th><th>Required observation</th></tr></thead><tbody><tr><td>8 small jobs</td><td>Eight distinct IDs; concurrent execution</td></tr><tr><td>Large waits</td><td>Late small blocked; large receives IDs 0–7</td></tr><tr><td>Large stream</td><td>Queued small wave advances between large jobs</td></tr><tr><td>Callback fails</td><td>All GPU capacity recovered</td></tr><tr><td>Queued cancellation</td><td>Callback never starts; accounting remains exact</td></tr><tr><td>HTTP lifecycle</td><td>Submit, observe, complete, and inspect counters</td></tr></tbody></table></div></div>
+  <p>Cross-platform CI runs the suite on Ubuntu and Windows with Python 3.10 and 3.13. The scheduler does not require GPU hardware for correctness testing because resource ownership is modeled explicitly; a real runtime adapter can be tested separately.</p>
+</section>
+
+<section id="production">
+  <div class="eyebrow">08 / Production</div><h2>The algorithm is the kernel, not the whole serving system.</h2>
+  <p>The included HTTP server deliberately simulates inference with a bounded duration. It makes the scheduler observable and easy to exercise, but production service requires additional layers: durable queue semantics, authentication, tenant quotas, idempotency keys, runtime deadlines, cancellation propagation, traces, Prometheus metrics, GPU health reconciliation, and process or container isolation.</p>
+  <p>Most importantly, non-preemptive fairness assumes jobs terminate. If a small callback can run forever, the drain can run forever. No queue discipline can manufacture a bounded wait behind unbounded work. Production deployments need enforced timeouts, cooperative cancellation, or safe checkpoint-and-preempt support in the runtime.</p>
+  <div class="formula">bounded scheduling delay requires bounded execution time</div>
+  <p>The implementation is best understood as a node-level allocator and an executable specification. It makes the hard policy explicit, keeps the runtime boundary narrow, and gives a serving stack something concrete to extend rather than another informal claim that “priority will handle it.”</p>
+  <div class="repo-cta"><div><span>Read, run, and extend it</span><strong>Starvation-free GPU inference scheduling</strong></div><a href="https://github.com/manishklach/gpu-inference-scheduler" target="_blank" rel="noopener">GitHub repository ↗</a></div>
+  <div class="callout warn"><strong class="label">Final takeaway</strong><p>The scheduler’s most powerful operation is sometimes refusing perfectly runnable work. That temporary “no” is what creates the resource shape required for the system’s next meaningful “yes.”</p></div>
+</section>
+<section id="webmentions" hidden></section>
+<footer class="article-footer"><span>MANISH AI · Systems, chips, kernels, and inference infrastructure.</span><span>Published September 4, 2026</span></footer>
+</main>
+</div>
+<footer class="site-footer"><div><strong>MANISH AI</strong><span>Systems, chips, kernels, and inference infrastructure.</span></div><a href="/writings.html">Back to writings</a></footer>
+</body>
+</html>
