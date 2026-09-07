@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en" data-preserve-theme-vars="true">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Verifiable RL from Base: The Reward Is Code. The Experiment Is a System. | MANISH AI</title>
+<meta name="description" content="A technical walkthrough of zero-SFT GRPO on Countdown: exact rewards, leakage-resistant evaluation, pass@k, the Qwen text-loader fix, and real trainer acceptance tests."/>
+<meta name="author" content="MANISH AI"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="color-scheme" content="light dark"/>
+<link rel="canonical" href="https://manishklach.github.io/writings/verifiable-rl-from-base-grpo-countdown-engineering.html"/>
+<link rel="alternate" type="application/rss+xml" title="MANISH AI RSS" href="/feed.xml"/>
+<link rel="alternate" type="application/feed+json" title="MANISH AI JSON Feed" href="/feed.json"/>
+<link rel="webmention" href="https://webmention.io/manishklach.github.io/webmention"/>
+<meta property="og:type" content="article"/>
+<meta property="og:site_name" content="MANISH AI"/>
+<meta property="og:title" content="Verifiable RL from Base: The Reward Is Code. The Experiment Is a System."/>
+<meta property="og:description" content="A technical walkthrough of zero-SFT GRPO on Countdown: exact rewards, leakage-resistant evaluation, pass@k, the Qwen text-loader fix, and real trainer acceptance tests."/>
+<meta property="og:url" content="https://manishklach.github.io/writings/verifiable-rl-from-base-grpo-countdown-engineering.html"/>
+<meta property="og:image" content="https://manishklach.github.io/assets/og-image.png"/>
+<meta property="article:published_time" content="2026-09-06T00:00:00Z"/>
+<meta property="article:modified_time" content="2026-09-06T00:00:00Z"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Verifiable RL from Base: The Reward Is Code. The Experiment Is a System."/>
+<meta name="twitter:description" content="A technical walkthrough of zero-SFT GRPO on Countdown: exact rewards, leakage-resistant evaluation, pass@k, the Qwen text-loader fix, and real trainer acceptance tests."/>
+<meta name="twitter:image" content="https://manishklach.github.io/assets/og-image.png"/>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Verifiable RL from Base: The Reward Is Code. The Experiment Is a System.", "description": "A technical walkthrough of zero-SFT GRPO on Countdown: exact rewards, leakage-resistant evaluation, pass@k, the Qwen text-loader fix, and real trainer acceptance tests.", "url": "https://manishklach.github.io/writings/verifiable-rl-from-base-grpo-countdown-engineering.html", "mainEntityOfPage": "https://manishklach.github.io/writings/verifiable-rl-from-base-grpo-countdown-engineering.html", "datePublished": "2026-09-06", "dateModified": "2026-09-06", "articleSection": "Reinforcement Learning and AI Systems", "author": {"@type": "Person", "name": "MANISH AI", "url": "https://manishklach.github.io/"}, "publisher": {"@type": "Person", "name": "MANISH AI", "url": "https://manishklach.github.io/"}, "image": "https://manishklach.github.io/assets/og-image.png", "wordCount": 4045, "timeRequired": "PT19M", "about": {"@type": "SoftwareSourceCode", "name": "verifiable-rl-from-base", "codeRepository": "https://github.com/manishklach/verifiable-rl-from-base"}}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/site.css"/>
+<script defer src="/assets/site.js"></script>
+<script async src="https://gc.zgo.at/count.js" data-goatcounter="https://manishklach.goatcounter.com/count"></script>
+<style>
+:root{--bg:#f6f7f2;--text:#16251f;--muted:#52645a;--panel:#e9eee7;--line:#c8d4ca;--accent:#126c59;--highlight:#7b4c9b;--gold:#8a5b00}
+html.dark{--bg:#0c1411;--text:#e5eee8;--muted:#a3b8aa;--panel:#17261d;--line:#33483b;--accent:#a6e85a;--highlight:#d8afff;--gold:#f4c778}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:120px}body{margin:0;background:var(--bg);color:var(--text);font:18px/1.8 'IBM Plex Sans',sans-serif}a{color:var(--accent);text-underline-offset:4px}a:hover{text-decoration-thickness:2px}a:focus-visible,button:focus-visible{outline:3px solid var(--highlight);outline-offset:5px}.skip{position:absolute;left:12px;top:-80px;background:var(--panel);padding:10px;z-index:50}.skip:focus{top:10px}.topbar{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line)}.nav{max-width:1120px;margin:auto;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px}.brand-logo{display:block;width:75px;height:56px;object-fit:contain}.header-nav{display:flex;align-items:center;gap:22px;font:12px 'IBM Plex Mono',monospace;flex-wrap:wrap}.header-nav a{text-decoration:none;color:var(--muted)}.header-nav .active{color:var(--accent);text-decoration:underline}.wrap{max-width:990px;margin:auto;padding:0 26px}.hero{padding:66px 0 42px;border-bottom:1px solid var(--line)}.eyebrow{font:12px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin:0 0 22px}h1{font:700 clamp(42px,6.8vw,75px)/1.05 'Space Grotesk',sans-serif;letter-spacing:-.045em;margin:0 0 26px;max-width:18ch}h1 span{color:var(--accent)}.dek{font-size:23px;line-height:1.55;max-width:68ch;color:var(--muted)}.meta{font:12px/1.8 'IBM Plex Mono',monospace;color:var(--muted)}.triad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:32px 0}.loop-card{border:1px solid var(--line);border-top:4px solid var(--accent);padding:20px;background:var(--panel)}.loop-card:nth-child(2){border-top-color:var(--highlight)}.loop-card:nth-child(3){border-top-color:var(--gold)}.loop-card b{font:600 20px 'Space Grotesk',sans-serif;display:block;margin:8px 0}.loop-card p{font-size:15px;margin:10px 0 0}.loop-card small{font:11px 'IBM Plex Mono',monospace;color:var(--muted)}.toc{border:1px solid var(--line);padding:22px;background:var(--panel);margin:30px 0}.toc ol{columns:2;padding-left:22px;font-size:15px;margin-bottom:0}.toc li{margin:7px 0;break-inside:avoid}article section{padding:46px 0 18px;border-bottom:1px solid var(--line)}h2{font:600 clamp(28px,4vw,38px)/1.2 'Space Grotesk',sans-serif;letter-spacing:-.025em;margin:0 0 25px}h3{font:600 23px/1.4 'Space Grotesk',sans-serif;margin:30px 0 12px}p{margin:0 0 20px}li{margin:10px 0}code{font: .87em 'IBM Plex Mono',monospace;background:var(--panel);padding:2px 5px;border-radius:3px;overflow-wrap:anywhere}pre{background:var(--panel);border:1px solid var(--line);padding:22px;overflow:auto;font:14px/1.8 'IBM Plex Mono',monospace}pre code{padding:0;background:none;white-space:pre;overflow-wrap:normal}.note{border-left:4px solid var(--accent);background:var(--panel);padding:20px 24px;margin:25px 0}.note p:last-child{margin-bottom:0}.table-scroll{overflow-x:auto;margin:28px 0;border:1px solid var(--line)}table{border-collapse:collapse;width:100%;font-size:15px;min-width:640px}th,td{padding:15px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}th{background:var(--panel)}.caption{font-size:14px;color:var(--muted)}.sources{font-size:15px}.article-end{padding:32px 0;color:var(--muted);font-size:14px}.site-global-footer{margin-top:40px;background:#101712;color:#c8d4ca;border-top:1px solid #33483b}.footer-inner{max-width:1120px;margin:auto;padding:30px 24px;display:flex;justify-content:space-between;gap:25px;font-size:13px}.site-global-footer a{color:#c8ff3d}.footer-links{white-space:nowrap}
+@media(max-width:700px){body{font-size:17px}.nav{padding:10px 16px;gap:12px}.header-nav{gap:12px;font-size:11px;justify-content:flex-end}.brand-logo{width:60px;height:45px}.wrap{padding:0 18px}.hero{padding-top:40px}.dek{font-size:20px}.triad{grid-template-columns:1fr}.toc ol{columns:1}.footer-inner{flex-direction:column}.loop-card{padding:17px}pre{font-size:12px;padding:14px}html{scroll-padding-top:140px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media print{.topbar,.toc,.site-global-footer,#webmentions{display:none}body{background:white;color:black;font-size:11pt}.wrap{max-width:none}h1{font-size:36pt}.triad{display:block}.loop-card,pre,.note{break-inside:avoid}a{color:inherit}.table-scroll{overflow:visible}table{min-width:0}}
+
+.repo-links{display:flex;gap:12px;flex-wrap:wrap;margin:26px 0}.repo-links a{padding:10px 15px;border:1px solid var(--accent);font:13px/1.6 'IBM Plex Mono',monospace;text-decoration:none;background:var(--panel)}.equation{border:1px solid var(--line);background:var(--panel);padding:20px;margin:24px 0;overflow-x:auto}.equation code{font-size:15px;white-space:nowrap}.flow{display:flex;align-items:stretch;gap:8px;margin:28px 0}.flow>div{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);padding:16px}.flow small{font:10px 'IBM Plex Mono',monospace;color:var(--accent)}.flow b{display:block;font:600 17px/1.3 'Space Grotesk',sans-serif;margin:12px 0}.flow span{font-size:13px;color:var(--muted)}.flow .flow-arrow{align-self:center;color:var(--accent);font-size:20px}h1{max-width:20ch}.hero .dek{max-width:62ch}.footer-links{white-space:normal}#theme-toggle{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:4px;padding:7px 10px;color:var(--text)}
+@media(max-width:700px){.flow{display:block}.flow .flow-arrow{display:block;text-align:center;transform:rotate(90deg);padding:5px}.flow>div{padding:16px}.equation{padding:14px}.equation code{font-size:12px}.repo-links a{font-size:12px}.footer-links{line-height:2}}
+</style>
+</head>
+<body>
+<a class="skip" href="#article">Skip to article</a>
+<div class="topbar"><div class="nav">
+<a href="/" aria-label="MANISH AI homepage"><img class="brand-logo" src="/assets/manish-ai-logo.png" alt="MANISH AI" width="75" height="56"/></a>
+<nav class="header-nav" aria-label="Primary"><a href="/index.html#hero">Home</a><a href="/index.html#featured">Featured</a><a href="/patents.html">Patents</a><a class="active" aria-current="page" href="/writings.html">Writing</a><a href="/index.html#contact">Contact</a><button id="theme-toggle" type="button" aria-label="Toggle theme">☀️</button></nav>
+</div></div>
+<main class="wrap" id="article"><article data-pagefind-body>
+<header class="hero">
+<p class="eyebrow">Reinforcement learning / Verifiable rewards / Engineering notes</p>
+<h1>The reward is code.<br/>The experiment is a <span>system.</span></h1>
+<p class="dek">Inside Verifiable RL from Base: training a Qwen base model on Countdown with GRPO, exact arithmetic rewards, defensible evaluation, and a setup path that tests the trainer itself.</p>
+<p class="meta">By MANISH AI · <time datetime="2026-09-06">September 6, 2026</time> · 19 min read · Repository walkthrough, v0.3.0</p>
+<p class="repo-links"><a href="https://github.com/manishklach/verifiable-rl-from-base">Explore the repository ↗</a><a href="https://github.com/manishklach/verifiable-rl-from-base/releases/tag/v0.3.0">Release v0.3.0 ↗</a></p>
+<div class="triad" aria-label="The three engineering boundaries">
+<div class="loop-card"><small>01 / REWARD</small><b>Can the answer be proved?</b><p>Parse an allowed expression, check its input multiset, and evaluate it exactly.</p></div>
+<div class="loop-card"><small>02 / EXPERIMENT</small><b>Does the comparison hold?</b><p>Separate related puzzles, preserve decoding settings, and define the metric.</p></div>
+<div class="loop-card"><small>03 / RUNTIME</small><b>Does the whole path run?</b><p>Train, save, resume, reload, evaluate, and inspect the resulting artifacts.</p></div>
+</div>
+</header>
+<div class="note"><p><strong>What this post establishes.</strong> The repository has passing unit tests and a real, tiny Qwen hybrid-model integration test on CPU. A failure in the original Qwen loading path was reproduced and fixed. The full pretrained model has not been trained on a CUDA GPU in this work, and no improvement in mathematical accuracy is claimed. The GPU acceptance command below is how a new machine can produce that next layer of evidence.</p></div>
+<nav class="toc" aria-label="Table of contents"><strong>Inside this essay</strong><ol>
+<li><a href="#problem">A narrow question worth testing</a></li><li><a href="#pipeline">The experiment pipeline</a></li><li><a href="#verifier">The verifier is the specification</a></li><li><a href="#rewards">Shaping a useful learning signal</a></li><li><a href="#grpo">From grouped rewards to updates</a></li><li><a href="#splits">Why row-level splits mislead</a></li><li><a href="#solver">Exact solving and heuristic difficulty</a></li><li><a href="#metrics">What pass@k actually measures</a></li><li><a href="#qwen">The Qwen integration failure</a></li><li><a href="#acceptance">A smoke test with consequences</a></li><li><a href="#hardware">Clone, configure, and run</a></li><li><a href="#research">The experiment still to perform</a></li><li><a href="#sources">Code and primary references</a></li>
+</ol></nav>
+
+<section id="problem"><h2>1. A narrow question worth testing</h2>
+<p>Can a small pretrained base model become better at finding valid arithmetic expressions through reinforcement learning, without first receiving a supervised fine-tuning warm start? That is the question behind <a href="https://github.com/manishklach/verifiable-rl-from-base">verifiable-rl-from-base</a>. The default policy is <code>Qwen/Qwen3.5-0.8B-Base</code>; the task is Countdown arithmetic; the training algorithm is GRPO with LoRA adapters.</p>
+<p>“From base” needs a precise reading. The model already has pretrained weights. This project skips a new supervised fine-tuning stage before RL; it does not train language or arithmetic from random initialization. Likewise, “verifiable” describes the output contract. A checker can prove that an expression solves a puzzle without proving that the model’s surrounding explanation is faithful or that a general reasoning capability has emerged.</p>
+<p>A puzzle supplies numbers and a target. Given <code>[8, 3, 4]</code> and target <code>20</code>, one solution is <code>(8 - 3) * 4</code>. Every supplied number must appear exactly once. Printing <code>20</code> is not a solution: it reaches the target while ignoring the permitted operands. This small distinction is the foundation of the reward system.</p>
+<p>The appeal is experimental control. There is no human preference label or learned reward model between the completion and its correctness score. We can inspect the exact code that assigns reward, enumerate adversarial inputs, and compare the policy against a symbolic solver. The difficult work moves into specifying the task correctly, preserving a fair evaluation, and ensuring the trainer really executes the intended model.</p>
+</section>
+
+<section id="pipeline"><h2>2. Treat the experiment as a pipeline</h2>
+<div class="flow" role="img" aria-label="Dataset to grouped split to prompts to sampled completions to exact verifier to GRPO updates, followed by independent evaluation">
+<div><small>DATA</small><b>Countdown rows</b><span>numbers + target</span></div><span class="flow-arrow" aria-hidden="true">→</span>
+<div><small>BOUNDARY</small><b>Grouped split</b><span>related inputs stay together</span></div><span class="flow-arrow" aria-hidden="true">→</span>
+<div><small>POLICY</small><b>Sample G completions</b><span>same prompt, several attempts</span></div><span class="flow-arrow" aria-hidden="true">→</span>
+<div><small>LEARNING</small><b>Verify + update</b><span>exact rewards, LoRA gradients</span></div>
+</div>
+<p>The implementation separates these responsibilities. <a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/src/countdown_rl/data.py"><code>data.py</code></a> loads and splits the dataset. <code>prompts.py</code> constructs the request. <code>verifier.py</code> interprets answers. <code>rewards.py</code> adapts verification results to TRL’s reward interface. <code>train.py</code> owns training and artifact persistence. Evaluation, aggregation, solving, generation, plotting, and reporting have separate modules.</p>
+<p>This separation makes failures local enough to investigate. An invalid expression should fail a verifier test. A duplicate puzzle should fail a dataset or evaluation test. A model-wrapper mismatch needs an integration test. Putting everything in one training script makes it tempting to call a completed process a successful experiment, even when one of those contracts is wrong.</p>
+<p>The artifacts matter as much as the Python entry points. Training writes configuration snapshots, dataset manifests, checkpoints, a final adapter, tokenizer files, and trainer state. Evaluation writes raw completion records alongside aggregate metrics. Reports are views over those records, not replacements for them. If a result looks surprising, the underlying expression and verifier flags should still be inspectable.</p>
+</section>
+
+<section id="verifier"><h2>3. The verifier is the specification</h2>
+<p>The <a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/src/countdown_rl/verifier.py">verifier</a> accepts exactly one balanced, nonempty <code>&lt;answer&gt;...&lt;/answer&gt;</code> block. Reasoning outside the block is allowed. Duplicate blocks, nested answer tags, or stray opening and closing tags invalidate the answer. A regex that merely finds one successful match is insufficient: it can overlook malformed tags elsewhere in the completion.</p>
+<pre><code>Accepted:
+Reasoning text. &lt;answer&gt;(8 - 3) * 4&lt;/answer&gt;
+
+Rejected:
+&lt;answer&gt;(8 - 3) * 4&lt;/answer&gt;&lt;answer&gt;
+&lt;answer&gt;(8 - 3) * 4&lt;/answer&gt;&lt;/answer&gt;
+&lt;answer&gt;20&lt;/answer&gt;  # valid literal, wrong input usage</code></pre>
+<p>Once extracted, the expression must fit a 200-character limit and a restricted character set. Python’s parser builds an abstract syntax tree, but the expression is never passed to <code>eval</code>. A small recursive interpreter allows integer constants and the binary operators <code>+</code>, <code>-</code>, <code>*</code>, and <code>/</code>. Calls, names, attributes, unary signs, exponentiation, floor division, and floating-point literals are rejected.</p>
+<p>Evaluating the AST has two outputs: its rational value and a list of integer leaves. The list is converted to a multiset and compared with the input multiset. This preserves multiplicity: <code>[5, 5, 2]</code> requires two leaves equal to five and one equal to two. A set comparison would incorrectly erase that distinction.</p>
+<div class="equation" aria-label="Correctness requires exact number usage and exact rational target equality"><code>correct = (Counter(leaves) == Counter(nums)) and (value == target)</code></div>
+<p>Values use exact rational arithmetic. For example, <code>8 / (3 - 8 / 3)</code> solves <code>[3, 3, 8, 8] → 24</code>: the inner division is 8/3, the denominator becomes 1/3, and the final result is exactly 24. There is no floating-point tolerance to tune and no possibility that a nearly correct value passes because of an epsilon threshold. Division by zero remains invalid.</p>
+<p>This contract permits negative and fractional intermediate values, even though negative literals written with unary minus are not allowed. That is a deliberate task definition, not an implementation accident. Anyone adding a new benchmark must decide whether its rules match. “Countdown-like” datasets can disagree about operand reuse, allowed intermediates, and whether every number is mandatory.</p>
+</section>
+
+<section id="rewards"><h2>4. Reward shaping creates signal—and its own risks</h2>
+<p>A base model can initially produce few fully correct answers. The default shaped profile therefore provides four additive rewards, implemented as independent functions sharing the same verifier.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Reward components"><table><thead><tr><th>Component</th><th>Condition</th><th>Reward</th></tr></thead><tbody>
+<tr><td>Format</td><td>One balanced, nonempty answer block</td><td>0.10</td></tr>
+<tr><td>Parseability</td><td>Allowed arithmetic that evaluates without error</td><td>0.25</td></tr>
+<tr><td>Operand usage</td><td>Exact input multiset</td><td>0.50</td></tr>
+<tr><td>Correctness</td><td>Exact operand usage and target equality</td><td>2.00</td></tr>
+</tbody></table></div>
+<p>A correct completion earns 2.85. A well-formed expression with the right operands but the wrong value earns 0.85. Printing the target inside a valid block can earn format and parseability credit—0.35—but cannot earn operand or correctness credit for the three-number puzzle above. These examples make the incentives visible rather than hiding them behind a single reward curve.</p>
+<p>Shaping is an empirical choice. It may help the policy discover valid expression syntax, but it can also reward a stable population of neatly formatted wrong answers. The repository includes a <code>binary</code> profile, which gives only 2.00 for correctness, and a <code>no-format</code> profile. Comparing those profiles under the same evaluation protocol is more informative than assuming that a rising shaped reward means improved solving.</p>
+<p>There is also a mundane interface invariant: reward functions must return one value per completion. Silently zipping unequal metadata arrays drops examples. The implementation uses strict alignment so that missing targets or number lists fail visibly. In an RL loop, a data plumbing bug can otherwise masquerade as a learning effect.</p>
+</section>
+
+<section id="grpo"><h2>5. How grouped rewards become a policy update</h2>
+<p>GRPO, introduced in <a href="https://arxiv.org/abs/2402.03300">DeepSeekMath</a>, compares multiple completions for the same prompt. Conceptually, the group provides a local baseline: a better-than-group completion gets positive advantage and a worse-than-group completion gets negative advantage. A schematic normalized advantage is:</p>
+<div class="equation"><code>Aᵢ ≈ (rᵢ − mean(r₁…rG)) / (std(r₁…rG) + ε)</code></div>
+<p>The policy objective then uses token probability ratios, clipping, and optional reference-policy regularization. This equation is an intuition for the group-relative signal, not a transcription of every reduction or loss option in the library. The repository delegates optimization to <a href="https://huggingface.co/docs/trl/v0.29.0/en/grpo_trainer">TRL 0.29.0</a>; its precise loss and normalization behavior belongs to that pinned implementation.</p>
+<p>For this project, the important consequence is that the signal is relative within a puzzle. If every completion earns the same reward, there is no within-group ranking to learn from through that reward advantage. The trainer can execute perfectly while producing zero useful policy gradient from a group. Logging reward variance and the fraction of zero-variance groups helps distinguish an execution failure from a sparse or uninformative reward signal.</p>
+<p>The default configuration uses eight generations, a per-device training batch of two, and eight accumulation steps. Under the supported single-process path, the configured rollout batch is <code>1 × 2 × 8 = 16</code> sequences. Because that count already includes repeated generations, it corresponds to two distinct prompts per generation batch—not sixteen prompts each multiplied by eight again.</p>
+<p>LoRA constrains the trainable update to low-rank adapter matrices. In the familiar schematic <code>W′ = W + (α/r)BA</code>, the base matrix stays fixed and the adapter learns the correction. This reduces trainable parameter and optimizer-state costs, but it does not eliminate the forward and backward computation through the base network, generation cache, or activation memory. Small parameter count alone is not a complete GPU-memory estimate.</p>
+<p>The repository uses rank 16 and alpha 32 in the standard configuration, with KL coefficient <code>beta = 0.04</code>. These are experiment settings, not established optima. The right next comparison is to change one variable while keeping problem identities and decoding fixed.</p>
+</section>
+
+<section id="splits"><h2>6. A random row split can leak the puzzle</h2>
+<p>The source dataset contains 490,364 rows in the version checked during development. Related rows may reorder the same operands or pair a combination with different targets. If <code>[3, 8, 4]</code> is in training and <code>[8, 4, 3]</code> is in evaluation, row identity has changed but much of the arithmetic search space has not.</p>
+<p>The project assigns the whole sorted number multiset to a split. It hashes a seed and the combination key, converts the first eight hexadecimal digits of SHA-256 to an integer, and takes the remainder modulo 100. Buckets below 90 train; the rest evaluate.</p>
+<pre><code>combination_key([8, 3, 4]) = "3,4,8"
+bucket = int(sha256(b"42:3,4,8").hexdigest()[:8], 16) % 100
+
+train: bucket &lt; 90
+eval:  bucket ≥ 90</code></pre>
+<p>The target is intentionally absent from this split key. Different targets sharing the same inputs stay on the same side of the boundary. The seed changes the assignment reproducibly. An explicit disjointness assertion checks that no input combination appears in both resulting subsets.</p>
+<p>Deduplication solves a separate problem. Evaluation collapses equivalent <code>(sorted nums, target)</code> puzzles before selecting the requested sample count. Group splitting prevents cross-split overlap; deduplication prevents repeated evaluation rows from quietly weighting one puzzle more heavily. The two operations are complementary.</p>
+<p>There are still limits. Training uses its evaluation split repeatedly for monitoring. That makes it validation data, not an untouched final test set after many rounds of tuning. A credible final result needs a separately reserved benchmark. Changing the split seed also changes which examples are held out, so multi-seed studies should distinguish optimization randomness from a changed test population.</p>
+</section>
+
+<section id="solver"><h2>7. Exact solvability, approximate difficulty</h2>
+<p>The <a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/src/countdown_rl/solver.py">solver</a> uses subset dynamic programming. Each input occurrence receives a bit position, including duplicates. For every subset, a table maps reachable rational values to candidate expressions. Combining two disjoint nonempty subsets yields addition, multiplication, both subtraction orders, and both division orders when the denominators are nonzero.</p>
+<p>For the full input subset, a target lookup either returns a witness expression or proves that no expression exists within the enumerated operator contract. Because the witness is fed through the same verifier used for model outputs, solver tests exercise consistency across two independent implementations: expression construction and expression interpretation.</p>
+<p>The computation is more expensive than the small input arrays suggest. There are exponentially many subsets, and combining tables requires considering pairs of reachable values. The public interface therefore caps inputs at five numbers. A 16-entry LRU retains completed value tables; bounding cache entries prevents retaining enormous numbers of tables, although a single five-number table can still be substantial.</p>
+<p>Difficulty is a heuristic built from capped derivation counts, fractional-intermediate requirements, operator diversity of the selected witness, and arity. A rare solution receives a larger rarity term. A required fractional intermediate receives a penalty. The resulting score maps to easy, medium, or hard bands used by the curriculum configurations.</p>
+<p>Those labels should not be oversold. The count is not a count of unique mathematical expressions; equivalent derivations and repeated operand positions affect it. The selected witness’s operator set is not a proof of globally minimal operator diversity. The bins are deterministic engineering features, not calibrated estimates of human or model difficulty.</p>
+<p>The generator samples candidate inputs and targets, keeps solvable puzzles, and emits reference expressions. Five-number puzzles provide a useful arity shift from a three/four-number training source. For other custom JSONL benchmarks, disjointness must be checked explicitly rather than inferred from the fact that the file is called “OOD.”</p>
+</section>
+
+<section id="metrics"><h2>8. pass@k must mean something reproducible</h2>
+<p>Strict accuracy is the fraction of individual completions that satisfy the entire verifier. It answers a different question from “did at least one of several attempts work?” Both can be useful, but they should not be merged into a headline number.</p>
+<p>The current <a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/src/countdown_rl/metrics.py">metrics implementation</a> estimates pass@k for a problem with <code>n</code> sampled completions and <code>c</code> correct completions as:</p>
+<div class="equation"><code>pass@k = 1 − C(n − c, k) / C(n, k)</code></div>
+<p>The fraction being subtracted is the probability that a size-k subset contains only failures. Consider four samples with two correct answers. For k=1, the estimate is 1/2. For k=2, it is <code>1 − C(2,2)/C(4,2) = 5/6</code>. For k=4, it is one. These are properties of the observed sample pool and estimator—not claims about this model’s measured performance.</p>
+<p>Averaging that estimate over problems is order-independent. Taking only the first k stored results is not: reordering records can change the answer. The implementation rejects k when any problem has fewer than k samples, and summary output uses the minimum available sample count to avoid pretending every problem received the largest observed budget.</p>
+<p>Sampling conditions matter. In this repository, one sample per prompt uses greedy decoding; more than one enables stochastic decoding. Pass@1 estimated from sampled completions is therefore not automatically the same experiment as a separately measured greedy accuracy. Base and trained models need identical decoding modes, temperature, token budget, prompts, and test identities.</p>
+<p>Evaluation JSON stores those decoding settings, a dataset fingerprint, stable problem IDs, sample indices, completions, verifier flags, and exact values as rational strings. Token counts stop at the first EOS, including that EOS while excluding later padding. Custom JSONL evaluation rebuilds prompts and identities from the inputs and recomputes difficulty, instead of trusting supplied solution-bearing prompts or labels.</p>
+<p>The HTML report summarizes the JSON; it cannot certify comparable runs. Confidence intervals and multi-seed statistical aggregation are not yet implemented. A small observed accuracy difference needs more evidence than a taller bar.</p>
+</section>
+
+<section id="qwen"><h2>9. The failure that unit tests did not catch</h2>
+<p>The most consequential correction came from running the actual trainer. The configured Qwen checkpoint advertises a composite conditional-generation architecture. It contains the language model needed for Countdown, plus a multimodal wrapper. Loading a recognized architecture is not sufficient to establish that it behaves correctly through every batching pattern in a training algorithm.</p>
+<p>In the reproduced integration failure, generation and GRPO scoring used different batch sizes. The multimodal wrapper retained position-related state from generation. A subsequent smaller scoring batch encountered incompatible dimensions and failed in the rotary-position path. The reward functions, parser, solver, and metric tests were all green; none exercised that state transition.</p>
+<pre><code>Before:
+composite Qwen wrapper
+  → generate a grouped batch
+  → retain multimodal position state
+  → score a smaller batch
+  → incompatible tensor dimensions
+
+After:
+same checkpoint's text weights
+  → Qwen3_5ForCausalLM
+  → generate and score text batches
+  → train, save, resume, reload</code></pre>
+<p>The <a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/src/countdown_rl/modeling.py">shared model loader</a> now selects <code>Qwen3_5ForCausalLM</code> for Qwen3.5 composite checkpoints. Training and evaluation use the same loader. The task is text-only, so the unused vision wrapper is unnecessary. The integration test compares the loaded language-model tensors and output head against the original tiny composite checkpoint to ensure this conversion loads actual weights rather than silently initializing replacements.</p>
+<p>This is a bounded finding: a failure in the repository’s original integration path and a tested correction under the selected runtime. It is not a claim that every multimodal Qwen use is broken or that every version of the library behaves identically. That is precisely why dependency versions and a runnable reproducer are more useful than a vague compatibility statement.</p>
+</section>
+
+<section id="acceptance"><h2>10. A smoke test should leave evidence</h2>
+<p>The <a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/src/countdown_rl/smoke.py"><code>countdown-smoke</code></a> command has two modes. CPU mode constructs a small random Qwen3.5 model containing both linear-attention and full-attention layers. CUDA mode loads the configured pretrained base model and the real Countdown dataset. Both call the production training function.</p>
+<ol><li>Load the model and tokenizer and create training/evaluation inputs.</li><li>Train to step one and require a saved checkpoint.</li><li>Resume that checkpoint and require global step two.</li><li>Load the final adapter through the evaluation entry point.</li><li>Require two evaluation records, then generate an HTML report and a chart.</li><li>Write <code>acceptance.json</code> with the mode, device, versions, and observed completion of the workflow.</li></ol>
+<p>A random tiny model is very unlikely to discover valid arithmetic in a few sampled tokens. If every reward is zero, an integration test can run a backward pass without demonstrating an effective parameter change. The CPU test therefore adds an explicitly labeled diagnostic reward that differentiates completions and checks that LoRA B matrices become nonzero. This reward tests the optimization plumbing; it is never added to the real-model CUDA test or normal experiments.</p>
+<p>The scope distinction is important. This proves more than successful imports, but less than learned arithmetic. It establishes that a small representative architecture traverses the trainer, optimizer, serialization, resume, and inference path. The real-model CUDA test uses shorter completions and fewer generations than the full experiment, so even its success would not prove that the larger run fits the same memory budget.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Validation evidence and limits"><table><thead><tr><th>Evidence at v0.3.0</th><th>What it supports</th><th>What it does not establish</th></tr></thead><tbody>
+<tr><td>48 unit, property, and regression tests</td><td>Verifier, solver, rewards, data, metrics, and related contracts</td><td>End-to-end hardware compatibility</td></tr>
+<tr><td>Windows CPU and Linux CI trainer integration</td><td>Tiny hybrid model, actual updates, resume, reload, and artifacts</td><td>Full-model GPU execution or learning quality</td></tr>
+<tr><td>Real source dataset download and split</td><td>The checked dataset works with the selected data runtime</td><td>A permanently immutable dataset snapshot</td></tr>
+<tr><td>CUDA acceptance command supplied</td><td>A repeatable procedure for validating a new GPU host</td><td>A GPU result already measured by the maintainer</td></tr>
+</tbody></table></div>
+<p>All five implementation CI jobs passed: Linux/Windows unit-and-build jobs for Python 3.10 and 3.12, plus fresh Linux setup and offline trainer integration. The evidence is linked in the repository’s Actions history. CUDA performance, Docker execution, distributed training, and full-model accuracy remain outside the measured results in this post.</p>
+</section>
+
+<section id="hardware"><h2>11. Clone, configure, and run on a real host</h2>
+<p>The primary setup path targets Linux, Python 3.10–3.12, and one NVIDIA GPU with a driver compatible with CUDA 12.8. A 24 GB GPU, 32 GB host RAM, and 20 GB free disk are planning starting points, not measured guarantees. Initial setup needs access to PyPI, the PyTorch wheel index, and Hugging Face.</p>
+<pre><code>git clone https://github.com/manishklach/verifiable-rl-from-base.git
+cd verifiable-rl-from-base
+
+bash scripts/setup.sh cuda
+source .venv/bin/activate
+countdown-doctor --config configs/qwen35-0.8b-grpo.yaml
+countdown-smoke --device cuda
+
+# Continue after inspecting acceptance.json:
+bash scripts/run_experiment.sh</code></pre>
+<p><code>setup.sh</code> creates the environment, installs the explicit CPU or CUDA PyTorch build, applies core runtime constraints, checks dependency consistency, and checks device access. Selecting the build explicitly matters when reusing an environment: the CPU and CUDA variants can otherwise satisfy the same public-version requirement while providing different hardware capabilities.</p>
+<p>The constrained stack is PyTorch 2.9.1, Transformers 5.3.0, TRL 0.29.0, PEFT 0.18.1, Accelerate 1.12.0, Datasets 5.0.1, Matplotlib 3.10.8, and PyYAML 6.0.3. This is a core compatibility baseline, not a complete transitive lock. Archive <code>pip freeze</code>, model revision, dataset identity, and acceptance evidence for each host.</p>
+<p>The setup intentionally avoids requiring optional compiled attention extensions. Qwen can take its PyTorch fallback, trading potential speed for a smaller installation surface. The default single-GPU pipeline uses the Python training entry point directly, so it does not depend on an interactive Accelerate configuration step.</p>
+<p>For CPU-only development, use <code>bash scripts/setup.sh cpu</code>, activate the environment, and run <code>countdown-smoke --device cpu --tiny</code>. For the combined GPU workflow, <code>bash scripts/quickstart.sh</code> performs setup, preflight, acceptance, and the full experiment in sequence. Each command stops on failure. Acceptance refuses to overwrite an existing output directory; reruns should use a new <code>--output</code> path.</p>
+<p>See the <a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/docs/GETTING_STARTED.md">clone-to-training guide</a> for the maintained procedure. A successful installation is only the first checkpoint. A successful short acceptance run is the next. A reproducible full experiment is a third, more demanding deliverable.</p>
+</section>
+
+<section id="research"><h2>12. The research result still has to be earned</h2>
+<p>The next experiment should compare the untouched base policy and trained adapter on a fixed, independently reserved set of puzzle identities. Both need the same prompt construction and decoding budget. Repeat training across multiple seeds, preserve raw completion JSON, and report strict accuracy alongside syntax validity, operand usage, token length, pass@k, and failure categories.</p>
+<p>Start with a small number of interpretable ablations: shaped versus correctness-only reward, ordinary training versus a difficulty curriculum, and perhaps three/four-number evaluation versus the five-number generator. A curriculum resume is not automatically equivalent to a single preplanned schedule. The shipped stages change cumulative step targets; optimizer and learning-rate scheduler behavior on resume must be inspected rather than assumed.</p>
+<p>It would also be useful to measure how much improvement comes from learning the answer format versus solving more puzzles after controlling for format. If parseability rises and exact correctness stays flat, the model has learned a useful interface behavior without establishing better search. If correctness rises only after allocating more samples or longer completions, the extra inference budget belongs in the explanation.</p>
+<p>The broader lesson from this repository is practical: a deterministic reward gives us a tractable boundary, but a trustworthy RL experiment requires several boundaries to hold at once. The verifier must describe the task. The split must describe what is unseen. The metric must describe the sampling budget. The loader must describe the actual model being trained. And the acceptance test must execute the path that readers will run after cloning.</p>
+<p>The code is available in <a href="https://github.com/manishklach/verifiable-rl-from-base">verifiable-rl-from-base</a>, with <a href="https://github.com/manishklach/verifiable-rl-from-base/releases/tag/v0.3.0">v0.3.0</a> serving as the snapshot discussed here. The valuable next contribution is a documented real-GPU run with preserved artifacts and a fair base-versus-adapter comparison. That would turn a tested experiment framework into measured evidence about learning.</p>
+</section>
+
+<section id="sources"><h2>Code and primary references</h2>
+<p class="caption">Implementation details in this essay refer to the v0.3.0 source snapshot. The arithmetic and pass@k examples are illustrative calculations, not model benchmark results.</p>
+<ol class="sources">
+<li><a href="https://github.com/manishklach/verifiable-rl-from-base">Project repository</a> and <a href="https://github.com/manishklach/verifiable-rl-from-base/releases/tag/v0.3.0">v0.3.0 release</a>.</li>
+<li><a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/src/countdown_rl/verifier.py">Verifier</a>, <a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/src/countdown_rl/rewards.py">rewards</a>, and <a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/src/countdown_rl/solver.py">exact solver</a>.</li>
+<li><a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/src/countdown_rl/data.py">Data preparation</a>, <a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/src/countdown_rl/metrics.py">metric definitions</a>, and <a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/docs/EVALUATION.md">evaluation protocol</a>.</li>
+<li><a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/src/countdown_rl/modeling.py">Shared text loader</a>, <a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/src/countdown_rl/smoke.py">acceptance test</a>, and <a href="https://github.com/manishklach/verifiable-rl-from-base/actions">CI evidence</a>.</li>
+<li><a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/docs/GETTING_STARTED.md">Setup guide</a> and <a href="https://github.com/manishklach/verifiable-rl-from-base/blob/v0.3.0/requirements/runtime.txt">runtime constraints</a>.</li>
+<li><a href="https://arxiv.org/abs/2402.03300">Shao et al., DeepSeekMath (2024)</a>, introducing Group Relative Policy Optimization.</li>
+<li><a href="https://huggingface.co/docs/trl/v0.29.0/en/grpo_trainer">TRL 0.29.0 GRPO documentation</a>, for the library’s optimization and batching behavior.</li>
+<li><a href="https://huggingface.co/Qwen/Qwen3.5-0.8B-Base">Configured Qwen base model</a> and <a href="https://huggingface.co/datasets/Jiayi-Pan/Countdown-Tasks-3to4">Countdown source dataset</a>.</li>
+</ol>
+</section>
+<div class="article-end"><p>Published September 6, 2026 · MANISH AI · Repository snapshot: v0.3.0</p><p><a href="https://github.com/manishklach/verifiable-rl-from-base">Source code and contributions</a> · <a href="/writings/looped-transformers-reinforcement-learning-recursive-self-improvement.html">Related: Three Loops, Three Different Kinds of Progress</a> · <a href="/writings.html">All writings</a></p></div>
+</article><section id="webmentions" hidden></section></main>
+<footer class="site-global-footer"><div class="footer-inner"><span>© 2026 <a href="/"><strong>MAN<span class="logo-i">\</span>SH AI</strong></a> · Systems, chips, kernels, and inference infrastructure.</span><span class="footer-links"><a href="/writings.html">All writings</a> · <a href="/feed.xml">RSS</a> · <a href="/patents.html">Patent record</a></span></div></footer>
+</body></html>
